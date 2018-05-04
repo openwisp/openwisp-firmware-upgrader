@@ -1,3 +1,6 @@
+import logging
+import os
+
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
@@ -5,6 +8,8 @@ from django.utils.translation import ugettext_lazy as _
 
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
+
+logger = logging.getLogger(__name__)
 
 
 @python_2_unicode_compatible
@@ -51,13 +56,25 @@ class FirmwareImage(OrgMixin, TimeStampedEditableModel):
                               help_text=_('hardware models this image '
                                           'refers to, one per line'))
 
+    class Meta:
+        unique_together = ('build', 'models')
+
     def __str__(self):
         if hasattr(self, 'build') and self.file.name:
             return '{0}: {1}'.format(self.build, self.file.name)
         return super(FirmwareImage, self).__str__()
 
-    class Meta:
-        unique_together = ('build', 'models')
+    def delete(self, *args, **kwargs):
+        super(FirmwareImage, self).delete(*args, **kwargs)
+        self._remove_file()
+
+    def _remove_file(self):
+        path = self.file.path
+        if os.path.isfile(path):
+            os.remove(path)
+        else:
+            msg = 'firmware image not found while deleting {0}:\n{1}'
+            logger.error(msg.format(self, path))
 
 
 @python_2_unicode_compatible
@@ -65,3 +82,59 @@ class DeviceFirmware(TimeStampedEditableModel):
     device = models.OneToOneField('config.Device', on_delete=models.CASCADE)
     image = models.ForeignKey(FirmwareImage, on_delete=models.CASCADE)
     installed = models.BooleanField(default=False)
+    _old_image = None
+
+    def __init__(self, *args, **kwargs):
+        super(DeviceFirmware, self).__init__(*args, **kwargs)
+        self._update_old_image()
+
+    def save(self, *args, **kwargs):
+        # if firwmare image has changed launch upgrade
+        # upgrade won't be launched the first time
+        if self._old_image is not None and self.image != self._old_image:
+            self.installed = False
+            super(DeviceFirmware, self).save(*args, **kwargs)
+            self.create_upgrade_operation()
+        else:
+            super(DeviceFirmware, self).save(*args, **kwargs)
+        self._update_old_image()
+
+    def _update_old_image(self):
+        if hasattr(self, 'image'):
+            self._old_image = self.image
+
+    def create_upgrade_operation(self):
+        upgrade = UpgradeOperation(device=self.device,
+                                   image=self.image)
+        upgrade.full_clean()
+        upgrade.save()
+
+
+@python_2_unicode_compatible
+class UpgradeOperation(TimeStampedEditableModel):
+    STATUS_CHOICES = (
+        ('in-progress', _('in progress')),
+        ('success', _('success')),
+        ('failed', _('failed')),
+        ('aborted', _('aborted')),
+    )
+    device = models.ForeignKey('config.Device', on_delete=models.CASCADE)
+    image = models.ForeignKey(FirmwareImage, on_delete=models.CASCADE)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES,
+                              default=STATUS_CHOICES[0][0])
+    log = models.TextField(blank=True)
+
+    def save(self, *args, **kwargs):
+        # determine if new object
+        if self._state.adding:
+            is_new = True
+        else:
+            is_new = False
+        # save
+        super(UpgradeOperation, self).save(*args, **kwargs)
+        # perform upgrades only for new operations
+        if is_new:
+            self.upgrade()
+
+    def upgrade(self):
+        pass
