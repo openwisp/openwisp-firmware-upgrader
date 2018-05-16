@@ -15,6 +15,7 @@ from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .upgraders.openwrt import AbortedUpgrade
+from .hardware import FIRMWARE_IMAGE_TYPE_CHOICES
 
 logger = logging.getLogger(__name__)
 
@@ -46,26 +47,27 @@ class Build(OrgMixin, TimeStampedEditableModel):
                                              'has changed since the previous '
                                              'version, if applicable'))
 
+    class Meta:
+        unique_together = ('category', 'version')
+
     def __str__(self):
         try:
             return '{0} v{1}'.format(self.category, self.version)
         except ObjectDoesNotExist:
             return super(Build, self).__str__()
 
-    class Meta:
-        unique_together = ('category', 'version')
-
 
 @python_2_unicode_compatible
 class FirmwareImage(OrgMixin, TimeStampedEditableModel):
     build = models.ForeignKey(Build, on_delete=models.CASCADE)
     file = models.FileField()
-    models = models.TextField(blank=True,
-                              help_text=_('hardware models this image '
-                                          'refers to, one per line'))
+    type = models.CharField(blank=True,
+                            max_length=128,
+                            choices=FIRMWARE_IMAGE_TYPE_CHOICES,
+                            help_text=_('firmware image type'))
 
     class Meta:
-        unique_together = ('build', 'models')
+        unique_together = ('build', 'type')
 
     def __str__(self):
         if hasattr(self, 'build') and self.file.name:

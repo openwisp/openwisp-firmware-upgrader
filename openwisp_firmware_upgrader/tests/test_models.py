@@ -43,7 +43,7 @@ class TestUpgraderMixin(CreateConfigMixin, TestOrganizationMixin):
         return b
 
     def _create_firmware_image(self, **kwargs):
-        opts = dict(models='TP-Link TL-WDR4300 v1')
+        opts = dict(type='ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin')
         opts.update(kwargs)
         if 'build' not in opts:
             opts['build'] = self._create_build()
@@ -115,7 +115,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         build2 = self._create_build(category=device_fw.image.build.category,
                                     version='0.2',
                                     previous=device_fw.image.build)
-        fw2 = self._create_firmware_image(build=build2, models=device_fw.image.models)
+        fw2 = self._create_firmware_image(build=build2, type=device_fw.image.type)
         old_image = device_fw.image
         device_fw.image = fw2
         self.assertNotEqual(device_fw._old_image, device_fw.image)

@@ -1,0 +1,30 @@
+"""
+Mapping between hardware models and firwmare image
+This if focused on OpenWRT only fpr now, but it should
+be possible to add support for different embedded
+systems in the future.
+"""
+from collections import OrderedDict
+from django.utils.translation import ugettext_lazy as _
+
+
+OPENWRT_FIRMWARE_IMAGE_MAP = OrderedDict((
+    ('ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin', {
+        'label': _('TP-Link WDR4300 v1 (Israeli Version) - OpenWRT'),
+        'boards': ('TP-LINK TL-WDR4300 v1 (IL)',)
+    }),
+    ('ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin', {
+        'label': _('TP-Link WDR4300 v1 - OpenWRT'),
+        'boards': ('TP-Link TL-WDR4300 v1',)
+    }),
+))
+
+# OpenWRT only for now, in the future we'll merge
+# different dictionaries representing different firmwares
+# eg: AirOS, Raspbian
+FIRMWARE_IMAGE_MAP = OPENWRT_FIRMWARE_IMAGE_MAP
+
+
+FIRMWARE_IMAGE_TYPE_CHOICES = []
+for key, info in FIRMWARE_IMAGE_MAP.items():
+    FIRMWARE_IMAGE_TYPE_CHOICES.append((key, info['label']))
