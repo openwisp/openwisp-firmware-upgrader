@@ -30,6 +30,7 @@ class Category(OrgMixin, TimeStampedEditableModel):
     class Meta:
         verbose_name = _('category')
         verbose_name_plural = _('categories')
+        unique_together = ('name', 'organization')
 
 
 @python_2_unicode_compatible
