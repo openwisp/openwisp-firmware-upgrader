@@ -25,6 +25,7 @@ class BuildAdmin(TimeReadonlyAdminMixin, admin.ModelAdmin):
     search_fields = ['name']
     save_on_top = True
     select_related = ('category',)
+    ordering = ('-version',)
     inlines = [FirmwareImageInline]
 
 

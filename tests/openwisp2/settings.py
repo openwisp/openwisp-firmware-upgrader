@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'openwisp_users',
     'openwisp_controller.pki',
     'openwisp_controller.config',
+    'openwisp_controller.connection',
     'openwisp_firmware_upgrader',
     'openwisp_controller.geo',
     # admin
@@ -99,7 +100,6 @@ TEMPLATES = [
         'DIRS': [os.path.join(os.path.dirname(BASE_DIR), 'templates')],
         'OPTIONS': {
             'loaders': [
-                'apptemplates.Loader',
                 'django.template.loaders.filesystem.Loader',
                 'django.template.loaders.app_directories.Loader',
                 'openwisp_utils.loaders.DependencyLoader',

@@ -1,6 +1,6 @@
 import os
-import mock
 
+import mock
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase

@@ -1,13 +1,20 @@
+from __future__ import absolute_import, unicode_literals
+
 import logging
 import os
 
+from celery import shared_task
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import models
+from django.db import models, transaction
 from django.utils.encoding import python_2_unicode_compatible
+from django.utils.module_loading import import_string
 from django.utils.translation import ugettext_lazy as _
 
+from openwisp_controller.connection.settings import DEFAULT_UPDATE_STRATEGIES
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
+
+from .upgraders.openwrt import AbortedUpgrade
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +86,7 @@ class FirmwareImage(OrgMixin, TimeStampedEditableModel):
 
 @python_2_unicode_compatible
 class DeviceFirmware(TimeStampedEditableModel):
-    device = models.OneToOneField('config.Device', on_delete=models.CASCADE)
+    device = models.OneToOneField('config.Device', on_delete=models.CASCADE,)
     image = models.ForeignKey(FirmwareImage, on_delete=models.CASCADE)
     installed = models.BooleanField(default=False)
     _old_image = None
@@ -91,7 +98,7 @@ class DeviceFirmware(TimeStampedEditableModel):
     def save(self, *args, **kwargs):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
-        if self._old_image is not None and self.image != self._old_image:
+        if self._old_image is not None and self.image_id != self._old_image.id:
             self.installed = False
             super(DeviceFirmware, self).save(*args, **kwargs)
             self.create_upgrade_operation()
@@ -104,10 +111,19 @@ class DeviceFirmware(TimeStampedEditableModel):
             self._old_image = self.image
 
     def create_upgrade_operation(self):
-        upgrade = UpgradeOperation(device=self.device,
-                                   image=self.image)
-        upgrade.full_clean()
-        upgrade.save()
+        operation = UpgradeOperation(device=self.device,
+                                     image=self.image)
+        operation.full_clean()
+        operation.save()
+        # launch ``upgrade_firmware`` in the background (celery)
+        # once changes are committed to the database
+        transaction.on_commit(lambda: upgrade_firmware.delay(operation.pk))
+        return operation
+
+
+UPGRADERS_MAPPING = {
+    DEFAULT_UPDATE_STRATEGIES[0][0]: 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt'
+}
 
 
 @python_2_unicode_compatible
@@ -124,17 +140,62 @@ class UpgradeOperation(TimeStampedEditableModel):
                               default=STATUS_CHOICES[0][0])
     log = models.TextField(blank=True)
 
-    def save(self, *args, **kwargs):
-        # determine if new object
-        if self._state.adding:
-            is_new = True
-        else:
-            is_new = False
-        # save
-        super(UpgradeOperation, self).save(*args, **kwargs)
-        # perform upgrades only for new operations
-        if is_new:
-            self.upgrade()
-
     def upgrade(self):
-        pass
+        conn = self.device.deviceconnection_set.first()
+        installed = False
+        if not conn:
+            self.log = 'No device connection available'
+            self.save()
+            return
+        # prevent multiple upgrade operations for
+        # the same device running at the same time
+        qs = UpgradeOperation.objects.filter(device=self.device,
+                                             status='in-progress') \
+                                     .exclude(pk=self.pk)
+        if qs.count() > 0:
+            message = 'Another upgrade operation is in progress, aborting...'
+            logger.warn(message)
+            self.status = 'aborted'
+            self.log = message
+            self.save()
+            return
+        try:
+            upgrader_class = UPGRADERS_MAPPING[conn.update_strategy]
+            upgrader_class = import_string(upgrader_class)
+        except (AttributeError, ImportError) as e:
+            logger.exception(e)
+            return
+        upgrader = upgrader_class(params=conn.get_params(),
+                                  addresses=conn.get_addresses())
+        try:
+            result = upgrader.upgrade(self.image.file)
+        except AbortedUpgrade:
+            # this exception is raised when the checksum present on the image
+            # equals the checksum of the image we are trying to flash, which
+            # means the device was aleady flashed previously with the same image
+            self.status = 'aborted'
+            installed = True
+        except Exception as e:
+            upgrader.log(str(e))
+            self.status = 'failed'
+        else:
+            installed = True
+            self.status = 'success' if result else 'failed'
+        self.log = '\n'.join(upgrader.log_lines)
+        self.save()
+        # if the firmware has been successfully installed,
+        # or if it was already installed
+        # set `instaleld` to `True` on the devicefirmware instance
+        if installed:
+            self.device.devicefirmware.installed = True
+            self.device.devicefirmware.save()
+
+
+@shared_task
+def upgrade_firmware(operation_id):
+    """
+    Calls the ``upgrade()`` method of an
+    ``UpgradeOperation`` instance in the background
+    """
+    operation = UpgradeOperation.objects.get(pk=operation_id)
+    operation.upgrade()
