@@ -2,18 +2,17 @@ import os
 
 import mock
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
-from django_netjsonconfig.tests import CreateConfigMixin
 
-from openwisp_controller.config.models import Device
-from openwisp_users.tests.utils import TestOrganizationMixin
+from openwisp_controller.connection.tests.base import CreateConnectionsMixin
 
 from ..models import Build, Category, DeviceFirmware, FirmwareImage, UpgradeOperation
 
 
-class TestUpgraderMixin(CreateConfigMixin, TestOrganizationMixin):
-    device_model = Device
+class TestUpgraderMixin(CreateConnectionsMixin):
+    # device_model = Device
     _fake_image_path = os.path.join(settings.MEDIA_ROOT, 'fake-img.bin')
 
     def tearDown(self):
@@ -63,13 +62,16 @@ class TestUpgraderMixin(CreateConfigMixin, TestOrganizationMixin):
                                   content=image,
                                   content_type='text/plain')
 
-    def _create_device_firmware(self, **kwargs):
+    def _create_device_firmware(self, device_connection=True, **kwargs):
         opts = dict()
         opts.update(kwargs)
         if 'image' not in opts:
             opts['image'] = self._create_firmware_image()
         if 'device' not in opts:
             opts['device'] = self._create_device(organization=opts['image'].organization)
+            self._create_config(device=opts['device'])
+        if device_connection:
+            self._create_device_connection(device=opts['device'])
         device_fw = DeviceFirmware(**opts)
         device_fw.full_clean()
         device_fw.save()
@@ -123,3 +125,11 @@ class TestModels(TestUpgraderMixin, TestCase):
         device_fw.full_clean()
         device_fw.save()
         self.assertEqual(UpgradeOperation.objects.count(), 1)
+
+    def test_device_fw_no_connection(self):
+        try:
+            self._create_device_firmware(device_connection=False)
+        except ValidationError as e:
+            self.assertIn('related connection', str(e))
+        else:
+            self.fail('ValidationError not raised')

@@ -98,6 +98,14 @@ class DeviceFirmware(TimeStampedEditableModel):
         super(DeviceFirmware, self).__init__(*args, **kwargs)
         self._update_old_image()
 
+    def clean(self):
+        if self.device.deviceconnection_set.count() < 1:
+            raise ValidationError(
+                _('This device does not have a related connection object defined '
+                  'yet and therefore it would not be possible to upgrade it, '
+                  'please add one in the section named "DEVICE CONNECTIONS"')
+            )
+
     def save(self, *args, **kwargs):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
