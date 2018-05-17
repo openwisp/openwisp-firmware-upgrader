@@ -4,7 +4,7 @@ import logging
 import os
 
 from celery import shared_task
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.module_loading import import_string
@@ -14,8 +14,8 @@ from openwisp_controller.connection.settings import DEFAULT_UPDATE_STRATEGIES
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
+from .hardware import FIRMWARE_IMAGE_MAP, FIRMWARE_IMAGE_TYPE_CHOICES
 from .upgraders.openwrt import AbortedUpgrade
-from .hardware import FIRMWARE_IMAGE_TYPE_CHOICES
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,18 @@ class Build(OrgMixin, TimeStampedEditableModel):
             return '{0} v{1}'.format(self.category, self.version)
         except ObjectDoesNotExist:
             return super(Build, self).__str__()
+
+    def upgrade_related_devices(self):
+        qs = DeviceFirmware.objects.all().select_related('image')
+        device_firmwares = qs.filter(image__build__category_id=self.category_id) \
+                             .exclude(image__build=self)
+        for device_firmware in device_firmwares:
+            image = self.firmwareimage_set.filter(type=device_firmware.image.type).first()
+            # if new image is found, upgrade device
+            if image:
+                device_firmware.image = image
+                device_firmware.full_clean()
+                device_firmware.save()
 
 
 @python_2_unicode_compatible

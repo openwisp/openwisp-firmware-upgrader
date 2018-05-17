@@ -35,6 +35,7 @@ class DeviceFirmwareInline(admin.StackedInline):
     readonly_fields = ('installed', 'modified')
     verbose_name = _('Device Firmware')
     verbose_name_plural = verbose_name
+    extra = 0
 
 
 DeviceAdmin.inlines.append(DeviceFirmwareInline)

@@ -8,12 +8,14 @@ from django.test import TestCase
 
 from openwisp_controller.connection.tests.base import CreateConnectionsMixin
 
+from ..hardware import FIRMWARE_IMAGE_MAP
 from ..models import Build, Category, DeviceFirmware, FirmwareImage, UpgradeOperation
 
 
 class TestUpgraderMixin(CreateConnectionsMixin):
-    # device_model = Device
-    _fake_image_path = os.path.join(settings.MEDIA_ROOT, 'fake-img.bin')
+    FAKE_IMAGE_PATH = os.path.join(settings.MEDIA_ROOT, 'fake-img.bin')
+    TPLINK_4300_IMAGE = 'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin'
+    TPLINK_4300_IL_IMAGE = 'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin'
 
     def tearDown(self):
         for fw in FirmwareImage.objects.all():
@@ -42,7 +44,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         return b
 
     def _create_firmware_image(self, **kwargs):
-        opts = dict(type='ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin')
+        opts = dict(type=self.TPLINK_4300_IMAGE)
         opts.update(kwargs)
         if 'build' not in opts:
             opts['build'] = self._create_build()
@@ -56,7 +58,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         return fw
 
     def _get_simpleuploadedfile(self):
-        with open(self._fake_image_path, 'rb') as f:
+        with open(self.FAKE_IMAGE_PATH, 'rb') as f:
             image = f.read()
         return SimpleUploadedFile(name='uploaded-fake-image.bin',
                                   content=image,
@@ -133,3 +135,38 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.assertIn('related connection', str(e))
         else:
             self.fail('ValidationError not raised')
+
+    def test_upgrade_related_devices(self):
+        org = self._create_org()
+        d1 = self._create_device(name='device1', organization=org,
+                                 mac_address='00:22:bb:33:cc:44')
+        d2 = self._create_device(name='device2', organization=org,
+                                 mac_address='00:11:bb:22:cc:33')
+        ssh_credentials = self._create_credentials()
+        self._create_config(device=d1)
+        self._create_config(device=d2)
+        self._create_device_connection(device=d1, credentials=ssh_credentials)
+        self._create_device_connection(device=d2, credentials=ssh_credentials)
+        category = self._create_category(organization=org)
+        build1 = self._create_build(category=category, version='0.1')
+        image1a = self._create_firmware_image(build=build1, type=self.TPLINK_4300_IMAGE)
+        image1b = self._create_firmware_image(build=build1, type=self.TPLINK_4300_IL_IMAGE)
+        self._create_device_firmware(device=d1, image=image1a, device_connection=False)
+        self._create_device_firmware(device=d2, image=image1b, device_connection=False)
+        # check everything is as expected
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        self.assertEqual(d1.devicefirmware.image, image1a)
+        self.assertEqual(d2.devicefirmware.image, image1b)
+        # now create a new firmware build
+        build2 = self._create_build(category=category, version='0.2')
+        image2a = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IMAGE)
+        image2b = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IL_IMAGE)
+        # upgrade all related
+        build2.upgrade_related_devices()
+        # ensure image is changed
+        d1.devicefirmware.refresh_from_db()
+        d2.devicefirmware.refresh_from_db()
+        self.assertEqual(d1.devicefirmware.image, image2a)
+        self.assertEqual(d2.devicefirmware.image, image2b)
+        # ensure upgrade operation objects have been created
+        self.assertEqual(UpgradeOperation.objects.count(), 2)

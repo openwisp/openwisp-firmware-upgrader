@@ -5,8 +5,8 @@ be possible to add support for different embedded
 systems in the future.
 """
 from collections import OrderedDict
-from django.utils.translation import ugettext_lazy as _
 
+from django.utils.translation import ugettext_lazy as _
 
 OPENWRT_FIRMWARE_IMAGE_MAP = OrderedDict((
     ('ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin', {
