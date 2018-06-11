@@ -159,6 +159,10 @@ class DeviceFirmware(TimeStampedEditableModel):
                   'yet and therefore it would not be possible to upgrade it, '
                   'please add one in the section named "DEVICE CONNECTIONS"')
             )
+        if self.device.model not in self.image.boards:
+            raise ValidationError(
+                _('Device model and image model do not match')
+            )
 
     @property
     def image_has_changed(self):

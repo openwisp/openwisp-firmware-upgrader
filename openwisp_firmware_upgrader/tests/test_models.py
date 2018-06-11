@@ -157,6 +157,20 @@ class TestModels(TestUpgraderMixin, TestCase):
         else:
             self.fail('ValidationError not raised')
 
+    def test_device_firmware_image_invalid_model(self):
+        device_fw = self._create_device_firmware()
+        different_img = self._create_firmware_image(
+            type=self.TPLINK_4300_IL_IMAGE,
+            organization=device_fw.device.organization
+        )
+        try:
+            device_fw.image = different_img
+            device_fw.full_clean()
+        except ValidationError as e:
+            self.assertIn('model do not match', str(e))
+        else:
+            self.fail('ValidationError not raised')
+
     def _create_upgrade_env(self, device_firmware=True):
         org = self._create_org()
         category = self._create_category(organization=org)
