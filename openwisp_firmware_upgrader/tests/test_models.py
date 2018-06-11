@@ -136,6 +136,22 @@ class TestModels(TestUpgraderMixin, TestCase):
         else:
             self.fail('ValidationError not raised')
 
+    def test_invalid_board(self):
+        image = FIRMWARE_IMAGE_MAP['ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin']
+        boards = image['boards']
+        del image['boards']
+        err = None
+        try:
+            self._create_firmware_image()
+        except ValidationError as e:
+            err = e
+        image['boards'] = boards
+        if err:
+            self.assertIn('type', err.message_dict)
+            self.assertIn('not find boards', str(err))
+        else:
+            self.fail('ValidationError not raised')
+
     def test_upgrade_related_devices(self):
         org = self._create_org()
         d1 = self._create_device(name='device1', organization=org,

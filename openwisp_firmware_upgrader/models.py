@@ -86,6 +86,18 @@ class FirmwareImage(OrgMixin, TimeStampedEditableModel):
             return '{0}: {1}'.format(self.build, self.file.name)
         return super(FirmwareImage, self).__str__()
 
+    @property
+    def boards(self):
+        return FIRMWARE_IMAGE_MAP[self.type]['boards']
+
+    def clean(self):
+        try:
+            self.boards
+        except KeyError:
+            raise ValidationError({
+                'type': 'Could not find boards for this type'
+            })
+
     def delete(self, *args, **kwargs):
         super(FirmwareImage, self).delete(*args, **kwargs)
         self._remove_file()
