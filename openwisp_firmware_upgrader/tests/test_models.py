@@ -64,7 +64,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
                                   content=image,
                                   content_type='text/plain')
 
-    def _create_device_firmware(self, device_connection=True, **kwargs):
+    def _create_device_firmware(self, upgrade=False, device_connection=True, **kwargs):
         opts = dict()
         opts.update(kwargs)
         if 'image' not in opts:
@@ -76,7 +76,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
             self._create_device_connection(device=opts['device'])
         device_fw = DeviceFirmware(**opts)
         device_fw.full_clean()
-        device_fw.save()
+        device_fw.save(upgrade=upgrade)
         return device_fw
 
 
@@ -109,7 +109,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         device_fw = DeviceFirmware()
         self.assertIsNone(device_fw._old_image)
         # save
-        device_fw = self._create_device_firmware()
+        device_fw = self._create_device_firmware(upgrade=False)
         self.assertEqual(device_fw._old_image, device_fw.image)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         # init
@@ -126,6 +126,11 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(device_fw._old_image, old_image)
         device_fw.full_clean()
         device_fw.save()
+        self.assertEqual(UpgradeOperation.objects.count(), 1)
+
+    @mock.patch('openwisp_firmware_upgrader.models.UpgradeOperation.upgrade', return_value=None)
+    def test_device_fw_created(self, *args):
+        self._create_device_firmware(upgrade=True)
         self.assertEqual(UpgradeOperation.objects.count(), 1)
 
     def test_device_fw_no_connection(self):
@@ -152,37 +157,70 @@ class TestModels(TestUpgraderMixin, TestCase):
         else:
             self.fail('ValidationError not raised')
 
-    def test_upgrade_related_devices(self):
+    def _create_upgrade_env(self, device_firmware=True):
         org = self._create_org()
+        category = self._create_category(organization=org)
+        build1 = self._create_build(category=category, version='0.1')
+        image1a = self._create_firmware_image(build=build1, type=self.TPLINK_4300_IMAGE)
+        image1b = self._create_firmware_image(build=build1, type=self.TPLINK_4300_IL_IMAGE)
+        # create devices
         d1 = self._create_device(name='device1', organization=org,
-                                 mac_address='00:22:bb:33:cc:44')
+                                 mac_address='00:22:bb:33:cc:44',
+                                 model=image1a.boards[0])
         d2 = self._create_device(name='device2', organization=org,
-                                 mac_address='00:11:bb:22:cc:33')
+                                 mac_address='00:11:bb:22:cc:33',
+                                 model=image1b.boards[0])
         ssh_credentials = self._create_credentials()
         self._create_config(device=d1)
         self._create_config(device=d2)
         self._create_device_connection(device=d1, credentials=ssh_credentials)
         self._create_device_connection(device=d2, credentials=ssh_credentials)
-        category = self._create_category(organization=org)
-        build1 = self._create_build(category=category, version='0.1')
-        image1a = self._create_firmware_image(build=build1, type=self.TPLINK_4300_IMAGE)
-        image1b = self._create_firmware_image(build=build1, type=self.TPLINK_4300_IL_IMAGE)
-        self._create_device_firmware(device=d1, image=image1a, device_connection=False)
-        self._create_device_firmware(device=d2, image=image1b, device_connection=False)
-        # check everything is as expected
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-        self.assertEqual(d1.devicefirmware.image, image1a)
-        self.assertEqual(d2.devicefirmware.image, image1b)
-        # now create a new firmware build
+        # create device firmware (optional)
+        if device_firmware:
+            self._create_device_firmware(device=d1, image=image1a, device_connection=False)
+            self._create_device_firmware(device=d2, image=image1b, device_connection=False)
+        # create a new firmware build
         build2 = self._create_build(category=category, version='0.2')
         image2a = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IMAGE)
         image2b = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IL_IMAGE)
+        data = {
+            'build2': build2,
+            'd1': d1,
+            'd2': d2,
+            'image1a': image1a,
+            'image1b': image1b,
+            'image2a': image2a,
+            'image2b': image2b
+        }
+        return data
+
+    def test_upgrade_related_devices(self):
+        env = self._create_upgrade_env()
+        # check everything is as expected
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        self.assertEqual(env['d1'].devicefirmware.image, env['image1a'])
+        self.assertEqual(env['d2'].devicefirmware.image, env['image1b'])
         # upgrade all related
-        build2.upgrade_related_devices()
+        env['build2'].upgrade_related_devices()
         # ensure image is changed
-        d1.devicefirmware.refresh_from_db()
-        d2.devicefirmware.refresh_from_db()
-        self.assertEqual(d1.devicefirmware.image, image2a)
-        self.assertEqual(d2.devicefirmware.image, image2b)
+        env['d1'].devicefirmware.refresh_from_db()
+        env['d2'].devicefirmware.refresh_from_db()
+        self.assertEqual(env['d1'].devicefirmware.image, env['image2a'])
+        self.assertEqual(env['d2'].devicefirmware.image, env['image2b'])
+        # ensure upgrade operation objects have been created
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+
+    def test_upgrade_firmwareless_devices(self):
+        env = self._create_upgrade_env(device_firmware=False)
+        # check everything is as expected
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        self.assertFalse(hasattr(env['d1'], 'devicefirmware'))
+        self.assertFalse(hasattr(env['d2'], 'devicefirmware'))
+        # upgrade all related
+        env['build2'].upgrade_firmwareless_devices()
+        env['d1'].refresh_from_db()
+        env['d2'].refresh_from_db()
+        self.assertEqual(env['d1'].devicefirmware.image, env['image2a'])
+        self.assertEqual(env['d2'].devicefirmware.image, env['image2b'])
         # ensure upgrade operation objects have been created
         self.assertEqual(UpgradeOperation.objects.count(), 2)

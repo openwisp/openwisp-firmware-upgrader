@@ -10,6 +10,7 @@ from django.utils.encoding import python_2_unicode_compatible
 from django.utils.module_loading import import_string
 from django.utils.translation import ugettext_lazy as _
 
+from openwisp_controller.config.models import Device
 from openwisp_controller.connection.settings import DEFAULT_UPDATE_STRATEGIES
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
@@ -57,16 +58,45 @@ class Build(OrgMixin, TimeStampedEditableModel):
             return super(Build, self).__str__()
 
     def upgrade_related_devices(self):
+        """
+        upgrades all devices which have a previous image set,
+        that is: all devices which have a related DeviceFirmware
+        """
         qs = DeviceFirmware.objects.all().select_related('image')
         device_firmwares = qs.filter(image__build__category_id=self.category_id) \
                              .exclude(image__build=self)
-        for device_firmware in device_firmwares:
-            image = self.firmwareimage_set.filter(type=device_firmware.image.type).first()
-            # if new image is found, upgrade device
+        for device_fw in device_firmwares:
+            image = self.firmwareimage_set.filter(type=device_fw.image.type) \
+                                          .first()
             if image:
-                device_firmware.image = image
-                device_firmware.full_clean()
-                device_firmware.save()
+                device_fw.image = image
+                device_fw.full_clean()
+                device_fw.save()
+
+    def upgrade_firmwareless_devices(self):
+        """
+        upgrades all devices which do not have a related
+        DeviceFirmware object set yet
+        (which were nicknamed "firmwareless")
+        """
+        # for each image, find related "firmwareless"
+        # devices and perform upgrade one by one
+        for image in self.firmwareimage_set.all():
+            devices = self._find_firmwareless_devices(image.boards)
+            for device in devices:
+                device_fw = DeviceFirmware(device=device,
+                                           image=image)
+                device_fw.full_clean()
+                device_fw.save()
+
+    def _find_firmwareless_devices(self, boards):
+        """
+        returns a queryset used to find "firmwareless" devices
+        according to the ``board`` parameter passed
+        """
+        return Device.objects.filter(devicefirmware__isnull=True,
+                                     organization=self.organization,
+                                     model__in=boards)
 
 
 @python_2_unicode_compatible
@@ -130,10 +160,15 @@ class DeviceFirmware(TimeStampedEditableModel):
                   'please add one in the section named "DEVICE CONNECTIONS"')
             )
 
-    def save(self, *args, **kwargs):
+    @property
+    def image_has_changed(self):
+        return self._state.adding or \
+               self.image_id != self._old_image.id
+
+    def save(self, upgrade=True, *args, **kwargs):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
-        if self._old_image is not None and self.image_id != self._old_image.id:
+        if upgrade and self.image_has_changed:
             self.installed = False
             super(DeviceFirmware, self).save(*args, **kwargs)
             self.create_upgrade_operation()
