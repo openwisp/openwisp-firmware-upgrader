@@ -117,8 +117,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(device_fw._old_image, device_fw.image)
         # change
         build2 = self._create_build(category=device_fw.image.build.category,
-                                    version='0.2',
-                                    previous=device_fw.image.build)
+                                    version='0.2')
         fw2 = self._create_firmware_image(build=build2, type=device_fw.image.type)
         old_image = device_fw.image
         device_fw.image = fw2

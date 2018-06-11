@@ -39,10 +39,6 @@ class Category(OrgMixin, TimeStampedEditableModel):
 class Build(OrgMixin, TimeStampedEditableModel):
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
     version = models.CharField(max_length=32, db_index=True)
-    previous = models.ForeignKey('self', null=True, blank=True,
-                                 on_delete=models.SET_NULL,
-                                 verbose_name=_('previous build'),
-                                 help_text=_('previous version of this build'))
     changelog = models.TextField(_('change log'), blank=True,
                                  help_text=_('descriptive text indicating what '
                                              'has changed since the previous '
@@ -59,8 +55,8 @@ class Build(OrgMixin, TimeStampedEditableModel):
 
     def upgrade_related_devices(self):
         """
-        upgrades all devices which have a previous image set,
-        that is: all devices which have a related DeviceFirmware
+        upgrades all devices which have an
+        existing related DeviceFirmware
         """
         qs = DeviceFirmware.objects.all().select_related('image')
         device_firmwares = qs.filter(image__build__category_id=self.category_id) \
@@ -75,9 +71,9 @@ class Build(OrgMixin, TimeStampedEditableModel):
 
     def upgrade_firmwareless_devices(self):
         """
-        upgrades all devices which do not have a related
-        DeviceFirmware object set yet
-        (which were nicknamed "firmwareless")
+        upgrades all devices which do not
+        have a related DeviceFirmware yet
+        (referred as "firmwareless")
         """
         # for each image, find related "firmwareless"
         # devices and perform upgrade one by one
