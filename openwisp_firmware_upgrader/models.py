@@ -286,3 +286,13 @@ def upgrade_firmware(operation_id):
     """
     operation = UpgradeOperation.objects.get(pk=operation_id)
     operation.upgrade()
+
+
+@shared_task
+def batch_upgrade_operation(build_id, firmwareless):
+    """
+    Calls the ``batch_upgrade()`` method of a
+    ``Build`` instance in the background
+    """
+    build = Build.objects.get(pk=build_id)
+    build.batch_upgrade(firmwareless=firmwareless)

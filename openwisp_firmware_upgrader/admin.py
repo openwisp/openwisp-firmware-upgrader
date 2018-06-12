@@ -8,7 +8,7 @@ from django.utils.translation import ugettext_lazy as _
 from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_utils.admin import TimeReadonlyAdminMixin
 
-from .models import Build, Category, DeviceFirmware, FirmwareImage
+from .models import Build, Category, DeviceFirmware, FirmwareImage, batch_upgrade_operation
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,8 @@ class BuildAdmin(TimeReadonlyAdminMixin, admin.ModelAdmin):
                 _('Batch upgrade operation started'),
                 messages.SUCCESS
             )
-            build.batch_upgrade(firmwareless=upgrade_all)
+            batch_upgrade_operation.delay(build_id=build.pk,
+                                          firmwareless=upgrade_all)
             # returning None will display the change list page again
             return None
         # upgrade needs to be confirmed
