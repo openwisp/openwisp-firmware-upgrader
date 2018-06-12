@@ -1,0 +1,50 @@
+{% extends "admin/base_site.html" %}
+{% load i18n l10n admin_urls static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    {{ media }}
+    <script type="text/javascript" src="{% static 'admin/js/cancel.js' %}"></script>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} delete-confirmation delete-selected-confirmation{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+&rsaquo; {% trans 'Upgrade devices of the selected build' %}
+</div>
+{% endblock %}
+
+{% block content %}
+  <p>{% blocktrans %}Are you sure you want to proceed with this batch upgrade operation?{% endblocktrans %}</p>
+  {% if related_count %}
+  <h2>{% trans "Devices related to build" %} {{ build }} ({{ related_count }})</h2>
+  <ul>
+      {% for device_fw in related_device_fw %}
+      <li>{{ device_fw.device.name }}</li>
+      {% endfor %}
+  </ul>
+  {% endif %}
+  {% if firmwareless_count %}
+  <h2>{% trans "Devices which the system has never upgraded yet" %} ({{ firmwareless_count }})</h2>
+  <ul>
+      {% for device in firmwareless_devices %}
+      <li>{{ device.name }}</li>
+      {% endfor %}
+  </ul>
+  {% endif %}
+  <form method="post">{% csrf_token %}
+  <div>
+  <input type="hidden" name="{{ action_checkbox_name }}" value="{{ build.pk|unlocalize }}">
+  <input type="hidden" name="action" value="upgrade_selected">
+  <input type="submit" name="upgrade_all" value="{% trans "Upgrade all devices" %}">
+  {% if firmwareless_count %}
+  <input type="submit" name="upgrade_related" value="{% trans "Upgrade only related devices" %}">
+  {% endif %}
+  <a href="#" class="button cancel-link">{% trans "No, cancel the upgrade" %}</a>
+  </div>
+  </form>
+{% endblock %}

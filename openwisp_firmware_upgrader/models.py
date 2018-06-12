@@ -53,14 +53,17 @@ class Build(OrgMixin, TimeStampedEditableModel):
         except ObjectDoesNotExist:
             return super(Build, self).__str__()
 
+    def batch_upgrade(self, firmwareless):
+        self.upgrade_related_devices()
+        if firmwareless:
+            self.upgrade_firmwareless_devices()
+
     def upgrade_related_devices(self):
         """
         upgrades all devices which have an
         existing related DeviceFirmware
         """
-        qs = DeviceFirmware.objects.all().select_related('image')
-        device_firmwares = qs.filter(image__build__category_id=self.category_id) \
-                             .exclude(image__build=self)
+        device_firmwares = self._find_related_device_firmwares()
         for device_fw in device_firmwares:
             image = self.firmwareimage_set.filter(type=device_fw.image.type) \
                                           .first()
@@ -68,6 +71,15 @@ class Build(OrgMixin, TimeStampedEditableModel):
                 device_fw.image = image
                 device_fw.full_clean()
                 device_fw.save()
+
+    def _find_related_device_firmwares(self, select_devices=False):
+        related = ['image']
+        if select_devices:
+            related.append('device')
+        return DeviceFirmware.objects.all() \
+                             .select_related(*related) \
+                             .filter(image__build__category_id=self.category_id) \
+                             .exclude(image__build=self)
 
     def upgrade_firmwareless_devices(self):
         """
@@ -85,11 +97,16 @@ class Build(OrgMixin, TimeStampedEditableModel):
                 device_fw.full_clean()
                 device_fw.save()
 
-    def _find_firmwareless_devices(self, boards):
+    def _find_firmwareless_devices(self, boards=None):
         """
         returns a queryset used to find "firmwareless" devices
-        according to the ``board`` parameter passed
+        according to the ``board`` parameter passed;
+        if ``board`` is ``None`` all related image boads are searched
         """
+        if boards is None:
+            boards = []
+            for image in self.firmwareimage_set.all():
+                boards += image.boards
         return Device.objects.filter(devicefirmware__isnull=True,
                                      organization=self.organization,
                                      model__in=boards)
