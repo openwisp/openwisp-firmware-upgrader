@@ -35,6 +35,8 @@ class BuildAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
 
+    multitenant_shared_relations = ('category',)
+
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
         app_label = opts.app_label
