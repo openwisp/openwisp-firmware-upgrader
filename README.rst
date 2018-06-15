@@ -130,16 +130,25 @@ install the requierd python packages::
 Settings
 --------
 
-``TODO``
-~~~~~~~~
+``OPENWISP_CUSTOM_OPENWRT_IMAGES``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 +--------------+-------------+
-| **type**:    | ``str``     |
+| **type**:    | ``tuple``   |
 +--------------+-------------+
-| **default**: | ``TODO``    |
+| **default**: | ``None``    |
 +--------------+-------------+
 
-TODO
+This setting can be used to add new image types for OpenWRT, eg:
+
+.. code-block:: python
+
+    OPENWISP_CUSTOM_OPENWRT_IMAGES = (
+        ('customimage-squashfs-sysupgrade.bin', {
+            'label': 'Custom WAP-1200',
+            'boards': ('CWAP1200',)
+        }),
+    )
 
 Installing for development
 --------------------------

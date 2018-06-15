@@ -6,18 +6,23 @@ systems in the future.
 """
 from collections import OrderedDict
 
-from django.utils.translation import ugettext_lazy as _
+from . import settings as app_settings
 
-OPENWRT_FIRMWARE_IMAGE_MAP = OrderedDict((
+if app_settings.CUSTOM_OPENWRT_IMAGES:
+    OPENWRT_FIRMWARE_IMAGE_MAP = OrderedDict(app_settings.CUSTOM_OPENWRT_IMAGES)
+else:
+    OPENWRT_FIRMWARE_IMAGE_MAP = OrderedDict()
+
+OPENWRT_FIRMWARE_IMAGE_MAP.update(OrderedDict((
     ('ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin', {
-        'label': _('TP-Link WDR4300 v1 (Israeli Version) - OpenWRT'),
+        'label': 'TP-Link WDR4300 v1 (IL)',
         'boards': ('TP-LINK TL-WDR4300 v1 (IL)',)
     }),
     ('ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin', {
-        'label': _('TP-Link WDR4300 v1 - OpenWRT'),
+        'label': 'TP-Link WDR4300 v1',
         'boards': ('TP-Link TL-WDR4300 v1',)
     }),
-))
+)))
 
 # OpenWRT only for now, in the future we'll merge
 # different dictionaries representing different firmwares

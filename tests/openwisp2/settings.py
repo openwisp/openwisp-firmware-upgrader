@@ -183,6 +183,13 @@ LOGGING = {
     }
 }
 
+OPENWISP_CUSTOM_OPENWRT_IMAGES = (
+    ('customimage-squashfs-sysupgrade.bin', {
+        'label': 'Custom WAP-1200',
+        'boards': ('CWAP1200',)
+    }),
+)
+
 # local settings must be imported before test runner otherwise they'll be ignored
 try:
     from openwisp2.local_settings import *

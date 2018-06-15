@@ -2,6 +2,7 @@ import mock
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
+from .. import settings as app_settings
 from ..hardware import FIRMWARE_IMAGE_MAP
 from ..models import Build, Category, DeviceFirmware, FirmwareImage, UpgradeOperation
 from .base import TestUpgraderMixin
@@ -94,6 +95,11 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.assertIn('not find boards', str(err))
         else:
             self.fail('ValidationError not raised')
+
+    def test_custom_image_type_present(self):
+        t = FirmwareImage._meta.get_field('type')
+        custom_images = app_settings.CUSTOM_OPENWRT_IMAGES
+        self.assertEqual(t.choices[0][0], custom_images[0][0])
 
     def test_device_firmware_image_invalid_model(self):
         device_fw = self._create_device_firmware()
