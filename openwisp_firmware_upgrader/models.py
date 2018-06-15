@@ -166,6 +166,11 @@ class DeviceFirmware(TimeStampedEditableModel):
         self._update_old_image()
 
     def clean(self):
+        if self.image.organization != self.device.organization:
+            raise ValidationError({
+                'image': _('The organization of the image doesn\'t '
+                           'match the organization of the device')
+            })
         if self.device.deviceconnection_set.count() < 1:
             raise ValidationError(
                 _('This device does not have a related connection object defined '

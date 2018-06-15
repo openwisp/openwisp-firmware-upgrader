@@ -31,6 +31,18 @@ class TestModels(TestUpgraderMixin, TestCase):
         fw = FirmwareImage()
         self.assertIsNotNone(str(fw))
 
+    def test_device_firmware_image_invalid_org(self):
+        device_fw = self._create_device_firmware()
+        org2 = self._create_org(name='org2')
+        img2 = self._create_firmware_image(organization=org2)
+        device_fw.image = img2
+        try:
+            device_fw.full_clean()
+        except ValidationError as e:
+            self.assertIn('image', e.message_dict)
+        else:
+            self.fail('ValidationError not raised')
+
     @mock.patch('openwisp_firmware_upgrader.models.UpgradeOperation.upgrade', return_value=None)
     def test_device_fw_image_changed(self, *args):
         device_fw = DeviceFirmware()

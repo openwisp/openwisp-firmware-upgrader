@@ -6,7 +6,7 @@ from django.template.response import TemplateResponse
 from django.utils.translation import ugettext_lazy as _
 
 from openwisp_controller.config.admin import DeviceAdmin
-from openwisp_utils.admin import TimeReadonlyAdminMixin
+from openwisp_utils.admin import MultitenantAdminMixin, TimeReadonlyAdminMixin
 
 from .models import Build, Category, DeviceFirmware, FirmwareImage, batch_upgrade_operation
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @admin.register(Category)
-class CategoryAdmin(TimeReadonlyAdminMixin, admin.ModelAdmin):
+class CategoryAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'created', 'modified')
     search_fields = ['name']
     save_on_top = True
@@ -26,7 +26,7 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
 
 
 @admin.register(Build)
-class BuildAdmin(TimeReadonlyAdminMixin, admin.ModelAdmin):
+class BuildAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     list_display = ('__str__', 'created', 'modified')
     search_fields = ['name']
     save_on_top = True
@@ -88,13 +88,15 @@ class BuildAdmin(TimeReadonlyAdminMixin, admin.ModelAdmin):
     upgrade_selected.short_description = 'Upgrade devices of the selected build'
 
 
-class DeviceFirmwareInline(admin.StackedInline):
+class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     model = DeviceFirmware
     exclude = ('created',)
     readonly_fields = ('installed', 'modified')
     verbose_name = _('Device Firmware')
     verbose_name_plural = verbose_name
     extra = 0
+
+    multitenant_shared_relations = ('image',)
 
 
 DeviceAdmin.inlines.append(DeviceFirmwareInline)

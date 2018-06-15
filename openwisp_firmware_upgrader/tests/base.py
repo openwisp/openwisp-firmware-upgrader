@@ -89,7 +89,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         d2 = self._create_device(name='device2', organization=org,
                                  mac_address='00:11:bb:22:cc:33',
                                  model=image1b.boards[0])
-        ssh_credentials = self._create_credentials()
+        ssh_credentials = self._create_credentials(organization=None)
         self._create_config(device=d1)
         self._create_config(device=d2)
         self._create_device_connection(device=d1, credentials=ssh_credentials)
