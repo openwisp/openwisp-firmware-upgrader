@@ -22,6 +22,10 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(OrderedDict((
         'label': 'TP-Link WDR4300 v1',
         'boards': ('TP-Link TL-WDR4300 v1',)
     }),
+    ('ar71xx-generic-xd3200-squashfs-sysupgrade.bin', {
+        'label': 'YunCore XD3200',
+        'boards': ('YunCore XD3200',)
+    }),
 )))
 
 # OpenWRT only for now, in the future we'll merge
