@@ -6,7 +6,8 @@ from django.template.response import TemplateResponse
 from django.utils.translation import ugettext_lazy as _
 
 from openwisp_controller.config.admin import DeviceAdmin
-from openwisp_utils.admin import MultitenantAdminMixin, TimeReadonlyAdminMixin
+from openwisp_users.multitenancy import MultitenantAdminMixin
+from openwisp_utils.admin import TimeReadonlyAdminMixin
 
 from .models import Build, Category, DeviceFirmware, FirmwareImage, batch_upgrade_operation
 
