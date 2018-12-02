@@ -45,8 +45,6 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         opts.update(kwargs)
         if 'build' not in opts:
             opts['build'] = self._create_build()
-        if 'organization' not in opts:
-            opts['organization'] = opts['build'].organization
         if 'file' not in opts:
             opts['file'] = self._get_simpleuploadedfile()
         fw = FirmwareImage(**opts)
@@ -67,7 +65,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         if 'image' not in opts:
             opts['image'] = self._create_firmware_image()
         if 'device' not in opts:
-            opts['device'] = self._create_device(organization=opts['image'].organization)
+            opts['device'] = self._create_device(organization=opts['image'].build.organization)
             self._create_config(device=opts['device'])
         if device_connection:
             self._create_device_connection(device=opts['device'])

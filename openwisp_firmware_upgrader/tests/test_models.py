@@ -34,8 +34,8 @@ class TestModels(TestUpgraderMixin, TestCase):
 
     def test_device_firmware_image_invalid_org(self):
         device_fw = self._create_device_firmware()
-        org2 = self._create_org(name='org2')
-        img2 = self._create_firmware_image(organization=org2)
+        self._create_org(name='org2')
+        img2 = self._create_firmware_image()
         device_fw.image = img2
         try:
             device_fw.full_clean()
@@ -103,9 +103,10 @@ class TestModels(TestUpgraderMixin, TestCase):
 
     def test_device_firmware_image_invalid_model(self):
         device_fw = self._create_device_firmware()
+        build = self._create_build(organization=device_fw.device.organization)
         different_img = self._create_firmware_image(
-            type=self.TPLINK_4300_IL_IMAGE,
-            organization=device_fw.device.organization
+            build=build,
+            type=self.TPLINK_4300_IL_IMAGE
         )
         try:
             device_fw.image = different_img

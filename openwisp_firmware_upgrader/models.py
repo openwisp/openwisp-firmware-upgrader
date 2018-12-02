@@ -113,7 +113,7 @@ class Build(OrgMixin, TimeStampedEditableModel):
 
 
 @python_2_unicode_compatible
-class FirmwareImage(OrgMixin, TimeStampedEditableModel):
+class FirmwareImage(TimeStampedEditableModel):
     build = models.ForeignKey(Build, on_delete=models.CASCADE)
     file = models.FileField()
     type = models.CharField(blank=True,
@@ -166,7 +166,7 @@ class DeviceFirmware(TimeStampedEditableModel):
         self._update_old_image()
 
     def clean(self):
-        if self.image.organization != self.device.organization:
+        if self.image.build.organization != self.device.organization:
             raise ValidationError({
                 'image': _('The organization of the image doesn\'t '
                            'match the organization of the device')

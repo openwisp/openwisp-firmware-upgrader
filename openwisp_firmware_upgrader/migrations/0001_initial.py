@@ -67,7 +67,6 @@ class Migration(migrations.Migration):
                 ('file', models.FileField(upload_to='')),
                 ('type', models.CharField(blank=True, choices=[('ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin', 'TP-Link WDR4300 v1 (Israeli Version) - OpenWRT'), ('ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin', 'TP-Link WDR4300 v1 - OpenWRT')], help_text='firmware image type', max_length=128)),
                 ('build', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='firmware_upgrader.Build')),
-                ('organization', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='openwisp_users.Organization', verbose_name='organization')),
             ],
             bases=(openwisp_users.mixins.ValidateOrgMixin, models.Model),
         ),
