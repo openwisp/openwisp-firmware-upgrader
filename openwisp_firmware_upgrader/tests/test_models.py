@@ -103,9 +103,8 @@ class TestModels(TestUpgraderMixin, TestCase):
 
     def test_device_firmware_image_invalid_model(self):
         device_fw = self._create_device_firmware()
-        build = self._create_build(organization=device_fw.device.organization)
         different_img = self._create_firmware_image(
-            build=build,
+            build=device_fw.image.build,
             type=self.TPLINK_4300_IL_IMAGE
         )
         try:

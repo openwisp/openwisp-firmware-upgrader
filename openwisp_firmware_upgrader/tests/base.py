@@ -31,10 +31,11 @@ class TestUpgraderMixin(CreateConnectionsMixin):
     def _create_build(self, **kwargs):
         opts = dict(version='0.1')
         opts.update(kwargs)
+        category_opts = {}
+        if 'organization' in opts:
+            category_opts = {'organization': opts.pop('organization')}
         if 'category' not in opts:
-            opts['category'] = self._create_category()
-        if 'organization' not in opts:
-            opts['organization'] = opts['category'].organization
+            opts['category'] = self._create_category(**category_opts)
         b = Build(**opts)
         b.full_clean()
         b.save()
@@ -65,7 +66,8 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         if 'image' not in opts:
             opts['image'] = self._create_firmware_image()
         if 'device' not in opts:
-            opts['device'] = self._create_device(organization=opts['image'].build.organization)
+            org = opts['image'].build.category.organization
+            opts['device'] = self._create_device(organization=org)
             self._create_config(device=opts['device'])
         if device_connection:
             self._create_device_connection(device=opts['device'])

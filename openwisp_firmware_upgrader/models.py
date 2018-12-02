@@ -36,7 +36,7 @@ class Category(OrgMixin, TimeStampedEditableModel):
 
 
 @python_2_unicode_compatible
-class Build(OrgMixin, TimeStampedEditableModel):
+class Build(TimeStampedEditableModel):
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
     version = models.CharField(max_length=32, db_index=True)
     changelog = models.TextField(_('change log'), blank=True,
@@ -108,7 +108,7 @@ class Build(OrgMixin, TimeStampedEditableModel):
             for image in self.firmwareimage_set.all():
                 boards += image.boards
         return Device.objects.filter(devicefirmware__isnull=True,
-                                     organization=self.organization,
+                                     organization=self.category.organization,
                                      model__in=boards)
 
 
@@ -166,7 +166,7 @@ class DeviceFirmware(TimeStampedEditableModel):
         self._update_old_image()
 
     def clean(self):
-        if self.image.build.organization != self.device.organization:
+        if self.image.build.category.organization != self.device.organization:
             raise ValidationError({
                 'image': _('The organization of the image doesn\'t '
                            'match the organization of the device')

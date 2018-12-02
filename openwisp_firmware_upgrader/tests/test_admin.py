@@ -42,8 +42,7 @@ class TestAdmin(TestUpgraderMixin, TestCase):
         self._login()
         b1 = self._create_build()
         b2 = self._create_build(version='0.2',
-                                category=b1.category,
-                                organization=b1.organization)
+                                category=b1.category)
         r = self.client.post(self.BUILD_LIST_URL, {
             'action': 'upgrade_selected',
             ACTION_CHECKBOX_NAME: (b1.pk, b2.pk)

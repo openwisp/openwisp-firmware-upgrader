@@ -95,11 +95,6 @@ class Migration(migrations.Migration):
             name='category',
             field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='firmware_upgrader.Category'),
         ),
-        migrations.AddField(
-            model_name='build',
-            name='organization',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='openwisp_users.Organization', verbose_name='organization'),
-        ),
         migrations.AlterUniqueTogether(
             name='firmwareimage',
             unique_together={('build', 'type')},
