@@ -184,8 +184,10 @@ class DeviceFirmware(TimeStampedEditableModel):
 
     @property
     def image_has_changed(self):
-        return self._state.adding or \
-               self.image_id != self._old_image.id
+        return (
+            self._state.adding or
+            self.image_id != self._old_image.id
+        )
 
     def save(self, upgrade=True, *args, **kwargs):
         # if firwmare image has changed launch upgrade

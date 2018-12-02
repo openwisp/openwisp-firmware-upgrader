@@ -70,7 +70,7 @@ class OpenWrt(BaseOpenWrt):
     def _reflash(self, path):
         """
         this will execute the upgrade operation in another process
-        because the SSH connection hangs indefinitely while reflashing
+        because the SSH connection may hang indefinitely while reflashing
         and would block the program; setting a timeout to `exec_command`
         doesn't seem to take effect so at least we can stop the process
         using `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
