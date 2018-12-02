@@ -150,6 +150,14 @@ This setting can be used to add new image types for OpenWRT, eg:
         }),
     )
 
+**Notes**:
+
+- ``label`` it's the human readable name of the model which will be
+  displayed in the UI
+- ``boards`` is a tuple of board names with which the different versions
+  of the hardware are identified on OpenWRT; this field is used to
+  recognize automatically devices which have registered into OpenWISP
+
 Installing for development
 --------------------------
 
