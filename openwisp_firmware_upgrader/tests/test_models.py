@@ -32,6 +32,10 @@ class TestModels(TestUpgraderMixin, TestCase):
         fw = FirmwareImage()
         self.assertIsNotNone(str(fw))
 
+    def test_fw_auto_type(self):
+        fw = self._create_firmware_image(type='')
+        self.assertEqual(fw.type, self.TPLINK_4300_IMAGE)
+
     def test_device_firmware_image_invalid_org(self):
         device_fw = self._create_device_firmware()
         self._create_org(name='org2')

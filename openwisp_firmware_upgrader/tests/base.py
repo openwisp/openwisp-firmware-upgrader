@@ -56,7 +56,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
     def _get_simpleuploadedfile(self):
         with open(self.FAKE_IMAGE_PATH, 'rb') as f:
             image = f.read()
-        return SimpleUploadedFile(name='uploaded-fake-image.bin',
+        return SimpleUploadedFile(name='openwrt-{}'.format(self.TPLINK_4300_IMAGE),
                                   content=image,
                                   content_type='text/plain')
 

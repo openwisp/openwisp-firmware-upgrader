@@ -134,6 +134,7 @@ class FirmwareImage(TimeStampedEditableModel):
         return FIRMWARE_IMAGE_MAP[self.type]['boards']
 
     def clean(self):
+        self._clean_type()
         try:
             self.boards
         except KeyError:
@@ -144,6 +145,16 @@ class FirmwareImage(TimeStampedEditableModel):
     def delete(self, *args, **kwargs):
         super(FirmwareImage, self).delete(*args, **kwargs)
         self._remove_file()
+
+    def _clean_type(self):
+        """
+        auto determine type if missing
+        """
+        if self.type:
+            return
+        filename = self.file.name
+        # removes leading prefix
+        self.type = '-'.join(filename.split('-')[1:])
 
     def _remove_file(self):
         path = self.file.path
