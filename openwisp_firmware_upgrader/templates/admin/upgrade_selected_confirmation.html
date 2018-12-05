@@ -19,7 +19,12 @@
 {% endblock %}
 
 {% block content %}
+  {% if related_count or firmwareless_count %}
   <p>{% blocktrans %}Are you sure you want to proceed with this batch upgrade operation?{% endblocktrans %}</p>
+  {% elif not related_count and not firmwareless_count %}
+  <p>{% blocktrans %}No devices to upgrade were found.
+     Hint: Maybe they have been all already updated previously.{% endblocktrans %}</p>
+  {% endif %}
   {% if related_count %}
   <h2>{% trans "Devices related to build" %} {{ build }} ({{ related_count }})</h2>
   <ul>
@@ -36,15 +41,18 @@
       {% endfor %}
   </ul>
   {% endif %}
+
   <form method="post">{% csrf_token %}
   <div>
   <input type="hidden" name="{{ action_checkbox_name }}" value="{{ build.pk|unlocalize }}">
   <input type="hidden" name="action" value="upgrade_selected">
+  {% if firmwareless_count or related_count %}
   <input type="submit" name="upgrade_all" value="{% trans "Upgrade all devices" %}">
-  {% if firmwareless_count %}
+  {% if firmwareless_count and related_count %}
   <input type="submit" name="upgrade_related" value="{% trans "Upgrade only related devices" %}">
   {% endif %}
-  <a href="#" class="button cancel-link">{% trans "No, cancel the upgrade" %}</a>
+  {% endif %}
+  <a href="#" class="button cancel-link">{% trans "Cancel the upgrade" %}</a>
   </div>
   </form>
 {% endblock %}

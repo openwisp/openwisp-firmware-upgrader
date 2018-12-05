@@ -1,10 +1,10 @@
 import mock
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 
 from .. import settings as app_settings
 from ..hardware import FIRMWARE_IMAGE_MAP
-from ..models import Build, Category, DeviceFirmware, FirmwareImage, UpgradeOperation
+from ..models import BatchUpgradeOperation, Build, Category, DeviceFirmware, FirmwareImage, UpgradeOperation
 from .base import TestUpgraderMixin
 
 
@@ -70,11 +70,26 @@ class TestModels(TestUpgraderMixin, TestCase):
         device_fw.full_clean()
         device_fw.save()
         self.assertEqual(UpgradeOperation.objects.count(), 1)
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
     @mock.patch('openwisp_firmware_upgrader.models.UpgradeOperation.upgrade', return_value=None)
     def test_device_fw_created(self, *args):
         self._create_device_firmware(upgrade=True)
         self.assertEqual(UpgradeOperation.objects.count(), 1)
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+    @mock.patch('openwisp_firmware_upgrader.models.UpgradeOperation.upgrade', return_value=None)
+    def test_device_fw_image_saved_not_installed(self, *args):
+        device_fw = DeviceFirmware()
+        self.assertIsNone(device_fw._old_image)
+        # save
+        device_fw = self._create_device_firmware(upgrade=False, installed=False)
+        self.assertEqual(device_fw._old_image, device_fw.image)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        device_fw.full_clean()
+        device_fw.save()
+        self.assertEqual(UpgradeOperation.objects.count(), 1)
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
     def test_device_fw_no_connection(self):
         try:
@@ -119,14 +134,20 @@ class TestModels(TestUpgraderMixin, TestCase):
         else:
             self.fail('ValidationError not raised')
 
-    def test_upgrade_related_devices(self):
+
+class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
+    _test_sha256 = '7732ea3c7d3bb969e6f42d2d99ba4a37450e85445ced10072df0156003daca66'
+    _mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
+
+    @mock.patch(_mock_updrade, return_value=_test_sha256)
+    def test_upgrade_related_devices(self, *args):
         env = self._create_upgrade_env()
         # check everything is as expected
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         self.assertEqual(env['d1'].devicefirmware.image, env['image1a'])
         self.assertEqual(env['d2'].devicefirmware.image, env['image1b'])
         # upgrade all related
-        env['build2'].upgrade_related_devices()
+        env['build2'].batch_upgrade(firmwareless=False)
         # ensure image is changed
         env['d1'].devicefirmware.refresh_from_db()
         env['d2'].devicefirmware.refresh_from_db()
@@ -134,18 +155,60 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(env['d2'].devicefirmware.image, env['image2b'])
         # ensure upgrade operation objects have been created
         self.assertEqual(UpgradeOperation.objects.count(), 2)
+        batch_qs = BatchUpgradeOperation.objects.all()
+        self.assertEqual(batch_qs.count(), 1)
+        batch = batch_qs.first()
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+        self.assertEqual(batch.build, env['build2'])
+        self.assertEqual(batch.status, 'success')
 
-    def test_upgrade_firmwareless_devices(self):
+    @mock.patch(_mock_updrade, return_value=_test_sha256)
+    def test_upgrade_firmwareless_devices(self, *args):
         env = self._create_upgrade_env(device_firmware=False)
         # check everything is as expected
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         self.assertFalse(hasattr(env['d1'], 'devicefirmware'))
         self.assertFalse(hasattr(env['d2'], 'devicefirmware'))
         # upgrade all related
-        env['build2'].upgrade_firmwareless_devices()
+        env['build2'].batch_upgrade(firmwareless=True)
         env['d1'].refresh_from_db()
         env['d2'].refresh_from_db()
         self.assertEqual(env['d1'].devicefirmware.image, env['image2a'])
         self.assertEqual(env['d2'].devicefirmware.image, env['image2b'])
         # ensure upgrade operation objects have been created
         self.assertEqual(UpgradeOperation.objects.count(), 2)
+        batch_qs = BatchUpgradeOperation.objects.all()
+        self.assertEqual(batch_qs.count(), 1)
+        batch = batch_qs.first()
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+        self.assertEqual(batch.build, env['build2'])
+        self.assertEqual(batch.status, 'success')
+
+    def test_batch_upgrade_failure(self):
+        env = self._create_upgrade_env()
+        env['build2'].batch_upgrade(firmwareless=False)
+        batch = BatchUpgradeOperation.objects.first()
+        self.assertEqual(batch.status, 'failed')
+
+    @mock.patch(_mock_updrade, return_value=_test_sha256)
+    def test_upgrade_related_devices_existing_fw(self, *args):
+        env = self._create_upgrade_env()
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        self.assertEqual(env['d1'].devicefirmware.image, env['image1a'])
+        self.assertEqual(env['d2'].devicefirmware.image, env['image1b'])
+        env['d1'].devicefirmware.installed = False
+        env['d1'].devicefirmware.save(upgrade=False)
+        env['d2'].devicefirmware.installed = False
+        env['d2'].devicefirmware.save(upgrade=False)
+        env['build1'].batch_upgrade(firmwareless=False)
+        env['d1'].devicefirmware.refresh_from_db()
+        env['d2'].devicefirmware.refresh_from_db()
+        self.assertEqual(env['d1'].devicefirmware.image, env['image1a'])
+        self.assertEqual(env['d2'].devicefirmware.image, env['image1b'])
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        batch_qs = BatchUpgradeOperation.objects.all()
+        self.assertEqual(batch_qs.count(), 1)
+        batch = batch_qs.first()
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+        self.assertEqual(batch.build, env['build1'])
+        self.assertEqual(batch.status, 'success')

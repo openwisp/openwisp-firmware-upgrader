@@ -103,6 +103,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         image2a = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IMAGE)
         image2b = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IL_IMAGE)
         data = {
+            'build1': build1,
             'build2': build2,
             'd1': d1,
             'd2': d2,

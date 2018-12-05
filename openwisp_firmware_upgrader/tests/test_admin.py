@@ -48,7 +48,7 @@ class TestAdmin(TestUpgraderMixin, TestCase):
             ACTION_CHECKBOX_NAME: (b1.pk, b2.pk)
         }, follow=True)
         self.assertContains(r, '<li class="error">')
-        self.assertContains(r, 'only a single batch upgrade operation at time is supported')
+        self.assertContains(r, 'only a single mass upgrade operation at time is supported')
 
     def test_upgrade_intermediate_page_related(self):
         self._login()
@@ -70,7 +70,8 @@ class TestAdmin(TestUpgraderMixin, TestCase):
         }, follow=True)
         self.assertNotContains(r, 'Devices related to build')
         self.assertContains(r, 'has never upgraded yet')
-        self.assertContains(r, '<input type="submit" name="upgrade_related"')
+        self.assertNotContains(r, '<input type="submit" name="upgrade_related"')
+        self.assertContains(r, '<input type="submit" name="upgrade_all"')
 
     def test_upgrade_related(self):
         self._login()

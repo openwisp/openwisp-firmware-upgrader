@@ -2,11 +2,13 @@ from __future__ import absolute_import, unicode_literals
 
 import logging
 import os
+from decimal import Decimal
 
 from celery import shared_task
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
 from django.utils.encoding import python_2_unicode_compatible
+from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 from django.utils.translation import ugettext_lazy as _
 
@@ -37,7 +39,11 @@ class Category(OrgMixin, TimeStampedEditableModel):
 
 @python_2_unicode_compatible
 class Build(TimeStampedEditableModel):
-    category = models.ForeignKey(Category, on_delete=models.CASCADE)
+    category = models.ForeignKey(Category, on_delete=models.CASCADE,
+                                 verbose_name=_('firmware category'),
+                                 help_text=_('if you have different firmware types '
+                                             'eg: (BGP routers, wifi APs, DSL gateways) '
+                                             'create a category for each.'))
     version = models.CharField(max_length=32, db_index=True)
     changelog = models.TextField(_('change log'), blank=True,
                                  help_text=_('descriptive text indicating what '
@@ -46,6 +52,7 @@ class Build(TimeStampedEditableModel):
 
     class Meta:
         unique_together = ('category', 'version')
+        ordering = ('-created',)
 
     def __str__(self):
         try:
@@ -54,11 +61,14 @@ class Build(TimeStampedEditableModel):
             return super(Build, self).__str__()
 
     def batch_upgrade(self, firmwareless):
-        self.upgrade_related_devices()
+        batch = BatchUpgradeOperation(build=self)
+        batch.full_clean()
+        batch.save()
+        self.upgrade_related_devices(batch)
         if firmwareless:
-            self.upgrade_firmwareless_devices()
+            self.upgrade_firmwareless_devices(batch)
 
-    def upgrade_related_devices(self):
+    def upgrade_related_devices(self, batch):
         """
         upgrades all devices which have an
         existing related DeviceFirmware
@@ -70,7 +80,7 @@ class Build(TimeStampedEditableModel):
             if image:
                 device_fw.image = image
                 device_fw.full_clean()
-                device_fw.save()
+                device_fw.save(batch)
 
     def _find_related_device_firmwares(self, select_devices=False):
         related = ['image']
@@ -79,9 +89,9 @@ class Build(TimeStampedEditableModel):
         return DeviceFirmware.objects.all() \
                              .select_related(*related) \
                              .filter(image__build__category_id=self.category_id) \
-                             .exclude(image__build=self)
+                             .exclude(image__build=self, installed=True)
 
-    def upgrade_firmwareless_devices(self):
+    def upgrade_firmwareless_devices(self, batch):
         """
         upgrades all devices which do not
         have a related DeviceFirmware yet
@@ -95,7 +105,7 @@ class Build(TimeStampedEditableModel):
                 device_fw = DeviceFirmware(device=device,
                                            image=image)
                 device_fw.full_clean()
-                device_fw.save()
+                device_fw.save(batch)
 
     def _find_firmwareless_devices(self, boards=None):
         """
@@ -119,7 +129,9 @@ class FirmwareImage(TimeStampedEditableModel):
     type = models.CharField(blank=True,
                             max_length=128,
                             choices=FIRMWARE_IMAGE_TYPE_CHOICES,
-                            help_text=_('firmware image type'))
+                            help_text=_('firmware image type: model or '
+                                        'architecture. Leave blank to attempt '
+                                        'determining automatically'))
 
     class Meta:
         unique_together = ('build', 'type')
@@ -200,13 +212,13 @@ class DeviceFirmware(TimeStampedEditableModel):
             self.image_id != self._old_image.id
         )
 
-    def save(self, upgrade=True, *args, **kwargs):
+    def save(self, batch=None, upgrade=True, *args, **kwargs):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
-        if upgrade and self.image_has_changed:
+        if upgrade and (self.image_has_changed or not self.installed):
             self.installed = False
             super(DeviceFirmware, self).save(*args, **kwargs)
-            self.create_upgrade_operation()
+            self.create_upgrade_operation(batch)
         else:
             super(DeviceFirmware, self).save(*args, **kwargs)
         self._update_old_image()
@@ -215,9 +227,11 @@ class DeviceFirmware(TimeStampedEditableModel):
         if hasattr(self, 'image'):
             self._old_image = self.image
 
-    def create_upgrade_operation(self):
+    def create_upgrade_operation(self, batch):
         operation = UpgradeOperation(device=self.device,
                                      image=self.image)
+        if batch:
+            operation.batch = batch
         operation.full_clean()
         operation.save()
         # launch ``upgrade_firmware`` in the background (celery)
@@ -232,6 +246,74 @@ UPGRADERS_MAPPING = {
 
 
 @python_2_unicode_compatible
+class BatchUpgradeOperation(TimeStampedEditableModel):
+    build = models.ForeignKey(Build, on_delete=models.CASCADE)
+    STATUS_CHOICES = (
+        ('in-progress', _('in progress')),
+        ('success', _('completed successfully')),
+        ('failed', _('completed with some failures')),
+    )
+    status = models.CharField(max_length=12,
+                              choices=STATUS_CHOICES,
+                              default=STATUS_CHOICES[0][0])
+
+    class Meta:
+        verbose_name = _('Mass upgrade operation')
+        verbose_name_plural = _('Mass upgrade operations')
+
+    def __str__(self):
+        return 'Upgrade of {} on {}'.format(self.build, self.created)
+
+    def update(self):
+        operations = self.upgradeoperation_set
+        if operations.filter(status='in-progress').exists():
+            return
+        # if there's any failed operation, mark as failure
+        if operations.filter(status='failed').exists():
+            self.status = 'failed'
+        else:
+            self.status = 'success'
+        self.save()
+
+    @cached_property
+    def upgrade_operations(self):
+        return self.upgradeoperation_set.all()
+
+    @cached_property
+    def total_operations(self):
+        return self.upgrade_operations.count()
+
+    @property
+    def progress_report(self):
+        completed = self.upgrade_operations.exclude(status='in-progress').count()
+        return _('{} out of {}').format(completed, self.total_operations)
+
+    @property
+    def success_rate(self):
+        if not self.total_operations:
+            return 0
+        success = self.upgrade_operations.filter(status='success').count()
+        return self.__get_rate(success)
+
+    @property
+    def failed_rate(self):
+        if not self.total_operations:
+            return 0
+        failed = self.upgrade_operations.filter(status='failed').count()
+        return self.__get_rate(failed)
+
+    @property
+    def aborted_rate(self):
+        if not self.total_operations:
+            return 0
+        aborted = self.upgrade_operations.filter(status='aborted').count()
+        return self.__get_rate(aborted)
+
+    def __get_rate(self, number):
+        return Decimal(number) / Decimal(self.total_operations) * 100
+
+
+@python_2_unicode_compatible
 class UpgradeOperation(TimeStampedEditableModel):
     STATUS_CHOICES = (
         ('in-progress', _('in progress')),
@@ -241,9 +323,14 @@ class UpgradeOperation(TimeStampedEditableModel):
     )
     device = models.ForeignKey('config.Device', on_delete=models.CASCADE)
     image = models.ForeignKey(FirmwareImage, on_delete=models.CASCADE)
-    status = models.CharField(max_length=12, choices=STATUS_CHOICES,
+    status = models.CharField(max_length=12,
+                              choices=STATUS_CHOICES,
                               default=STATUS_CHOICES[0][0])
     log = models.TextField(blank=True)
+    batch = models.ForeignKey(BatchUpgradeOperation,
+                              on_delete=models.CASCADE,
+                              blank=True,
+                              null=True)
 
     def upgrade(self):
         conn = self.device.deviceconnection_set.first()
@@ -293,7 +380,15 @@ class UpgradeOperation(TimeStampedEditableModel):
         # set `instaleld` to `True` on the devicefirmware instance
         if installed:
             self.device.devicefirmware.installed = True
-            self.device.devicefirmware.save()
+            self.device.devicefirmware.save(upgrade=False)
+
+    def save(self, *args, **kwargs):
+        result = super().save(*args, **kwargs)
+        # when an operation is completed
+        # trigger an update on the batch operation
+        if self.batch and self.status != 'in-progress':
+            self.batch.update()
+        return result
 
 
 @shared_task

@@ -1,7 +1,6 @@
 import os
 import socket
 from hashlib import sha256
-# import multiprocessing
 from time import sleep
 
 from billiard import Process
@@ -48,19 +47,25 @@ class OpenWrt(BaseOpenWrt):
         return self._write_checksum(checksum)
 
     def _compare_checksum(self, image, checksum):
-        output, exit_code = self.exec_command('test -f {0}'.format(self.CHECKSUM_FILE),
-                                              exit_codes=[0, 1])
+        output, exit_code = self.exec_command(
+            'test -f {0}'.format(self.CHECKSUM_FILE), exit_codes=[0, 1]
+        )
         if exit_code == 0:
             self.log('Image checksum file found')
-            output, code = self.exec_command('cat {0}'.format(self.CHECKSUM_FILE))
+            cat = 'cat {0}'.format(self.CHECKSUM_FILE)
+            output, code = self.exec_command(cat)
             if checksum == output:
-                message = 'Checksum identical, no need to upgrade, aborting operation...'
+                message = 'Firmware already upgraded previously. ' \
+                          'Identical checksum found in the filesystem, ' \
+                          'no need to upgrade, aborting operation...'
                 self.log(message)
                 raise AbortedUpgrade(message)
             else:
-                self.log('Checksum different, proceeding with the upload of the new image...')
+                self.log('Checksum different, proceeding with '
+                         'the upload of the new image...')
         else:
-            self.log('Image checksum file not found, proceeding with the upload of the new image...')
+            self.log('Image checksum file not found, proceeding '
+                     'with the upload of the new image...')
 
     def _test_image(self, path):
         self.exec_command('sysupgrade --test {0}'.format(path))
@@ -107,13 +112,17 @@ class OpenWrt(BaseOpenWrt):
                          'retrying in {0} seconds...'.format(self.RETRY_TIME))
                 sleep(self.RETRY_TIME)
                 continue
-            self.log('Connected! Writing checksum file to {0}'.format(self.CHECKSUM_FILE))
-            self.exec_command('mkdir -p {0}'.format(os.path.dirname(self.CHECKSUM_FILE)))
-            self.exec_command('echo {0} > {1}'.format(checksum, self.CHECKSUM_FILE))
+            self.log('Connected! Writing checksum '
+                     'file to {0}'.format(self.CHECKSUM_FILE))
+            checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
+            self.exec_command('mkdir -p {0}'.format(checksum_dir))
+            self.exec_command('echo {0} > {1}'.format(checksum,
+                                                      self.CHECKSUM_FILE))
             self.disconnect()
             return True
             self.log('Upgrade completed successfully.')
             break
         else:
-            self.log('Giving up, device not reachable anymore after upgrade')
+            self.log('Giving up, device not reachable '
+                     'anymore after upgrade')
             return False

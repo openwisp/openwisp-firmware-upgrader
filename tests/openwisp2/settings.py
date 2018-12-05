@@ -38,8 +38,8 @@ INSTALLED_APPS = [
     'openwisp_controller.pki',
     'openwisp_controller.config',
     'openwisp_controller.connection',
-    'openwisp_firmware_upgrader',
     'openwisp_controller.geo',
+    'openwisp_firmware_upgrader',
     # admin
     'django.contrib.admin',
     'django.forms',
