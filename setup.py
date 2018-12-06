@@ -48,7 +48,9 @@ setup(
     packages=find_packages(exclude=['tests', 'docs']),
     include_package_data=True,
     zip_safe=False,
-    install_requires=get_install_requires(),
+    install_requires=[
+        'openwisp-controller>=0.3.1,<0.4.1'
+    ],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Web Environment',
