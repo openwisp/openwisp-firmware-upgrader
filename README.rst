@@ -1,6 +1,16 @@
 openwisp-firmware-upgrader
 ==========================
 
+.. image:: https://travis-ci.org/openwisp/openwisp-firmware-upgrader.svg
+   :target: https://travis-ci.org/openwisp/openwisp-firmware-upgrader
+
+.. image:: https://coveralls.io/repos/openwisp/openwisp-firmware-upgrader/badge.svg
+  :target: https://coveralls.io/r/openwisp/openwisp-firmware-upgrader
+
+.. image:: https://requires.io/github/openwisp/openwisp-firmware-upgrader/requirements.svg?branch=master
+   :target: https://requires.io/github/openwisp/openwisp-firmware-upgrader/requirements/?branch=master
+   :alt: Requirements Status
+
 ------------
 
 OpenWISP 2 firmware upgrade module (Work in progress).
