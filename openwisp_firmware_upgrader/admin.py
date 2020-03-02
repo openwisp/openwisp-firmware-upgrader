@@ -169,7 +169,7 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
 
     def __get_rate(self, value):
         if value:
-            return '{}%'.format(value)
+            return f'{value}%'
         return 'N/A'
 
     completed.short_description = _('completed')
