@@ -30,8 +30,6 @@ branches:
 before_install:
   - pip install -U pip wheel setuptools
   - pip install --no-cache-dir -U -r requirements-test.txt
-  - ./runflake8
-  - ./runisort
 
 install:
   - pip install $DJANGO
@@ -40,7 +38,10 @@ install:
 
 script:
   - coverage run --source=openwisp_firmware_upgrader runtests.py
-  - ./tests/manage.py makemigrations
+  - >
+    openwisp-utils-qa-checks \
+        --migration-path ./openwisp_firmware_upgrader/migrations/ \
+        --migration-module firmware_upgrader
 
 after_success:
   coveralls
