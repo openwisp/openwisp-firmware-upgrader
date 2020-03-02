@@ -1,5 +1,3 @@
-from __future__ import absolute_import, unicode_literals
-
 import logging
 import os
 from decimal import Decimal
@@ -7,7 +5,6 @@ from decimal import Decimal
 from celery import shared_task
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
-from django.utils.encoding import python_2_unicode_compatible
 from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 from django.utils.translation import ugettext_lazy as _
@@ -23,7 +20,6 @@ from .upgraders.openwrt import AbortedUpgrade
 logger = logging.getLogger(__name__)
 
 
-@python_2_unicode_compatible
 class Category(OrgMixin, TimeStampedEditableModel):
     name = models.CharField(max_length=64, db_index=True)
     description = models.TextField(blank=True)
@@ -37,7 +33,6 @@ class Category(OrgMixin, TimeStampedEditableModel):
         unique_together = ('name', 'organization')
 
 
-@python_2_unicode_compatible
 class Build(TimeStampedEditableModel):
     category = models.ForeignKey(Category, on_delete=models.CASCADE,
                                  verbose_name=_('firmware category'),
@@ -56,7 +51,7 @@ class Build(TimeStampedEditableModel):
 
     def __str__(self):
         try:
-            return '{0} v{1}'.format(self.category, self.version)
+            return f'{self.category} v{self.version}'
         except ObjectDoesNotExist:
             return super(Build, self).__str__()
 
@@ -122,7 +117,6 @@ class Build(TimeStampedEditableModel):
                                      model__in=boards)
 
 
-@python_2_unicode_compatible
 class FirmwareImage(TimeStampedEditableModel):
     build = models.ForeignKey(Build, on_delete=models.CASCADE)
     file = models.FileField()
@@ -138,7 +132,7 @@ class FirmwareImage(TimeStampedEditableModel):
 
     def __str__(self):
         if hasattr(self, 'build') and self.file.name:
-            return '{0}: {1}'.format(self.build, self.file.name)
+            return f'{self.build}: {self.file.name}'
         return super(FirmwareImage, self).__str__()
 
     @property
@@ -177,7 +171,6 @@ class FirmwareImage(TimeStampedEditableModel):
             logger.error(msg.format(self, path))
 
 
-@python_2_unicode_compatible
 class DeviceFirmware(TimeStampedEditableModel):
     device = models.OneToOneField('config.Device', on_delete=models.CASCADE,)
     image = models.ForeignKey(FirmwareImage, on_delete=models.CASCADE)
@@ -245,7 +238,6 @@ UPGRADERS_MAPPING = {
 }
 
 
-@python_2_unicode_compatible
 class BatchUpgradeOperation(TimeStampedEditableModel):
     build = models.ForeignKey(Build, on_delete=models.CASCADE)
     STATUS_CHOICES = (
@@ -262,7 +254,7 @@ class BatchUpgradeOperation(TimeStampedEditableModel):
         verbose_name_plural = _('Mass upgrade operations')
 
     def __str__(self):
-        return 'Upgrade of {} on {}'.format(self.build, self.created)
+        return f'Upgrade of {self.build} on {self.created}'
 
     def update(self):
         operations = self.upgradeoperation_set
@@ -286,7 +278,7 @@ class BatchUpgradeOperation(TimeStampedEditableModel):
     @property
     def progress_report(self):
         completed = self.upgrade_operations.exclude(status='in-progress').count()
-        return _('{} out of {}').format(completed, self.total_operations)
+        return _(f'{completed} out of {self.total_operations}')
 
     @property
     def success_rate(self):
@@ -313,7 +305,6 @@ class BatchUpgradeOperation(TimeStampedEditableModel):
         return Decimal(number) / Decimal(self.total_operations) * 100
 
 
-@python_2_unicode_compatible
 class UpgradeOperation(TimeStampedEditableModel):
     STATUS_CHOICES = (
         ('in-progress', _('in progress')),

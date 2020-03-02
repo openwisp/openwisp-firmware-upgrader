@@ -1,5 +1,7 @@
 language: python
 sudo: false
+dist: bionic
+
 cache: pip
 
 addons:
@@ -10,10 +12,16 @@ addons:
       - libproj-dev
       - libgeos-dev
       - libspatialite-dev
+      - spatialite-bin
+      - libsqlite3-mod-spatialite
 
 python:
-  - "3.4"
-  - "2.7"
+  - "3.6"
+  - "3.7"
+
+env:
+  - DJANGO="django>=2.2,<2.3"
+  - DJANGO="django>=3.0,<3.1"
 
 branches:
   only:
@@ -26,12 +34,13 @@ before_install:
   - ./runisort
 
 install:
+  - pip install $DJANGO
+  - pip install -U -e ../openwisp-firmware-upgrader
   - python setup.py -q develop
-  - if [[ $TRAVIS_PYTHON_VERSION == "2.7" ]]; then pip install git+git://github.com/tinio/pysqlite.git@extension-enabled#egg=pysqlite; fi
 
 script:
   - coverage run --source=openwisp_firmware_upgrader runtests.py
-  - if [[ $TRAVIS_PYTHON_VERSION == 3.4 ]]; then ./tests/manage.py makemigrations --dry-run | grep "No changes detected"; fi
+  - ./tests/manage.py makemigrations
 
 after_success:
   coveralls
