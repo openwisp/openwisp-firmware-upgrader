@@ -5,21 +5,6 @@ import sys
 from openwisp_firmware_upgrader import get_version
 from setuptools import find_packages, setup
 
-
-def get_install_requires():
-    """
-    parse requirements.txt, ignore links, exclude comments
-    """
-    requirements = []
-    for line in open('requirements.txt').readlines():
-        # skip to next iteration if comment or empty line
-        if line.startswith('#') or line == '' or line.startswith('http') or line.startswith('git'):
-            continue
-        # add line to requirements
-        requirements.append(line)
-    return requirements
-
-
 if sys.argv[-1] == 'publish':
     # delete any *.pyc, *.pyo and __pycache__
     os.system('find . | grep -E "(__pycache__|\.pyc|\.pyo$)" | xargs rm -rf')
@@ -49,7 +34,7 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        'openwisp-controller>=0.3.1,<0.4.1'
+        'openwisp-controller>=0.5.0,<0.6.0'
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -60,7 +45,6 @@ setup(
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Operating System :: OS Independent',
         'Framework :: Django',
-        'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3',
     ]
 )

@@ -15,6 +15,8 @@ DATABASES = {
     }
 }
 
+SPATIALITE_LIBRARY_PATH = 'mod_spatialite.so'
+
 SECRET_KEY = 'fn)t*+$)ugeyip6-#txyy$5wf2ervc0d2n#h)qb)y5@ly$t*@w'
 
 INSTALLED_APPS = [
@@ -133,7 +135,8 @@ CACHES = {
         'LOCATION': 'redis://localhost/0',
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        }
+        },
+        'KEY_PREFIX': 'example'
     }
 }
 
@@ -146,9 +149,6 @@ else:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
     CELERY_BROKER_URL = 'memory://'
-
-INSTALLED_APPS.append('djcelery_email')
-EMAIL_BACKEND = 'djcelery_email.backends.CeleryEmailBackend'
 
 LOGGING = {
     'version': 1,
