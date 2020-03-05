@@ -129,16 +129,23 @@ INFLUXDB_USER = 'root'
 INFLUXDB_PASSWORD = 'root'
 INFLUXDB_DATABASE = 'openwisp2'
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://localhost/0',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        },
-        'KEY_PREFIX': 'example'
+if TESTING:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'unique-snowflake',
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': 'redis://localhost/0',
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
+        }
+    }
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
 SESSION_CACHE_ALIAS = 'default'
