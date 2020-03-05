@@ -175,10 +175,6 @@ LOGGING = {
         'py.warnings': {
             'handlers': ['console'],
         },
-        'django.db.backends': {
-            'level': 'DEBUG',
-            'handlers': ['console'],
-        },
         'celery': {
             'handlers': ['console'],
             'level': 'DEBUG',
