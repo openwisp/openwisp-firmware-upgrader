@@ -135,6 +135,11 @@ CACHES = {
         'LOCATION': 'redis://localhost/0',
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'username':'admin', 
+            'password':'admin',
+            'email':'admin@admin.org', 
+            'is_staff':True, 
+            'is_superuser':True,
         }
     }
 }
