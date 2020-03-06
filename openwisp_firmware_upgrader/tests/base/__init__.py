@@ -6,8 +6,6 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from openwisp_controller.connection.models import Credentials
 from openwisp_controller.connection.tests.base import CreateConnectionsMixin
 
-from ..models import Build, Category, DeviceFirmware, FirmwareImage
-
 
 class TestUpgraderMixin(CreateConnectionsMixin):
     FAKE_IMAGE_PATH = os.path.join(settings.MEDIA_ROOT, 'fake-img.bin')
@@ -15,7 +13,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
     TPLINK_4300_IL_IMAGE = 'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin'
 
     def tearDown(self):
-        for fw in FirmwareImage.objects.all():
+        for fw in self.firmware_image_model.objects.all():
             fw.delete()
 
     def _create_category(self, **kwargs):
@@ -23,7 +21,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         opts.update(kwargs)
         if 'organization' not in opts:
             opts['organization'] = self._create_org()
-        c = Category(**opts)
+        c = self.category_model(**opts)
         c.full_clean()
         c.save()
         return c
@@ -36,7 +34,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
             category_opts = {'organization': opts.pop('organization')}
         if 'category' not in opts:
             opts['category'] = self._create_category(**category_opts)
-        b = Build(**opts)
+        b = self.build_model(**opts)
         b.full_clean()
         b.save()
         return b
@@ -48,7 +46,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
             opts['build'] = self._create_build()
         if 'file' not in opts:
             opts['file'] = self._get_simpleuploadedfile()
-        fw = FirmwareImage(**opts)
+        fw = self.firmware_image_model(**opts)
         fw.full_clean()
         fw.save()
         return fw
@@ -71,7 +69,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
             self._create_config(device=opts['device'])
         if device_connection:
             self._create_device_connection(device=opts['device'])
-        device_fw = DeviceFirmware(**opts)
+        device_fw = self.device_firmware_model(**opts)
         device_fw.full_clean()
         device_fw.save(upgrade=upgrade)
         return device_fw

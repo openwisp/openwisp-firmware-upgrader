@@ -194,6 +194,17 @@ OPENWISP_CUSTOM_OPENWRT_IMAGES = (
     }),
 )
 
+if os.environ.get('SAMPLE_APP', False):
+    INSTALLED_APPS.remove('openwisp_firmware_upgrader')
+    EXTENDED_APPS = ['openwisp_firmware_upgrader']
+    INSTALLED_APPS.append('openwisp2.sample_firmware_upgrader')
+    FIRMWARE_UPGRADER_CATEGORY_MODEL = 'sample_firmware_upgrader.Category'
+    FIRMWARE_UPGRADER_BUILD_MODEL = 'sample_firmware_upgrader.Build'
+    FIRMWARE_UPGRADER_FIRMWAREIMAGE_MODEL = 'sample_firmware_upgrader.FirmwareImage'
+    FIRMWARE_UPGRADER_DEVICEFIRMWARE_MODEL = 'sample_firmware_upgrader.DeviceFirmware'
+    FIRMWARE_UPGRADER_BATCHUPGRADEOPERATION_MODEL = 'sample_firmware_upgrader.BatchUpgradeOperation'
+    FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = 'sample_firmware_upgrader.UpgradeOperation'
+
 # local settings must be imported before test runner otherwise they'll be ignored
 try:
     from openwisp2.local_settings import *
