@@ -15,6 +15,7 @@ DeviceFirmware = load_model("firmware_upgrader", "DeviceFirmware")
 FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
 UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
 
+
 @skipUnless(os.environ.get('SAMPLE_APP', False),
             'Running tests on standard openwisp_firmware_upgrader models')
 class TestAdmin(BaseTestAdmin, TestUpgraderMixin, TestCase):

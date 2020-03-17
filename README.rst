@@ -224,8 +224,8 @@ Run tests with:
     ./runtests.py
 
 
-The django app `tests/openwisp2/sample_firmware_upgrader.py` adds some changes on
-top of the `openwisp-firmware-upgrader` module with the sole purpose of testing the
+The django app ``tests/openwisp2/sample_firmware_upgrader.py`` adds some changes on
+top of the ``openwisp-firmware-upgrader`` module with the sole purpose of testing the
 module's extensibility.
 
 Extending openwisp-firmware-upgrader
@@ -244,13 +244,12 @@ base classes from openwisp-firmware-upgrader and add your customizations.
 In order to help django find the static files and templates of *openwisp-firmware-upgrader*,
 you need to perform the steps described below.
 
-1. Install ``openwisp-utils``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1. Install ``openwisp-firmware-upgrader``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Install (and add to the requirement of your project) `openwisp-utils
-<https://github.com/openwisp/openwisp-utils>`_::
+Install (and add to the requirement of your project) openwisp-firmware-upgrader::
 
-    pip install openwisp-utils
+    pip install openwisp-firmware-upgrader
 
 2. Add ``EXTENDED_APPS``
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -259,7 +258,7 @@ Add the following to your ``settings.py``:
 
 .. code-block:: python
 
-    EXTENDED_APPS = ('openwisp-firmware-upgrader',)
+    EXTENDED_APPS = ('openwisp_firmware_upgrader',)
 
 3. Add ``openwisp_utils.staticfiles.DependencyFinder``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -304,14 +303,15 @@ Add ``openwisp_utils.loaders.DependencyLoader`` to ``TEMPLATES`` in your ``setti
 Extending models
 ~~~~~~~~~~~~~~~~
 
-For the purpose of showing an example, we add a simple "details" field to the
-models from openwisp-firmware-upgrader [here](tests/openwisp2/sample_firmware_upgrader/models.py).
+For the purpose of showing an example, we added a simple "details" field to the
+`models of openwisp-firmware-upgrader in the sample app of our test project <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/models.py>`_.
+
 You can add fields in a similar way in your models.py file.
 
 Extending the admin
 ~~~~~~~~~~~~~~~~~~~
 
-Please checkout the sample admin.py [here](tests/openwisp2/sample_firmware_upgrader/admin.py).
+Please checkout the `sample admin.py file <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/admin.py>`_.
 You can add changes in the `CategoryAdmin`, `BuildAdmin` and `BatchUpgradeOperationAdmin` for
 them to be reflected in your dashboard interface.
 
