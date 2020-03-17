@@ -34,7 +34,8 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        'openwisp-controller>=0.5.0,<0.6.0'
+        'openwisp-controller>=0.5.0,<0.6.0',
+        'swapper~=1.1'
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',

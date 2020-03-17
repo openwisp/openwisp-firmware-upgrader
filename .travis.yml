@@ -22,6 +22,8 @@ python:
 env:
   - DJANGO="django>=2.2,<2.3"
   - DJANGO="django>=3.0,<3.1"
+  - SAMPLE_APP=1 DJANGO="django>=2.2,<2.3"
+  - SAMPLE_APP=1 DJANGO="django>=3.0,<3.1"
 
 branches:
   only:
@@ -33,15 +35,26 @@ before_install:
 
 install:
   - pip install $DJANGO
-  - pip install -U -e ../openwisp-firmware-upgrader
+  - pip install -U .
   - python setup.py -q develop
 
 script:
   - coverage run --source=openwisp_firmware_upgrader runtests.py
-  - >
-    openwisp-utils-qa-checks \
-        --migration-path ./openwisp_firmware_upgrader/migrations/ \
+  - |
+    if [[ $SAMPLE_APP != "1" ]]; then
+      openwisp-utils-qa-checks \
+        --skip-isort \
+        --skip-flake8 \
+        --skip-checkmigrations \
+        --skip-checkendline \
+        --skip-checkcommit \
+        --migration-path ./sample_firmware_upgrader/migrations/ \
         --migration-module firmware_upgrader
+    else
+      openwisp-utils-qa-checks \
+          --migration-path ./tests/openwisp2/sample_firmware_upgrader/migrations/ \
+          --migration-module sample_firmware_upgrader
+    fi
 
 after_success:
   coveralls
