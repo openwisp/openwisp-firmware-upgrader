@@ -5,6 +5,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.translation import ugettext_lazy as _
+from reversion.admin import VersionAdmin
 from swapper import load_model
 
 from openwisp_controller.config.admin import DeviceAdmin
@@ -21,7 +22,11 @@ class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin)
     pass
 
 
-class AbstractCategoryAdmin(BaseAdmin):
+class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdmin):
+    pass
+
+
+class AbstractCategoryAdmin(BaseVersionAdmin):
     list_display = ('name', 'created', 'modified')
     search_fields = ['name']
     save_on_top = True
@@ -32,7 +37,7 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
     extra = 0
 
 
-class AbstractBuildAdmin(BaseAdmin):
+class AbstractBuildAdmin(BaseVersionAdmin):
     list_display = ('__str__', 'created', 'modified')
     search_fields = ['name']
     save_on_top = True
