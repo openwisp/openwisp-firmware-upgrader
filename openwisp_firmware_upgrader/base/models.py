@@ -370,6 +370,15 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         upgrader = upgrader_class(params=conn.get_params(),
                                   addresses=conn.get_addresses())
         try:
+            # test connection
+            logger.info('Testing connection')
+            result = conn.connect()
+            if result:
+                logger.info('Connection successful')
+                conn.disconnect()
+            else:
+                logger.info('Connection failed, aborting')
+                raise Exception('Connection Failed')
             result = upgrader.upgrade(self.image.file)
         except AbortedUpgrade:
             # this exception is raised when the checksum present on the image

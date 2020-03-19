@@ -135,10 +135,11 @@ class BaseTestModels(object):
 
 
 class BaseTestModelsTransaction(object):
-    _test_sha256 = '7732ea3c7d3bb969e6f42d2d99ba4a37450e85445ced10072df0156003daca66'
     _mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
+    _mock_connect = 'openwisp_controller.connection.models.DeviceConnection.connect'
 
-    @mock.patch(_mock_updrade, return_value=_test_sha256)
+    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_related_devices(self, *args):
         env = self._create_upgrade_env()
         # check everything is as expected
@@ -161,7 +162,8 @@ class BaseTestModelsTransaction(object):
         self.assertEqual(batch.build, env['build2'])
         self.assertEqual(batch.status, 'success')
 
-    @mock.patch(_mock_updrade, return_value=_test_sha256)
+    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_firmwareless_devices(self, *args):
         env = self._create_upgrade_env(device_firmware=False)
         # check everything is as expected
@@ -189,7 +191,8 @@ class BaseTestModelsTransaction(object):
         batch = self.batch_upgrade_operation_model.objects.first()
         self.assertEqual(batch.status, 'failed')
 
-    @mock.patch(_mock_updrade, return_value=_test_sha256)
+    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_related_devices_existing_fw(self, *args):
         env = self._create_upgrade_env()
         self.assertEqual(self.upgrade_operation_model.objects.count(), 0)
