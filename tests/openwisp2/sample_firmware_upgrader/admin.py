@@ -3,9 +3,9 @@ from openwisp_firmware_upgrader.base.admin import (AbstractBatchUpgradeOperation
                                                    AbstractCategoryAdmin)
 from swapper import load_model
 
-BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
-Build = load_model("firmware_upgrader", "Build")
-Category = load_model("firmware_upgrader", "Category")
+BatchUpgradeOperation = load_model('firmware_upgrader', 'BatchUpgradeOperation')
+Build = load_model('firmware_upgrader', 'Build')
+Category = load_model('firmware_upgrader', 'Category')
 
 
 @admin.register(Category)

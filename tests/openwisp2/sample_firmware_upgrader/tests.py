@@ -8,12 +8,12 @@ from openwisp_firmware_upgrader.tests.base.test_admin import BaseTestAdmin
 from openwisp_firmware_upgrader.tests.base.test_models import BaseTestModels, BaseTestModelsTransaction
 from swapper import load_model
 
-BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
-Build = load_model("firmware_upgrader", "Build")
-Category = load_model("firmware_upgrader", "Category")
-DeviceFirmware = load_model("firmware_upgrader", "DeviceFirmware")
-FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
-UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+BatchUpgradeOperation = load_model('firmware_upgrader', 'BatchUpgradeOperation')
+Build = load_model('firmware_upgrader', 'Build')
+Category = load_model('firmware_upgrader', 'Category')
+DeviceFirmware = load_model('firmware_upgrader', 'DeviceFirmware')
+FirmwareImage = load_model('firmware_upgrader', 'FirmwareImage')
+UpgradeOperation = load_model('firmware_upgrader', 'UpgradeOperation')
 
 
 @skipUnless(os.environ.get('SAMPLE_APP', False),

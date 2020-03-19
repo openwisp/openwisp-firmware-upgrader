@@ -60,7 +60,7 @@ class AbstractBuild(TimeStampedEditableModel):
             return super().__str__()
 
     def batch_upgrade(self, firmwareless):
-        batch_model = load_model("firmware_upgrader", "BatchUpgradeOperation")
+        batch_model = load_model('firmware_upgrader', 'BatchUpgradeOperation')
         batch = batch_model(build=self)
         batch.full_clean()
         batch.save()
@@ -351,7 +351,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
             return
         # prevent multiple upgrade operations for
         # the same device running at the same time
-        qs = load_model("firmware_upgrader", "UpgradeOperation").objects.filter(device=self.device,
+        qs = load_model('firmware_upgrader', 'UpgradeOperation').objects.filter(device=self.device,
                                                                                 status='in-progress') \
             .exclude(pk=self.pk)
         if qs.count() > 0:

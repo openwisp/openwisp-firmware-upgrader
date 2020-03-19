@@ -28,7 +28,7 @@ class AbstractCategoryAdmin(BaseAdmin):
 
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
-    model = load_model("firmware_upgrader", "FirmwareImage")
+    model = load_model('firmware_upgrader', 'FirmwareImage')
     extra = 0
 
 
@@ -100,7 +100,7 @@ class AbstractBuildAdmin(BaseAdmin):
 
 
 class UpgradeOperationInline(admin.StackedInline):
-    model = load_model("firmware_upgrader", "UpgradeOperation")
+    model = load_model('firmware_upgrader', 'UpgradeOperation')
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
@@ -170,7 +170,7 @@ class AbstractBatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
 
 
 class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
-    model = load_model("firmware_upgrader", "DeviceFirmware")
+    model = load_model('firmware_upgrader', 'DeviceFirmware')
     exclude = ('created',)
     readonly_fields = ('installed', 'modified')
     verbose_name = _('Device Firmware')
