@@ -10,10 +10,10 @@ from django.utils.translation import ugettext_lazy as _
 from swapper import get_model_name, load_model
 
 from openwisp_controller.config.models import Device
-from openwisp_controller.connection.settings import DEFAULT_UPDATE_STRATEGIES
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
+from .. import settings as app_settings
 from ..celery import upgrade_firmware
 from ..hardware import FIRMWARE_IMAGE_MAP, FIRMWARE_IMAGE_TYPE_CHOICES
 from ..upgraders.openwrt import AbortedUpgrade
@@ -246,11 +246,6 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         return operation
 
 
-UPGRADERS_MAPPING = {
-    DEFAULT_UPDATE_STRATEGIES[0][0]: 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt'
-}
-
-
 class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
     build = models.ForeignKey(get_model_name('firmware_upgrader',
                                              'Build'), on_delete=models.CASCADE)
@@ -362,7 +357,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
             self.save()
             return
         try:
-            upgrader_class = UPGRADERS_MAPPING[conn.update_strategy]
+            upgrader_class = app_settings.UPGRADERS_MAP[conn.update_strategy]
             upgrader_class = import_string(upgrader_class)
         except (AttributeError, ImportError) as e:
             logger.exception(e)

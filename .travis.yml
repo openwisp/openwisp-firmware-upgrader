@@ -35,8 +35,10 @@ before_install:
 
 install:
   - pip install $DJANGO
-  - pip install -U .
-  - python setup.py -q develop
+  # temporarily using dev version of openwisp-controller
+  # TODO: remove when openwisp-controller 0.5.3 is released
+  - pip install https://github.com/openwisp/openwisp-controller/tarball/master
+  - pip install -e .
 
 script:
   - coverage run --source=openwisp_firmware_upgrader runtests.py

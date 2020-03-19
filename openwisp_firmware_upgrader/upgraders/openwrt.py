@@ -19,6 +19,9 @@ class OpenWrt(BaseOpenWrt):
     UPGRADE_TIMEOUT = 70
     SLEEP_TIME = 20
     RETRY_TIME = 5
+    RETRY_ATTEMPTS = 10
+    UPGRADE_COMMAND = 'sysupgrade -v -c {path}'
+
     log_lines = None
 
     def __init__(self, *args, **kwargs):
@@ -39,12 +42,18 @@ class OpenWrt(BaseOpenWrt):
         except AbortedUpgrade as e:
             self.disconnect()
             raise e
-        remote_path = os.path.join(self.REMOTE_UPLOAD_DIR, image.name)
+        remote_path = self.get_remote_path(image)
         self.upload(image.file, remote_path)
         self._test_image(remote_path)
         self.disconnect()
         self._reflash(remote_path)
         return self._write_checksum(checksum)
+
+    def get_remote_path(self, image):
+        return os.path.join(self.REMOTE_UPLOAD_DIR, image.name)
+
+    def get_upgrade_command(self, path):
+        return self.UPGRADE_COMMAND.format(path=path)
 
     def _compare_checksum(self, image, checksum):
         output, exit_code = self.exec_command(
@@ -82,9 +91,8 @@ class OpenWrt(BaseOpenWrt):
         """
         def upgrade(conn, path, timeout):
             conn.connect()
-            conn.exec_command(f'sysupgrade -v -c {path}',
-                              timeout=timeout)
-            conn.close()
+            conn.exec_command(self.get_upgrade_command(path), timeout=timeout)
+            conn.disconnect()
         subprocess = Process(
             target=upgrade,
             args=[self, path, self.UPGRADE_TIMEOUT]
@@ -101,8 +109,7 @@ class OpenWrt(BaseOpenWrt):
             subprocess.join()
 
     def _write_checksum(self, checksum):
-        # 10 attempts
-        for attempt in range(1, 11):
+        for attempt in range(1, self.RETRY_ATTEMPTS + 1):
             self.log('Trying to reconnect to device '
                      f'(attempt n.{attempt})...')
             try:
@@ -116,6 +123,7 @@ class OpenWrt(BaseOpenWrt):
                      f'file to {self.CHECKSUM_FILE}')
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
             self.exec_command(f'mkdir -p {checksum_dir}')
+            self.exec_command(f'echo {checksum} > {self.CHECKSUM_FILE}')
             self.disconnect()
             return True
             self.log('Upgrade completed successfully.')

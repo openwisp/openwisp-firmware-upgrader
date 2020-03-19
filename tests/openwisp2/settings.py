@@ -6,7 +6,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 DATABASES = {
     'default': {
@@ -112,6 +112,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'openwisp_utils.admin_theme.context_processor.menu_items'
             ],
         },
     }
@@ -126,9 +127,6 @@ ACCOUNT_LOGOUT_REDIRECT_URL = LOGIN_REDIRECT_URL
 # during development only
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-INFLUXDB_USER = 'root'
-INFLUXDB_PASSWORD = 'root'
-INFLUXDB_DATABASE = 'openwisp2'
 
 if TESTING:
     CACHES = {
