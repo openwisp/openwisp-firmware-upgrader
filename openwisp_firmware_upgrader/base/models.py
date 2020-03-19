@@ -30,8 +30,8 @@ class AbstractCategory(OrgMixin, TimeStampedEditableModel):
 
     class Meta:
         abstract = True
-        verbose_name = _('category')
-        verbose_name_plural = _('categories')
+        verbose_name = _('Firmware Category')
+        verbose_name_plural = _('Firmware Categories')
         unique_together = ('name', 'organization')
 
 
@@ -50,6 +50,8 @@ class AbstractBuild(TimeStampedEditableModel):
 
     class Meta:
         abstract = True
+        verbose_name = _('Firmware Build')
+        verbose_name_plural = _('Firmware Builds')
         unique_together = ('category', 'version')
         ordering = ('-created',)
 
@@ -136,6 +138,8 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     class Meta:
         abstract = True
+        verbose_name = _('Firmware Image')
+        verbose_name_plural = _('Firmware Images')
         unique_together = ('build', 'type')
 
     def __str__(self):
@@ -191,6 +195,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         self._update_old_image()
 
     class Meta:
+        verbose_name = _('Device Firmware')
         abstract = True
 
     def clean(self):

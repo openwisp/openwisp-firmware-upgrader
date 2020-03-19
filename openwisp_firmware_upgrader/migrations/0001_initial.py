@@ -51,6 +51,8 @@ class Migration(migrations.Migration):
             options={
                 'swappable': swapper.swappable_setting('firmware_upgrader', 'Build'),
                 'ordering': ('-created',),
+                'verbose_name': 'Firmware Build',
+                'verbose_name_plural': 'Firmware Builds'
             },
         ),
         migrations.CreateModel(
@@ -65,8 +67,8 @@ class Migration(migrations.Migration):
             ],
             options={
                 'swappable': swapper.swappable_setting('firmware_upgrader', 'Category'),
-                'verbose_name_plural': 'categories',
-                'verbose_name': 'category',
+                'verbose_name': 'Firmware Category',
+                'verbose_name_plural': 'Firmware Categories'
             },
             bases=(openwisp_users.mixins.ValidateOrgMixin, models.Model),
         ),
@@ -82,6 +84,7 @@ class Migration(migrations.Migration):
             options={
                 'swappable': swapper.swappable_setting('firmware_upgrader', 'DeviceFirmware'),
                 'abstract': False,
+                'verbose_name': 'Device Firmware'
             },
         ),
         migrations.CreateModel(
@@ -98,6 +101,7 @@ class Migration(migrations.Migration):
             options={
                 'swappable': swapper.swappable_setting('firmware_upgrader', 'FirmwareImage'),
                 'abstract': False,
+                'verbose_name': 'Firmware Image', 'verbose_name_plural': 'Firmware Images'
             },
 
         ),
