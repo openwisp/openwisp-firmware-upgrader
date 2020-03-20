@@ -12,7 +12,7 @@ from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
-from ..celery import batch_upgrade_operation
+from ..tasks import batch_upgrade_operation
 from .forms import UpgradeOperationForm
 
 logger = logging.getLogger(__name__)

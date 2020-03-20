@@ -14,8 +14,8 @@ from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
-from ..celery import upgrade_firmware
 from ..hardware import FIRMWARE_IMAGE_MAP, FIRMWARE_IMAGE_TYPE_CHOICES
+from ..tasks import upgrade_firmware
 from ..upgraders.openwrt import AbortedUpgrade
 
 logger = logging.getLogger(__name__)
