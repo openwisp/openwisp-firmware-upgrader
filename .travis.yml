@@ -37,6 +37,7 @@ install:
   - pip install $DJANGO
   # temporarily using dev version of openwisp-controller
   # TODO: remove when openwisp-controller 0.5.3 is released
+  - pip install https://github.com/openwisp/django-netjsonconfig/tarball/master
   - pip install https://github.com/openwisp/openwisp-controller/tarball/master
   - pip install -e .
 
