@@ -17,8 +17,8 @@ class OpenWrt(BaseOpenWrt):
     CHECKSUM_FILE = '/etc/openwisp/firmware_checksum'
     REMOTE_UPLOAD_DIR = '/tmp'
     UPGRADE_TIMEOUT = 70
-    SLEEP_TIME = 20
-    RETRY_TIME = 5
+    SLEEP_TIME = 60
+    RETRY_TIME = 12
     RETRY_ATTEMPTS = 10
     UPGRADE_COMMAND = 'sysupgrade -v -c {path}'
 
