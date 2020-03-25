@@ -14,7 +14,7 @@ class FirmwareUpdaterConfig(AppConfig):
     def add_default_menu_items(self):
         menu_setting = 'OPENWISP_DEFAULT_ADMIN_MENU_ITEMS'
         items = [
-            {'model': 'firmware_upgrader.Build'},
+            {'model': f'{self.label}.Build'},
         ]
         if not hasattr(settings, menu_setting):
             setattr(settings, menu_setting, items)

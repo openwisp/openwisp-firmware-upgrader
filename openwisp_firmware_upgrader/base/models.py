@@ -75,7 +75,6 @@ class AbstractBuild(TimeStampedEditableModel):
         upgrades all devices which have an
         existing related DeviceFirmware
         """
-
         device_firmwares = self._find_related_device_firmwares()
         for device_fw in device_firmwares:
             image = self.firmwareimage_set.filter(type=device_fw.image.type) \
