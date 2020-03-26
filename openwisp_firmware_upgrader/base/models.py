@@ -316,7 +316,8 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
         return self.__get_rate(aborted)
 
     def __get_rate(self, number):
-        return Decimal(number) / Decimal(self.total_operations) * 100
+        result = Decimal(number) / Decimal(self.total_operations) * 100
+        return round(result, 2)
 
 
 class AbstractUpgradeOperation(TimeStampedEditableModel):
