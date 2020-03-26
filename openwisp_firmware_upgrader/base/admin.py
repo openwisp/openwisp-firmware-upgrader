@@ -183,5 +183,8 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     extra = 0
     multitenant_shared_relations = ('image',)
 
+    def has_add_permission(self, request, obj=None):
+        return obj and not obj._state.adding
+
 
 DeviceAdmin.inlines.append(DeviceFirmwareInline)
