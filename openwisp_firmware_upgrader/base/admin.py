@@ -23,7 +23,7 @@ class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin)
 
 
 class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdmin):
-    pass
+    history_latest_first = True
 
 
 class AbstractCategoryAdmin(BaseVersionAdmin):
