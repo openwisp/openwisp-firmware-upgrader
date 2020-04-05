@@ -224,7 +224,7 @@ Run tests with:
     ./runtests.py
 
 
-The django app ``tests/openwisp2/sample_firmware_upgrader.py`` adds some changes on
+The django app ``tests/openwisp2/sample_firmware_upgrader/`` adds some changes on
 top of the ``openwisp-firmware-upgrader`` module with the sole purpose of testing the
 module's extensibility.
 
@@ -299,6 +299,21 @@ Add ``openwisp_utils.loaders.DependencyLoader`` to ``TEMPLATES`` in your ``setti
             },
         }
     ]
+
+5. Add swapper configurations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Add the following to your ``settings.py``:
+
+.. code-block:: python
+
+    # Setting models for swapper module
+    FIRMWARE_UPGRADER_CATEGORY_MODEL = 'YOUR_MODULE_NAME.Category'
+    FIRMWARE_UPGRADER_BUILD_MODEL = 'YOUR_MODULE_NAME.Build'
+    FIRMWARE_UPGRADER_FIRMWAREIMAGE_MODEL = 'YOUR_MODULE_NAME.FirmwareImage'
+    FIRMWARE_UPGRADER_DEVICEFIRMWARE_MODEL = 'YOUR_MODULE_NAME.DeviceFirmware'
+    FIRMWARE_UPGRADER_BATCHUPGRADEOPERATION_MODEL = 'YOUR_MODULE_NAME.BatchUpgradeOperation'
+    FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = 'YOUR_MODULE_NAME.UpgradeOperation'
 
 Extending models
 ~~~~~~~~~~~~~~~~
