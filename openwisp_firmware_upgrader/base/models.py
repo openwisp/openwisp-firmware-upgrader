@@ -7,6 +7,7 @@ from django.db import models, transaction
 from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 from django.utils.translation import ugettext_lazy as _
+from private_storage.fields import PrivateFileField
 from swapper import get_model_name, load_model
 
 from openwisp_controller.config.models import Device
@@ -124,10 +125,17 @@ class AbstractBuild(TimeStampedEditableModel):
                                      model__in=boards)
 
 
+def get_build_directory(instance, filename):
+    build_pk = str(instance.build.pk)
+    return '/'.join([build_pk, filename])
+
+
 class AbstractFirmwareImage(TimeStampedEditableModel):
     build = models.ForeignKey(get_model_name('firmware_upgrader', 'Build'),
                               on_delete=models.CASCADE)
-    file = models.FileField()
+    file = PrivateFileField('File',
+                            upload_to=get_build_directory,
+                            max_file_size=app_settings.MAX_FILE_SIZE)
     type = models.CharField(blank=True,
                             max_length=128,
                             choices=FIRMWARE_IMAGE_TYPE_CHOICES,
