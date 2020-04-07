@@ -8,7 +8,7 @@ from openwisp_controller.connection.tests.base import CreateConnectionsMixin
 
 
 class TestUpgraderMixin(CreateConnectionsMixin):
-    FAKE_IMAGE_PATH = os.path.join(settings.MEDIA_ROOT, 'fake-img.bin')
+    FAKE_IMAGE_PATH = os.path.join(settings.PRIVATE_STORAGE_ROOT, 'fake-img.bin')
     TPLINK_4300_IMAGE = 'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin'
     TPLINK_4300_IL_IMAGE = 'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin'
 

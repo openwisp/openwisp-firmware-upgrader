@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'django_extensions',
+    'private_storage',
     # openwisp2 modules
     'openwisp_users',
     'openwisp_controller.pki',
@@ -96,6 +97,8 @@ USE_L10N = False
 STATIC_URL = '/static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = '{0}/media/'.format(BASE_DIR)
+
+PRIVATE_STORAGE_ROOT = '/{0}/firmware/'.format(BASE_DIR)
 
 TEMPLATES = [
     {
@@ -202,6 +205,7 @@ if os.environ.get('SAMPLE_APP', False):
     FIRMWARE_UPGRADER_DEVICEFIRMWARE_MODEL = 'sample_firmware_upgrader.DeviceFirmware'
     FIRMWARE_UPGRADER_BATCHUPGRADEOPERATION_MODEL = 'sample_firmware_upgrader.BatchUpgradeOperation'
     FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = 'sample_firmware_upgrader.UpgradeOperation'
+    OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE = 35 * 1024 * 1024
 
 # local settings must be imported before test runner otherwise they'll be ignored
 try:

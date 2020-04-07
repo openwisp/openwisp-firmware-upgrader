@@ -35,7 +35,8 @@ setup(
     zip_safe=False,
     install_requires=[
         'openwisp-controller>=0.6.0,<0.7.0',
-        'swapper~=1.1'
+        'django-private-storage~=2.2',
+        'swapper~=1.1',
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',
