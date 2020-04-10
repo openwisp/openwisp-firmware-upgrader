@@ -2,6 +2,8 @@ from unittest import mock
 
 from django.core.exceptions import ValidationError
 
+from openwisp_users.models import Group
+
 from ... import settings as app_settings
 from ...hardware import FIRMWARE_IMAGE_MAP
 
@@ -132,6 +134,41 @@ class BaseTestModels(object):
             self.assertIn('model do not match', str(e))
         else:
             self.fail('ValidationError not raised')
+
+    def test_permissions(self):
+        admin = Group.objects.get(name='Administrator')
+        operator = Group.objects.get(name='Operator')
+
+        admin_permissions = [
+            p['codename'] for p in admin.permissions.values('codename')
+        ]
+        operator_permissions = [
+            p['codename'] for p in operator.permissions.values('codename')
+        ]
+
+        operators_read_only_admins_manage = [
+            'build',
+            'devicefirmware',
+            'firmwareimage',
+            'batchupgradeoperation',
+            'upgradeoperation',
+        ]
+        admins_can_manage = ['category']
+        manage_operations = ['add', 'change', 'delete']
+
+        for action in manage_operations:
+            for model_name in admins_can_manage:
+                codename = '{}_{}'.format(action, model_name)
+                self.assertIn(codename, admin_permissions)
+                self.assertNotIn(codename, operator_permissions)
+
+        for model_name in operators_read_only_admins_manage:
+            codename = 'view_{}'.format(model_name)
+            self.assertIn(codename, operator_permissions)
+
+            for action in manage_operations:
+                codename = '{}_{}'.format(action, model_name)
+                self.assertIn(codename, admin_permissions)
 
 
 class BaseTestModelsTransaction(object):
