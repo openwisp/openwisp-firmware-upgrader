@@ -64,12 +64,9 @@ Follow the setup instructions of `openwisp-controller
 .. code-block:: python
 
     from django.conf import settings
+    from django.contrib import admin
     from django.conf.urls import include, url
     from django.contrib.staticfiles.urls import staticfiles_urlpatterns
-
-    from openwisp_utils.admin_theme.admin import admin, openwisp_admin
-
-    openwisp_admin()
 
     urlpatterns = [
         url(r'^admin/', include(admin.site.urls)),
