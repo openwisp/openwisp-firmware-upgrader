@@ -9,7 +9,6 @@ User = get_user_model()
 
 
 class BaseTestAdmin(TestMultitenantAdminMixin):
-
     def test_build_list(self):
         self._login()
         build = self._create_build()
