@@ -71,7 +71,7 @@ Follow the setup instructions of `openwisp-controller
     urlpatterns = [
         url(r'^admin/', include(admin.site.urls)),
         url(r'', include('openwisp_controller.urls')),
-        # TODO
+        url('^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
     ]
 
     urlpatterns += staticfiles_urlpatterns()
@@ -168,17 +168,17 @@ This setting can be used to add new image types for OpenWRT, eg:
 ``OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-+--------------+----------------------------+
-| **type**:    | ``int``                    |
-+--------------+----------------------------+
-| **default**: | `30 * 1024 * 1024` (30 MB) |
-+--------------+----------------------------+
++--------------+------------------------------+
+| **type**:    | ``int``                      |
++--------------+------------------------------+
+| **default**: | ``30 * 1024 * 1024`` (30 MB) |
++--------------+------------------------------+
 
 This setting can be used to set the maximum size limit for firmware images, eg:
 
 .. code-block:: python
 
-    OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE = 40 * 1024 * 1024  # 40MB
 
 **Notes**:
 
