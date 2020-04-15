@@ -1,25 +1,14 @@
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 
 from openwisp_controller.config.models import Device
+from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
 User = get_user_model()
 
 
-class BaseTestAdmin(object):
-    def _create_super_admin(self):
-        return User.objects.create(
-            username='admin',
-            password='admin',
-            email='admin@admin.org',
-            is_staff=True,
-            is_superuser=True,
-        )
-
-    def _login(self, user=None):
-        if not user:
-            user = self._create_super_admin()
-        self.client.force_login(user)
+class BaseTestAdmin(TestMultitenantAdminMixin):
 
     def test_build_list(self):
         self._login()
@@ -121,3 +110,13 @@ class BaseTestAdmin(object):
         self.assertContains(r, 'operation started')
         self.assertEqual(self.upgrade_operation_model.objects.count(), 3)
         self.assertEqual(fw.count(), 3)
+
+    # Issue #16
+    def test_view_device_operator(self):
+        device_fw = self._create_device_firmware()
+        org = self._get_org()
+        self._create_operator(organizations=[org])
+        self._login(username='operator', password='tester')
+        url = reverse('admin:config_device_change', args=[device_fw.device_id])
+        r = self.client.get(url)
+        self.assertContains(r, str(device_fw.image_id))
