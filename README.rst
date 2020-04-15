@@ -243,13 +243,16 @@ Run tests with:
 
 .. code-block:: shell
 
+    # run qa checks
+    ./run-qa-checks
+
     # standard tests
     ./runtests.py
 
     # tests for the sample app
     export SAMPLE_APP=1; ./runtests.py --keepdb --failfast; unset SAMPLE_APP
 
-When running the second line of the previous example, the environment variable
+When running the last line of the previous example, the environment variable
 ``SAMPLE_APP`` activates the app in ``/tests/openwisp2/sample_firmware_upgrader/``
 which is a simple django app that extends ``openwisp-firmware-upgrader`` with
 the sole purpose of testing its extensibility, for more information regarding
