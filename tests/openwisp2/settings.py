@@ -57,11 +57,11 @@ INSTALLED_APPS = [
     'channels',
 ]
 
-EXTENDED_APPS = (
+EXTENDED_APPS = [
     'django_netjsonconfig',
     'django_x509',
     'django_loci',
-)
+]
 
 AUTH_USER_MODEL = 'openwisp_users.User'
 SITE_ID = '1'
@@ -185,7 +185,7 @@ OPENWISP_CUSTOM_OPENWRT_IMAGES = (
 
 if os.environ.get('SAMPLE_APP', False):
     INSTALLED_APPS.remove('openwisp_firmware_upgrader')
-    EXTENDED_APPS = ['openwisp_firmware_upgrader']
+    EXTENDED_APPS.append('openwisp_firmware_upgrader')
     INSTALLED_APPS.append('openwisp2.sample_firmware_upgrader')
     FIRMWARE_UPGRADER_CATEGORY_MODEL = 'sample_firmware_upgrader.Category'
     FIRMWARE_UPGRADER_BUILD_MODEL = 'sample_firmware_upgrader.Build'

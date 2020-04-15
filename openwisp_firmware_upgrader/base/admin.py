@@ -193,7 +193,7 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     verbose_name = _('Device Firmware')
     verbose_name_plural = verbose_name
     extra = 0
-    multitenant_shared_relations = ('image',)
+    multitenant_shared_relations = ('device',)
 
     def has_add_permission(self, request, obj=None):
         return obj and not obj._state.adding
