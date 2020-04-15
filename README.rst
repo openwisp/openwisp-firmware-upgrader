@@ -26,7 +26,12 @@ OpenWISP 2 firmware upgrade module (Work in progress).
 Install Depdendencies
 ---------------------
 
-TODO
+Install spatialite and sqlite:
+
+.. code-block:: shell
+
+    sudo apt-get install sqlite3 libsqlite3-dev openssl libssl-dev
+    sudo apt-get install gdal-bin libproj-dev libgeos-dev libspatialite-dev
 
 Setup (integrate in an existing django project)
 -----------------------------------------------
@@ -44,20 +49,28 @@ Follow the setup instructions of `openwisp-controller
         'django.contrib.sites',
         'allauth',
         'allauth.account',
-        'allauth.socialaccount',
         'django_extensions',
+        'private_storage',
         # openwisp2 modules
         'openwisp_users',
         'openwisp_controller.pki',
         'openwisp_controller.config',
-        # TODO
+        'openwisp_controller.connection',
+        'openwisp_controller.geo',
+        'openwisp_firmware_upgrader',
         # admin
         'django.contrib.admin',
         'django.forms',
-        # other dependencies ...
+        # other dependencies
+        'sortedm2m',
+        'reversion',
+        'leaflet',
+        # rest framework
+        'rest_framework',
+        'rest_framework_gis',
+        # channels
+        'channels',
     ]
-
-    # TODo
 
 ``urls.py``:
 
@@ -187,13 +200,6 @@ This setting can be used to set the maximum size limit for firmware images, eg:
 Installing for development
 --------------------------
 
-Install spatialite and sqlite:
-
-.. code-block:: shell
-
-    sudo apt-get install sqlite3 libsqlite3-dev openssl libssl-dev
-    sudo apt-get install gdal-bin libproj-dev libgeos-dev libspatialite-dev
-
 Install your forked repo:
 
 .. code-block:: shell
@@ -237,17 +243,22 @@ Run tests with:
 
 .. code-block:: shell
 
+    # standard tests
     ./runtests.py
 
+    # tests for the sample app
+    export SAMPLE_APP=1; ./runtests.py --keepdb --failfast; unset SAMPLE_APP
 
-The django app ``tests/openwisp2/sample_firmware_upgrader/`` adds some changes on
-top of the ``openwisp-firmware-upgrader`` module with the sole purpose of testing the
-module's extensibility.
+When running the second line of the previous example, the environment variable
+``SAMPLE_APP`` activates the app in ``/tests/openwisp2/sample_firmware_upgrader/``
+which is a simple django app that extends ``openwisp-firmware-upgrader`` with
+the sole purpose of testing its extensibility, for more information regarding
+this concept, read the following section.
 
 Extending openwisp-firmware-upgrader
----------------------
+------------------------------------
 
-The `tests/openwisp2/sample-firmware-upgrader` may serve as an example for
+The ``tests/openwisp2/sample-firmware-upgrader`` may serve as an example for
 extending *openwisp-firmware-upgrader* in your own application.
 
 *openwisp-firmware-upgrader* provides a set of models and admin classes which can
@@ -335,16 +346,29 @@ Extending models
 ~~~~~~~~~~~~~~~~
 
 For the purpose of showing an example, we added a simple "details" field to the
-`models of openwisp-firmware-upgrader in the sample app of our test project <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/models.py>`_.
+`models of the sample app in the test project <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/models.py>`_.
 
-You can add fields in a similar way in your models.py file.
+You can add fields in a similar way in your ``models.py`` file.
 
 Extending the admin
 ~~~~~~~~~~~~~~~~~~~
 
-Please checkout the `sample admin.py file <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/admin.py>`_.
-You can add changes in the `CategoryAdmin`, `BuildAdmin` and `BatchUpgradeOperationAdmin` for
-them to be reflected in your dashboard interface.
+Please checkout the `admin.py file of the sample app <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/admin.py>`_.
+
+You can change ``CategoryAdmin``, ``BuildAdmin`` and
+``BatchUpgradeOperationAdmin`` and these changes will be reflected in
+your admin interface.
+
+Reusing the base tests
+~~~~~~~~~~~~~~~~~~~~~~
+
+When developing a custom application based on this module, it's a good
+idea to import and run the `base tests <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/openwisp_firmware_upgrader/tests/base>`_
+too, so that you can be sure the changes you're introducing are not breaking
+some of the existing features of openwisp-firmware-upgrader.
+
+In case you need to add breaking changes, you can overwrite the tests defined
+in the base classes to test your own behavior.
 
 Contributing
 ------------
