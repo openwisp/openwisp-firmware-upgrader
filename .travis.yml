@@ -22,8 +22,6 @@ python:
 env:
   - DJANGO="django>=2.2,<2.3"
   - DJANGO="django>=3.0,<3.1"
-  - SAMPLE_APP=1 DJANGO="django>=2.2,<2.3"
-  - SAMPLE_APP=1 DJANGO="django>=3.0,<3.1"
 
 branches:
   only:
@@ -31,13 +29,14 @@ branches:
 
 before_install:
   - pip install -U pip wheel setuptools
-  - pip install --no-cache-dir -U -r requirements-test.txt
+  - pip install $DJANGO
+  - pip install -U -r requirements-test.txt
 
 install:
-  - pip install $DJANGO
   - pip install -e .
 
 script:
+  - SAMPLE_APP=1; coverage run --source=openwisp_firmware_upgrader runtests.py
   - coverage run --source=openwisp_firmware_upgrader runtests.py
   - ./run-qa-checks
 
