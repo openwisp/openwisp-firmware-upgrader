@@ -1,7 +1,13 @@
 from swapper import swappable_setting
 
-from .base.models import (AbstractBatchUpgradeOperation, AbstractBuild, AbstractCategory,
-                          AbstractDeviceFirmware, AbstractFirmwareImage, AbstractUpgradeOperation)
+from .base.models import (
+    AbstractBatchUpgradeOperation,
+    AbstractBuild,
+    AbstractCategory,
+    AbstractDeviceFirmware,
+    AbstractFirmwareImage,
+    AbstractUpgradeOperation,
+)
 
 
 class Category(AbstractCategory):

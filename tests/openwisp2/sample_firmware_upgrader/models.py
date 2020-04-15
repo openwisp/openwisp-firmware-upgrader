@@ -1,7 +1,12 @@
 from django.db import models
-from openwisp_firmware_upgrader.base.models import (AbstractBatchUpgradeOperation, AbstractBuild,
-                                                    AbstractCategory, AbstractDeviceFirmware,
-                                                    AbstractFirmwareImage, AbstractUpgradeOperation)
+from openwisp_firmware_upgrader.base.models import (
+    AbstractBatchUpgradeOperation,
+    AbstractBuild,
+    AbstractCategory,
+    AbstractDeviceFirmware,
+    AbstractFirmwareImage,
+    AbstractUpgradeOperation,
+)
 
 
 class DetailsModel(models.Model):

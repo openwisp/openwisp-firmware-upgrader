@@ -17,6 +17,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(
             create_permissions_for_default_groups_helper,
-            reverse_code=migrations.RunPython.noop
+            reverse_code=migrations.RunPython.noop,
         )
     ]

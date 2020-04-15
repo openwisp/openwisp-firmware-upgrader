@@ -37,17 +37,26 @@ class AbstractCategory(OrgMixin, TimeStampedEditableModel):
 
 
 class AbstractBuild(TimeStampedEditableModel):
-    category = models.ForeignKey(get_model_name('firmware_upgrader', 'Category'),
-                                 on_delete=models.CASCADE,
-                                 verbose_name=_('firmware category'),
-                                 help_text=_('if you have different firmware types '
-                                             'eg: (BGP routers, wifi APs, DSL gateways) '
-                                             'create a category for each.'))
+    category = models.ForeignKey(
+        get_model_name('firmware_upgrader', 'Category'),
+        on_delete=models.CASCADE,
+        verbose_name=_('firmware category'),
+        help_text=_(
+            'if you have different firmware types '
+            'eg: (BGP routers, wifi APs, DSL gateways) '
+            'create a category for each.'
+        ),
+    )
     version = models.CharField(max_length=32, db_index=True)
-    changelog = models.TextField(_('change log'), blank=True,
-                                 help_text=_('descriptive text indicating what '
-                                             'has changed since the previous '
-                                             'version, if applicable'))
+    changelog = models.TextField(
+        _('change log'),
+        blank=True,
+        help_text=_(
+            'descriptive text indicating what '
+            'has changed since the previous '
+            'version, if applicable'
+        ),
+    )
 
     class Meta:
         abstract = True
@@ -78,8 +87,7 @@ class AbstractBuild(TimeStampedEditableModel):
         """
         device_firmwares = self._find_related_device_firmwares()
         for device_fw in device_firmwares:
-            image = self.firmwareimage_set.filter(type=device_fw.image.type) \
-                                          .first()
+            image = self.firmwareimage_set.filter(type=device_fw.image.type).first()
             if image:
                 device_fw.image = image
                 device_fw.full_clean()
@@ -89,10 +97,13 @@ class AbstractBuild(TimeStampedEditableModel):
         related = ['image']
         if select_devices:
             related.append('device')
-        return load_model('firmware_upgrader', 'DeviceFirmware').objects.all() \
-            .select_related(*related) \
-            .filter(image__build__category_id=self.category_id) \
+        return (
+            load_model('firmware_upgrader', 'DeviceFirmware')
+            .objects.all()
+            .select_related(*related)
+            .filter(image__build__category_id=self.category_id)
             .exclude(image__build=self, installed=True)
+        )
 
     def upgrade_firmwareless_devices(self, batch):
         """
@@ -120,9 +131,11 @@ class AbstractBuild(TimeStampedEditableModel):
             boards = []
             for image in self.firmwareimage_set.all():
                 boards += image.boards
-        return Device.objects.filter(devicefirmware__isnull=True,
-                                     organization=self.category.organization,
-                                     model__in=boards)
+        return Device.objects.filter(
+            devicefirmware__isnull=True,
+            organization=self.category.organization,
+            model__in=boards,
+        )
 
 
 def get_build_directory(instance, filename):
@@ -131,17 +144,22 @@ def get_build_directory(instance, filename):
 
 
 class AbstractFirmwareImage(TimeStampedEditableModel):
-    build = models.ForeignKey(get_model_name('firmware_upgrader', 'Build'),
-                              on_delete=models.CASCADE)
-    file = PrivateFileField('File',
-                            upload_to=get_build_directory,
-                            max_file_size=app_settings.MAX_FILE_SIZE)
-    type = models.CharField(blank=True,
-                            max_length=128,
-                            choices=FIRMWARE_IMAGE_TYPE_CHOICES,
-                            help_text=_('firmware image type: model or '
-                                        'architecture. Leave blank to attempt '
-                                        'determining automatically'))
+    build = models.ForeignKey(
+        get_model_name('firmware_upgrader', 'Build'), on_delete=models.CASCADE
+    )
+    file = PrivateFileField(
+        'File', upload_to=get_build_directory, max_file_size=app_settings.MAX_FILE_SIZE
+    )
+    type = models.CharField(
+        blank=True,
+        max_length=128,
+        choices=FIRMWARE_IMAGE_TYPE_CHOICES,
+        help_text=_(
+            'firmware image type: model or '
+            'architecture. Leave blank to attempt '
+            'determining automatically'
+        ),
+    )
 
     class Meta:
         abstract = True
@@ -163,9 +181,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         try:
             self.boards
         except KeyError:
-            raise ValidationError({
-                'type': 'Could not find boards for this type'
-            })
+            raise ValidationError({'type': 'Could not find boards for this type'})
 
     def delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
@@ -192,8 +208,9 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):
     device = models.OneToOneField('config.Device', on_delete=models.CASCADE)
-    image = models.ForeignKey(get_model_name('firmware_upgrader', 'FirmwareImage'),
-                              on_delete=models.CASCADE)
+    image = models.ForeignKey(
+        get_model_name('firmware_upgrader', 'FirmwareImage'), on_delete=models.CASCADE
+    )
     installed = models.BooleanField(default=False)
     _old_image = None
 
@@ -207,27 +224,28 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
     def clean(self):
         if self.image.build.category.organization != self.device.organization:
-            raise ValidationError({
-                'image': _('The organization of the image doesn\'t '
-                           'match the organization of the device')
-            })
+            raise ValidationError(
+                {
+                    'image': _(
+                        'The organization of the image doesn\'t '
+                        'match the organization of the device'
+                    )
+                }
+            )
         if self.device.deviceconnection_set.count() < 1:
             raise ValidationError(
-                _('This device does not have a related connection object defined '
-                  'yet and therefore it would not be possible to upgrade it, '
-                  'please add one in the section named "DEVICE CONNECTIONS"')
+                _(
+                    'This device does not have a related connection object defined '
+                    'yet and therefore it would not be possible to upgrade it, '
+                    'please add one in the section named "DEVICE CONNECTIONS"'
+                )
             )
         if self.device.model not in self.image.boards:
-            raise ValidationError(
-                _('Device model and image model do not match')
-            )
+            raise ValidationError(_('Device model and image model do not match'))
 
     @property
     def image_has_changed(self):
-        return (
-            self._state.adding or
-            self.image_id != self._old_image.id
-        )
+        return self._state.adding or self.image_id != self._old_image.id
 
     def save(self, batch=None, upgrade=True, *args, **kwargs):
         # if firwmare image has changed launch upgrade
@@ -246,8 +264,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
     def create_upgrade_operation(self, batch):
         uo_model = load_model('firmware_upgrader', 'UpgradeOperation')
-        operation = uo_model(device=self.device,
-                             image=self.image)
+        operation = uo_model(device=self.device, image=self.image)
         if batch:
             operation.batch = batch
         operation.full_clean()
@@ -259,16 +276,17 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
 
 class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
-    build = models.ForeignKey(get_model_name('firmware_upgrader',
-                                             'Build'), on_delete=models.CASCADE)
+    build = models.ForeignKey(
+        get_model_name('firmware_upgrader', 'Build'), on_delete=models.CASCADE
+    )
     STATUS_CHOICES = (
         ('in-progress', _('in progress')),
         ('success', _('completed successfully')),
         ('failed', _('completed with some failures')),
     )
-    status = models.CharField(max_length=12,
-                              choices=STATUS_CHOICES,
-                              default=STATUS_CHOICES[0][0])
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
+    )
 
     class Meta:
         abstract = True
@@ -336,16 +354,19 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         ('aborted', _('aborted')),
     )
     device = models.ForeignKey('config.Device', on_delete=models.CASCADE)
-    image = models.ForeignKey(get_model_name('firmware_upgrader',
-                                             'FirmwareImage'), on_delete=models.CASCADE)
-    status = models.CharField(max_length=12,
-                              choices=STATUS_CHOICES,
-                              default=STATUS_CHOICES[0][0])
+    image = models.ForeignKey(
+        get_model_name('firmware_upgrader', 'FirmwareImage'), on_delete=models.CASCADE
+    )
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
+    )
     log = models.TextField(blank=True)
-    batch = models.ForeignKey(get_model_name('firmware_upgrader', 'BatchUpgradeOperation'),
-                              on_delete=models.CASCADE,
-                              blank=True,
-                              null=True)
+    batch = models.ForeignKey(
+        get_model_name('firmware_upgrader', 'BatchUpgradeOperation'),
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+    )
 
     class Meta:
         abstract = True
@@ -359,9 +380,11 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
             return
         # prevent multiple upgrade operations for
         # the same device running at the same time
-        qs = load_model('firmware_upgrader', 'UpgradeOperation').objects.filter(device=self.device,
-                                                                                status='in-progress') \
+        qs = (
+            load_model('firmware_upgrader', 'UpgradeOperation')
+            .objects.filter(device=self.device, status='in-progress')
             .exclude(pk=self.pk)
+        )
         if qs.count() > 0:
             message = 'Another upgrade operation is in progress, aborting...'
             logger.warn(message)
@@ -375,8 +398,9 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         except (AttributeError, ImportError) as e:
             logger.exception(e)
             return
-        upgrader = upgrader_class(params=conn.get_params(),
-                                  addresses=conn.get_addresses())
+        upgrader = upgrader_class(
+            params=conn.get_params(), addresses=conn.get_addresses()
+        )
         try:
             # test connection
             logger.info('Testing connection')

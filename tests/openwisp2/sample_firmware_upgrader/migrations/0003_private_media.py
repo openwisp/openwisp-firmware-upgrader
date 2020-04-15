@@ -16,6 +16,10 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='firmwareimage',
             name='file',
-            field=private_storage.fields.PrivateFileField(storage=private_storage.storage.files.PrivateFileSystemStorage(), upload_to=openwisp_firmware_upgrader.base.models.get_build_directory, verbose_name='File'),
+            field=private_storage.fields.PrivateFileField(
+                storage=private_storage.storage.files.PrivateFileSystemStorage(),
+                upload_to=openwisp_firmware_upgrader.base.models.get_build_directory,
+                verbose_name='File',
+            ),
         ),
     ]

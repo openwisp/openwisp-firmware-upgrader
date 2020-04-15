@@ -13,20 +13,27 @@ if app_settings.CUSTOM_OPENWRT_IMAGES:
 else:
     OPENWRT_FIRMWARE_IMAGE_MAP = OrderedDict()
 
-OPENWRT_FIRMWARE_IMAGE_MAP.update(OrderedDict((
-    ('ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin', {
-        'label': 'TP-Link WDR4300 v1 (IL)',
-        'boards': ('TP-LINK TL-WDR4300 v1 (IL)',)
-    }),
-    ('ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin', {
-        'label': 'TP-Link WDR4300 v1',
-        'boards': ('TP-Link TL-WDR4300 v1',)
-    }),
-    ('ar71xx-generic-xd3200-squashfs-sysupgrade.bin', {
-        'label': 'YunCore XD3200',
-        'boards': ('YunCore XD3200',)
-    }),
-)))
+OPENWRT_FIRMWARE_IMAGE_MAP.update(
+    OrderedDict(
+        (
+            (
+                'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link WDR4300 v1 (IL)',
+                    'boards': ('TP-LINK TL-WDR4300 v1 (IL)',),
+                },
+            ),
+            (
+                'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link WDR4300 v1', 'boards': ('TP-Link TL-WDR4300 v1',)},
+            ),
+            (
+                'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
+                {'label': 'YunCore XD3200', 'boards': ('YunCore XD3200',)},
+            ),
+        )
+    )
+)
 
 # OpenWRT only for now, in the future we'll merge
 # different dictionaries representing different firmwares

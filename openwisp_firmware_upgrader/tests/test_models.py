@@ -3,7 +3,14 @@ from unittest import skipIf
 
 from django.test import TestCase, TransactionTestCase
 
-from ..models import BatchUpgradeOperation, Build, Category, DeviceFirmware, FirmwareImage, UpgradeOperation
+from ..models import (
+    BatchUpgradeOperation,
+    Build,
+    Category,
+    DeviceFirmware,
+    FirmwareImage,
+    UpgradeOperation,
+)
 from .base import TestUpgraderMixin
 from .base.test_models import BaseTestModels, BaseTestModelsTransaction
 
@@ -20,7 +27,9 @@ class TestModels(BaseTestModels, TestUpgraderMixin, TestCase):
 
 
 @skipIf(os.environ.get('SAMPLE_APP', False), 'Running tests on SAMPLE_APP')
-class TestModelsTransaction(BaseTestModelsTransaction, TestUpgraderMixin, TransactionTestCase):
+class TestModelsTransaction(
+    BaseTestModelsTransaction, TestUpgraderMixin, TransactionTestCase
+):
     device_firmware_model = DeviceFirmware
     upgrade_operation_model = UpgradeOperation
     batch_upgrade_operation_model = BatchUpgradeOperation

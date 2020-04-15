@@ -5,8 +5,13 @@ from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
 from openwisp_firmware_upgrader.tests.base.test_admin import BaseTestAdmin
-from openwisp_firmware_upgrader.tests.base.test_models import BaseTestModels, BaseTestModelsTransaction
-from openwisp_firmware_upgrader.tests.base.test_private_storage import BasePrivateStorage
+from openwisp_firmware_upgrader.tests.base.test_models import (
+    BaseTestModels,
+    BaseTestModelsTransaction,
+)
+from openwisp_firmware_upgrader.tests.base.test_private_storage import (
+    BasePrivateStorage,
+)
 from swapper import load_model
 
 BatchUpgradeOperation = load_model('firmware_upgrader', 'BatchUpgradeOperation')
@@ -17,8 +22,10 @@ FirmwareImage = load_model('firmware_upgrader', 'FirmwareImage')
 UpgradeOperation = load_model('firmware_upgrader', 'UpgradeOperation')
 
 
-@skipUnless(os.environ.get('SAMPLE_APP', False),
-            'Running tests on standard openwisp_firmware_upgrader models')
+@skipUnless(
+    os.environ.get('SAMPLE_APP', False),
+    'Running tests on standard openwisp_firmware_upgrader models',
+)
 class TestAdmin(BaseTestAdmin, TestUpgraderMixin, TestCase):
     BUILD_LIST_URL = reverse('admin:sample_firmware_upgrader_build_changelist')
     device_firmware_model = DeviceFirmware
@@ -28,8 +35,10 @@ class TestAdmin(BaseTestAdmin, TestUpgraderMixin, TestCase):
     category_model = Category
 
 
-@skipUnless(os.environ.get('SAMPLE_APP', False),
-            'Running tests on standard openwisp_firmware_upgrader models')
+@skipUnless(
+    os.environ.get('SAMPLE_APP', False),
+    'Running tests on standard openwisp_firmware_upgrader models',
+)
 class TestModels(BaseTestModels, TestUpgraderMixin, TestCase):
     app_name = 'openwisp2.sample_firmware_upgrader'
     device_firmware_model = DeviceFirmware
@@ -40,9 +49,13 @@ class TestModels(BaseTestModels, TestUpgraderMixin, TestCase):
     category_model = Category
 
 
-@skipUnless(os.environ.get('SAMPLE_APP', False),
-            'Running tests on standard openwisp_firmware_upgrader models')
-class TestModelsTransaction(BaseTestModelsTransaction, TestUpgraderMixin, TransactionTestCase):
+@skipUnless(
+    os.environ.get('SAMPLE_APP', False),
+    'Running tests on standard openwisp_firmware_upgrader models',
+)
+class TestModelsTransaction(
+    BaseTestModelsTransaction, TestUpgraderMixin, TransactionTestCase
+):
     device_firmware_model = DeviceFirmware
     upgrade_operation_model = UpgradeOperation
     batch_upgrade_operation_model = BatchUpgradeOperation
@@ -51,8 +64,10 @@ class TestModelsTransaction(BaseTestModelsTransaction, TestUpgraderMixin, Transa
     category_model = Category
 
 
-@skipUnless(os.environ.get('SAMPLE_APP', False),
-            'Running tests on standard openwisp_firmware_upgrader models')
+@skipUnless(
+    os.environ.get('SAMPLE_APP', False),
+    'Running tests on standard openwisp_firmware_upgrader models',
+)
 class TestPrivateStorage(BasePrivateStorage, TestUpgraderMixin, TestCase):
     device_firmware_model = DeviceFirmware
     upgrade_operation_model = UpgradeOperation

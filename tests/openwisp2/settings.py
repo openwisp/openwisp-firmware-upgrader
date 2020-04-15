@@ -57,7 +57,11 @@ INSTALLED_APPS = [
     'channels',
 ]
 
-EXTENDED_APPS = ('django_netjsonconfig', 'django_x509', 'django_loci',)
+EXTENDED_APPS = (
+    'django_netjsonconfig',
+    'django_x509',
+    'django_loci',
+)
 
 AUTH_USER_MODEL = 'openwisp_users.User'
 SITE_ID = '1'
@@ -82,9 +86,7 @@ ROOT_URLCONF = 'openwisp2.urls'
 
 ASGI_APPLICATION = 'openwisp_controller.geo.channels.routing.channel_routing'
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer'
-    },
+    'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'},
 }
 
 
@@ -115,7 +117,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'openwisp_utils.admin_theme.context_processor.menu_items'
+                'openwisp_utils.admin_theme.context_processor.menu_items',
             ],
         },
     }
@@ -143,9 +145,7 @@ else:
         'default': {
             'BACKEND': 'django_redis.cache.RedisCache',
             'LOCATION': 'redis://localhost/0',
-            'OPTIONS': {
-                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            }
+            'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient',},
         }
     }
 
@@ -161,11 +161,7 @@ else:
 
 LOGGING = {
     'version': 1,
-    'filters': {
-        'require_debug_true': {
-            '()': 'django.utils.log.RequireDebugTrue',
-        }
-    },
+    'filters': {'require_debug_true': {'()': 'django.utils.log.RequireDebugTrue',}},
     'handlers': {
         'console': {
             'level': 'DEBUG',
@@ -174,25 +170,17 @@ LOGGING = {
         }
     },
     'loggers': {
-        'py.warnings': {
-            'handlers': ['console'],
-        },
-        'celery': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-        },
-        'celery.task': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-        },
-    }
+        'py.warnings': {'handlers': ['console'],},
+        'celery': {'handlers': ['console'], 'level': 'DEBUG',},
+        'celery.task': {'handlers': ['console'], 'level': 'DEBUG',},
+    },
 }
 
 OPENWISP_CUSTOM_OPENWRT_IMAGES = (
-    ('customimage-squashfs-sysupgrade.bin', {
-        'label': 'Custom WAP-1200',
-        'boards': ('CWAP1200',)
-    }),
+    (
+        'customimage-squashfs-sysupgrade.bin',
+        {'label': 'Custom WAP-1200', 'boards': ('CWAP1200',)},
+    ),
 )
 
 if os.environ.get('SAMPLE_APP', False):
@@ -203,8 +191,12 @@ if os.environ.get('SAMPLE_APP', False):
     FIRMWARE_UPGRADER_BUILD_MODEL = 'sample_firmware_upgrader.Build'
     FIRMWARE_UPGRADER_FIRMWAREIMAGE_MODEL = 'sample_firmware_upgrader.FirmwareImage'
     FIRMWARE_UPGRADER_DEVICEFIRMWARE_MODEL = 'sample_firmware_upgrader.DeviceFirmware'
-    FIRMWARE_UPGRADER_BATCHUPGRADEOPERATION_MODEL = 'sample_firmware_upgrader.BatchUpgradeOperation'
-    FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = 'sample_firmware_upgrader.UpgradeOperation'
+    FIRMWARE_UPGRADER_BATCHUPGRADEOPERATION_MODEL = (
+        'sample_firmware_upgrader.BatchUpgradeOperation'
+    )
+    FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = (
+        'sample_firmware_upgrader.UpgradeOperation'
+    )
     OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE = 35 * 1024 * 1024
 
 # local settings must be imported before test runner otherwise they'll be ignored

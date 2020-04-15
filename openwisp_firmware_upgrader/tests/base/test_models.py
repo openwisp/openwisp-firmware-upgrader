@@ -9,7 +9,6 @@ from ...hardware import FIRMWARE_IMAGE_MAP
 
 
 class BaseTestModels(object):
-
     def test_category_str(self):
         c = self.category_model(name='WiFi Hotspot')
         self.assertEqual(str(c), c.name)
@@ -50,7 +49,9 @@ class BaseTestModels(object):
             self.fail('ValidationError not raised')
 
     def test_device_fw_image_changed(self, *args):
-        with mock.patch(f'{self.app_name}.models.UpgradeOperation.upgrade', return_value=None):
+        with mock.patch(
+            f'{self.app_name}.models.UpgradeOperation.upgrade', return_value=None
+        ):
             device_fw = self.device_firmware_model()
             self.assertIsNone(device_fw._old_image)
             # save
@@ -61,8 +62,9 @@ class BaseTestModels(object):
             device_fw = self.device_firmware_model.objects.first()
             self.assertEqual(device_fw._old_image, device_fw.image)
             # change
-            build2 = self._create_build(category=device_fw.image.build.category,
-                                        version='0.2')
+            build2 = self._create_build(
+                category=device_fw.image.build.category, version='0.2'
+            )
             fw2 = self._create_firmware_image(build=build2, type=device_fw.image.type)
             old_image = device_fw.image
             device_fw.image = fw2
@@ -74,13 +76,17 @@ class BaseTestModels(object):
             self.assertEqual(self.batch_upgrade_operation_model.objects.count(), 0)
 
     def test_device_fw_created(self, *args):
-        with mock.patch(f'{self.app_name}.models.UpgradeOperation.upgrade', return_value=None):
+        with mock.patch(
+            f'{self.app_name}.models.UpgradeOperation.upgrade', return_value=None
+        ):
             self._create_device_firmware(upgrade=True)
             self.assertEqual(self.upgrade_operation_model.objects.count(), 1)
             self.assertEqual(self.batch_upgrade_operation_model.objects.count(), 0)
 
     def test_device_fw_image_saved_not_installed(self, *args):
-        with mock.patch(f'{self.app_name}.models.UpgradeOperation.upgrade', return_value=None):
+        with mock.patch(
+            f'{self.app_name}.models.UpgradeOperation.upgrade', return_value=None
+        ):
             device_fw = self.device_firmware_model()
             self.assertIsNone(device_fw._old_image)
             # save
@@ -101,7 +107,9 @@ class BaseTestModels(object):
             self.fail('ValidationError not raised')
 
     def test_invalid_board(self):
-        image = FIRMWARE_IMAGE_MAP['ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin']
+        image = FIRMWARE_IMAGE_MAP[
+            'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin'
+        ]
         boards = image['boards']
         del image['boards']
         err = None
@@ -124,8 +132,7 @@ class BaseTestModels(object):
     def test_device_firmware_image_invalid_model(self):
         device_fw = self._create_device_firmware()
         different_img = self._create_firmware_image(
-            build=device_fw.image.build,
-            type=self.TPLINK_4300_IL_IMAGE
+            build=device_fw.image.build, type=self.TPLINK_4300_IL_IMAGE
         )
         try:
             device_fw.image = different_img

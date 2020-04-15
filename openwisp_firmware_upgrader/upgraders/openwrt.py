@@ -64,22 +64,30 @@ class OpenWrt(BaseOpenWrt):
             cat = f'cat {self.CHECKSUM_FILE}'
             output, code = self.exec_command(cat)
             if checksum == output:
-                message = 'Firmware already upgraded previously. ' \
-                          'Identical checksum found in the filesystem, ' \
-                          'no need to upgrade, aborting operation...'
+                message = (
+                    'Firmware already upgraded previously. '
+                    'Identical checksum found in the filesystem, '
+                    'no need to upgrade, aborting operation...'
+                )
                 self.log(message)
                 raise AbortedUpgrade(message)
             else:
-                self.log('Checksum different, proceeding with '
-                         'the upload of the new image...')
+                self.log(
+                    'Checksum different, proceeding with '
+                    'the upload of the new image...'
+                )
         else:
-            self.log('Image checksum file not found, proceeding '
-                     'with the upload of the new image...')
+            self.log(
+                'Image checksum file not found, proceeding '
+                'with the upload of the new image...'
+            )
 
     def _test_image(self, path):
         self.exec_command(f'sysupgrade --test {path}')
-        self.log('Sysupgrade test passed successfully, '
-                 'proceeding with the upgrade operation...')
+        self.log(
+            'Sysupgrade test passed successfully, '
+            'proceeding with the upgrade operation...'
+        )
 
     def _reflash(self, path):
         """
@@ -89,19 +97,20 @@ class OpenWrt(BaseOpenWrt):
         doesn't seem to take effect so at least we can stop the process
         using `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
         """
+
         def upgrade(conn, path, timeout):
             conn.connect()
             conn.exec_command(self.get_upgrade_command(path), timeout=timeout)
             conn.disconnect()
-        subprocess = Process(
-            target=upgrade,
-            args=[self, path, self.UPGRADE_TIMEOUT]
-        )
+
+        subprocess = Process(target=upgrade, args=[self, path, self.UPGRADE_TIMEOUT])
         subprocess.start()
         self.log('Upgrade operation in progress...')
         subprocess.join(timeout=self.UPGRADE_TIMEOUT)
-        self.log(f'SSH connection closed, will wait {self.SLEEP_TIME} seconds before '
-                 'attempting to reconnect...')
+        self.log(
+            f'SSH connection closed, will wait {self.SLEEP_TIME} seconds before '
+            'attempting to reconnect...'
+        )
         sleep(self.SLEEP_TIME)
         # kill the subprocess if it has hanged
         if subprocess.is_alive():
@@ -110,17 +119,17 @@ class OpenWrt(BaseOpenWrt):
 
     def _write_checksum(self, checksum):
         for attempt in range(1, self.RETRY_ATTEMPTS + 1):
-            self.log('Trying to reconnect to device '
-                     f'(attempt n.{attempt})...')
+            self.log('Trying to reconnect to device ' f'(attempt n.{attempt})...')
             try:
                 self.connect()
             except (NoValidConnectionsError, socket.timeout):
-                self.log('Device not reachable yet, '
-                         f'retrying in {self.RETRY_TIME} seconds...')
+                self.log(
+                    'Device not reachable yet, '
+                    f'retrying in {self.RETRY_TIME} seconds...'
+                )
                 sleep(self.RETRY_TIME)
                 continue
-            self.log('Connected! Writing checksum '
-                     f'file to {self.CHECKSUM_FILE}')
+            self.log('Connected! Writing checksum ' f'file to {self.CHECKSUM_FILE}')
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
             self.exec_command(f'mkdir -p {checksum_dir}')
             self.exec_command(f'echo {checksum} > {self.CHECKSUM_FILE}')
@@ -129,6 +138,5 @@ class OpenWrt(BaseOpenWrt):
             self.log('Upgrade completed successfully.')
             break
         else:
-            self.log('Giving up, device not reachable '
-                     'anymore after upgrade')
+            self.log('Giving up, device not reachable ' 'anymore after upgrade')
             return False

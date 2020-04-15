@@ -58,9 +58,11 @@ class AbstractBuildAdmin(BaseVersionAdmin):
         if queryset.count() > 1:
             self.message_user(
                 request,
-                _('Multiple mass upgrades requested but at the moment only '
-                  'a single mass upgrade operation at time is supported.'),
-                messages.ERROR
+                _(
+                    'Multiple mass upgrades requested but at the moment only '
+                    'a single mass upgrade operation at time is supported.'
+                ),
+                messages.ERROR,
             )
             # returning None will display the change list page again
             return None
@@ -71,12 +73,17 @@ class AbstractBuildAdmin(BaseVersionAdmin):
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
             from django.utils.safestring import mark_safe
-            text = _('Mass upgrade operation started, you can '
-                     'track its progress from the <a href="%s">list '
-                     'of mass upgrades</a>.') % url
+
+            text = (
+                _(
+                    'Mass upgrade operation started, you can '
+                    'track its progress from the <a href="%s">list '
+                    'of mass upgrades</a>.'
+                )
+                % url
+            )
             self.message_user(request, mark_safe(text), messages.SUCCESS)
-            batch_upgrade_operation.delay(build_id=build.pk,
-                                          firmwareless=upgrade_all)
+            batch_upgrade_operation.delay(build_id=build.pk, firmwareless=upgrade_all)
             # returning None will display the change list page again
             return None
         # upgrade needs to be confirmed
@@ -84,26 +91,34 @@ class AbstractBuildAdmin(BaseVersionAdmin):
         firmwareless_devices = build._find_firmwareless_devices()
         title = _('Confirm mass upgrade operation')
         context = self.admin_site.each_context(request)
-        context.update({
-            'title': title,
-            'related_device_fw': related_device_fw,
-            'related_count': len(related_device_fw),
-            'firmwareless_devices': firmwareless_devices,
-            'firmwareless_count': len(firmwareless_devices),
-            'build': build,
-            'opts': opts,
-            'action_checkbox_name': ACTION_CHECKBOX_NAME,
-            'media': self.media,
-        })
+        context.update(
+            {
+                'title': title,
+                'related_device_fw': related_device_fw,
+                'related_count': len(related_device_fw),
+                'firmwareless_devices': firmwareless_devices,
+                'firmwareless_count': len(firmwareless_devices),
+                'build': build,
+                'opts': opts,
+                'action_checkbox_name': ACTION_CHECKBOX_NAME,
+                'media': self.media,
+            }
+        )
         request.current_app = self.admin_site.name
-        return TemplateResponse(request, [
-            'admin/%s/%s/upgrade_selected_confirmation.html' % (app_label, opts.model_name),
-            'admin/%s/upgrade_selected_confirmation.html' % app_label,
-            'admin/upgrade_selected_confirmation.html'
-        ], context)
+        return TemplateResponse(
+            request,
+            [
+                'admin/%s/%s/upgrade_selected_confirmation.html'
+                % (app_label, opts.model_name),
+                'admin/%s/upgrade_selected_confirmation.html' % app_label,
+                'admin/upgrade_selected_confirmation.html',
+            ],
+            context,
+        )
 
-    upgrade_selected.short_description = 'Mass-upgrade devices related ' \
-                                         'to the selected build'
+    upgrade_selected.short_description = (
+        'Mass-upgrade devices related ' 'to the selected build'
+    )
 
 
 class UpgradeOperationInline(admin.StackedInline):
@@ -140,14 +155,9 @@ class AbstractBatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
         'failed_rate',
         'aborted_rate',
         'created',
-        'modified'
+        'modified',
     ]
-    readonly_fields = [
-        'completed',
-        'success_rate',
-        'failed_rate',
-        'aborted_rate'
-    ]
+    readonly_fields = ['completed', 'success_rate', 'failed_rate', 'aborted_rate']
 
     def get_readonly_fields(self, request, obj):
         fields = super().get_readonly_fields(request, obj)

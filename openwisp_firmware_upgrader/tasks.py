@@ -8,7 +8,9 @@ def upgrade_firmware(operation_id):
     Calls the ``upgrade()`` method of an
     ``UpgradeOperation`` instance in the background
     """
-    operation = load_model('firmware_upgrader', 'UpgradeOperation').objects.get(pk=operation_id)
+    operation = load_model('firmware_upgrader', 'UpgradeOperation').objects.get(
+        pk=operation_id
+    )
     operation.upgrade()
 
 

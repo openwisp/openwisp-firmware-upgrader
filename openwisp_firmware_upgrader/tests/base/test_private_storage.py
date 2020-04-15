@@ -13,10 +13,7 @@ class BasePrivateStorage(TestMultitenantAdminMixin):
 
     def _download_firmware_assert_status(self, status_code):
         response = self.client.get(
-            reverse(
-                'serve_private_file',
-                args=[self.image.file],
-            )
+            reverse('serve_private_file', args=[self.image.file])
         )
         self.assertEqual(response.status_code, status_code)
 

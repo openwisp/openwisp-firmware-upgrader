@@ -21,101 +21,324 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='BatchUpgradeOperation',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created', model_utils.fields.AutoCreatedField(default=django.utils.timezone.now, editable=False, verbose_name='created')),
-                ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, editable=False, verbose_name='modified')),
-                ('status', models.CharField(choices=[('in-progress', 'in progress'), ('success', 'completed successfully'), ('failed', 'completed with some failures')], default='in-progress', max_length=12)),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                (
+                    'created',
+                    model_utils.fields.AutoCreatedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='created',
+                    ),
+                ),
+                (
+                    'modified',
+                    model_utils.fields.AutoLastModifiedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='modified',
+                    ),
+                ),
+                (
+                    'status',
+                    models.CharField(
+                        choices=[
+                            ('in-progress', 'in progress'),
+                            ('success', 'completed successfully'),
+                            ('failed', 'completed with some failures'),
+                        ],
+                        default='in-progress',
+                        max_length=12,
+                    ),
+                ),
                 ('details', models.CharField(blank=True, max_length=64, null=True)),
             ],
-            options={
-                'abstract': False,
-            },
+            options={'abstract': False,},
         ),
         migrations.CreateModel(
             name='Build',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created', model_utils.fields.AutoCreatedField(default=django.utils.timezone.now, editable=False, verbose_name='created')),
-                ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, editable=False, verbose_name='modified')),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                (
+                    'created',
+                    model_utils.fields.AutoCreatedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='created',
+                    ),
+                ),
+                (
+                    'modified',
+                    model_utils.fields.AutoLastModifiedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='modified',
+                    ),
+                ),
                 ('version', models.CharField(db_index=True, max_length=32)),
-                ('changelog', models.TextField(blank=True, help_text='descriptive text indicating what has changed since the previous version, if applicable', verbose_name='change log')),
+                (
+                    'changelog',
+                    models.TextField(
+                        blank=True,
+                        help_text='descriptive text indicating what has changed since the previous version, if applicable',
+                        verbose_name='change log',
+                    ),
+                ),
                 ('details', models.CharField(blank=True, max_length=64, null=True)),
             ],
-            options={
-                'abstract': False,
-            },
+            options={'abstract': False,},
         ),
         migrations.CreateModel(
             name='FirmwareImage',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created', model_utils.fields.AutoCreatedField(default=django.utils.timezone.now, editable=False, verbose_name='created')),
-                ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, editable=False, verbose_name='modified')),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                (
+                    'created',
+                    model_utils.fields.AutoCreatedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='created',
+                    ),
+                ),
+                (
+                    'modified',
+                    model_utils.fields.AutoLastModifiedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='modified',
+                    ),
+                ),
                 ('file', models.FileField(upload_to='')),
-                ('type', models.CharField(blank=True, choices=[('customimage-squashfs-sysupgrade.bin', 'Custom WAP-1200'), ('ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin', 'TP-Link WDR4300 v1 (IL)'), ('ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin', 'TP-Link WDR4300 v1'), ('ar71xx-generic-xd3200-squashfs-sysupgrade.bin', 'YunCore XD3200')], help_text='firmware image type: model or architecture. Leave blank to attempt determining automatically', max_length=128)),
+                (
+                    'type',
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ('customimage-squashfs-sysupgrade.bin', 'Custom WAP-1200'),
+                            (
+                                'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin',
+                                'TP-Link WDR4300 v1 (IL)',
+                            ),
+                            (
+                                'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin',
+                                'TP-Link WDR4300 v1',
+                            ),
+                            (
+                                'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
+                                'YunCore XD3200',
+                            ),
+                        ],
+                        help_text='firmware image type: model or architecture. Leave blank to attempt determining automatically',
+                        max_length=128,
+                    ),
+                ),
                 ('details', models.CharField(blank=True, max_length=64, null=True)),
-                ('build', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='sample_firmware_upgrader.Build')),
+                (
+                    'build',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to='sample_firmware_upgrader.Build',
+                    ),
+                ),
             ],
-            options={
-                'abstract': False,
-            },
+            options={'abstract': False,},
         ),
         migrations.CreateModel(
             name='UpgradeOperation',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created', model_utils.fields.AutoCreatedField(default=django.utils.timezone.now, editable=False, verbose_name='created')),
-                ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, editable=False, verbose_name='modified')),
-                ('status', models.CharField(choices=[('in-progress', 'in progress'), ('success', 'success'), ('failed', 'failed'), ('aborted', 'aborted')], default='in-progress', max_length=12)),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                (
+                    'created',
+                    model_utils.fields.AutoCreatedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='created',
+                    ),
+                ),
+                (
+                    'modified',
+                    model_utils.fields.AutoLastModifiedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='modified',
+                    ),
+                ),
+                (
+                    'status',
+                    models.CharField(
+                        choices=[
+                            ('in-progress', 'in progress'),
+                            ('success', 'success'),
+                            ('failed', 'failed'),
+                            ('aborted', 'aborted'),
+                        ],
+                        default='in-progress',
+                        max_length=12,
+                    ),
+                ),
                 ('log', models.TextField(blank=True)),
                 ('details', models.CharField(blank=True, max_length=64, null=True)),
-                ('batch', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='sample_firmware_upgrader.BatchUpgradeOperation')),
-                ('device', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='config.Device')),
-                ('image', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='sample_firmware_upgrader.FirmwareImage')),
+                (
+                    'batch',
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to='sample_firmware_upgrader.BatchUpgradeOperation',
+                    ),
+                ),
+                (
+                    'device',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, to='config.Device'
+                    ),
+                ),
+                (
+                    'image',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to='sample_firmware_upgrader.FirmwareImage',
+                    ),
+                ),
             ],
-            options={
-                'abstract': False,
-            },
+            options={'abstract': False,},
         ),
         migrations.CreateModel(
             name='DeviceFirmware',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created', model_utils.fields.AutoCreatedField(default=django.utils.timezone.now, editable=False, verbose_name='created')),
-                ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, editable=False, verbose_name='modified')),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                (
+                    'created',
+                    model_utils.fields.AutoCreatedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='created',
+                    ),
+                ),
+                (
+                    'modified',
+                    model_utils.fields.AutoLastModifiedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='modified',
+                    ),
+                ),
                 ('installed', models.BooleanField(default=False)),
                 ('details', models.CharField(blank=True, max_length=64, null=True)),
-                ('device', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='config.Device')),
-                ('image', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='sample_firmware_upgrader.FirmwareImage')),
+                (
+                    'device',
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE, to='config.Device'
+                    ),
+                ),
+                (
+                    'image',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to='sample_firmware_upgrader.FirmwareImage',
+                    ),
+                ),
             ],
-            options={
-                'abstract': False,
-            },
+            options={'abstract': False,},
         ),
         migrations.CreateModel(
             name='Category',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created', model_utils.fields.AutoCreatedField(default=django.utils.timezone.now, editable=False, verbose_name='created')),
-                ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, editable=False, verbose_name='modified')),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                (
+                    'created',
+                    model_utils.fields.AutoCreatedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='created',
+                    ),
+                ),
+                (
+                    'modified',
+                    model_utils.fields.AutoLastModifiedField(
+                        default=django.utils.timezone.now,
+                        editable=False,
+                        verbose_name='modified',
+                    ),
+                ),
                 ('name', models.CharField(db_index=True, max_length=64)),
                 ('description', models.TextField(blank=True)),
                 ('details', models.CharField(blank=True, max_length=64, null=True)),
-                ('organization', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='openwisp_users.Organization', verbose_name='organization')),
+                (
+                    'organization',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to='openwisp_users.Organization',
+                        verbose_name='organization',
+                    ),
+                ),
             ],
-            options={
-                'abstract': False,
-            },
+            options={'abstract': False,},
             bases=(openwisp_users.mixins.ValidateOrgMixin, models.Model),
         ),
         migrations.AddField(
             model_name='build',
             name='category',
-            field=models.ForeignKey(help_text='if you have different firmware types eg: (BGP routers, wifi APs, DSL gateways) create a category for each.', on_delete=django.db.models.deletion.CASCADE, to='sample_firmware_upgrader.Category', verbose_name='firmware category'),
+            field=models.ForeignKey(
+                help_text='if you have different firmware types eg: (BGP routers, wifi APs, DSL gateways) create a category for each.',
+                on_delete=django.db.models.deletion.CASCADE,
+                to='sample_firmware_upgrader.Category',
+                verbose_name='firmware category',
+            ),
         ),
         migrations.AddField(
             model_name='batchupgradeoperation',
             name='build',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='sample_firmware_upgrader.Build'),
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                to='sample_firmware_upgrader.Build',
+            ),
         ),
     ]
