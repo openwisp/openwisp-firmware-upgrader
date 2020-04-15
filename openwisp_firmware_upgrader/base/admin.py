@@ -27,7 +27,8 @@ class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdm
 
 
 class AbstractCategoryAdmin(BaseVersionAdmin):
-    list_display = ('name', 'created', 'modified')
+    list_display = ('name', 'organization', 'created', 'modified')
+    list_filter = ('organization',)
     search_fields = ['name']
     save_on_top = True
 
@@ -38,10 +39,11 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
 
 
 class AbstractBuildAdmin(BaseVersionAdmin):
-    list_display = ('__str__', 'created', 'modified')
+    list_display = ('__str__', 'category', 'created', 'modified')
     search_fields = ['name']
     save_on_top = True
     select_related = ('category',)
+    list_filter = ('category',)
     ordering = ('-version',)
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
@@ -124,7 +126,7 @@ class UpgradeOperationInline(admin.StackedInline):
 
 class AbstractBatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     list_display = ('build', 'status', 'created', 'modified')
-    list_filter = ('status',)
+    list_filter = ('status', 'build__category')
     save_on_top = True
     select_related = ('build',)
     ordering = ('-created',)
