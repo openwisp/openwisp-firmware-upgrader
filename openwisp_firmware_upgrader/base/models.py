@@ -186,6 +186,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     def delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
         self._remove_file()
+        self._remove_empty_directory()
 
     def _clean_type(self):
         """
@@ -204,6 +205,11 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         else:
             msg = 'firmware image not found while deleting {0}:\n{1}'
             logger.error(msg.format(self, path))
+
+    def _remove_empty_directory(self):
+        path = os.path.dirname(self.file.path)
+        if not os.listdir(path):
+            os.rmdir(path)
 
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):
