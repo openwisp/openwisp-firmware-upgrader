@@ -1,7 +1,9 @@
 import logging
 import os
 from decimal import Decimal
+from pathlib import Path
 
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
 from django.utils.functional import cached_property
@@ -208,7 +210,11 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     def _remove_empty_directory(self):
         path = os.path.dirname(self.file.path)
-        if not os.listdir(path):
+        # TODO: precauton when migrating to private storage
+        # avoid accidentally deleting the MEDIA_ROOT dir
+        # remove this before or after first release
+        is_media_root = Path(path).absolute() != Path(settings.MEDIA_ROOT).absolute()
+        if not os.listdir(path) and is_media_root:
             os.rmdir(path)
 
 
