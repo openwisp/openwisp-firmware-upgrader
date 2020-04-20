@@ -3,8 +3,10 @@ from django.urls import reverse
 from openwisp_users.models import OrganizationUser
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
+from . import TestUpgraderMixin
 
-class BasePrivateStorage(TestMultitenantAdminMixin):
+
+class BaseTestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin):
     def setUp(self):
         # Firmware image is created in the default organization
         self.image = self._create_firmware_image()

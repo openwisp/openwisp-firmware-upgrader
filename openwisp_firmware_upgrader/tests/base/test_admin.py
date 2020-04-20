@@ -12,13 +12,13 @@ class BaseTestAdmin(TestMultitenantAdminMixin):
     def test_build_list(self):
         self._login()
         build = self._create_build()
-        r = self.client.get(self.BUILD_LIST_URL)
+        r = self.client.get(self.build_list_url)
         self.assertContains(r, str(build))
 
     def test_build_list_upgrade_action(self):
         self._login()
         self._create_build()
-        r = self.client.get(self.BUILD_LIST_URL)
+        r = self.client.get(self.build_list_url)
         self.assertContains(r, '<option value="upgrade_selected">')
 
     def test_upgrade_selected_error(self):
@@ -26,7 +26,7 @@ class BaseTestAdmin(TestMultitenantAdminMixin):
         b1 = self._create_build()
         b2 = self._create_build(version='0.2', category=b1.category)
         r = self.client.post(
-            self.BUILD_LIST_URL,
+            self.build_list_url,
             {'action': 'upgrade_selected', ACTION_CHECKBOX_NAME: (b1.pk, b2.pk)},
             follow=True,
         )
@@ -39,7 +39,7 @@ class BaseTestAdmin(TestMultitenantAdminMixin):
         self._login()
         env = self._create_upgrade_env()
         r = self.client.post(
-            self.BUILD_LIST_URL,
+            self.build_list_url,
             {'action': 'upgrade_selected', ACTION_CHECKBOX_NAME: (env['build2'].pk,)},
             follow=True,
         )
@@ -51,7 +51,7 @@ class BaseTestAdmin(TestMultitenantAdminMixin):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
         r = self.client.post(
-            self.BUILD_LIST_URL,
+            self.build_list_url,
             {'action': 'upgrade_selected', ACTION_CHECKBOX_NAME: (env['build2'].pk,)},
             follow=True,
         )
@@ -72,7 +72,7 @@ class BaseTestAdmin(TestMultitenantAdminMixin):
         self.assertEqual(self.upgrade_operation_model.objects.count(), 0)
         self.assertEqual(fw.count(), 0)
         r = self.client.post(
-            self.BUILD_LIST_URL,
+            self.build_list_url,
             {
                 'action': 'upgrade_selected',
                 'upgrade_related': 'upgrade_related',
@@ -97,7 +97,7 @@ class BaseTestAdmin(TestMultitenantAdminMixin):
         self.assertEqual(self.upgrade_operation_model.objects.count(), 0)
         self.assertEqual(fw.count(), 0)
         r = self.client.post(
-            self.BUILD_LIST_URL,
+            self.build_list_url,
             {
                 'action': 'upgrade_selected',
                 'upgrade_all': 'upgrade_all',
@@ -110,7 +110,17 @@ class BaseTestAdmin(TestMultitenantAdminMixin):
         self.assertEqual(self.upgrade_operation_model.objects.count(), 3)
         self.assertEqual(fw.count(), 3)
 
-    # Issue #16
+    def test_massive_upgrade_operation_page(self):
+        self.test_upgrade_all()
+        uo = self.upgrade_operation_model.objects.first()
+        url = reverse(
+            'admin:firmware_upgrader_batchupgradeoperation_change', args=[uo.batch.pk]
+        )
+        response = self.client.get(url)
+        self.assertContains(response, 'Success rate')
+        self.assertContains(response, 'Failure rate')
+        self.assertContains(response, 'Abortion rate')
+
     def test_view_device_operator(self):
         device_fw = self._create_device_firmware()
         org = self._get_org()

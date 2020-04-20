@@ -16,7 +16,7 @@ class FirmwareUpdaterConfig(AppConfig):
         items = [
             {'model': f'{self.label}.Build'},
         ]
-        if not hasattr(settings, menu_setting):
+        if not hasattr(settings, menu_setting):  # pragma: no cover
             setattr(settings, menu_setting, items)
         else:
             current_menu = getattr(settings, menu_setting)

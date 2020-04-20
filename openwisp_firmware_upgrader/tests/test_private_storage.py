@@ -11,12 +11,11 @@ from ..models import (
     FirmwareImage,
     UpgradeOperation,
 )
-from .base import TestUpgraderMixin
-from .base.test_private_storage import BasePrivateStorage
+from .base.test_private_storage import BaseTestPrivateStorage
 
 
 @skipIf(os.environ.get('SAMPLE_APP', False), 'Running tests on SAMPLE_APP')
-class TestPrivateStorage(BasePrivateStorage, TestUpgraderMixin, TestCase):
+class TestPrivateStorage(BaseTestPrivateStorage, TestCase):
     device_firmware_model = DeviceFirmware
     upgrade_operation_model = UpgradeOperation
     batch_upgrade_operation_model = BatchUpgradeOperation

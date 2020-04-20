@@ -10,7 +10,7 @@ from . import settings as app_settings
 
 if app_settings.CUSTOM_OPENWRT_IMAGES:
     OPENWRT_FIRMWARE_IMAGE_MAP = OrderedDict(app_settings.CUSTOM_OPENWRT_IMAGES)
-else:
+else:  # pragma: no cover
     OPENWRT_FIRMWARE_IMAGE_MAP = OrderedDict()
 
 OPENWRT_FIRMWARE_IMAGE_MAP.update(

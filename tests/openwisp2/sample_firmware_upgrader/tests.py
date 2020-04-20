@@ -27,7 +27,8 @@ UpgradeOperation = load_model('firmware_upgrader', 'UpgradeOperation')
     'Running tests on standard openwisp_firmware_upgrader models',
 )
 class TestAdmin(BaseTestAdmin, TestUpgraderMixin, TestCase):
-    BUILD_LIST_URL = reverse('admin:sample_firmware_upgrader_build_changelist')
+    app_label = 'sample_firmware_upgrader'
+    build_list_url = reverse(f'admin:{app_label}_build_changelist')
     device_firmware_model = DeviceFirmware
     upgrade_operation_model = UpgradeOperation
     firmware_image_model = FirmwareImage
