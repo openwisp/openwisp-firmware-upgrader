@@ -17,9 +17,9 @@ from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
+from ..exceptions import AbortedUpgrade, UpgradeNotNeeded
 from ..hardware import FIRMWARE_IMAGE_MAP, FIRMWARE_IMAGE_TYPE_CHOICES
 from ..tasks import upgrade_firmware
-from ..upgraders.openwrt import AbortedUpgrade
 
 logger = logging.getLogger(__name__)
 
@@ -424,12 +424,14 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
                 logger.info('Connection failed, aborting')
                 raise Exception('Connection Failed')
             result = upgrader.upgrade(self.image.file)
-        except AbortedUpgrade:
+        except UpgradeNotNeeded:
             # this exception is raised when the checksum present on the image
             # equals the checksum of the image we are trying to flash, which
             # means the device was aleady flashed previously with the same image
-            self.status = 'aborted'
+            self.status = 'success'
             installed = True
+        except AbortedUpgrade:
+            self.status = 'aborted'
         except Exception as e:
             upgrader.log(str(e))
             self.status = 'failed'

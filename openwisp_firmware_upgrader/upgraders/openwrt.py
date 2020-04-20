@@ -8,9 +8,7 @@ from paramiko.ssh_exception import NoValidConnectionsError
 
 from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
 
-
-class AbortedUpgrade(Exception):
-    pass
+from ..exceptions import AbortedUpgrade, UpgradeNotNeeded
 
 
 class OpenWrt(BaseOpenWrt):
@@ -39,18 +37,25 @@ class OpenWrt(BaseOpenWrt):
         # avoid upgrading if upgrade has already been performed previously
         try:
             self._compare_checksum(image, checksum)
-        except AbortedUpgrade as e:
+        except UpgradeNotNeeded as e:
             self.disconnect()
             raise e
         remote_path = self.get_remote_path(image)
         self.upload(image.file, remote_path)
-        self._test_image(remote_path)
+        try:
+            self._test_image(remote_path)
+        except Exception as e:
+            self.log(str(e))
+            self.disconnect()
+            raise AbortedUpgrade()
         self.disconnect()
         self._reflash(remote_path)
         return self._write_checksum(checksum)
 
     def get_remote_path(self, image):
-        return os.path.join(self.REMOTE_UPLOAD_DIR, image.name)
+        # discard directory info from image name
+        filename = image.name.split('/')[-1]
+        return os.path.join(self.REMOTE_UPLOAD_DIR, filename)
 
     def get_upgrade_command(self, path):
         return self.UPGRADE_COMMAND.format(path=path)
@@ -67,10 +72,10 @@ class OpenWrt(BaseOpenWrt):
                 message = (
                     'Firmware already upgraded previously. '
                     'Identical checksum found in the filesystem, '
-                    'no need to upgrade, aborting operation...'
+                    'upgrade not needed.'
                 )
                 self.log(message)
-                raise AbortedUpgrade(message)
+                raise UpgradeNotNeeded(message)
             else:
                 self.log(
                     'Checksum different, proceeding with '
@@ -94,13 +99,15 @@ class OpenWrt(BaseOpenWrt):
         this will execute the upgrade operation in another process
         because the SSH connection may hang indefinitely while reflashing
         and would block the program; setting a timeout to `exec_command`
-        doesn't seem to take effect so at least we can stop the process
-        using `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
+        doesn't seem to take effect on some OpenWRT versions
+        so at least we can stop the process using
+        `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
         """
+        command = self.get_upgrade_command(path)
 
         def upgrade(conn, path, timeout):
             conn.connect()
-            conn.exec_command(self.get_upgrade_command(path), timeout=timeout)
+            conn.exec_command(command, timeout=timeout)
             conn.disconnect()
 
         subprocess = Process(target=upgrade, args=[self, path, self.UPGRADE_TIMEOUT])
@@ -134,9 +141,8 @@ class OpenWrt(BaseOpenWrt):
             self.exec_command(f'mkdir -p {checksum_dir}')
             self.exec_command(f'echo {checksum} > {self.CHECKSUM_FILE}')
             self.disconnect()
-            return True
             self.log('Upgrade completed successfully.')
-            break
+            return True
         else:
             self.log('Giving up, device not reachable ' 'anymore after upgrade')
             return False
