@@ -1,4 +1,5 @@
 import os
+from unittest import mock
 
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -139,3 +140,15 @@ class TestUpgraderMixin(CreateConnectionsMixin):
             device=d, credentials=Credentials.objects.first()
         )
         return d
+
+
+def spy_mock(method, pre_action):
+    magicmock = mock.MagicMock()
+
+    def wrapper(self, *args, **kwargs):
+        magicmock(*args, **kwargs)
+        pre_action(*args, **kwargs)
+        return method(self, *args, **kwargs)
+
+    wrapper.mock = magicmock
+    return wrapper
