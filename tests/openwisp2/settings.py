@@ -52,7 +52,9 @@ INSTALLED_APPS = [
     'leaflet',
     # rest framework
     'rest_framework',
+    'rest_framework.authtoken',
     'rest_framework_gis',
+    'drf_yasg',
     # channels
     'channels',
 ]
@@ -182,6 +184,9 @@ OPENWISP_CUSTOM_OPENWRT_IMAGES = (
         {'label': 'Custom WAP-1200', 'boards': ('CWAP1200',)},
     ),
 )
+OPENWISP_USERS_AUTH_API = True
+OPENWISP_FIRMWARE_UPGRADER_API = True
+OPENWISP_USERS_AUTH_THROTTLE_RATE = None  # Disable throttle for testing
 
 if os.environ.get('SAMPLE_APP', False):
     INSTALLED_APPS.remove('openwisp_firmware_upgrader')
