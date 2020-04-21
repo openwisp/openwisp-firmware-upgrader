@@ -38,6 +38,9 @@ setup(
         'django-private-storage~=2.2',
         'swapper~=1.1',
     ],
+    extras_require={
+        'rest': ['djangorestframework>=3.11,<3.12', 'drf-yasg>=1.17,<1.18']
+    },
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Web Environment',

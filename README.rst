@@ -67,7 +67,9 @@ Follow the setup instructions of `openwisp-controller
         'leaflet',
         # rest framework
         'rest_framework',
+        'rest_framework.authtoken',
         'rest_framework_gis',
+        'drf_yasg',
         # channels
         'channels',
     ]
@@ -84,7 +86,9 @@ Follow the setup instructions of `openwisp-controller
     urlpatterns = [
         url(r'^admin/', include(admin.site.urls)),
         url(r'', include('openwisp_controller.urls')),
-        url('^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+        url(r'^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+        url(r'^api/v1/', include('openwisp_users.api.urls')),
+        url(r'^api/v1/', include('openwisp_firmware_upgrader.api.urls')),
     ]
 
     urlpatterns += staticfiles_urlpatterns()
@@ -247,6 +251,17 @@ This setting can be used to set the maximum size limit for firmware images, eg:
 **Notes**:
 
 - Value must be specified in bytes. ``None`` means unlimited.
+
+``OPENWISP_FIRMWARE_UPGRADER_API``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++--------------+-----------+
+| **type**:    | ``bool``  |
++--------------+-----------+
+| **default**: | ``False`` |
++--------------+-----------+
+
+Indicates whether the API for Firmward Upgrader is enabled or not.
 
 Installing for development
 --------------------------
@@ -417,6 +432,25 @@ You can change ``CategoryAdmin``, ``BuildAdmin`` and
 ``BatchUpgradeOperationAdmin`` and these changes will be reflected in
 your admin interface.
 
+Extending the views
+~~~~~~~~~~~~~~~~~~~
+
+If you need to customize the behavior of the API views or the private storage view,
+the classes you need to extend are:
+
+- ``openwisp_firmware_upgrader.api.views``
+- ``openwisp_firmware_upgrader.private_storage.views``
+
+You will also need to create custom URL routers and import them into your root urlconf, eg:
+
+.. code-block:: python
+
+    urlpatterns = [
+        # ... other urls ...
+        url(r'^firmware/', include('<your_cusom_app>.private_storage.urls')),
+        url(r'^api/v1/', include('<your_cusom_app>.api.urls')),
+    ]
+
 Reusing the base tests
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -427,6 +461,14 @@ some of the existing features of openwisp-firmware-upgrader.
 
 In case you need to add breaking changes, you can overwrite the tests defined
 in the base classes to test your own behavior.
+
+API
+---
+
+The API development for this module is ongoing. At the moment you can check the
+available documentation using the Swagger endpoint at ``/api/v1/swagger/``.
+
+.. image:: images/swagger_api.gif
 
 Contributing
 ------------
