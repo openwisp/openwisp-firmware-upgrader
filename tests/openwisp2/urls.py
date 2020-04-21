@@ -12,7 +12,9 @@ urlpatterns = [
     url(r'^admin/', admin.site.urls),
     url(r'', include('openwisp_controller.urls')),
     url(r'^$', redirect_view, name='index'),
-    url('^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+    url(r'^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+    url(r'^api/v1/', include('openwisp_users.api.urls')),
+    url(r'^api/v1/', include('openwisp_firmware_upgrader.api.urls')),
 ]
 
 urlpatterns += staticfiles_urlpatterns()

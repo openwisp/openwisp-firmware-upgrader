@@ -5,6 +5,12 @@ from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
 from openwisp_firmware_upgrader.tests.base.test_admin import BaseTestAdmin
+from openwisp_firmware_upgrader.tests.base.test_api import (
+    BaseTestBatchUpgradeOperationViews,
+    BaseTestBuildViews,
+    BaseTestCategoryViews,
+    BaseTestFirmwareImageViews,
+)
 from openwisp_firmware_upgrader.tests.base.test_models import (
     BaseTestModels,
     BaseTestModelsTransaction,
@@ -103,6 +109,54 @@ class TestTasks(BaseTestTasks, TestUpgraderMixin, TransactionTestCase):
     device_firmware_model = DeviceFirmware
     upgrade_operation_model = UpgradeOperation
     batch_upgrade_operation_model = BatchUpgradeOperation
+    firmware_image_model = FirmwareImage
+    build_model = Build
+    category_model = Category
+
+
+@skipUnless(
+    os.environ.get('SAMPLE_APP', False),
+    'Running tests on standard openwisp_firmware_upgrader models',
+)
+class TestBuildViews(BaseTestBuildViews, TestCase):
+    device_firmware_model = DeviceFirmware
+    upgrade_operation_model = UpgradeOperation
+    firmware_image_model = FirmwareImage
+    build_model = Build
+    category_model = Category
+
+
+@skipUnless(
+    os.environ.get('SAMPLE_APP', False),
+    'Running tests on standard openwisp_firmware_upgrader models',
+)
+class TestCategoryViews(BaseTestCategoryViews, TestCase):
+    device_firmware_model = DeviceFirmware
+    upgrade_operation_model = UpgradeOperation
+    firmware_image_model = FirmwareImage
+    build_model = Build
+    category_model = Category
+
+
+@skipUnless(
+    os.environ.get('SAMPLE_APP', False),
+    'Running tests on standard openwisp_firmware_upgrader models',
+)
+class TestBatchUpgradeOperationViews(BaseTestBatchUpgradeOperationViews, TestCase):
+    device_firmware_model = DeviceFirmware
+    upgrade_operation_model = UpgradeOperation
+    firmware_image_model = FirmwareImage
+    build_model = Build
+    category_model = Category
+
+
+@skipUnless(
+    os.environ.get('SAMPLE_APP', False),
+    'Running tests on standard openwisp_firmware_upgrader models',
+)
+class TestFirmwareImageViews(BaseTestFirmwareImageViews, TestCase):
+    device_firmware_model = DeviceFirmware
+    upgrade_operation_model = UpgradeOperation
     firmware_image_model = FirmwareImage
     build_model = Build
     category_model = Category
