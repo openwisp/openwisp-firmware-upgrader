@@ -144,6 +144,31 @@ class BaseTestModels(object):
         else:
             self.fail('ValidationError not raised')
 
+    def test_upgrade_operation_log_line(self):
+        device_fw = self._create_device_firmware()
+        uo = self.upgrade_operation_model(
+            device=device_fw.device, image=device_fw.image
+        )
+        uo.log_line('line1', save=False)
+        uo.log_line('line2', save=False)
+        self.assertEqual(uo.log, 'line1\nline2')
+        try:
+            uo.refresh_from_db()
+        except self.upgrade_operation_model.DoesNotExist:
+            pass
+        else:
+            self.fail('item has been saved')
+
+    def test_upgrade_operation_log_line_save(self):
+        device_fw = self._create_device_firmware()
+        uo = self.upgrade_operation_model(
+            device=device_fw.device, image=device_fw.image
+        )
+        uo.log_line('line1')
+        uo.log_line('line2')
+        uo.refresh_from_db()
+        self.assertEqual(uo.log, 'line1\nline2')
+
     def test_permissions(self):
         admin = Group.objects.get(name='Administrator')
         operator = Group.objects.get(name='Operator')

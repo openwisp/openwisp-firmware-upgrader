@@ -389,12 +389,20 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
     class Meta:
         abstract = True
 
+    def log_line(self, line, save=True):
+        if self.log:
+            self.log += f'\n{line}'
+        else:
+            self.log = line
+        logger.info(f'# {line}')
+        if save:
+            self.save()
+
     def upgrade(self, recoverable=True):
         conn = self.device.deviceconnection_set.first()
         installed = False
         if not conn:
-            self.log = 'No device connection available'
-            self.save()
+            self.log_line('No device connection available')
             return
         # prevent multiple upgrade operations for
         # the same device running at the same time
@@ -406,8 +414,8 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         if qs.count() > 0:
             message = 'Another upgrade operation is in progress, aborting...'
             logger.warn(message)
+            self.log_line(message, save=False)
             self.status = 'aborted'
-            self.log = message
             self.save()
             return
         try:
@@ -416,10 +424,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         except (AttributeError, ImportError) as e:
             logger.exception(e)
             return
-        upgrader = upgrader_class(
-            params=conn.get_params(), addresses=conn.get_addresses()
-        )
-        conn.set_connector(upgrader)
+        upgrader = upgrader_class(self, conn)
         try:
             # test connection
             logger.info('Testing connection')
@@ -445,18 +450,16 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         except RecoverableFailure as e:
             cause = str(e)
             if recoverable:
-                upgrader.log(
-                    f'Detected a recoverable failure: {cause}.\n'
-                    'The upgrade operation will be retried soon.'
-                )
+                self.log_line(f'Detected a recoverable failure: {cause}.\n', save=False)
+                self.log_line('The upgrade operation will be retried soon.')
                 raise e
             self.status = 'failed'
-            upgrader.log(f'Max retries exceeded. Upgrade failed: {cause}.')
+            self.log_line(f'Max retries exceeded. Upgrade failed: {cause}.', save=False)
         # failure to reconnect to the device after reflashing or any
         # other unexpected exception will flag the upgrade as failed
         except (Exception, ReconnectionFailed) as e:
             cause = str(e)
-            upgrader.log(cause)
+            self.log_line(cause)
             self.status = 'failed'
             # if the reconnection failed we'll add some more info
             if isinstance(e, ReconnectionFailed):
@@ -472,7 +475,6 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         else:
             installed = True
             self.status = 'success'
-        self.log += '\n'.join(upgrader.log_lines)
         self.save()
         # if the firmware has been successfully installed,
         # or if it was already installed

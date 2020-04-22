@@ -27,13 +27,16 @@ class OpenWrt(BaseOpenWrt):
 
     log_lines = None
 
-    def __init__(self, *args, **kwargs):
-        self.log_lines = []
-        super(OpenWrt, self).__init__(*args, **kwargs)
+    def __init__(self, upgrade_operation, connection):
+        super(OpenWrt, self).__init__(
+            params=connection.get_params(), addresses=connection.get_addresses()
+        )
+        connection.set_connector(self)
+        self.upgrade_operation = upgrade_operation
+        self.connection = connection
 
     def log(self, value):
-        print(f'# {value}')
-        self.log_lines.append(value)
+        self.upgrade_operation.log_line(value)
 
     def upgrade(self, image):
         checksum = sha256(image.read()).hexdigest()

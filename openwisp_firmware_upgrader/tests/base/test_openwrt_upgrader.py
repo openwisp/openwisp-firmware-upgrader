@@ -182,9 +182,9 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
         self.assertEqual(connect.call_count, 5)
         self.assertEqual(upgrade_op.status, 'failed')
         lines = [
-            # 'Detected a recoverable failure: Connection failed.',
-            # 'The upgrade operation will be retried soon.',
-            'Max retries exceeded. Upgrade failed: Connection failed.'
+            'Detected a recoverable failure: Connection failed.',
+            'The upgrade operation will be retried soon.',
+            'Max retries exceeded. Upgrade failed: Connection failed.',
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
@@ -206,8 +206,8 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
         lines = [
             'Image checksum file found',
             'Checksum different, proceeding',
-            # 'Detected a recoverable failure: Invalid packet blocking.',
-            # 'The upgrade operation will be retried soon.',
+            'Detected a recoverable failure: Invalid packet blocking.',
+            'The upgrade operation will be retried soon.',
             'Max retries exceeded. Upgrade failed: Invalid packet blocking.',
         ]
         for line in lines:
