@@ -181,6 +181,25 @@ For more information regarding these settings, consult the `celery documentation
 regarding automatic retries for known errors
 <https://docs.celeryproject.org/en/stable/userguide/tasks.html#automatic-retry-for-known-exceptions>`_.
 
+``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++--------------+--------------+
+| **type**:    | ``int``      |
++--------------+--------------+
+| **default**: | ``300``      |
++--------------+--------------+
+
+Timeout for the background tasks which perform firmware upgrades.
+
+If for some unexpected reason an upgrade remains stuck for more than 5 minutes,
+the upgrade operation will be flagged as failed and the task will be killed.
+
+This should not happen, but a global task time out is a best practice when
+using background tasks because it prevents the situation in which an unexpected
+bug causes a specific task to hang, which will quickly fill all the available
+slots in a background queue and prevent other tasks from being executed, which
+will end up affecting negatively the rest of the application.
 
 ``OPENWISP_CUSTOM_OPENWRT_IMAGES``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

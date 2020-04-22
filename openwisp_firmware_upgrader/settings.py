@@ -16,5 +16,7 @@ MAX_FILE_SIZE = getattr(
 RETRY_OPTIONS = getattr(
     settings,
     'OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS',
-    dict(max_retries=4, retry_backoff=60, retry_backoff_max=600, retry_jitter=True,),
+    dict(max_retries=4, retry_backoff=60, retry_backoff_max=600, retry_jitter=True),
 )
+
+TASK_TIMEOUT = getattr(settings, 'OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT', 300)
