@@ -250,7 +250,7 @@ Run tests with:
     ./runtests.py
 
     # tests for the sample app
-    export SAMPLE_APP=1; ./runtests.py --keepdb --failfast; unset SAMPLE_APP
+    SAMPLE_APP=1 ./runtests.py --keepdb --failfast
 
 When running the last line of the previous example, the environment variable
 ``SAMPLE_APP`` activates the app in ``/tests/openwisp2/sample_firmware_upgrader/``

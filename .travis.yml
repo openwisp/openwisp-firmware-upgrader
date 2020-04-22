@@ -40,7 +40,7 @@ install:
   - pip install -U https://github.com/openwisp/openwisp-utils/tarball/master#egg=openwisp_utils[qa]
 
 script:
-  - SAMPLE_APP=1; coverage run --source=openwisp_firmware_upgrader runtests.py
+  - SAMPLE_APP=1 coverage run --source=openwisp_firmware_upgrader runtests.py
   - coverage run --source=openwisp_firmware_upgrader runtests.py
   - ./run-qa-checks
 

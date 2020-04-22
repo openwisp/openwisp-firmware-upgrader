@@ -10,7 +10,7 @@ from openwisp_firmware_upgrader.tests.base.test_models import (
     BaseTestModelsTransaction,
 )
 from openwisp_firmware_upgrader.tests.base.test_private_storage import (
-    BasePrivateStorage,
+    BaseTestPrivateStorage,
 )
 from swapper import load_model
 
@@ -69,7 +69,7 @@ class TestModelsTransaction(
     os.environ.get('SAMPLE_APP', False),
     'Running tests on standard openwisp_firmware_upgrader models',
 )
-class TestPrivateStorage(BasePrivateStorage, TestUpgraderMixin, TestCase):
+class TestPrivateStorage(BaseTestPrivateStorage, TestUpgraderMixin, TestCase):
     device_firmware_model = DeviceFirmware
     upgrade_operation_model = UpgradeOperation
     batch_upgrade_operation_model = BatchUpgradeOperation

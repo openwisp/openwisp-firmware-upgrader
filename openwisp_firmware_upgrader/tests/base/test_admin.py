@@ -114,7 +114,7 @@ class BaseTestAdmin(TestMultitenantAdminMixin):
         self.test_upgrade_all()
         uo = self.upgrade_operation_model.objects.first()
         url = reverse(
-            'admin:firmware_upgrader_batchupgradeoperation_change', args=[uo.batch.pk]
+            f'admin:{self.app_label}_batchupgradeoperation_change', args=[uo.batch.pk]
         )
         response = self.client.get(url)
         self.assertContains(response, 'Success rate')
