@@ -145,10 +145,10 @@ class TestUpgraderMixin(CreateConnectionsMixin):
 def spy_mock(method, pre_action):
     magicmock = mock.MagicMock()
 
-    def wrapper(self, *args, **kwargs):
+    def wrapper(*args, **kwargs):
         magicmock(*args, **kwargs)
         pre_action(*args, **kwargs)
-        return method(self, *args, **kwargs)
+        return method(*args, **kwargs)
 
     wrapper.mock = magicmock
     return wrapper

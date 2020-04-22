@@ -1,9 +1,14 @@
 from celery import shared_task
 from swapper import load_model
 
+from . import settings as app_settings
+from .exceptions import RecoverableFailure
 
-@shared_task
-def upgrade_firmware(operation_id):
+
+@shared_task(
+    bind=True, autoretry_for=(RecoverableFailure,), **app_settings.RETRY_OPTIONS
+)
+def upgrade_firmware(self, operation_id):
     """
     Calls the ``upgrade()`` method of an
     ``UpgradeOperation`` instance in the background
@@ -11,7 +16,8 @@ def upgrade_firmware(operation_id):
     operation = load_model('firmware_upgrader', 'UpgradeOperation').objects.get(
         pk=operation_id
     )
-    operation.upgrade()
+    recoverable = self.request.retries < self.max_retries
+    operation.upgrade(recoverable=recoverable)
 
 
 @shared_task

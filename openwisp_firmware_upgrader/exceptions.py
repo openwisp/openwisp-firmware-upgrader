@@ -1,22 +1,26 @@
-class UpgradeNotNeeded(Exception):
+class FirmwareUpgraderException(Exception):
+    pass
+
+
+class UpgradeNotNeeded(FirmwareUpgraderException):
     """
     Raised when the upgrade is not needed
     """
 
 
-class AbortedUpgrade(Exception):
+class UpgradeAborted(FirmwareUpgraderException):
     """
     Raised when the upgrade has to be flagged as aborted
     """
 
 
-class FailedUpgrade(Exception):
+class ReconnectionFailed(FirmwareUpgraderException):
     """
-    Raised when the upgrade has to be flagged as failed
+    Raised when the reconnection after the upgrade fails
     """
 
 
-class RecoverableFailure(Exception):
+class RecoverableFailure(FirmwareUpgraderException):
     """
-    Raised when the upgrade has to be retried
+    Raised when the upgrade can be retried
     """

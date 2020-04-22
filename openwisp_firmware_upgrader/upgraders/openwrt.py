@@ -8,7 +8,12 @@ from paramiko.ssh_exception import NoValidConnectionsError
 
 from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
 
-from ..exceptions import AbortedUpgrade, UpgradeNotNeeded
+from ..exceptions import (
+    ReconnectionFailed,
+    RecoverableFailure,
+    UpgradeAborted,
+    UpgradeNotNeeded,
+)
 
 
 class OpenWrt(BaseOpenWrt):
@@ -31,7 +36,6 @@ class OpenWrt(BaseOpenWrt):
         self.log_lines.append(value)
 
     def upgrade(self, image):
-        self.connect()
         checksum = sha256(image.read()).hexdigest()
         image.seek(0)
         # avoid upgrading if upgrade has already been performed previously
@@ -41,16 +45,19 @@ class OpenWrt(BaseOpenWrt):
             self.disconnect()
             raise e
         remote_path = self.get_remote_path(image)
-        self.upload(image.file, remote_path)
+        try:
+            self.upload(image.file, remote_path)
+        except Exception as e:
+            raise RecoverableFailure(str(e))
         try:
             self._test_image(remote_path)
         except Exception as e:
             self.log(str(e))
             self.disconnect()
-            raise AbortedUpgrade()
+            raise UpgradeAborted()
         self.disconnect()
         self._reflash(remote_path)
-        return self._write_checksum(checksum)
+        self._write_checksum(checksum)
 
     def get_remote_path(self, image):
         # discard directory info from image name
@@ -142,7 +149,8 @@ class OpenWrt(BaseOpenWrt):
             self.exec_command(f'echo {checksum} > {self.CHECKSUM_FILE}')
             self.disconnect()
             self.log('Upgrade completed successfully.')
-            return True
-        else:
-            self.log('Giving up, device not reachable ' 'anymore after upgrade')
-            return False
+            return
+        # if all previous attempts failed
+        raise ReconnectionFailed(
+            'Giving up, device not reachable anymore after upgrade'
+        )

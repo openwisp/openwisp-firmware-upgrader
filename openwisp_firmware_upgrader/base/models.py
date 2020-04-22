@@ -6,6 +6,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
+from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 from django.utils.translation import ugettext_lazy as _
@@ -17,7 +18,12 @@ from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
-from ..exceptions import AbortedUpgrade, UpgradeNotNeeded
+from ..exceptions import (
+    ReconnectionFailed,
+    RecoverableFailure,
+    UpgradeAborted,
+    UpgradeNotNeeded,
+)
 from ..hardware import FIRMWARE_IMAGE_MAP, FIRMWARE_IMAGE_TYPE_CHOICES
 from ..tasks import upgrade_firmware
 
@@ -383,7 +389,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
     class Meta:
         abstract = True
 
-    def upgrade(self):
+    def upgrade(self, recoverable=True):
         conn = self.device.deviceconnection_set.first()
         installed = False
         if not conn:
@@ -413,32 +419,60 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         upgrader = upgrader_class(
             params=conn.get_params(), addresses=conn.get_addresses()
         )
+        conn.set_connector(upgrader)
         try:
             # test connection
             logger.info('Testing connection')
             result = conn.connect()
-            if result:
-                logger.info('Connection successful')
-                conn.disconnect()
-            else:
-                logger.info('Connection failed, aborting')
-                raise Exception('Connection Failed')
-            result = upgrader.upgrade(self.image.file)
+            if not result:
+                logger.info('Connection failed')
+                raise RecoverableFailure(_('Connection failed'))
+            # proceed with the upgrade
+            logger.info('Connection successful, starting upgrade...')
+            upgrader.upgrade(self.image.file)
+        # this exception is raised when the checksum present in the device
+        # equals the checksum of the image we are trying to flash, which
+        # means the device was aleady flashed previously with the same image
         except UpgradeNotNeeded:
-            # this exception is raised when the checksum present on the image
-            # equals the checksum of the image we are trying to flash, which
-            # means the device was aleady flashed previously with the same image
             self.status = 'success'
             installed = True
-        except AbortedUpgrade:
+        # this exception is raised when the test of the image fails,
+        # meaning the image file is corrupted or not apt for flashing
+        except UpgradeAborted:
             self.status = 'aborted'
-        except Exception as e:
-            upgrader.log(str(e))
+        # raising this exception will cause celery to retry again
+        # the upgrade according to its configuration
+        except RecoverableFailure as e:
+            cause = str(e)
+            if recoverable:
+                upgrader.log(
+                    f'Detected a recoverable failure: {cause}.\n'
+                    'The upgrade operation will be retried soon.'
+                )
+                raise e
             self.status = 'failed'
+            upgrader.log(f'Max retries exceeded. Upgrade failed: {cause}.')
+        # failure to reconnect to the device after reflashing or any
+        # other unexpected exception will flag the upgrade as failed
+        except (Exception, ReconnectionFailed) as e:
+            cause = str(e)
+            upgrader.log(cause)
+            self.status = 'failed'
+            # if the reconnection failed we'll add some more info
+            if isinstance(e, ReconnectionFailed):
+                # update device connection info
+                conn.is_working = False
+                conn.failure_reason = cause
+                conn.last_attempt = timezone.now()
+                conn.save()
+                # even if the reconnection failed,
+                # the firmware image has been flashed
+                installed = True
+        # if no exception has been raised, the upgrade was successful
         else:
             installed = True
-            self.status = 'success' if result else 'failed'
-        self.log = '\n'.join(upgrader.log_lines)
+            self.status = 'success'
+        self.log += '\n'.join(upgrader.log_lines)
         self.save()
         # if the firmware has been successfully installed,
         # or if it was already installed

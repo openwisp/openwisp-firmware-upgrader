@@ -150,6 +150,38 @@ install the requierd python packages::
 Settings
 --------
 
+``OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++--------------+--------------+
+| **type**:    | ``dict``     |
++--------------+--------------+
+| **default**: | see below    |
++--------------+--------------+
+
+.. code-block:: python
+
+    # default value of OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS:
+
+    dict(
+       max_retries=4,
+       retry_backoff=60,
+       retry_backoff_max=600,
+       retry_jitter=True,
+    )
+
+Retry settings for recoverable failures during firmware upgrades.
+
+By default if an upgrade operation fails before the firmware is flashed
+(eg: because of a network issue during the upload of the image),
+the upgrade operation will be retried 4 more times with an exponential
+random backoff and a maximum delay of 10 minutes.
+
+For more information regarding these settings, consult the `celery documentation
+regarding automatic retries for known errors
+<https://docs.celeryproject.org/en/stable/userguide/tasks.html#automatic-retry-for-known-exceptions>`_.
+
+
 ``OPENWISP_CUSTOM_OPENWRT_IMAGES``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

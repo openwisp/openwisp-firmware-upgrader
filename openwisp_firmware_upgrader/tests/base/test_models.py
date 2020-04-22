@@ -1,3 +1,5 @@
+import io
+from contextlib import redirect_stdout
 from unittest import mock
 
 from django.core.exceptions import ValidationError
@@ -231,7 +233,16 @@ class BaseTestModelsTransaction(object):
 
     def test_batch_upgrade_failure(self):
         env = self._create_upgrade_env()
-        env['build2'].batch_upgrade(firmwareless=False)
+        try:
+            with redirect_stdout(io.StringIO()):
+                env['build2'].batch_upgrade(firmwareless=False)
+        except RuntimeError:
+            pass
+        else:
+            # if this happens, celery internals have changed
+            # and it's time to review the code and ensure
+            # it still works as expected
+            self.fail('RuntimeError not raised')
         batch = self.batch_upgrade_operation_model.objects.first()
         self.assertEqual(batch.status, 'failed')
 
