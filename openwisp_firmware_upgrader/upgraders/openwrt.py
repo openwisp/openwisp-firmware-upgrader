@@ -20,9 +20,9 @@ class OpenWrt(BaseOpenWrt):
     CHECKSUM_FILE = '/etc/openwisp/firmware_checksum'
     REMOTE_UPLOAD_DIR = '/tmp'
     UPGRADE_TIMEOUT = 70
-    SLEEP_TIME = 60
-    RETRY_TIME = 12
-    RETRY_ATTEMPTS = 10
+    RECONNECT_DELAY = 60
+    RECONNECT_RETRY_DELAY = 12
+    RECONNECT_MAX_RETRIES = 10
     UPGRADE_COMMAND = 'sysupgrade -v -c {path}'
 
     log_lines = None
@@ -35,32 +35,29 @@ class OpenWrt(BaseOpenWrt):
         self.upgrade_operation = upgrade_operation
         self.connection = connection
 
-    def log(self, value):
-        self.upgrade_operation.log_line(value)
+    def log(self, value, save=True):
+        self.upgrade_operation.log_line(value, save=save)
 
     def upgrade(self, image):
-        checksum = sha256(image.read()).hexdigest()
-        image.seek(0)
-        # avoid upgrading if upgrade has already been performed previously
-        try:
-            self._compare_checksum(image, checksum)
-        except UpgradeNotNeeded as e:
-            self.disconnect()
-            raise e
+        self._test_connection()
+        checksum = self._test_checksum(image)
         remote_path = self.get_remote_path(image)
-        try:
-            self.upload(image.file, remote_path)
-        except Exception as e:
-            raise RecoverableFailure(str(e))
-        try:
-            self._test_image(remote_path)
-        except Exception as e:
-            self.log(str(e))
-            self.disconnect()
-            raise UpgradeAborted()
-        self.disconnect()
+        self.upload(image.file, remote_path)
+        self._test_image(remote_path)
         self._reflash(remote_path)
         self._write_checksum(checksum)
+
+    def _test_connection(self):
+        result = self.connection.connect()
+        if not result:
+            raise RecoverableFailure('Connection failed')
+        self.log('Connection successful, starting upgrade...')
+
+    def upload(self, *args, **kwargs):
+        try:
+            super().upload(*args, **kwargs)
+        except Exception as e:
+            raise RecoverableFailure(str(e))
 
     def get_remote_path(self, image):
         # discard directory info from image name
@@ -70,12 +67,20 @@ class OpenWrt(BaseOpenWrt):
     def get_upgrade_command(self, path):
         return self.UPGRADE_COMMAND.format(path=path)
 
-    def _compare_checksum(self, image, checksum):
+    def _test_checksum(self, image):
+        """
+        prevents the upgrade if an identical checksum signature file is found on
+        the device, which indicates the upgrade has already been performed previously
+        """
+        # calculate firmware image checksum
+        checksum = sha256(image.read()).hexdigest()
+        image.seek(0)
+        # test for presence of firmware checksum signature file
         output, exit_code = self.exec_command(
             f'test -f {self.CHECKSUM_FILE}', exit_codes=[0, 1]
         )
         if exit_code == 0:
-            self.log('Image checksum file found')
+            self.log('Image checksum file found', save=False)
             cat = f'cat {self.CHECKSUM_FILE}'
             output, code = self.exec_command(cat)
             if checksum == output:
@@ -85,6 +90,7 @@ class OpenWrt(BaseOpenWrt):
                     'upgrade not needed.'
                 )
                 self.log(message)
+                self.disconnect()
                 raise UpgradeNotNeeded(message)
             else:
                 self.log(
@@ -96,9 +102,15 @@ class OpenWrt(BaseOpenWrt):
                 'Image checksum file not found, proceeding '
                 'with the upload of the new image...'
             )
+        return checksum
 
     def _test_image(self, path):
-        self.exec_command(f'sysupgrade --test {path}')
+        try:
+            self.exec_command(f'sysupgrade --test {path}')
+        except Exception as e:
+            self.log(str(e), save=False)
+            self.disconnect()
+            raise UpgradeAborted()
         self.log(
             'Sysupgrade test passed successfully, '
             'proceeding with the upgrade operation...'
@@ -113,6 +125,7 @@ class OpenWrt(BaseOpenWrt):
         so at least we can stop the process using
         `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
         """
+        self.disconnect()
         command = self.get_upgrade_command(path)
 
         def upgrade(conn, path, timeout):
@@ -125,26 +138,26 @@ class OpenWrt(BaseOpenWrt):
         self.log('Upgrade operation in progress...')
         subprocess.join(timeout=self.UPGRADE_TIMEOUT)
         self.log(
-            f'SSH connection closed, will wait {self.SLEEP_TIME} seconds before '
+            f'SSH connection closed, will wait {self.RECONNECT_DELAY} seconds before '
             'attempting to reconnect...'
         )
-        sleep(self.SLEEP_TIME)
+        sleep(self.RECONNECT_DELAY)
         # kill the subprocess if it has hanged
         if subprocess.is_alive():
             subprocess.terminate()
             subprocess.join()
 
     def _write_checksum(self, checksum):
-        for attempt in range(1, self.RETRY_ATTEMPTS + 1):
+        for attempt in range(1, self.RECONNECT_MAX_RETRIES + 1):
             self.log('Trying to reconnect to device ' f'(attempt n.{attempt})...')
             try:
                 self.connect()
             except (NoValidConnectionsError, socket.timeout):
                 self.log(
                     'Device not reachable yet, '
-                    f'retrying in {self.RETRY_TIME} seconds...'
+                    f'retrying in {self.RECONNECT_RETRY_DELAY} seconds...'
                 )
-                sleep(self.RETRY_TIME)
+                sleep(self.RECONNECT_RETRY_DELAY)
                 continue
             self.log('Connected! Writing checksum ' f'file to {self.CHECKSUM_FILE}')
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)

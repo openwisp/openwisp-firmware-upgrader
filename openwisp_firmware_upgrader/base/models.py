@@ -426,14 +426,6 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
             return
         upgrader = upgrader_class(self, conn)
         try:
-            # test connection
-            logger.info('Testing connection')
-            result = conn.connect()
-            if not result:
-                logger.info('Connection failed')
-                raise RecoverableFailure(_('Connection failed'))
-            # proceed with the upgrade
-            logger.info('Connection successful, starting upgrade...')
             upgrader.upgrade(self.image.file)
         # this exception is raised when the checksum present in the device
         # equals the checksum of the image we are trying to flash, which

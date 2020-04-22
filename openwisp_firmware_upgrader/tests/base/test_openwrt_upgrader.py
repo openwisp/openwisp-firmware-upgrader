@@ -6,6 +6,9 @@ from django.utils import timezone
 from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 
 from openwisp_controller.connection.connectors.exceptions import CommandFailedException
+from openwisp_controller.connection.connectors.openwrt.ssh import (
+    OpenWrt as OpenWrtSshConnector,
+)
 from openwisp_controller.connection.tests.base import SshServer
 
 from ...upgraders.openwrt import OpenWrt
@@ -112,8 +115,8 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
         self.assertTrue(device_fw.installed)
 
     @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'SLEEP_TIME', 0)
-    @patch.object(OpenWrt, 'RETRY_TIME', 0)
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
     @patch('billiard.Process.is_alive', return_value=True)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     def test_upgrade_success(self, exec_command, is_alive, putfo):
@@ -138,8 +141,8 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
         self.assertTrue(device_fw.installed)
 
     @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'SLEEP_TIME', 0)
-    @patch.object(OpenWrt, 'RETRY_TIME', 0)
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     @patch.object(OpenWrt, 'connect', connect_fail_on_write_checksum)
     def test_cant_reconnect_on_write_checksum(self, exec_command, putfo):
@@ -165,12 +168,11 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
         self.assertTrue(device_conn.last_attempt > start_time)
 
     @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'SLEEP_TIME', 0)
-    @patch.object(OpenWrt, 'RETRY_TIME', 0)
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
-    @patch(
-        'openwisp_controller.connection.connectors.openwrt.ssh.OpenWrt.connect',
-        side_effect=Exception('Connection failed'),
+    @patch.object(
+        OpenWrtSshConnector, 'connect', side_effect=Exception('Connection failed'),
     )
     def test_connection_failure(self, connect, exec_command, putfo):
         device_fw, device_conn, upgrade_op, output = self._trigger_upgrade(
@@ -191,10 +193,12 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
         self.assertFalse(device_fw.installed)
 
     @patch.object(
-        OpenWrt, 'upload', side_effect=SSHException('Invalid packet blocking')
+        OpenWrtSshConnector,
+        'upload',
+        side_effect=SSHException('Invalid packet blocking'),
     )
-    @patch.object(OpenWrt, 'SLEEP_TIME', 0)
-    @patch.object(OpenWrt, 'RETRY_TIME', 0)
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     def test_upload_failure(self, exec_command, upload):
         device_fw, device_conn, upgrade_op, output = self._trigger_upgrade(
