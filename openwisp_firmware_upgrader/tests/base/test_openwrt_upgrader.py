@@ -64,7 +64,7 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
     def tearDownClass(cls):
         cls.mock_ssh_server.__exit__()
 
-    def _trigger_upgrade(self, exception=None):
+    def _trigger_upgrade(self, upgrade=True, exception=None):
         ckey = self._create_credentials_with_key(port=self.ssh_server.port)
         device_conn = self._create_device_connection(credentials=ckey)
         build = self._create_build(organization=device_conn.device.organization)
@@ -76,7 +76,7 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
                     image=image,
                     device=device_conn.device,
                     device_connection=False,
-                    upgrade=True,
+                    upgrade=upgrade,
                 )
         except Exception as e:
             if exception and isinstance(e, exception):
@@ -88,6 +88,10 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
         else:
             if exception:
                 self.fail(f'{exception.__class__} not raised')
+
+        if not upgrade:
+            return device_fw, device_conn, output
+
         device_conn.refresh_from_db()
         device_fw.refresh_from_db()
         self.assertEqual(device_fw.image.upgradeoperation_set.count(), 1)
@@ -132,7 +136,7 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
             'Image checksum file found',
             'Checksum different, proceeding',
             'Upgrade operation in progress',
-            'Trying to reconnect to device (attempt n.1)',
+            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
             'Connected! Writing checksum',
             'Upgrade completed successfully',
         ]
@@ -156,7 +160,7 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
         lines = [
             'Checksum different, proceeding',
             'Upgrade operation in progress',
-            'Trying to reconnect to device (attempt n.1)',
+            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
             'Device not reachable yet',
             'Giving up, device not reachable',
         ]
@@ -217,3 +221,48 @@ class BaseTestOpenwrtUpgrader(TestUpgraderMixin):
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    def test_device_ip_changed_after_reflash(self, exec_command, alive, putfo):
+        device_fw, device_conn, output = self._trigger_upgrade(upgrade=False)
+
+        def connect_pre_action(upgrader):
+            if connect_mocked.mock.call_count == 1:
+                return
+            # simulate case in which IP address of the device
+            # has changed after a few attempts
+            if connect_mocked.mock.call_count == 3:
+                device_model = upgrader.connection.device.__class__
+                # instantiate a new object to avoid influencing
+                # the correct replication of the bug case
+                device = device_model.objects.get(pk=upgrader.connection.device.pk)
+                device.management_ip = '192.168.99.254'
+                device.save()
+            if connect_mocked.mock.call_count > 1:
+                raise NoValidConnectionsError(errors={'127.0.0.1': 'mocked error'})
+
+        connect_mocked = spy_mock(OpenWrt.connect, connect_pre_action)
+
+        with patch.object(OpenWrt, 'connect', connect_mocked):
+            with redirect_stderr(io.StringIO()):
+                device_fw.save()
+
+        self.assertEqual(device_fw.image.upgradeoperation_set.count(), 1)
+        upgrade_op = device_fw.image.upgradeoperation_set.first()
+        device_fw.refresh_from_db()
+
+        self.assertEqual(exec_command.call_count, 3)
+        self.assertEqual(putfo.call_count, 1)
+        self.assertEqual(upgrade_op.status, 'failed')
+        lines = [
+            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
+            'Trying to reconnect to device at 127.0.0.1 (attempt n.2)',
+            'Trying to reconnect to device at 192.168.99.254, 127.0.0.1 (attempt n.3)',
+            'Giving up, device not reachable',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)

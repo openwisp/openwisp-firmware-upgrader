@@ -147,9 +147,22 @@ class OpenWrt(BaseOpenWrt):
             subprocess.terminate()
             subprocess.join()
 
+    def _refresh_addresses(self):
+        """
+        reloads the device info from the DB to
+        handle cases in which the IP has changed
+        """
+        self.connection.device.refresh_from_db()
+        self.addresses = self.connection.get_addresses()
+
     def _write_checksum(self, checksum):
         for attempt in range(1, self.RECONNECT_MAX_RETRIES + 1):
-            self.log('Trying to reconnect to device ' f'(attempt n.{attempt})...')
+            self._refresh_addresses()
+            addresses = ', '.join(self.addresses)
+            self.log(
+                f'Trying to reconnect to device at {addresses} (attempt n.{attempt})...',
+                save=False,
+            )
             try:
                 self.connect()
             except (NoValidConnectionsError, socket.timeout):
