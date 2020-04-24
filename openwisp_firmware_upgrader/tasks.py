@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
     bind=True,
     autoretry_for=(RecoverableFailure,),
     soft_time_limit=app_settings.TASK_TIMEOUT,
-    time_limit=app_settings.TASK_TIMEOUT * 1.05,
     **app_settings.RETRY_OPTIONS
 )
 def upgrade_firmware(self, operation_id):
@@ -34,11 +33,7 @@ def upgrade_firmware(self, operation_id):
         logger.warn('SoftTimeLimitExceeded raised in upgrade_firmware task')
 
 
-@shared_task(
-    bind=True,
-    soft_time_limit=app_settings.TASK_TIMEOUT,
-    time_limit=app_settings.TASK_TIMEOUT * 1.05,
-)
+@shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
 def batch_upgrade_operation(self, build_id, firmwareless):
     """
     Calls the ``batch_upgrade()`` method of a
