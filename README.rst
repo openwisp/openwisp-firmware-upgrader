@@ -187,12 +187,12 @@ regarding automatic retries for known errors
 +--------------+--------------+
 | **type**:    | ``int``      |
 +--------------+--------------+
-| **default**: | ``300``      |
+| **default**: | ``600``      |
 +--------------+--------------+
 
 Timeout for the background tasks which perform firmware upgrades.
 
-If for some unexpected reason an upgrade remains stuck for more than 5 minutes,
+If for some unexpected reason an upgrade remains stuck for more than 10 minutes,
 the upgrade operation will be flagged as failed and the task will be killed.
 
 This should not happen, but a global task time out is a best practice when
