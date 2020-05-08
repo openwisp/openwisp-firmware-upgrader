@@ -89,7 +89,7 @@ Follow the setup instructions of `openwisp-controller
 
     urlpatterns += staticfiles_urlpatterns()
 
-Add `apptemplates.Loader` to template loaders:
+Add ``apptemplates.Loader`` to template loaders:
 
 .. code-block:: python
 

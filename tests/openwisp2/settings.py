@@ -197,7 +197,6 @@ if os.environ.get('SAMPLE_APP', False):
     FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = (
         'sample_firmware_upgrader.UpgradeOperation'
     )
-    OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE = 35 * 1024 * 1024
 
 # local settings must be imported before test runner otherwise they'll be ignored
 try:
