@@ -325,6 +325,9 @@ base classes from openwisp-firmware-upgrader and add your customizations.
 In order to help django find the static files and templates of *openwisp-firmware-upgrader*,
 you need to perform the steps described below.
 
+**Premise**: if you plan on using a customized version of this module,
+we suggest to start with it since the beginning, because migrating your data
+from the default module to your extended version may be time consuming.
 
 1. Install ``openwisp-firmware-upgrader``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
