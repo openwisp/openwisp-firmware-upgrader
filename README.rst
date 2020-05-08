@@ -325,6 +325,7 @@ base classes from openwisp-firmware-upgrader and add your customizations.
 In order to help django find the static files and templates of *openwisp-firmware-upgrader*,
 you need to perform the steps described below.
 
+
 1. Install ``openwisp-firmware-upgrader``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -428,15 +429,4 @@ Contributing
 ------------
 
 Please read the `OpenWISP contributing guidelines
-<http://openwisp.io/docs/developer/contributing.html>`_
-and also keep in mind the following:
-
-1. Announce your intentions in the `OpenWISP Mailing List <https://groups.google.com/d/forum/openwisp>`_
-2. Fork this repo and install it
-3. Follow `PEP8, Style Guide for Python Code`_
-4. Write code
-5. Write tests for your code
-6. Ensure all tests pass
-7. Ensure test coverage does not decrease
-8. Document your changes
-9. Send pull request
+<http://openwisp.io/docs/developer/contributing.html>`_.
