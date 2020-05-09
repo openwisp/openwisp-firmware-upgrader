@@ -618,33 +618,6 @@ class BaseTestFirmwareImageViews(TestAPIUpgraderMixin):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
 
-    # FIXME: I'm unable to get the test working
-    """
-    def test_firmware_update(self):
-        image = self._create_firmware_image()
-        url = reverse('upgrader:api_firmware_detail', args=[image.build.pk ,image.pk])
-        data = {
-            "type": self.TPLINK_4300_IL_IMAGE,
-            "file": self._get_simpleuploadedfile_multipart(),
-        }
-        #r = self.client.put(url, data, content_disposition="attachment;
-                             filename=f'openwrt-{self.TPLINK_4300_IMAGE}'")
-        r = self.client.put(url, data, content_type='multipart/form-data')
-        import ipdb; ipdb.set_trace()
-        self.assertEqual(r.data["id"], str(image.pk))
-        self.assertEqual(r.data["build"], image.build.pk)
-        self.assertEqual(r.data["type"], self.TPLINK_4300_IL_IMAGE)
-    """
-
-    def test_firmware_update_partial(self):
-        image = self._create_firmware_image()
-        url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
-        data = dict(type=self.TPLINK_4300_IL_IMAGE)
-        with self.assertNumQueries(11):
-            r = self.client.patch(url, data, content_type='application/json')
-        self.assertEqual(r.data["id"], str(image.pk))
-        self.assertEqual(r.data["type"], self.TPLINK_4300_IL_IMAGE)
-
     def test_firmware_delete(self):
         image = self._create_firmware_image()
         self.assertEqual(self.firmware_image_model.objects.count(), 1)
@@ -662,3 +635,20 @@ class BaseTestFirmwareImageViews(TestAPIUpgraderMixin):
         with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.content, content)
+
+    def test_firmware_no_update(self):
+        image = self._create_firmware_image()
+        url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
+        data = {
+            "type": self.TPLINK_4300_IL_IMAGE,
+            "file": self._get_simpleuploadedfile(),
+        }
+        r = self.client.put(url, data, content_type='multipart/form-data')
+        self.assertEqual(r.status_code, 405)
+
+    def test_firmware_no_update_partial(self):
+        image = self._create_firmware_image()
+        url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
+        data = dict(type=self.TPLINK_4300_IL_IMAGE)
+        r = self.client.patch(url, data, content_type='application/json')
+        self.assertEqual(r.status_code, 405)
