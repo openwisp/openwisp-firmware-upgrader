@@ -261,7 +261,7 @@ This setting can be used to set the maximum size limit for firmware images, eg:
 | **default**: | ``False`` |
 +--------------+-----------+
 
-Indicates whether the API for Firmward Upgrader is enabled or not.
+Indicates whether the API for Firmware Upgrader is enabled or not.
 
 Installing for development
 --------------------------
