@@ -1,7 +1,8 @@
 from wsgiref.util import FileWrapper
 
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from rest_framework import generics
+from rest_framework import filters, generics
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import DjangoModelPermissions
 from swapper import load_model
@@ -9,6 +10,7 @@ from swapper import load_model
 from openwisp_users.api.authentication import BearerAuthentication
 
 from .serializers import (
+    BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
     BuildSerializer,
     CategorySerializer,
@@ -38,20 +40,23 @@ class OrgAPIMixin(ProtectedAPIMixin):
             if org:
                 organization_filter = {self.organization_field + '__name': org}
                 queryset = queryset.filter(**organization_filter)
-        except Exception:
-            # django.core.exceptions.ValidationError when uuid is not valid
+        except ValidationError:
+            # when uuid is not valid
             queryset = []
         return queryset
 
 
 class BuildListView(OrgAPIMixin, generics.ListCreateAPIView):
-    queryset = Build.objects.all()
+    queryset = Build.objects.all().select_related('category')
     serializer_class = BuildSerializer
     organization_field = 'category__organization'
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['version', 'created', 'modified']
+    ordering = ['-created', '-version']
 
 
 class BuildDetailView(OrgAPIMixin, generics.RetrieveUpdateDestroyAPIView):
-    queryset = Build.objects.all()
+    queryset = Build.objects.all().select_related('category')
     serializer_class = BuildSerializer
     lookup_fields = ['pk']
     organization_field = 'category__organization'
@@ -61,6 +66,9 @@ class CategoryListView(OrgAPIMixin, generics.ListCreateAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     organization_field = 'organization'
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['name', 'created', 'modified']
+    ordering = ['name', '-created']
 
 
 class CategoryDetailView(OrgAPIMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -70,14 +78,23 @@ class CategoryDetailView(OrgAPIMixin, generics.RetrieveUpdateDestroyAPIView):
     organization_field = 'organization'
 
 
-class BatchUpgradeOperationListView(OrgAPIMixin, generics.ListCreateAPIView):
-    queryset = BatchUpgradeOperation.objects.all()
-    serializer_class = BatchUpgradeOperationSerializer
+class BatchUpgradeOperationListView(OrgAPIMixin, generics.ListAPIView):
+    queryset = BatchUpgradeOperation.objects.all().select_related(
+        'build', 'build__category'
+    )
+    serializer_class = BatchUpgradeOperationListSerializer
     organization_field = 'build__category__organization'
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created', 'modified']
+    ordering = ['-created']
 
 
 class BatchUpgradeOperationDetailView(OrgAPIMixin, generics.RetrieveAPIView):
-    queryset = BatchUpgradeOperation.objects.all()
+    queryset = (
+        BatchUpgradeOperation.objects.all()
+        .select_related('build', 'build__category')
+        .prefetch_related('upgradeoperation_set')
+    )
     serializer_class = BatchUpgradeOperationSerializer
     lookup_fields = ['pk']
     organization_field = 'build__category__organization'
@@ -86,6 +103,10 @@ class BatchUpgradeOperationDetailView(OrgAPIMixin, generics.RetrieveAPIView):
 class FirmwareImageListView(OrgAPIMixin, generics.ListCreateAPIView):
     serializer_class = FirmwareImageSerializer
     organization_field = 'build__category__organization'
+    ordering_fields = ['type', 'created', 'modified']
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['type', 'created', 'modified']
+    ordering = ['-created']
 
     def get_queryset(self):
         build_pk = self.request.parser_context['kwargs']['pk']

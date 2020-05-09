@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import reverse
-from openwisp_firmware_upgrader.api.serializers import (
+from openwisp_firmware_upgrader.api.serializers import (  # BuildListSerializer,
+    BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
     BuildSerializer,
     CategorySerializer,
@@ -76,7 +77,7 @@ class BaseTestBuildViews(TestAPIUpgraderMixin):
         self._create_build(version='0.2', organization=self.org)
         serialized_list = [
             self._serialize_build(build)
-            for build in self.build_model.objects.all().order_by('-pk')
+            for build in self.build_model.objects.all().order_by('-created')
         ]
         url = reverse('upgrader:api_build_list')
         r = self.client.get(url)
@@ -123,7 +124,7 @@ class BaseTestBuildViews(TestAPIUpgraderMixin):
         self._login('admin', 'tester')
         serialized_list = [
             self._serialize_build(build)
-            for build in self.build_model.objects.all().order_by('-pk')
+            for build in self.build_model.objects.all().order_by('-created')
         ]
         r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
@@ -218,7 +219,7 @@ class BaseTestCategoryViews(TestAPIUpgraderMixin):
         self._create_category(name='New category')
         serialized_list = [
             self._serialize_category(category)
-            for category in self.category_model.objects.all().order_by('-pk')
+            for category in self.category_model.objects.all().order_by('name')
         ]
         url = reverse('upgrader:api_category_list')
         r = self.client.get(url)
@@ -263,7 +264,7 @@ class BaseTestCategoryViews(TestAPIUpgraderMixin):
         self._login('admin', 'tester')
         serialized_list = [
             self._serialize_category(category)
-            for category in self.category_model.objects.all().order_by('-pk')
+            for category in self.category_model.objects.all().order_by('name')
         ]
         r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
@@ -332,8 +333,11 @@ class BaseTestBatchUpgradeOperationViews(TestAPIUpgraderMixin):
     firmware_image_model = FirmwareImage
     upgrade_operation_model = UpgradeOperation
 
-    def _serialize_upgrade_env(self, upgrade_env):
-        serializer = BatchUpgradeOperationSerializer()
+    def _serialize_upgrade_env(self, upgrade_env, action='list'):
+        serializer = {
+            'list': BatchUpgradeOperationListSerializer,
+            'detail': BatchUpgradeOperationSerializer,
+        }[action]()
         return dict(serializer.to_representation(upgrade_env))
 
     def test_batchupgradeoperation_unauthorized(self):
@@ -421,7 +425,7 @@ class BaseTestBatchUpgradeOperationViews(TestAPIUpgraderMixin):
         serialized_list = [
             self._serialize_upgrade_env(operation)
             for operation in self.batch_upgrade_operation_model.objects.all().order_by(
-                '-pk'
+                '-created'
             )
         ]
         r = self.client.get(url)
@@ -436,7 +440,7 @@ class BaseTestBatchUpgradeOperationViews(TestAPIUpgraderMixin):
         env = self._create_upgrade_env()
         env['build2'].batch_upgrade(firmwareless=False)
         operation = self.batch_upgrade_operation_model.objects.get(build=env['build2'])
-        serialized = self._serialize_upgrade_env(operation)
+        serialized = self._serialize_upgrade_env(operation, action='detail')
         url = reverse('upgrader:api_batchupgradeoperation_detail', args=[operation.pk])
         r = self.client.get(url)
         self.assertEqual(r.data, serialized)
@@ -488,7 +492,7 @@ class BaseTestFirmwareImageViews(TestAPIUpgraderMixin):
 
         serialized_list = [
             self._serialize_image(image)
-            for image in self.firmware_image_model.objects.all().order_by('-pk')
+            for image in self.firmware_image_model.objects.all().order_by('-created')
         ]
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
         r = self.client.get(url)
@@ -534,7 +538,6 @@ class BaseTestFirmwareImageViews(TestAPIUpgraderMixin):
         self._login('admin', 'tester')
         serialized_list = [
             self._serialize_image(image),
-            # self._serialize_image(image2),
         ]
 
         r = self.client.get(url)
