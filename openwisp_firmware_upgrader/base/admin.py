@@ -146,7 +146,7 @@ class AbstractBatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     select_related = ('build',)
     ordering = ('-created',)
     inlines = [UpgradeOperationInline]
-    multitenant_parent = 'build'
+    multitenant_parent = 'build__category'
     fields = [
         'build',
         'status',
