@@ -38,6 +38,11 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
     model = load_model('firmware_upgrader', 'FirmwareImage')
     extra = 0
 
+    def has_change_permission(self, request, obj=None):
+        if obj:
+            return False
+        return True
+
 
 class AbstractBuildAdmin(BaseVersionAdmin):
     list_display = ('__str__', 'category', 'created', 'modified')
