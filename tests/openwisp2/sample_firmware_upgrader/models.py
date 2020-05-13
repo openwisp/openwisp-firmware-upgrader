@@ -17,15 +17,18 @@ class DetailsModel(models.Model):
 
 
 class Category(DetailsModel, AbstractCategory):
-    pass
+    class Meta:
+        unique_together = ('name', 'organization')
 
 
 class Build(DetailsModel, AbstractBuild):
-    pass
+    class Meta:
+        unique_together = ('category', 'version')
 
 
 class FirmwareImage(DetailsModel, AbstractFirmwareImage):
-    pass
+    class Meta:
+        unique_together = ('build', 'type')
 
 
 class DeviceFirmware(DetailsModel, AbstractDeviceFirmware):
