@@ -87,6 +87,24 @@ class BaseTestBuildViews(TestAPIUpgraderMixin):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
 
+    def test_build_list_django_filters(self):
+        category1 = self._create_category()
+        category2 = self._create_category(name='New category')
+
+        build1 = self._create_build(category=category1)
+        build2 = self._create_build(version='0.2', category=category2)
+        url = reverse('upgrader:api_build_list')
+
+        filter_params = dict(category=category1.pk)
+        with self.assertNumQueries(5):
+            r = self.client.get(url, filter_params)
+        self.assertEqual(r.data, [self._serialize_build(build1)])
+
+        filter_params = dict(category=category2.pk)
+        with self.assertNumQueries(5):
+            r = self.client.get(url, filter_params)
+        self.assertEqual(r.data, [self._serialize_build(build2)])
+
     def test_build_list_filter_org(self):
         org2 = self._create_org(name='New org', slug='new-org')
         self._create_operator(
@@ -403,6 +421,59 @@ class BaseTestBatchUpgradeOperationViews(TestAPIUpgraderMixin):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
 
+    def test_batchupgradeoperation_list_django_filters(self):
+        env = self._create_upgrade_env(organization=self.org)
+        env['build1'].batch_upgrade(firmwareless=False)
+        env['build2'].batch_upgrade(firmwareless=False)
+
+        url = reverse('upgrader:api_batchupgradeoperation_list')
+
+        serialized_list = [
+            self._serialize_upgrade_env(operation)
+            for operation in self.batch_upgrade_operation_model.objects.order_by(
+                "-created"
+            )
+        ]
+        with self.assertNumQueries(4):
+            r = self.client.get(url)
+        self.assertEqual(r.data, serialized_list)
+
+        operation = self.batch_upgrade_operation_model.objects.get(build=env['build1'])
+        serialized_list = [self._serialize_upgrade_env(operation)]
+        filter_params = dict(build=env['build1'].pk)
+        with self.assertNumQueries(5):
+            r = self.client.get(url, filter_params)
+        self.assertEqual(r.data, serialized_list)
+
+        operation = self.batch_upgrade_operation_model.objects.get(build=env['build2'])
+        serialized_list = [self._serialize_upgrade_env(operation)]
+        filter_params = dict(build=env['build2'].pk)
+        with self.assertNumQueries(5):
+            r = self.client.get(url, filter_params)
+        self.assertEqual(r.data, serialized_list)
+
+        serialized_list = [
+            self._serialize_upgrade_env(operation)
+            for operation in self.batch_upgrade_operation_model.objects.filter(
+                status='in-progress'
+            ).order_by("-created")
+        ]
+        filter_params = dict(status="in-progress")
+        with self.assertNumQueries(4):
+            r = self.client.get(url, filter_params)
+        self.assertEqual(r.data, serialized_list)
+
+        serialized_list = [
+            self._serialize_upgrade_env(operation)
+            for operation in self.batch_upgrade_operation_model.objects.filter(
+                status='success'
+            ).order_by("-created")
+        ]
+        filter_params = dict(status="success")
+        with self.assertNumQueries(4):
+            r = self.client.get(url, filter_params)
+        self.assertEqual(r.data, serialized_list)
+
     def test_batchupgradeoperation_list_filter_org(self):
         org2 = self._create_org(name='New org', slug='new-org')
         category2 = self._create_category(name='New category', organization=org2)
@@ -538,6 +609,24 @@ class BaseTestFirmwareImageViews(TestAPIUpgraderMixin):
         with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
+
+    def test_firmware_list_django_filters(self):
+        image = self._create_firmware_image(type=self.TPLINK_4300_IMAGE)
+        image2 = self._create_firmware_image(type=self.TPLINK_4300_IL_IMAGE)
+
+        url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
+
+        filter_params = dict(type=self.TPLINK_4300_IMAGE)
+        with self.assertNumQueries(4):
+            r = self.client.get(url, filter_params)
+        self.assertEqual(r.data, [self._serialize_image(image)])
+
+        url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
+
+        filter_params = dict(type=self.TPLINK_4300_IL_IMAGE)
+        with self.assertNumQueries(4):
+            r = self.client.get(url, filter_params)
+        self.assertEqual(r.data, [self._serialize_image(image2)])
 
     def test_firmware_list_filter_org(self):
         org2 = self._create_org(name='New org', slug='new-org')
