@@ -2,6 +2,7 @@ from wsgiref.util import FileWrapper
 
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import DjangoModelPermissions
@@ -50,7 +51,8 @@ class BuildListView(OrgAPIMixin, generics.ListCreateAPIView):
     queryset = Build.objects.all().select_related('category')
     serializer_class = BuildSerializer
     organization_field = 'category__organization'
-    filter_backends = [filters.OrderingFilter]
+    filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
+    filterset_fields = ['category']
     ordering_fields = ['version', 'created', 'modified']
     ordering = ['-created', '-version']
 
@@ -84,7 +86,8 @@ class BatchUpgradeOperationListView(OrgAPIMixin, generics.ListAPIView):
     )
     serializer_class = BatchUpgradeOperationListSerializer
     organization_field = 'build__category__organization'
-    filter_backends = [filters.OrderingFilter]
+    filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
+    filterset_fields = ['build', 'status']
     ordering_fields = ['created', 'modified']
     ordering = ['-created']
 
@@ -104,7 +107,8 @@ class FirmwareImageListView(OrgAPIMixin, generics.ListCreateAPIView):
     serializer_class = FirmwareImageSerializer
     organization_field = 'build__category__organization'
     ordering_fields = ['type', 'created', 'modified']
-    filter_backends = [filters.OrderingFilter]
+    filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
+    filterset_fields = ['type']
     ordering_fields = ['type', 'created', 'modified']
     ordering = ['-created']
 
