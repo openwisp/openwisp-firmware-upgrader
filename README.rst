@@ -447,8 +447,8 @@ You will also need to create custom URL routers and import them into your root u
 
     urlpatterns = [
         # ... other urls ...
-        url(r'^firmware/', include('<your_cusom_app>.private_storage.urls')),
-        url(r'^api/v1/', include('<your_cusom_app>.api.urls')),
+        url(r'^firmware/', include('<your_custom_app>.private_storage.urls')),
+        url(r'^api/v1/', include('<your_custom_app>.api.urls')),
     ]
 
 Reusing the base tests

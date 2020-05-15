@@ -13,6 +13,7 @@ urlpatterns = [
     url(r'', include('openwisp_controller.urls')),
     url(r'^$', redirect_view, name='index'),
     url(r'^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+    url(r'^api/v1/', include('openwisp_utils.api.urls')),
     url(r'^api/v1/', include('openwisp_users.api.urls')),
     url(r'^api/v1/', include('openwisp_firmware_upgrader.api.urls')),
 ]

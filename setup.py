@@ -34,17 +34,12 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        'openwisp-controller>=0.6.0,<0.7.0',
+        # TODO: uncomment when they're released
+        # 'openwisp-utils[rest]~=0.5',
+        # 'openwisp-controller~=0.7',
         'django-private-storage~=2.2',
         'swapper~=1.1',
     ],
-    extras_require={
-        'rest': [
-            'djangorestframework>=3.11,<3.12',
-            'drf-yasg>=1.17,<1.18',
-            'django-filter>=2.2.0<2.3.0',
-        ],
-    },
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Web Environment',
