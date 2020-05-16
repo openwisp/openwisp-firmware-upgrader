@@ -264,6 +264,181 @@ This setting can be used to set the maximum size limit for firmware images, eg:
 
 Indicates whether the API for Firmware Upgrader is enabled or not.
 
+REST API
+--------
+
+To enable the API the setting
+`OPENWISP_FIRMWARE_UPGRADER_API <#openwisp-firmware-upgrader-api>`_
+must be set to ``True``.
+
+Live documentation
+~~~~~~~~~~~~~~~~~~
+
+.. image:: docs/images/api-docs.gif
+
+A general live API documentation (following the OpenAPI specification) at ``/api/v1/docs/``.
+
+Browsable web interface
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. image:: docs/images/api-ui.png
+
+Additionally, opening any of the endpoints `listed below <#list-of-endpoints>`_
+directly in the browser will show the `browsable API interface of Django-REST-Framework
+<https://www.django-rest-framework.org/topics/browsable-api/>`_,
+which makes it even easier to find out the details of each endpoint.
+
+Authentication
+~~~~~~~~~~~~~~
+
+See openwisp-users: `authenticating with the user token
+<https://github.com/openwisp/openwisp-users#authenticating-with-the-user-token>`_.
+
+When browsing the API via the `Live documentation <#live-documentation>`_
+or the `Browsable web page <#browsable-web-interface>`_, you can also use
+the session authentication by logging in the django admin.
+
+List of endpoints
+~~~~~~~~~~~~~~~~~
+
+Since the detailed explanation is contained in the `Live documentation <#live-documentation>`_
+and in the `Browsable web page <#browsable-web-interface>`_ of each point,
+here we'll provide just a list of the available endpoints,
+for further information please open the URL of the endpoint in your browser.
+
+List mass upgrade operations
+############################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/batch-upgrade-operation​/
+
+Get mass upgrade operation detail
+#################################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/batch-upgrade-operation​/{id}​/
+
+List firmware builds
+####################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/
+
+Create firmware build
+#####################
+
+.. code-block:: text
+
+    POST ​/v1​/firmware​/build​/
+
+Get firmware build details
+##########################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/{id}​/
+
+Change details of firmware build
+################################
+
+.. code-block:: text
+
+    PUT ​/v1​/firmware​/build​/{id}​/
+
+Patch details of firmware build
+###############################
+
+.. code-block:: text
+
+    PATCH ​/v1​/firmware​/build​/{id}​/
+
+Delete firmware build
+#####################
+
+.. code-block:: text
+
+    DELETE ​/v1​/firmware​/build​/{id}​/
+
+Get list of images of a firmware build
+######################################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/{id}​/image​/
+
+Upload new firmware image to the build
+######################################
+
+.. code-block:: text
+
+    POST ​/v1​/firmware​/build​/{id}​/image​/
+
+Get firmware image details
+##########################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/
+
+Delete firmware image
+#####################
+
+.. code-block:: text
+
+    DELETE ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/
+
+Download firmware image
+#######################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/download​/
+
+List firmware categories
+########################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/category​/
+
+Create new firmware category
+############################
+
+.. code-block:: text
+
+    POST ​/v1​/firmware​/category​/
+
+Get firmware category details
+#############################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/category​/{id}​/
+
+Change the details of a firmware category
+#########################################
+
+.. code-block:: text
+
+    PUT ​/v1​/firmware​/category​/{id}​/
+
+Patch the details of a firmware category
+########################################
+
+.. code-block:: text
+
+    PATCH ​/v1​/firmware​/category​/{id}​/
+
+Delete a firmware category
+##########################
+
+.. code-block:: text
+
+    DELETE ​/v1​/firmware​/category​/{id}​/
+
 Installing for development
 --------------------------
 
@@ -462,14 +637,6 @@ some of the existing features of openwisp-firmware-upgrader.
 
 In case you need to add breaking changes, you can overwrite the tests defined
 in the base classes to test your own behavior.
-
-API
----
-
-The API development for this module is ongoing. At the moment you can check the
-available documentation using the Swagger endpoint at ``/api/v1/swagger/``.
-
-.. image:: images/swagger_api.gif
 
 Contributing
 ------------
