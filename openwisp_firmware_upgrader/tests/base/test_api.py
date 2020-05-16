@@ -162,6 +162,13 @@ class BaseTestBuildViews(TestAPIUpgraderMixin):
             r = self.client.get(url, data_filter)
         self.assertEqual(r.data, serialized_list)
 
+    def test_build_list_filter_html(self):
+        self._create_build(organization=self.org)
+        url = reverse('upgrader:api_build_list')
+        r = self.client.get(url, HTTP_ACCEPT='text/html')
+        # fails if django_filter is not in INSTALLED_APPS
+        self.assertEqual(r.status_code, 200)
+
     def test_build_create(self):
         category = self._get_category()
         url = reverse('upgrader:api_build_list')

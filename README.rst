@@ -69,6 +69,7 @@ Follow the setup instructions of `openwisp-controller
         'rest_framework',
         'rest_framework.authtoken',
         'rest_framework_gis',
+        'django_filters',
         'drf_yasg',
         # channels
         'channels',
