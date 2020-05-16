@@ -140,7 +140,7 @@ if TESTING:
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-            'LOCATION': 'unique-snowflake',
+            'LOCATION': 'firmware-upgrader',
         }
     }
 else:
@@ -148,7 +148,7 @@ else:
         'default': {
             'BACKEND': 'django_redis.cache.RedisCache',
             'LOCATION': 'redis://localhost/0',
-            'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient',},
+            'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient'},
         }
     }
 

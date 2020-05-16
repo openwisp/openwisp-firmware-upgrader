@@ -13,7 +13,7 @@ openwisp-firmware-upgrader
 
 ------------
 
-OpenWISP 2 firmware upgrade module (Work in progress).
+OpenWISP firmware upgrade module (work in progress).
 
 ------------
 
