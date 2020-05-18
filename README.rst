@@ -424,12 +424,15 @@ Reusing the base tests
 ~~~~~~~~~~~~~~~~~~~~~~
 
 When developing a custom application based on this module, it's a good
-idea to import and run the `base tests <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/openwisp_firmware_upgrader/tests/base>`_
-too, so that you can be sure the changes you're introducing are not breaking
+idea to import and run the base tests too,
+so that you can be sure the changes you're introducing are not breaking
 some of the existing features of openwisp-firmware-upgrader.
 
 In case you need to add breaking changes, you can overwrite the tests defined
 in the base classes to test your own behavior.
+
+See the `tests of the sample app <https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/tests/openwisp2/sample_firmware_upgrader/tests.py>`_
+to find out how to do this.
 
 Contributing
 ------------
