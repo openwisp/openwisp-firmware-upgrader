@@ -4,6 +4,7 @@ from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.template.response import TemplateResponse
 from django.urls import reverse
+from django.utils.safestring import mark_safe
 from django.utils.translation import ugettext_lazy as _
 from reversion.admin import VersionAdmin
 from swapper import load_model
@@ -72,8 +73,6 @@ class AbstractBuildAdmin(BaseVersionAdmin):
         url = reverse(f'admin:{app_label}_batchupgradeoperation_changelist')
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
-            from django.utils.safestring import mark_safe
-
             text = (
                 _(
                     'Mass upgrade operation started, you can '
