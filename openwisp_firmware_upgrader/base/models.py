@@ -11,7 +11,6 @@ from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 from django.utils.translation import ugettext_lazy as _
 from private_storage.fields import PrivateFileField
-from swapper import get_model_name, load_model
 
 from openwisp_controller.config.models import Device
 from openwisp_users.mixins import OrgMixin
@@ -25,6 +24,7 @@ from ..exceptions import (
     UpgradeNotNeeded,
 )
 from ..hardware import FIRMWARE_IMAGE_MAP, FIRMWARE_IMAGE_TYPE_CHOICES
+from ..swapper import get_model_name, load_model
 from ..tasks import upgrade_firmware
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class AbstractCategory(OrgMixin, TimeStampedEditableModel):
 
 class AbstractBuild(TimeStampedEditableModel):
     category = models.ForeignKey(
-        get_model_name('firmware_upgrader', 'Category'),
+        get_model_name('Category'),
         on_delete=models.CASCADE,
         verbose_name=_('firmware category'),
         help_text=_(
@@ -80,7 +80,7 @@ class AbstractBuild(TimeStampedEditableModel):
             return super().__str__()
 
     def batch_upgrade(self, firmwareless):
-        batch_model = load_model('firmware_upgrader', 'BatchUpgradeOperation')
+        batch_model = load_model('BatchUpgradeOperation')
         batch = batch_model(build=self)
         batch.full_clean()
         batch.save()
@@ -106,7 +106,7 @@ class AbstractBuild(TimeStampedEditableModel):
         if select_devices:
             related.append('device')
         return (
-            load_model('firmware_upgrader', 'DeviceFirmware')
+            load_model('DeviceFirmware')
             .objects.all()
             .select_related(*related)
             .filter(image__build__category_id=self.category_id)
@@ -124,7 +124,7 @@ class AbstractBuild(TimeStampedEditableModel):
         for image in self.firmwareimage_set.all():
             devices = self._find_firmwareless_devices(image.boards)
             for device in devices:
-                df_model = load_model('firmware_upgrader', 'DeviceFirmware')
+                df_model = load_model('DeviceFirmware')
                 device_fw = df_model(device=device, image=image)
                 device_fw.full_clean()
                 device_fw.save(batch)
@@ -152,9 +152,7 @@ def get_build_directory(instance, filename):
 
 
 class AbstractFirmwareImage(TimeStampedEditableModel):
-    build = models.ForeignKey(
-        get_model_name('firmware_upgrader', 'Build'), on_delete=models.CASCADE
-    )
+    build = models.ForeignKey(get_model_name('Build'), on_delete=models.CASCADE)
     file = PrivateFileField(
         'File', upload_to=get_build_directory, max_file_size=app_settings.MAX_FILE_SIZE
     )
@@ -226,9 +224,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):
     device = models.OneToOneField('config.Device', on_delete=models.CASCADE)
-    image = models.ForeignKey(
-        get_model_name('firmware_upgrader', 'FirmwareImage'), on_delete=models.CASCADE
-    )
+    image = models.ForeignKey(get_model_name('FirmwareImage'), on_delete=models.CASCADE)
     installed = models.BooleanField(default=False)
     _old_image = None
 
@@ -281,7 +277,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             self._old_image = self.image
 
     def create_upgrade_operation(self, batch):
-        uo_model = load_model('firmware_upgrader', 'UpgradeOperation')
+        uo_model = load_model('UpgradeOperation')
         operation = uo_model(device=self.device, image=self.image)
         if batch:
             operation.batch = batch
@@ -294,9 +290,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
 
 class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
-    build = models.ForeignKey(
-        get_model_name('firmware_upgrader', 'Build'), on_delete=models.CASCADE
-    )
+    build = models.ForeignKey(get_model_name('Build'), on_delete=models.CASCADE)
     STATUS_CHOICES = (
         ('in-progress', _('in progress')),
         ('success', _('completed successfully')),
@@ -372,15 +366,13 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         ('aborted', _('aborted')),
     )
     device = models.ForeignKey('config.Device', on_delete=models.CASCADE)
-    image = models.ForeignKey(
-        get_model_name('firmware_upgrader', 'FirmwareImage'), on_delete=models.CASCADE
-    )
+    image = models.ForeignKey(get_model_name('FirmwareImage'), on_delete=models.CASCADE)
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
     )
     log = models.TextField(blank=True)
     batch = models.ForeignKey(
-        get_model_name('firmware_upgrader', 'BatchUpgradeOperation'),
+        get_model_name('BatchUpgradeOperation'),
         on_delete=models.CASCADE,
         blank=True,
         null=True,
@@ -407,7 +399,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         # prevent multiple upgrade operations for
         # the same device running at the same time
         qs = (
-            load_model('firmware_upgrader', 'UpgradeOperation')
+            load_model('UpgradeOperation')
             .objects.filter(device=self.device, status='in-progress')
             .exclude(pk=self.pk)
         )

@@ -3,6 +3,7 @@ from unittest import skipUnless
 
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
+from openwisp_firmware_upgrader.swapper import load_model
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
 from openwisp_firmware_upgrader.tests.base.test_admin import BaseTestAdmin
 from openwisp_firmware_upgrader.tests.base.test_models import (
@@ -16,14 +17,13 @@ from openwisp_firmware_upgrader.tests.base.test_private_storage import (
     BaseTestPrivateStorage,
 )
 from openwisp_firmware_upgrader.tests.base.test_tasks import BaseTestTasks
-from swapper import load_model
 
-BatchUpgradeOperation = load_model('firmware_upgrader', 'BatchUpgradeOperation')
-Build = load_model('firmware_upgrader', 'Build')
-Category = load_model('firmware_upgrader', 'Category')
-DeviceFirmware = load_model('firmware_upgrader', 'DeviceFirmware')
-FirmwareImage = load_model('firmware_upgrader', 'FirmwareImage')
-UpgradeOperation = load_model('firmware_upgrader', 'UpgradeOperation')
+BatchUpgradeOperation = load_model('BatchUpgradeOperation')
+Build = load_model('Build')
+Category = load_model('Category')
+DeviceFirmware = load_model('DeviceFirmware')
+FirmwareImage = load_model('FirmwareImage')
+UpgradeOperation = load_model('UpgradeOperation')
 
 
 @skipUnless(

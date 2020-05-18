@@ -7,12 +7,12 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django.utils.translation import ugettext_lazy as _
 from reversion.admin import VersionAdmin
-from swapper import load_model
 
 from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
+from ..swapper import load_model
 from ..tasks import batch_upgrade_operation
 from .forms import UpgradeOperationForm
 
@@ -35,7 +35,7 @@ class AbstractCategoryAdmin(BaseVersionAdmin):
 
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
-    model = load_model('firmware_upgrader', 'FirmwareImage')
+    model = load_model('FirmwareImage')
     extra = 0
 
 
@@ -121,7 +121,7 @@ class AbstractBuildAdmin(BaseVersionAdmin):
 
 
 class UpgradeOperationInline(admin.StackedInline):
-    model = load_model('firmware_upgrader', 'UpgradeOperation')
+    model = load_model('UpgradeOperation')
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
@@ -186,7 +186,7 @@ class AbstractBatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
 
 
 class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
-    model = load_model('firmware_upgrader', 'DeviceFirmware')
+    model = load_model('DeviceFirmware')
     exclude = ('created',)
     readonly_fields = ('installed', 'modified')
     verbose_name = _('Device Firmware')

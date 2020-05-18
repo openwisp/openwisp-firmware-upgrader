@@ -5,6 +5,7 @@ import model_utils.fields
 import openwisp_users.mixins
 import uuid
 import swapper
+from ..swapper import get_model_name
 
 from ..hardware import FIRMWARE_IMAGE_TYPE_CHOICES
 
@@ -251,7 +252,7 @@ class Migration(migrations.Migration):
                     'build',
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to=swapper.get_model_name('firmware_upgrader', 'Build'),
+                        to=get_model_name('Build'),
                     ),
                 ),
             ],
@@ -327,7 +328,7 @@ class Migration(migrations.Migration):
                     'image',
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to=swapper.get_model_name('firmware_upgrader', 'FirmwareImage'),
+                        to=get_model_name('FirmwareImage'),
                     ),
                 ),
             ],
@@ -343,7 +344,7 @@ class Migration(migrations.Migration):
             name='image',
             field=models.ForeignKey(
                 on_delete=django.db.models.deletion.CASCADE,
-                to=swapper.get_model_name('firmware_upgrader', 'FirmwareImage'),
+                to=get_model_name('FirmwareImage'),
             ),
         ),
         migrations.AddField(
@@ -352,7 +353,7 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(
                 help_text='if you have different firmware types eg: (BGP routers, wifi APs, DSL gateways) create a category for each.',
                 on_delete=django.db.models.deletion.CASCADE,
-                to=swapper.get_model_name('firmware_upgrader', 'Category'),
+                to=get_model_name('Category'),
                 verbose_name='firmware category',
             ),
         ),
@@ -360,8 +361,7 @@ class Migration(migrations.Migration):
             model_name='batchupgradeoperation',
             name='build',
             field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE,
-                to=swapper.get_model_name('firmware_upgrader', 'Build'),
+                on_delete=django.db.models.deletion.CASCADE, to=get_model_name('Build'),
             ),
         ),
         migrations.AlterUniqueTogether(
