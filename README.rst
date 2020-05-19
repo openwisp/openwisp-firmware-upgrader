@@ -411,6 +411,9 @@ For the purpose of showing an example, we added a simple "details" field to the
 
 You can add fields in a similar way in your ``models.py`` file.
 
+**Note**: for doubts regarding how to use, extend or develop models please refer to
+the `"Models" section in the django documentation <https://docs.djangoproject.com/en/dev/topics/db/models/>`_.
+
 Extending the admin
 ~~~~~~~~~~~~~~~~~~~
 
