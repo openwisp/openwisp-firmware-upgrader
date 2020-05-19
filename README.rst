@@ -416,9 +416,63 @@ Extending the admin
 
 Please checkout the `admin.py file of the sample app <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/admin.py>`_.
 
-You can change ``CategoryAdmin``, ``BuildAdmin`` and
-``BatchUpgradeOperationAdmin`` and these changes will be reflected in
-your admin interface.
+To introduce changes to the admin, you can do it in the two ways described below.
+
+**Note**: for doubts regarding how the django admin works, or how it can be customized,
+please refer to `"The django admin site" section in the django documentation <https://docs.djangoproject.com/en/dev/ref/contrib/admin/>`_.
+
+1. Monkey patching
+##################
+
+If the changes you need to add are relatively small, you can resort to monkey patching.
+
+For example:
+
+.. code-block:: python
+
+    from openwisp_firmware_upgrader.admin import (  # noqa
+        BatchUpgradeOperationAdmin,
+        BuildAdmin,
+        CategoryAdmin,
+    )
+
+    BuildAdmin.list_display.insert(1, 'my_custom_field')
+    BuildAdmin.ordering = ['-my_custom_field']
+
+2. Inheriting admin classes
+###########################
+
+If you need to introduce significant changes and/or you don't want to resort to
+monkey patching, you can proceed as follows:
+
+.. code-block:: python
+
+    from openwisp_firmware_upgrader.admin import (
+        BatchUpgradeOperationAdmin as BaseBatchUpgradeOperationAdmin,
+        BuildAdmin as BaseBuildAdmin,
+        CategoryAdmin as BaseCategoryAdmin,
+    )
+    from openwisp_firmware_upgrader.swapper import load_model
+
+    BatchUpgradeOperation = load_model('BatchUpgradeOperation')
+    Build = load_model('Build')
+    Category = load_model('Category')
+    DeviceFirmware = load_model('DeviceFirmware')
+    FirmwareImage = load_model('FirmwareImage')
+    UpgradeOperation = load_model('UpgradeOperation')
+
+    admin.site.unregister(BatchUpgradeOperation)
+    admin.site.unregister(Build)
+    admin.site.unregister(Category)
+
+    class BatchUpgradeOperationAdmin(BaseBatchUpgradeOperationAdmin):
+        # add your changes here
+
+    class BuildAdmin(BaseBuildAdmin):
+        # add your changes here
+
+    class CategoryAdmin(BaseCategoryAdmin):
+        # add your changes here
 
 Reusing the base tests
 ~~~~~~~~~~~~~~~~~~~~~~
