@@ -312,40 +312,72 @@ this concept, read the following section.
 Extending openwisp-firmware-upgrader
 ------------------------------------
 
-The ``tests/openwisp2/sample-firmware-upgrader`` may serve as an example for
-extending *openwisp-firmware-upgrader* in your own application.
+One of the core values of the OpenWISP project is `Software Reusability <http://openwisp.io/docs/general/values.html#software-reusability-means-long-term-sustainability>`_,
+for this reason *openwisp-firmware-upgrader* provides a set of base classes
+which can be imported, extended and reused to create derivative apps.
 
-*openwisp-firmware-upgrader* provides a set of models and admin classes which can
-be imported, extended and reused by third party apps.
+In order to implement your custom version of *openwisp-firmware-upgrader*,
+you need to perform the steps described in the rest of this section.
 
-To extend *openwisp-firmware-upgrader*, **you MUST NOT** add it to ``settings.INSTALLED_APPS``,
-but you must create your own app (which goes into ``settings.INSTALLED_APPS``), import the
-base classes from openwisp-firmware-upgrader and add your customizations.
-
-In order to help django find the static files and templates of *openwisp-firmware-upgrader*,
-you need to perform the steps described below.
+When in doubt, the code in the `test project <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/>`_
+and the `sample app <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/>`_
+will serve you as source of truth:
+just replicate and adapt that code to get a basic derivative of
+*openwisp-firmware-upgrader* working.
 
 **Premise**: if you plan on using a customized version of this module,
 we suggest to start with it since the beginning, because migrating your data
 from the default module to your extended version may be time consuming.
 
-1. Install ``openwisp-firmware-upgrader``
+1. Initialize your custom module
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The first thing you need to do is to create a new django app which will
+contain your custom version of *openwisp-firmware-upgrader*.
+
+A django app is nothing more than a
+`python package <https://docs.python.org/3/tutorial/modules.html#packages>`_
+(a directory of python scripts), in the following examples we'll call this django app
+``myupgrader``, but you can name it how you want::
+
+    django-admin startapp myupgrader
+
+Keep in mind that the command mentioned above must be called from a directory
+which is available in your `PYTHON_PATH <https://docs.python.org/3/using/cmdline.html#envvar-PYTHONPATH>`_
+so that you can then import the result into your project.
+
+Now you need to add ``myupgrader`` to ``INSTALLED_APPS`` in your ``settings.py``,
+ensuring also that ``openwisp_firmware_upgrader`` has been removed:
+
+.. code-block:: python
+
+    INSTALLED_APPS = [
+        # ... other apps ...
+
+        # 'openwisp_firmware_upgrader'  <-- comment out or delete this line
+        'myupgrader'
+    ]
+
+For more information about how to work with django projects and django apps,
+please refer to the `django documentation <https://docs.djangoproject.com/en/dev/intro/tutorial01/>`_.
+
+2. Install ``openwisp-firmware-upgrader``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Install (and add to the requirement of your project) openwisp-firmware-upgrader::
+Install (and add to the requirement of your project) ``openwisp-firmware-upgrader``::
 
     pip install openwisp-firmware-upgrader
 
-2. Add ``EXTENDED_APPS``
+3. Add ``EXTENDED_APPS``
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Add the following to your ``settings.py``:
 
 .. code-block:: python
 
-    EXTENDED_APPS = ('openwisp_firmware_upgrader',)
+    EXTENDED_APPS = ['openwisp_firmware_upgrader']
 
-3. Add ``openwisp_utils.staticfiles.DependencyFinder``
+4. Add ``openwisp_utils.staticfiles.DependencyFinder``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Add ``openwisp_utils.staticfiles.DependencyFinder`` to
@@ -359,7 +391,7 @@ Add ``openwisp_utils.staticfiles.DependencyFinder`` to
         'openwisp_utils.staticfiles.DependencyFinder',
     ]
 
-4. Add ``openwisp_utils.loaders.DependencyLoader``
+5. Add ``openwisp_utils.loaders.DependencyLoader``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Add ``openwisp_utils.loaders.DependencyLoader`` to ``TEMPLATES`` in your ``settings.py``:
@@ -385,26 +417,21 @@ Add ``openwisp_utils.loaders.DependencyLoader`` to ``TEMPLATES`` in your ``setti
         }
     ]
 
-5. Add swapper configurations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+6. Inherit the AppConfig class
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Add the following to your ``settings.py``:
+Please refer to the following files in the sample app of the test project:
 
-.. code-block:: python
+- `sample_firmware_upgrader/__init__.py <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/__init__.py>`_.
+- `sample_firmware_upgrader/apps.py <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/apps.py>`_.
 
-    # Setting models for swapper module
-    FIRMWARE_UPGRADER_CATEGORY_MODEL = '<YOUR_MODULE_NAME>.Category'
-    FIRMWARE_UPGRADER_BUILD_MODEL = '<YOUR_MODULE_NAME>.Build'
-    FIRMWARE_UPGRADER_FIRMWAREIMAGE_MODEL = '<YOUR_MODULE_NAME>.FirmwareImage'
-    FIRMWARE_UPGRADER_DEVICEFIRMWARE_MODEL = '<YOUR_MODULE_NAME>.DeviceFirmware'
-    FIRMWARE_UPGRADER_BATCHUPGRADEOPERATION_MODEL = '<YOUR_MODULE_NAME>.BatchUpgradeOperation'
-    FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = '<YOUR_MODULE_NAME>.UpgradeOperation'
+You have to replicate and adapt that code in your project.
 
-Substitute ``<YOUR_MODULE_NAME>`` with your actual django app name
-(also known as ``app_label``).
+For more information regarding the concept of ``AppConfig`` please refer to
+the `"Applications" section in the django documentation <https://docs.djangoproject.com/en/dev/ref/applications/>`_.
 
-Extending models
-~~~~~~~~~~~~~~~~
+7. Create your custom models
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For the purpose of showing an example, we added a simple "details" field to the
 `models of the sample app in the test project <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/models.py>`_.
@@ -414,14 +441,42 @@ You can add fields in a similar way in your ``models.py`` file.
 **Note**: for doubts regarding how to use, extend or develop models please refer to
 the `"Models" section in the django documentation <https://docs.djangoproject.com/en/dev/topics/db/models/>`_.
 
-Extending the admin
+8. Add swapper configurations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Once you have created the models, add the following to your ``settings.py``:
+
+.. code-block:: python
+
+    # Setting models for swapper module
+    FIRMWARE_UPGRADER_CATEGORY_MODEL = 'myupgrader.Category'
+    FIRMWARE_UPGRADER_BUILD_MODEL = 'myupgrader.Build'
+    FIRMWARE_UPGRADER_FIRMWAREIMAGE_MODEL = 'myupgrader.FirmwareImage'
+    FIRMWARE_UPGRADER_DEVICEFIRMWARE_MODEL = 'myupgrader.DeviceFirmware'
+    FIRMWARE_UPGRADER_BATCHUPGRADEOPERATION_MODEL = 'myupgrader.BatchUpgradeOperation'
+    FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = 'myupgrader.UpgradeOperation'
+
+Substitute ``myupgrader`` with the name you chose in step 1.
+
+9. Create database migrations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Create and apply database migrations::
+
+    ./manage.py makemigrations
+    ./manage.py migrate
+
+For more information, refer to the
+`"Migrations" section in the django documentation <https://docs.djangoproject.com/en/dev/topics/migrations/>`_.
+
+10. Create the admin
 ~~~~~~~~~~~~~~~~~~~
 
-Please checkout the `admin.py file of the sample app <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/admin.py>`_.
+Refer to the `admin.py file of the sample app <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/admin.py>`_.
 
-To introduce changes to the admin, you can do it in the two ways described below.
+To introduce changes to the admin, you can do it in two main ways which are described below.
 
-**Note**: for doubts regarding how the django admin works, or how it can be customized,
+**Note**: for more information regarding how the django admin works, or how it can be customized,
 please refer to `"The django admin site" section in the django documentation <https://docs.djangoproject.com/en/dev/ref/contrib/admin/>`_.
 
 1. Monkey patching
@@ -450,6 +505,7 @@ monkey patching, you can proceed as follows:
 
 .. code-block:: python
 
+    from django.contrib import admin
     from openwisp_firmware_upgrader.admin import (
         BatchUpgradeOperationAdmin as BaseBatchUpgradeOperationAdmin,
         BuildAdmin as BaseBuildAdmin,
@@ -477,13 +533,30 @@ monkey patching, you can proceed as follows:
     class CategoryAdmin(BaseCategoryAdmin):
         # add your changes here
 
-Reusing the base tests
-~~~~~~~~~~~~~~~~~~~~~~
+11. Create root URL configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Please refer to the `urls.py <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/urls.py>`_
+file in the test project.
+
+For more information about URL configuration in django, please refer to the
+`"URL dispatcher" section in the django documentation <https://docs.djangoproject.com/en/dev/topics/http/urls/>`_.
+
+12. Create celery.py
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Please refer to the `celery.py <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/celery.py>`_
+file in the test project.
+
+For more information about the usage of celery in django, please refer to the
+`"First steps with Django" section in the celery documentation <https://docs.celeryproject.org/en/master/django/first-steps-with-django.html>`_.
+
+13. Import the automated tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When developing a custom application based on this module, it's a good
-idea to import and run the base tests too,
-so that you can be sure the changes you're introducing are not breaking
-some of the existing features of openwisp-firmware-upgrader.
+idea to import and run the base tests too, so that you can be sure the changes
+you're introducing are not breaking some of the existing features of openwisp-firmware-upgrader.
 
 In case you need to add breaking changes, you can overwrite the tests defined
 in the base classes to test your own behavior.
@@ -491,8 +564,62 @@ in the base classes to test your own behavior.
 See the `tests of the sample app <https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/tests/openwisp2/sample_firmware_upgrader/tests.py>`_
 to find out how to do this.
 
+You can then run tests with::
+
+    # the --parallel flag is optional
+    ./manage.py test --parallel myupgrader
+
+Substitute ``myupgrader`` with the name you chose in step 1.
+
+For more information about automated tests in django, please refer to
+`"Testing in Django" <https://docs.djangoproject.com/en/dev/topics/testing/>`_.
+
+Other base classes that can be inherited and extended
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following steps are not required and are intended for more advanced customization.
+
+``FirmwareImageDownloadView``
+#############################
+
+This view controls how the firmware images are stored and who has permission to download them.
+
+The full python path is: ``openwisp_firmware_upgrader.private_storage.FirmwareImageDownloadView``.
+
+If you want to extend this view, you will have to perform the additional steps below.
+
+Step 1. import and extend view:
+
+.. code-block:: python
+
+    # myupgrader/views.py
+    from openwisp_firmware_upgrader.private_storage import (
+        FirmwareImageDownloadView as BaseFirmwareImageDownloadView
+    )
+
+    class FirmwareImageDownloadView(BaseFirmwareImageDownloadView):
+        # add your customizations here ...
+        pass
+
+Step 2: remove the following line from your root ``urls.py`` file:
+
+.. code-block:: python
+
+    url('^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+
+Step 3: add an URL route pointing to your custom view in ``urls.py`` file:
+
+.. code-block:: python
+
+    # urls.py
+    from myupgrader.views import FirmwareImageDownloadView
+
+    urlpatterns = [
+        # ... other URLs
+        url(r'^(?P<path>.*)$', FirmwareImageDownloadView.as_view(), name='serve_private_file',),
+    ]
+
 Contributing
 ------------
 
-Please read the `OpenWISP contributing guidelines
-<http://openwisp.io/docs/developer/contributing.html>`_.
+Please refer to the `OpenWISP contributing guidelines <http://openwisp.io/docs/developer/contributing.html>`_.
