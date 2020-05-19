@@ -29,8 +29,8 @@ class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdm
 
 @admin.register(load_model('Category'))
 class CategoryAdmin(BaseVersionAdmin):
-    list_display = ('name', 'organization', 'created', 'modified')
-    list_filter = ('organization',)
+    list_display = ['name', 'organization', 'created', 'modified']
+    list_filter = ['organization']
     search_fields = ['name']
     save_on_top = True
 
@@ -42,12 +42,12 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
 
 @admin.register(load_model('Build'))
 class BuildAdmin(BaseVersionAdmin):
-    list_display = ('__str__', 'category', 'created', 'modified')
+    list_display = ['__str__', 'category', 'created', 'modified']
     search_fields = ['name']
     save_on_top = True
-    select_related = ('category',)
-    list_filter = ('category',)
-    ordering = ('-version',)
+    select_related = ['category']
+    list_filter = ['category']
+    ordering = ['-version']
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
     multitenant_parent = 'category'
@@ -148,11 +148,11 @@ class UpgradeOperationInline(admin.StackedInline):
 
 @admin.register(load_model('BatchUpgradeOperation'))
 class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
-    list_display = ('build', 'status', 'created', 'modified')
-    list_filter = ('status', 'build__category')
+    list_display = ['build', 'status', 'created', 'modified']
+    list_filter = ['status', 'build__category']
     save_on_top = True
-    select_related = ('build',)
-    ordering = ('-created',)
+    select_related = ['build']
+    ordering = ['-created']
     inlines = [UpgradeOperationInline]
     multitenant_parent = 'build__category'
     fields = [
@@ -196,12 +196,12 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
 
 class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     model = load_model('DeviceFirmware')
-    exclude = ('created',)
-    readonly_fields = ('installed', 'modified')
+    exclude = ['created']
+    readonly_fields = ['installed', 'modified']
     verbose_name = _('Device Firmware')
     verbose_name_plural = verbose_name
     extra = 0
-    multitenant_shared_relations = ('device',)
+    multitenant_shared_relations = ['device']
 
     def has_add_permission(self, request, obj=None):
         return obj and not obj._state.adding
