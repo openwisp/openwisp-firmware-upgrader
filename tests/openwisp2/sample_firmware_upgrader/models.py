@@ -17,24 +17,30 @@ class DetailsModel(models.Model):
 
 
 class Category(DetailsModel, AbstractCategory):
-    pass
+    class Meta(AbstractCategory.Meta):
+        abstract = False
 
 
 class Build(DetailsModel, AbstractBuild):
-    pass
+    class Meta(AbstractBuild.Meta):
+        abstract = False
 
 
 class FirmwareImage(DetailsModel, AbstractFirmwareImage):
-    pass
+    class Meta(AbstractFirmwareImage.Meta):
+        abstract = False
 
 
 class DeviceFirmware(DetailsModel, AbstractDeviceFirmware):
-    pass
+    class Meta(AbstractDeviceFirmware.Meta):
+        abstract = False
 
 
 class BatchUpgradeOperation(DetailsModel, AbstractBatchUpgradeOperation):
-    pass
+    class Meta(AbstractBatchUpgradeOperation.Meta):
+        abstract = False
 
 
 class UpgradeOperation(DetailsModel, AbstractUpgradeOperation):
-    pass
+    class Meta(AbstractUpgradeOperation.Meta):
+        abstract = False
