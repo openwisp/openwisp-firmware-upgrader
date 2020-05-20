@@ -28,6 +28,7 @@ FirmwareImage = load_model('FirmwareImage')
 class ProtectedAPIMixin(object):
     authentication_classes = [BearerAuthentication, SessionAuthentication]
     permission_classes = [DjangoModelPermissions]
+    throttle_scope = 'firmware_upgrader'
 
 
 class OrgAPIMixin(ProtectedAPIMixin):
