@@ -10,6 +10,7 @@ class FirmwareUpdaterConfig(AppConfig):
 
     def ready(self, *args, **kwargs):
         self.add_default_menu_items()
+        self.configure_drf_defaults()
 
     def add_default_menu_items(self):
         menu_setting = 'OPENWISP_DEFAULT_ADMIN_MENU_ITEMS'
@@ -21,3 +22,9 @@ class FirmwareUpdaterConfig(AppConfig):
         else:
             current_menu = getattr(settings, menu_setting)
             current_menu += items
+
+    def configure_drf_defaults(self):
+        config = getattr(settings, 'REST_FRAMEWORK', {})
+        config.setdefault('DEFAULT_THROTTLE_RATES', {})
+        config['DEFAULT_THROTTLE_RATES'].setdefault('firmware_upgrader', '400/hour')
+        setattr(settings, 'REST_FRAMEWORK', config)
