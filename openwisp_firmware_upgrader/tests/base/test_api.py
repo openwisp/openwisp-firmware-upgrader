@@ -96,12 +96,12 @@ class BaseTestBuildViews(TestAPIUpgraderMixin):
         url = reverse('upgrader:api_build_list')
 
         filter_params = dict(category=category1.pk)
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(3):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, [self._serialize_build(build1)])
 
         filter_params = dict(category=category2.pk)
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(3):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, [self._serialize_build(build2)])
 
@@ -441,21 +441,21 @@ class BaseTestBatchUpgradeOperationViews(TestAPIUpgraderMixin):
                 "-created"
             )
         ]
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(2):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
 
         operation = self.batch_upgrade_operation_model.objects.get(build=env['build1'])
         serialized_list = [self._serialize_upgrade_env(operation)]
         filter_params = dict(build=env['build1'].pk)
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(3):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, serialized_list)
 
         operation = self.batch_upgrade_operation_model.objects.get(build=env['build2'])
         serialized_list = [self._serialize_upgrade_env(operation)]
         filter_params = dict(build=env['build2'].pk)
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(3):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, serialized_list)
 
@@ -466,7 +466,7 @@ class BaseTestBatchUpgradeOperationViews(TestAPIUpgraderMixin):
             ).order_by("-created")
         ]
         filter_params = dict(status="in-progress")
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(2):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, serialized_list)
 
@@ -477,7 +477,7 @@ class BaseTestBatchUpgradeOperationViews(TestAPIUpgraderMixin):
             ).order_by("-created")
         ]
         filter_params = dict(status="success")
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(2):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, serialized_list)
 
@@ -624,14 +624,14 @@ class BaseTestFirmwareImageViews(TestAPIUpgraderMixin):
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
 
         filter_params = dict(type=self.TPLINK_4300_IMAGE)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(2):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, [self._serialize_image(image)])
 
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
 
         filter_params = dict(type=self.TPLINK_4300_IL_IMAGE)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(2):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, [self._serialize_image(image2)])
 
@@ -748,3 +748,39 @@ class BaseTestFirmwareImageViews(TestAPIUpgraderMixin):
         data = dict(type=self.TPLINK_4300_IL_IMAGE)
         r = self.client.patch(url, data, content_type='application/json')
         self.assertEqual(r.status_code, 405)
+
+
+class BaseTestOrgAPIMixin(TestAPIUpgraderMixin):
+    batch_upgrade_operation_model = BatchUpgradeOperation
+    build_model = Build
+    category_model = Category
+    device_firmware_model = DeviceFirmware
+    firmware_image_model = FirmwareImage
+    upgrade_operation_model = UpgradeOperation
+
+    def _serialize_build(self, build):
+        serializer = BuildSerializer()
+        return dict(serializer.to_representation(build))
+
+    def test_user_multiple_organizations(self):
+        org2 = self._create_org(name='New org', slug='new-org')
+        self._create_operator(
+            organizations=[self.org, org2],
+            username='operator2',
+            email='operator2@test.com',
+        )
+
+        self._create_build(version='1.0', organization=self.org)
+        self._create_build(version='2.0', organization=org2)
+
+        url = reverse('upgrader:api_build_list')
+
+        self._login('operator2', 'tester')
+        serialized_list = [
+            self._serialize_build(build)
+            for build in self.build_model.objects.all().order_by('-created')
+        ]
+        with self.assertNumQueries(2):
+            r = self.client.get(url)
+        self.assertEqual(r.data, serialized_list)
+        self.assertEqual(r.status_code, 200)

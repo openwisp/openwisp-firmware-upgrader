@@ -31,10 +31,10 @@ class ProtectedAPIMixin(object):
 
 class OrgAPIMixin(ProtectedAPIMixin):
     def get_queryset(self):
-        queryset = self.queryset.all().order_by('-pk')
+        queryset = self.queryset.all()
         if not self.request.user.is_superuser:
             user_orgs = self.request.user.openwisp_users_organization.all()
-            filter_key = self.organization_field + "__in"
+            filter_key = f'{self.organization_field}__in'
             organization_filter = {filter_key: user_orgs}
             queryset = queryset.filter(**organization_filter)
         org = self.request.query_params.get('org', None)
