@@ -317,7 +317,7 @@ for this reason *openwisp-firmware-upgrader* provides a set of base classes
 which can be imported, extended and reused to create derivative apps.
 
 In order to implement your custom version of *openwisp-firmware-upgrader*,
-you need to perform the steps described in the rest of this section.
+you need to perform the steps described in this section.
 
 When in doubt, the code in the `test project <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/>`_
 and the `sample app <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/>`_
@@ -470,7 +470,7 @@ For more information, refer to the
 `"Migrations" section in the django documentation <https://docs.djangoproject.com/en/dev/topics/migrations/>`_.
 
 10. Create the admin
-~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
 
 Refer to the `admin.py file of the sample app <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/admin.py>`_.
 
@@ -543,7 +543,7 @@ For more information about URL configuration in django, please refer to the
 `"URL dispatcher" section in the django documentation <https://docs.djangoproject.com/en/dev/topics/http/urls/>`_.
 
 12. Create celery.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
 
 Please refer to the `celery.py <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/celery.py>`_
 file in the test project.
@@ -556,7 +556,7 @@ For more information about the usage of celery in django, please refer to the
 
 When developing a custom application based on this module, it's a good
 idea to import and run the base tests too, so that you can be sure the changes
-you're introducing are not breaking some of the existing features of openwisp-firmware-upgrader.
+you're introducing are not breaking some of the existing features of *openwisp-firmware-upgrader*.
 
 In case you need to add breaking changes, you can overwrite the tests defined
 in the base classes to test your own behavior.
