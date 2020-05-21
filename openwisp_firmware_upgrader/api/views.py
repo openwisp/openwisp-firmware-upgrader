@@ -6,10 +6,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import DjangoModelPermissions
-from swapper import load_model
 
 from openwisp_users.api.authentication import BearerAuthentication
 
+from ..swapper import load_model
 from .serializers import (
     BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
@@ -18,10 +18,10 @@ from .serializers import (
     FirmwareImageSerializer,
 )
 
-BatchUpgradeOperation = load_model('firmware_upgrader', 'BatchUpgradeOperation')
-Build = load_model('firmware_upgrader', 'Build')
-Category = load_model('firmware_upgrader', 'Category')
-FirmwareImage = load_model('firmware_upgrader', 'FirmwareImage')
+BatchUpgradeOperation = load_model('BatchUpgradeOperation')
+Build = load_model('Build')
+Category = load_model('Category')
+FirmwareImage = load_model('FirmwareImage')
 
 
 class ProtectedAPIMixin(object):

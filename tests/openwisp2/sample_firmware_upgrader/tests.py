@@ -1,174 +1,95 @@
-import os
-from unittest import skipUnless
-
-from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
-from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
-from openwisp_firmware_upgrader.tests.base.test_admin import BaseTestAdmin
-from openwisp_firmware_upgrader.tests.base.test_api import (
-    BaseTestBatchUpgradeOperationViews,
-    BaseTestBuildViews,
-    BaseTestCategoryViews,
-    BaseTestFirmwareImageViews,
-    BaseTestOrgAPIMixin,
+from openwisp_firmware_upgrader.swapper import load_model
+from openwisp_firmware_upgrader.tests.test_admin import TestAdmin as BaseTestAdmin
+from openwisp_firmware_upgrader.tests.test_api import (
+    TestBatchUpgradeOperationViews as BaseTestBatchUpgradeOperationViews,
 )
-from openwisp_firmware_upgrader.tests.base.test_models import (
-    BaseTestModels,
-    BaseTestModelsTransaction,
+from openwisp_firmware_upgrader.tests.test_api import (
+    TestBuildViews as BaseTestBuildViews,
 )
-from openwisp_firmware_upgrader.tests.base.test_openwrt_upgrader import (
-    BaseTestOpenwrtUpgrader,
+from openwisp_firmware_upgrader.tests.test_api import (
+    TestCategoryViews as BaseTestCategoryViews,
 )
-from openwisp_firmware_upgrader.tests.base.test_private_storage import (
-    BaseTestPrivateStorage,
+from openwisp_firmware_upgrader.tests.test_api import (
+    TestFirmwareImageViews as BaseTestFirmwareImageViews,
 )
-from openwisp_firmware_upgrader.tests.base.test_tasks import BaseTestTasks
-from swapper import load_model
+from openwisp_firmware_upgrader.tests.test_api import (
+    TestOrgAPIMixin as BaseTestOrgAPIMixin,
+)
+from openwisp_firmware_upgrader.tests.test_models import TestModels as BaseTestModels
+from openwisp_firmware_upgrader.tests.test_models import (
+    TestModelsTransaction as BaseTestModelsTransaction,
+)
+from openwisp_firmware_upgrader.tests.test_openwrt_upgrader import (
+    TestOpenwrtUpgrader as BaseTestOpenwrtUpgrader,
+)
+from openwisp_firmware_upgrader.tests.test_private_storage import (
+    TestPrivateStorage as BaseTestPrivateStorage,
+)
+from openwisp_firmware_upgrader.tests.test_tasks import TestTasks as BaseTestTasks
 
-BatchUpgradeOperation = load_model('firmware_upgrader', 'BatchUpgradeOperation')
-Build = load_model('firmware_upgrader', 'Build')
-Category = load_model('firmware_upgrader', 'Category')
-DeviceFirmware = load_model('firmware_upgrader', 'DeviceFirmware')
-FirmwareImage = load_model('firmware_upgrader', 'FirmwareImage')
-UpgradeOperation = load_model('firmware_upgrader', 'UpgradeOperation')
+BatchUpgradeOperation = load_model('BatchUpgradeOperation')
+Build = load_model('Build')
+Category = load_model('Category')
+DeviceFirmware = load_model('DeviceFirmware')
+FirmwareImage = load_model('FirmwareImage')
+UpgradeOperation = load_model('UpgradeOperation')
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestAdmin(BaseTestAdmin, TestUpgraderMixin, TestCase):
+class TestAdmin(BaseTestAdmin):
     app_label = 'sample_firmware_upgrader'
     build_list_url = reverse(f'admin:{app_label}_build_changelist')
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestModels(BaseTestModels, TestUpgraderMixin, TestCase):
-    app_name = 'openwisp2.sample_firmware_upgrader'
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    batch_upgrade_operation_model = BatchUpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestModels(BaseTestModels):
+    app_label = 'openwisp2.sample_firmware_upgrader'
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestModelsTransaction(
-    BaseTestModelsTransaction, TestUpgraderMixin, TransactionTestCase
-):
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    batch_upgrade_operation_model = BatchUpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestModelsTransaction(BaseTestModelsTransaction):
+    pass
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestOpenwrtUpgrader(BaseTestOpenwrtUpgrader, TransactionTestCase):
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    batch_upgrade_operation_model = BatchUpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestOpenwrtUpgrader(BaseTestOpenwrtUpgrader):
+    pass
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestPrivateStorage(BaseTestPrivateStorage, TestUpgraderMixin, TestCase):
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    batch_upgrade_operation_model = BatchUpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestPrivateStorage(BaseTestPrivateStorage):
+    pass
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestTasks(BaseTestTasks, TestUpgraderMixin, TransactionTestCase):
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    batch_upgrade_operation_model = BatchUpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestTasks(BaseTestTasks):
+    pass
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestBuildViews(BaseTestBuildViews, TestCase):
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestBuildViews(BaseTestBuildViews):
+    pass
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestCategoryViews(BaseTestCategoryViews, TestCase):
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestCategoryViews(BaseTestCategoryViews):
+    pass
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestBatchUpgradeOperationViews(BaseTestBatchUpgradeOperationViews, TestCase):
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestBatchUpgradeOperationViews(BaseTestBatchUpgradeOperationViews):
+    pass
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestFirmwareImageViews(BaseTestFirmwareImageViews, TestCase):
-    device_firmware_model = DeviceFirmware
-    upgrade_operation_model = UpgradeOperation
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestFirmwareImageViews(BaseTestFirmwareImageViews):
+    pass
 
 
-@skipUnless(
-    os.environ.get('SAMPLE_APP', False),
-    'Running tests on standard openwisp_firmware_upgrader models',
-)
-class TestOrgAPIMixin(BaseTestOrgAPIMixin, TestCase):
-    device_firmware_model = DeviceFirmware
-    firmware_image_model = FirmwareImage
-    build_model = Build
-    category_model = Category
+class TestOrgAPIMixin(BaseTestOrgAPIMixin):
+    pass
+
+
+# this is necessary to avoid excuting the base test suites
+del BaseTestModels
+del BaseTestAdmin
+del BaseTestModelsTransaction
+del BaseTestOpenwrtUpgrader
+del BaseTestPrivateStorage
+del BaseTestTasks
+del BaseTestBuildViews
+del BaseTestCategoryViews
+del BaseTestBatchUpgradeOperationViews
+del BaseTestFirmwareImageViews
+del BaseTestOrgAPIMixin

@@ -1,7 +1,14 @@
 from rest_framework import serializers
-from swapper import load_model
 
 from openwisp_utils.api.serializers import ValidatedModelSerializer
+
+from ..swapper import load_model
+
+BatchUpgradeOperation = load_model('BatchUpgradeOperation')
+Build = load_model('Build')
+Category = load_model('Category')
+FirmwareImage = load_model('FirmwareImage')
+UpgradeOperation = load_model('UpgradeOperation')
 
 
 class BaseMeta:
@@ -10,19 +17,19 @@ class BaseMeta:
 
 class CategorySerializer(ValidatedModelSerializer):
     class Meta(BaseMeta):
-        model = load_model('firmware_upgrader', 'Category')
+        model = Category
         fields = '__all__'
 
 
 class CategoryRelationSerializer(ValidatedModelSerializer):
     class Meta:
-        model = load_model('firmware_upgrader', 'Category')
+        model = Category
         fields = ['name', 'organization']
 
 
 class FirmwareImageSerializer(ValidatedModelSerializer):
     class Meta(BaseMeta):
-        model = load_model('firmware_upgrader', 'FirmwareImage')
+        model = FirmwareImage
         fields = '__all__'
 
 
@@ -30,13 +37,13 @@ class BuildSerializer(ValidatedModelSerializer):
     category_relation = CategoryRelationSerializer(read_only=True, source='category')
 
     class Meta(BaseMeta):
-        model = load_model('firmware_upgrader', 'Build')
+        model = Build
         fields = '__all__'
 
 
 class UpgradeOperationSerializer(ValidatedModelSerializer):
     class Meta:
-        model = load_model('firmware_upgrader', 'UpgradeOperation')
+        model = UpgradeOperation
         exclude = ['batch']
 
 
@@ -44,7 +51,7 @@ class BatchUpgradeOperationListSerializer(ValidatedModelSerializer):
     build = BuildSerializer(read_only=True)
 
     class Meta:
-        model = load_model('firmware_upgrader', 'BatchUpgradeOperation')
+        model = BatchUpgradeOperation
         fields = '__all__'
 
 
@@ -58,5 +65,5 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
     )
 
     class Meta:
-        model = load_model('firmware_upgrader', 'BatchUpgradeOperation')
+        model = BatchUpgradeOperation
         fields = '__all__'

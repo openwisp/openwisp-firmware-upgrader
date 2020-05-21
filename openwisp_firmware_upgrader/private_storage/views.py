@@ -1,9 +1,10 @@
 from private_storage.views import PrivateStorageDetailView
-from swapper import load_model
+
+from ..swapper import load_model
 
 
 class FirmwareImageDownloadView(PrivateStorageDetailView):
-    model = load_model('firmware_upgrader', 'FirmwareImage')
+    model = load_model('FirmwareImage')
     model_file_field = 'file'
 
     slug_field = 'file'
