@@ -15,6 +15,7 @@ from .base.test_api import (
     BaseTestBuildViews,
     BaseTestCategoryViews,
     BaseTestFirmwareImageViews,
+    BaseTestOrgAPIMixin,
 )
 
 
@@ -52,3 +53,11 @@ class TestFirmwareImageViews(BaseTestFirmwareImageViews, TestCase):
     category_model = Category
     device_firmware_model = DeviceFirmware
     firmware_image_model = FirmwareImage
+
+
+@skipIf(os.environ.get('SAMPLE_APP', False), 'Running tests on SAMPLE_APP')
+class TestOrgAPIMixin(BaseTestOrgAPIMixin, TestCase):
+    device_firmware_model = DeviceFirmware
+    firmware_image_model = FirmwareImage
+    build_model = Build
+    category_model = Category
