@@ -39,7 +39,7 @@ install:
   # temporary: remove when openwisp-utils 0.5.0 is released
   - pip install -U https://github.com/openwisp/openwisp-utils/tarball/master#egg=openwisp_utils[qa,rest]
   # temporary: remove when openwisp-users with API support is released
-  - pip install -U https://github.com/openwisp/openwisp-users/tarball/master#egg=openwisp_users[rest]
+  - pip install -U https://github.com/openwisp/openwisp-users/tarball/issue/107#egg=openwisp_users[rest]
   - pip install -e .
 
 script:

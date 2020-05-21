@@ -14,9 +14,10 @@ class FirmwareImageDownloadView(PrivateStorageDetailView):
         user = private_file.request.user
         if not user.is_authenticated:
             return False
+        if user.is_superuser:
+            return True
         org = self.object.build.category.organization
-        user_organizations = user.openwisp_users_organization.all()
-        return user.is_superuser or (user.is_staff and org in user_organizations)
+        return user.is_staff and user.is_member(org)
 
 
 firmware_image_download = FirmwareImageDownloadView.as_view()
