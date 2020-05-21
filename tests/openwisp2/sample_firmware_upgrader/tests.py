@@ -10,6 +10,7 @@ from openwisp_firmware_upgrader.tests.base.test_api import (
     BaseTestBuildViews,
     BaseTestCategoryViews,
     BaseTestFirmwareImageViews,
+    BaseTestOrgAPIMixin,
 )
 from openwisp_firmware_upgrader.tests.base.test_models import (
     BaseTestModels,
@@ -141,6 +142,17 @@ class TestBatchUpgradeOperationViews(BaseTestBatchUpgradeOperationViews, TestCas
 class TestFirmwareImageViews(BaseTestFirmwareImageViews, TestCase):
     device_firmware_model = DeviceFirmware
     upgrade_operation_model = UpgradeOperation
+    firmware_image_model = FirmwareImage
+    build_model = Build
+    category_model = Category
+
+
+@skipUnless(
+    os.environ.get('SAMPLE_APP', False),
+    'Running tests on standard openwisp_firmware_upgrader models',
+)
+class TestOrgAPIMixin(BaseTestOrgAPIMixin, TestCase):
+    device_firmware_model = DeviceFirmware
     firmware_image_model = FirmwareImage
     build_model = Build
     category_model = Category
