@@ -55,8 +55,10 @@ class TestModels(TestUpgraderMixin, TestCase):
 
     def test_device_firmware_image_invalid_org(self):
         device_fw = self._create_device_firmware()
-        self._create_org(name='org2')
-        img2 = self._create_firmware_image()
+        org2 = self._create_org(name='org2')
+        build2 = self._create_build(organization=org2)
+        img2 = self._create_firmware_image(build=build2)
+
         device_fw.image = img2
         try:
             device_fw.full_clean()

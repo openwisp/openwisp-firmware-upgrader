@@ -52,7 +52,10 @@ INSTALLED_APPS = [
     'leaflet',
     # rest framework
     'rest_framework',
+    'rest_framework.authtoken',
     'rest_framework_gis',
+    'django_filters',
+    'drf_yasg',
     # channels
     'channels',
 ]
@@ -137,7 +140,7 @@ if TESTING:
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-            'LOCATION': 'unique-snowflake',
+            'LOCATION': 'firmware-upgrader',
         }
     }
 else:
@@ -145,7 +148,7 @@ else:
         'default': {
             'BACKEND': 'django_redis.cache.RedisCache',
             'LOCATION': 'redis://localhost/0',
-            'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient',},
+            'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient'},
         }
     }
 
@@ -182,6 +185,9 @@ OPENWISP_CUSTOM_OPENWRT_IMAGES = (
         {'label': 'Custom WAP-1200', 'boards': ('CWAP1200',)},
     ),
 )
+OPENWISP_USERS_AUTH_API = True
+OPENWISP_FIRMWARE_UPGRADER_API = True
+OPENWISP_USERS_AUTH_THROTTLE_RATE = None  # Disable throttle for testing
 
 if os.environ.get('SAMPLE_APP', False):
     INSTALLED_APPS.remove('openwisp_firmware_upgrader')

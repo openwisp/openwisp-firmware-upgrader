@@ -34,7 +34,9 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        'openwisp-controller>=0.6.0,<0.7.0',
+        # TODO: uncomment when they're released
+        # 'openwisp-utils[rest]~=0.5',
+        # 'openwisp-controller~=0.7',
         'django-private-storage~=2.2',
         'swapper~=1.1',
     ],

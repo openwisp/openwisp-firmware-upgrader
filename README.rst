@@ -13,7 +13,7 @@ openwisp-firmware-upgrader
 
 ------------
 
-OpenWISP 2 firmware upgrade module (Work in progress).
+OpenWISP firmware upgrade module (work in progress).
 
 ------------
 
@@ -67,7 +67,10 @@ Follow the setup instructions of `openwisp-controller
         'leaflet',
         # rest framework
         'rest_framework',
+        'rest_framework.authtoken',
         'rest_framework_gis',
+        'django_filters',
+        'drf_yasg',
         # channels
         'channels',
     ]
@@ -84,7 +87,9 @@ Follow the setup instructions of `openwisp-controller
     urlpatterns = [
         url(r'^admin/', include(admin.site.urls)),
         url(r'', include('openwisp_controller.urls')),
-        url('^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+        url(r'^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+        url(r'^api/v1/', include('openwisp_users.api.urls')),
+        url(r'^api/v1/', include('openwisp_firmware_upgrader.api.urls')),
     ]
 
     urlpatterns += staticfiles_urlpatterns()
@@ -247,6 +252,192 @@ This setting can be used to set the maximum size limit for firmware images, eg:
 **Notes**:
 
 - Value must be specified in bytes. ``None`` means unlimited.
+
+``OPENWISP_FIRMWARE_UPGRADER_API``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++--------------+-----------+
+| **type**:    | ``bool``  |
++--------------+-----------+
+| **default**: | ``False`` |
++--------------+-----------+
+
+Indicates whether the API for Firmware Upgrader is enabled or not.
+
+REST API
+--------
+
+To enable the API the setting
+`OPENWISP_FIRMWARE_UPGRADER_API <#openwisp-firmware-upgrader-api>`_
+must be set to ``True``.
+
+Live documentation
+~~~~~~~~~~~~~~~~~~
+
+.. image:: docs/images/api-docs.gif
+
+A general live API documentation (following the OpenAPI specification) at ``/api/v1/docs/``.
+
+Browsable web interface
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. image:: docs/images/api-ui.png
+
+Additionally, opening any of the endpoints `listed below <#list-of-endpoints>`_
+directly in the browser will show the `browsable API interface of Django-REST-Framework
+<https://www.django-rest-framework.org/topics/browsable-api/>`_,
+which makes it even easier to find out the details of each endpoint.
+
+Authentication
+~~~~~~~~~~~~~~
+
+See openwisp-users: `authenticating with the user token
+<https://github.com/openwisp/openwisp-users#authenticating-with-the-user-token>`_.
+
+When browsing the API via the `Live documentation <#live-documentation>`_
+or the `Browsable web page <#browsable-web-interface>`_, you can also use
+the session authentication by logging in the django admin.
+
+List of endpoints
+~~~~~~~~~~~~~~~~~
+
+Since the detailed explanation is contained in the `Live documentation <#live-documentation>`_
+and in the `Browsable web page <#browsable-web-interface>`_ of each point,
+here we'll provide just a list of the available endpoints,
+for further information please open the URL of the endpoint in your browser.
+
+List mass upgrade operations
+############################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/batch-upgrade-operation​/
+
+Get mass upgrade operation detail
+#################################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/batch-upgrade-operation​/{id}​/
+
+List firmware builds
+####################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/
+
+Create firmware build
+#####################
+
+.. code-block:: text
+
+    POST ​/v1​/firmware​/build​/
+
+Get firmware build details
+##########################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/{id}​/
+
+Change details of firmware build
+################################
+
+.. code-block:: text
+
+    PUT ​/v1​/firmware​/build​/{id}​/
+
+Patch details of firmware build
+###############################
+
+.. code-block:: text
+
+    PATCH ​/v1​/firmware​/build​/{id}​/
+
+Delete firmware build
+#####################
+
+.. code-block:: text
+
+    DELETE ​/v1​/firmware​/build​/{id}​/
+
+Get list of images of a firmware build
+######################################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/{id}​/image​/
+
+Upload new firmware image to the build
+######################################
+
+.. code-block:: text
+
+    POST ​/v1​/firmware​/build​/{id}​/image​/
+
+Get firmware image details
+##########################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/
+
+Delete firmware image
+#####################
+
+.. code-block:: text
+
+    DELETE ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/
+
+Download firmware image
+#######################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/download​/
+
+List firmware categories
+########################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/category​/
+
+Create new firmware category
+############################
+
+.. code-block:: text
+
+    POST ​/v1​/firmware​/category​/
+
+Get firmware category details
+#############################
+
+.. code-block:: text
+
+    GET ​/v1​/firmware​/category​/{id}​/
+
+Change the details of a firmware category
+#########################################
+
+.. code-block:: text
+
+    PUT ​/v1​/firmware​/category​/{id}​/
+
+Patch the details of a firmware category
+########################################
+
+.. code-block:: text
+
+    PATCH ​/v1​/firmware​/category​/{id}​/
+
+Delete a firmware category
+##########################
+
+.. code-block:: text
+
+    DELETE ​/v1​/firmware​/category​/{id}​/
 
 Installing for development
 --------------------------
@@ -618,6 +809,26 @@ Step 3: add an URL route pointing to your custom view in ``urls.py`` file:
         # ... other URLs
         url(r'^(?P<path>.*)$', FirmwareImageDownloadView.as_view(), name='serve_private_file',),
     ]
+
+For more information regarding django views, please refer to the
+`"Class based views" section in the django documentation <https://docs.djangoproject.com/en/dev/topics/class-based-views/>`_.
+
+API views
+~~~~~~~~~
+
+If you need to customize the behavior of the API views, the procedure to follow
+is similar to the one described in
+`FirmwareImageDownloadView <#firmwareimagedownloadview>`_,
+with the difference that you may also want to create your own
+`serializers <https://www.django-rest-framework.org/api-guide/serializers/>`_
+if needed.
+
+The API code is stored in
+`openwisp_firmware_upgrader.api <https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/openwisp_firmware_upgrader/api/>`_
+and is built using `django-rest-framework <http://openwisp.io/docs/developer/hacking-openwisp-python-django.html#why-django-rest-framework>`_
+
+For more information regarding Django REST Framework API views, please refer to the
+`"Generic views" section in the Django REST Framework documentation <https://www.django-rest-framework.org/api-guide/generic-views/>`_.
 
 Contributing
 ------------
