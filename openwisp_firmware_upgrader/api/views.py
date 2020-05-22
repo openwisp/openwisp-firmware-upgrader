@@ -3,6 +3,7 @@ from wsgiref.util import FileWrapper
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
+from openwisp_firmware_upgrader import private_storage
 from rest_framework import filters, generics
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import DjangoModelPermissions
@@ -33,8 +34,8 @@ class OrgAPIMixin(ProtectedAPIMixin):
     def get_queryset(self):
         queryset = self.queryset.all()
         if not self.request.user.is_superuser:
-            user_orgs = self.request.user.openwisp_users_organization.all()
             filter_key = f'{self.organization_field}__in'
+            user_orgs = self.request.user.organizations_dict.keys()
             organization_filter = {filter_key: user_orgs}
             queryset = queryset.filter(**organization_filter)
         org = self.request.query_params.get('org', None)
@@ -141,24 +142,12 @@ class FirmwareImageDownloadView(OrgAPIMixin, generics.RetrieveAPIView):
     serializer_class = FirmwareImageSerializer
     lookup_fields = ['pk']
     organization_field = 'build__category__organization'
-
-    def get_queryset(self):
-        build_pk = self.request.parser_context['kwargs']['build_pk']
-        self.queryset = FirmwareImage.objects.filter(build=build_pk)
-        queryset = super().get_queryset()
-        return queryset
+    queryset = FirmwareImage.objects.none()
 
     def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        file_handle = instance.file.path
-        document = open(file_handle, 'rb')
-        response = HttpResponse(
-            FileWrapper(document), content_type='application/octet-stream'
+        return private_storage.views.firmware_image_download(
+            request, build_pk=kwargs['build_pk'], pk=kwargs['pk']
         )
-        response['Content-Disposition'] = (
-            'attachment; filename="%s"' % instance.file.name
-        )
-        return response
 
 
 build_list = BuildListView.as_view()

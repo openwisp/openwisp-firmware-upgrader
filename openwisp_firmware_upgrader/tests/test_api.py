@@ -29,6 +29,7 @@ class TestAPIUpgraderMixin(TestMultitenantAdminMixin, TestUpgraderMixin):
     def setUp(self):
         self.org = self._get_org()
         self.operator = self._create_operator(organizations=[self.org])
+        self.operator.organizations_dict  # force caching
         self._login()
 
     def _obtain_auth_token(self, username='operator', password='tester'):
@@ -55,7 +56,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         OrganizationUser.objects.create(user=self.operator, organization=org2)
 
         url = reverse('upgrader:api_build_detail', args=[build.pk])
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
 
@@ -233,6 +234,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         org2 = self._create_org(name='org2', slug='org2')
         self.operator.openwisp_users_organization.all().delete()
         OrganizationUser.objects.create(user=self.operator, organization=org2)
+        self.operator.organizations_dict  # force caching
 
         url = reverse('upgrader:api_category_detail', args=[category.pk])
         with self.assertNumQueries(2):
@@ -389,7 +391,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         url = reverse(
             'upgrader:api_batchupgradeoperation_detail', args=[env['build2'].pk]
         )
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
 
@@ -551,6 +553,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         org2 = self._create_org(name='org2', slug='org2')
         self.operator.openwisp_users_organization.all().delete()
         OrganizationUser.objects.create(user=self.operator, organization=org2)
+        self.operator.organizations_dict  # force caching
 
         url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
         with self.assertNumQueries(2):
@@ -700,7 +703,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with open(self.FAKE_IMAGE_PATH, 'rb') as f:
             content = f.read()
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.content, content)
 
