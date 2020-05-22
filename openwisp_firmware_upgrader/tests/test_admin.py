@@ -2,6 +2,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from openwisp_firmware_upgrader.admin import BuildAdmin, FirmwareImageInline, admin
 
 from openwisp_controller.config.models import Device
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
@@ -16,6 +17,10 @@ Category = load_model('Category')
 DeviceFirmware = load_model('DeviceFirmware')
 FirmwareImage = load_model('FirmwareImage')
 UpgradeOperation = load_model('UpgradeOperation')
+
+
+class MockRequest:
+    pass
 
 
 class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
@@ -145,3 +150,13 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
         url = reverse('admin:config_device_change', args=[device_fw.device_id])
         r = self.client.get(url)
         self.assertContains(r, str(device_fw.image_id))
+
+    def test_firmware_image_has_change_permission(self):
+        request = MockRequest()
+        request.user = User.objects.first()
+        env = self._create_upgrade_env()
+        self.assertIn(FirmwareImageInline, BuildAdmin.inlines)
+        inline = FirmwareImageInline(FirmwareImage, admin.site)
+        self.assertIsInstance(inline, FirmwareImageInline)
+        self.assertIs(inline.has_change_permission(request), True)
+        self.assertIs(inline.has_change_permission(request, obj=env['image1a']), False)
