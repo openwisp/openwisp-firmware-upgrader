@@ -33,6 +33,7 @@ class CategoryAdmin(BaseVersionAdmin):
     list_filter = ['organization']
     search_fields = ['name']
     save_on_top = True
+    ordering = ['-name', '-created']
 
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
@@ -52,7 +53,7 @@ class BuildAdmin(BaseVersionAdmin):
     save_on_top = True
     select_related = ['category']
     list_filter = ['category']
-    ordering = ['-version']
+    ordering = ['-created', '-version']
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
     multitenant_parent = 'category'

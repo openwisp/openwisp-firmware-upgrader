@@ -71,7 +71,7 @@ class CategoryListView(OrgAPIMixin, generics.ListCreateAPIView):
     organization_field = 'organization'
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['name', 'created', 'modified']
-    ordering = ['name', '-created']
+    ordering = ['-name', '-created']
 
 
 class CategoryDetailView(OrgAPIMixin, generics.RetrieveUpdateDestroyAPIView):
