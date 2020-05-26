@@ -1,3 +1,5 @@
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -49,25 +51,21 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
 
     def test_build_unauthorized(self):
         build = self._create_build()
-
         org2 = self._create_org(name='org2', slug='org2')
-        self.operator.openwisp_users_organization.all().delete()
         OrganizationUser.objects.create(user=self.operator, organization=org2)
-
-        url = reverse('upgrader:api_build_detail', args=[build.pk])
-        with self.assertNumQueries(2):
-            r = self.client.get(url)
-        self.assertEqual(r.status_code, 404)
 
         client = Client()
         url = reverse('upgrader:api_build_list')
-        with self.assertNumQueries(0):
-            r = client.get(url)
-        self.assertEqual(r.status_code, 401)
+        with self.subTest(url=url):
+            with self.assertNumQueries(0):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
+
         url = reverse('upgrader:api_build_detail', args=[build.pk])
-        with self.assertNumQueries(0):
-            r = client.get(url)
-        self.assertEqual(r.status_code, 401)
+        with self.subTest(url=url):
+            with self.assertNumQueries(0):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
 
     def test_build_list(self):
         self._create_build(organization=self.org)
@@ -254,7 +252,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         self._create_category(name='New category')
         serialized_list = [
             self._serialize_category(category)
-            for category in Category.objects.all().order_by('name')
+            for category in Category.objects.all().order_by('-name')
         ]
         url = reverse('upgrader:api_category_list')
         with self.assertNumQueries(2):
@@ -302,7 +300,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         self._login('admin', 'tester')
         serialized_list = [
             self._serialize_category(category)
-            for category in Category.objects.all().order_by('name')
+            for category in Category.objects.all().order_by('-name')
         ]
         with self.assertNumQueries(2):
             r = self.client.get(url)
@@ -547,34 +545,27 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
     def test_firmware_unauthorized(self):
         image = self._create_firmware_image()
-
         org2 = self._create_org(name='org2', slug='org2')
-        self.operator.openwisp_users_organization.all().delete()
         OrganizationUser.objects.create(user=self.operator, organization=org2)
-
-        url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(2):
-            r = self.client.get(url)
-        self.assertEqual(r.status_code, 404)
-
-        url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(2):
-            r = self.client.get(url)
-        self.assertEqual(r.status_code, 404)
 
         client = Client()
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
-        with self.assertNumQueries(0):
-            r = client.get(url)
-        self.assertEqual(r.status_code, 401)
+        with self.subTest(url=url):
+            with self.assertNumQueries(1):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
+
         url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(0):
-            r = client.get(url)
-        self.assertEqual(r.status_code, 401)
+        with self.subTest(url=url):
+            with self.assertNumQueries(1):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
+
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(0):
-            r = client.get(url)
-        self.assertEqual(r.status_code, 401)
+        with self.subTest(url=url):
+            with self.assertNumQueries(1):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
 
     def test_firmware_list(self):
         image = self._create_firmware_image()
@@ -585,9 +576,16 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             for image in FirmwareImage.objects.all().order_by('-created')
         ]
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
+
+    def test_firmware_list_404(self):
+        for pk in ['123456', uuid.uuid4()]:
+            url = reverse('upgrader:api_firmware_list', args=[pk])
+            r = self.client.get(url)
+            with self.subTest(pk=pk):
+                self.assertEqual(r.status_code, 404)
 
     def test_firmware_list_django_filters(self):
         image = self._create_firmware_image(type=self.TPLINK_4300_IMAGE)
@@ -596,14 +594,14 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
 
         filter_params = dict(type=self.TPLINK_4300_IMAGE)
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, [self._serialize_image(image)])
 
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
 
         filter_params = dict(type=self.TPLINK_4300_IL_IMAGE)
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, [self._serialize_image(image2)])
 
@@ -622,14 +620,14 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         self._login('operator', 'tester')
         serialized_list = [self._serialize_image(image)]
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
 
         url = reverse('upgrader:api_firmware_list', args=[image2.build.pk])
         self._login('operator2', 'tester')
         serialized_list = [self._serialize_image(image2)]
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
 
@@ -651,7 +649,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self._serialize_image(image),
         ]
 
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
 
@@ -659,7 +657,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         data_filter = {"org": "New org"}
         serialized_list = [self._serialize_image(image2)]
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url, data_filter)
         self.assertEqual(r.data, serialized_list)
 
@@ -673,16 +671,30 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         }
         with self.assertNumQueries(9):
             r = self.client.post(url, data)
+        self.assertEqual(r.status_code, 201)
         self.assertEqual(FirmwareImage.objects.count(), 1)
         image = FirmwareImage.objects.first()
         serialized = self._serialize_image(image)
         self.assertEqual(r.data, serialized)
 
+    def test_firmware_create_404(self):
+        for pk in ['123456', uuid.uuid4()]:
+            url = reverse('upgrader:api_firmware_list', args=[pk])
+            r = self.client.post(
+                url,
+                {
+                    "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+                    "type": self.TPLINK_4300_IMAGE,
+                },
+            )
+            with self.subTest(pk=pk):
+                self.assertEqual(r.status_code, 404)
+
     def test_firmware_view(self):
         image = self._create_firmware_image()
         serialized = self._serialize_image(image)
         url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
 
@@ -690,7 +702,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         self.assertEqual(FirmwareImage.objects.count(), 1)
         url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(7):
+        with self.assertNumQueries(8):
             r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(FirmwareImage.objects.count(), 0)
@@ -700,7 +712,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with open(self.FAKE_IMAGE_PATH, 'rb') as f:
             content = f.read()
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.content, content)
 

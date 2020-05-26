@@ -5,6 +5,7 @@ from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics
 from rest_framework.authentication import SessionAuthentication
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import DjangoModelPermissions
 
 from openwisp_users.api.authentication import BearerAuthentication
@@ -104,7 +105,28 @@ class BatchUpgradeOperationDetailView(OrgAPIMixin, generics.RetrieveAPIView):
     organization_field = 'build__category__organization'
 
 
-class FirmwareImageListView(OrgAPIMixin, generics.ListCreateAPIView):
+class FirmwareImageMixin(OrgAPIMixin):
+    queryset = FirmwareImage.objects.all()
+    parent = None
+
+    def get_parent_queryset(self):
+        return Build.objects.filter(pk=self.kwargs['build_pk'])
+
+    def assert_parent_exists(self):
+        try:
+            assert self.get_parent_queryset().exists()
+        except (AssertionError, ValidationError):
+            raise NotFound(detail='build not found')
+
+    def get_queryset(self):
+        return super().get_queryset().filter(build=self.kwargs['build_pk'])
+
+    def initial(self, *args, **kwargs):
+        self.assert_parent_exists()
+        super().initial(*args, **kwargs)
+
+
+class FirmwareImageListView(FirmwareImageMixin, generics.ListCreateAPIView):
     serializer_class = FirmwareImageSerializer
     organization_field = 'build__category__organization'
     ordering_fields = ['type', 'created', 'modified']
@@ -113,40 +135,18 @@ class FirmwareImageListView(OrgAPIMixin, generics.ListCreateAPIView):
     ordering_fields = ['type', 'created', 'modified']
     ordering = ['-created']
 
-    def get_queryset(self):
-        build_pk = self.request.parser_context['kwargs']['pk']
-        self.queryset = FirmwareImage.objects.filter(build=build_pk)
-        queryset = super().get_queryset()
-        return queryset
 
-    def create(self, request, *args, **kwargs):
-        request.data['build'] = kwargs['pk']
-        return super().create(request, *args, **kwargs)
-
-
-class FirmwareImageDetailView(OrgAPIMixin, generics.RetrieveDestroyAPIView):
+class FirmwareImageDetailView(FirmwareImageMixin, generics.RetrieveDestroyAPIView):
     queryset = FirmwareImage.objects.all()
     serializer_class = FirmwareImageSerializer
     lookup_fields = ['pk']
     organization_field = 'build__category__organization'
 
-    def get_queryset(self):
-        build_pk = self.request.parser_context['kwargs']['build_pk']
-        self.queryset = FirmwareImage.objects.filter(build=build_pk)
-        queryset = super().get_queryset()
-        return queryset
 
-
-class FirmwareImageDownloadView(OrgAPIMixin, generics.RetrieveAPIView):
+class FirmwareImageDownloadView(FirmwareImageMixin, generics.RetrieveAPIView):
     serializer_class = FirmwareImageSerializer
     lookup_fields = ['pk']
     organization_field = 'build__category__organization'
-
-    def get_queryset(self):
-        build_pk = self.request.parser_context['kwargs']['build_pk']
-        self.queryset = FirmwareImage.objects.filter(build=build_pk)
-        queryset = super().get_queryset()
-        return queryset
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
