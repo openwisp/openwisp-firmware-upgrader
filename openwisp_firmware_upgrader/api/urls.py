@@ -28,6 +28,11 @@ if app_settings.FIRMWARE_UPGRADER_API:
                         name='api_firmware_list',
                     ),
                     path(
+                        'build/<uuid:pk>/upgradeable/',
+                        views.build_upgradeable,
+                        name='api_build_upgradeable',
+                    ),
+                    path(
                         'build/<uuid:build_pk>/image/<uuid:pk>/',
                         views.firmware_image_detail,
                         name='api_firmware_detail',

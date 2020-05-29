@@ -90,8 +90,8 @@ class AbstractBuild(TimeStampedEditableModel):
 
     def _find_related_device_firmwares(self, select_devices=False):
         """
-        Returns all the DeviceFirmware objects related
-        to the firmware category of this build
+        Returns all the DeviceFirmware objects related to the firmware
+        category of this build that have not been installed yet
         """
         related = ['image']
         if select_devices:
