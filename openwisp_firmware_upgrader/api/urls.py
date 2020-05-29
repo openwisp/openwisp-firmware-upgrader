@@ -16,6 +16,11 @@ if app_settings.FIRMWARE_UPGRADER_API:
                     path('build/', views.build_list, name='api_build_list'),
                     path('build/<pk>/', views.build_detail, name='api_build_detail'),
                     path(
+                        'build/<pk>/mass-upgrade/',
+                        views.build_mass_upgrade,
+                        name='api_build_mass_upgrade',
+                    ),
+                    path(
                         'build/<build_pk>/image/',
                         views.firmware_image_list,
                         name='api_firmware_list',
