@@ -11,9 +11,20 @@ openwisp-firmware-upgrader
    :target: https://requires.io/github/openwisp/openwisp-firmware-upgrader/requirements/?branch=master
    :alt: Requirements Status
 
+.. image:: https://img.shields.io/gitter/room/nwjs/nw.js.svg?style=flat-square
+   :target: https://gitter.im/openwisp/general
+   :alt: support chat
+
+.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
+   :target: https://pypi.org/project/black/
+   :alt: code style: black
+
 ------------
 
 OpenWISP firmware upgrade module (work in progress).
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp2-docs/master/assets/design/openwisp-logo-black.svg
+  :target: http://openwisp.org
 
 ------------
 
@@ -834,3 +845,18 @@ Contributing
 ------------
 
 Please refer to the `OpenWISP contributing guidelines <http://openwisp.io/docs/developer/contributing.html>`_.
+
+Support
+-------
+
+See `OpenWISP Support Channels <http://openwisp.org/support.html>`_.
+
+Changelog
+---------
+
+See `CHANGES <https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/CHANGES.rst>`_.
+
+License
+-------
+
+See `LICENSE <https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/LICENSE>`_.
