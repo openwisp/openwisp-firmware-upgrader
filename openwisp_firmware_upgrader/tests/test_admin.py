@@ -62,7 +62,10 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
         with self.assertNumQueries(14):
             r = self.client.post(
                 self.build_list_url,
-                {'action': 'upgrade_selected', ACTION_CHECKBOX_NAME: (env['build2'].pk,)},
+                {
+                    'action': 'upgrade_selected',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
                 follow=True,
             )
         self.assertContains(r, 'Devices related to build')
@@ -75,7 +78,10 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
         with self.assertNumQueries(12):
             r = self.client.post(
                 self.build_list_url,
-                {'action': 'upgrade_selected', ACTION_CHECKBOX_NAME: (env['build2'].pk,)},
+                {
+                    'action': 'upgrade_selected',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
                 follow=True,
             )
         self.assertNotContains(r, 'Devices related to build')
@@ -94,16 +100,15 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
         self.assertEqual(Device.objects.count(), 3)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         self.assertEqual(fw.count(), 0)
-        with self.assertNumQueries(51):
-            r = self.client.post(
-                self.build_list_url,
-                {
-                    'action': 'upgrade_selected',
-                    'upgrade_related': 'upgrade_related',
-                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
-                },
-                follow=True,
-            )
+        r = self.client.post(
+            self.build_list_url,
+            {
+                'action': 'upgrade_selected',
+                'upgrade_related': 'upgrade_related',
+                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+            },
+            follow=True,
+        )
         self.assertContains(r, '<li class="success">')
         self.assertContains(r, 'operation started')
         self.assertEqual(UpgradeOperation.objects.count(), 2)
@@ -120,16 +125,15 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
         self.assertEqual(Device.objects.count(), 3)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         self.assertEqual(fw.count(), 0)
-        with self.assertNumQueries(66):
-            r = self.client.post(
-                self.build_list_url,
-                {
-                    'action': 'upgrade_selected',
-                    'upgrade_all': 'upgrade_all',
-                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
-                },
-                follow=True,
-            )
+        r = self.client.post(
+            self.build_list_url,
+            {
+                'action': 'upgrade_selected',
+                'upgrade_all': 'upgrade_all',
+                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+            },
+            follow=True,
+        )
         self.assertContains(r, '<li class="success">')
         self.assertContains(r, 'operation started')
         self.assertEqual(UpgradeOperation.objects.count(), 3)
