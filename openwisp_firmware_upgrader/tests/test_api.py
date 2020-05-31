@@ -41,7 +41,8 @@ class TestAPIUpgraderMixin(TestMultitenantAdminMixin, TestUpgraderMixin):
         params = {'username': username, 'password': password}
         url = reverse('users:user_auth_token')
         r = self.client.post(url, params)
-        return r.data["token"]
+        self.assertEqual(r.status_code, 200)
+        return r.data['token']
 
     def _login(self, username='operator', password='tester'):
         token = self._obtain_auth_token(username, password)
@@ -150,7 +151,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
 
-        data_filter = {"org": "New org"}
+        data_filter = {'org': 'New org'}
         serialized_list = [
             self._serialize_build(build2),
         ]
@@ -169,8 +170,8 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         category = self._get_category()
         url = reverse('upgrader:api_build_list')
         data = {
-            "category": category.pk,
-            "version": "asd",
+            'category': category.pk,
+            'version': 'asd',
         }
         with self.assertNumQueries(9):
             r = self.client.post(url, data)
@@ -192,16 +193,16 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         category = self._get_category()
         url = reverse('upgrader:api_build_detail', args=[build.pk])
         data = {
-            "category": str(category.pk),
-            "version": "20.04",
-            "changelog": "PUT update",
+            'category': str(category.pk),
+            'version': '20.04',
+            'changelog': 'PUT update',
         }
         with self.assertNumQueries(9):
             r = self.client.put(url, data, content_type='application/json')
-        self.assertEqual(r.data["id"], str(build.pk))
-        self.assertEqual(r.data["category"], build.category.pk)
-        self.assertEqual(r.data["version"], "20.04")
-        self.assertEqual(r.data["changelog"], "PUT update")
+        self.assertEqual(r.data['id'], str(build.pk))
+        self.assertEqual(r.data['category'], build.category.pk)
+        self.assertEqual(r.data['version'], '20.04')
+        self.assertEqual(r.data['changelog'], 'PUT update')
 
     def test_build_update_partial(self):
         build = self._create_build()
@@ -209,10 +210,10 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         data = dict(changelog='PATCH update')
         with self.assertNumQueries(8):
             r = self.client.patch(url, data, content_type='application/json')
-        self.assertEqual(r.data["id"], str(build.pk))
-        self.assertEqual(r.data["category"], build.category.pk)
-        self.assertEqual(r.data["version"], build.version)
-        self.assertEqual(r.data["changelog"], "PATCH update")
+        self.assertEqual(r.data['id'], str(build.pk))
+        self.assertEqual(r.data['category'], build.category.pk)
+        self.assertEqual(r.data['version'], build.version)
+        self.assertEqual(r.data['changelog'], 'PATCH update')
 
     def test_build_delete(self):
         build = self._create_build()
@@ -310,7 +311,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
 
-        data_filter = {"org": "New org"}
+        data_filter = {'org': 'New org'}
         serialized_list = [
             self._serialize_category(category2),
         ]
@@ -321,8 +322,8 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
     def test_category_create(self):
         url = reverse('upgrader:api_category_list')
         data = {
-            "name": "Dummy category",
-            "organization": self.org.pk,
+            'name': 'Dummy category',
+            'organization': self.org.pk,
         }
         with self.assertNumQueries(9):
             r = self.client.post(url, data)
@@ -343,14 +344,14 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         category = self._get_category()
         url = reverse('upgrader:api_category_detail', args=[category.pk])
         data = {
-            "name": "New name",
-            "organization": category.organization.pk,
+            'name': 'New name',
+            'organization': category.organization.pk,
         }
         with self.assertNumQueries(9):
             r = self.client.put(url, data, content_type='application/json')
-        self.assertEqual(r.data["id"], str(category.pk))
-        self.assertEqual(r.data["name"], "New name")
-        self.assertEqual(r.data["organization"], category.organization.pk)
+        self.assertEqual(r.data['id'], str(category.pk))
+        self.assertEqual(r.data['name'], 'New name')
+        self.assertEqual(r.data['organization'], category.organization.pk)
 
     def test_category_update_partial(self):
         category = self._get_category()
@@ -358,9 +359,9 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         data = dict(name='New name')
         with self.assertNumQueries(9):
             r = self.client.patch(url, data, content_type='application/json')
-        self.assertEqual(r.data["id"], str(category.pk))
-        self.assertEqual(r.data["name"], "New name")
-        self.assertEqual(r.data["organization"], category.organization.pk)
+        self.assertEqual(r.data['id'], str(category.pk))
+        self.assertEqual(r.data['name'], 'New name')
+        self.assertEqual(r.data['organization'], category.organization.pk)
 
     def test_category_delete(self):
         category = self._get_category()
@@ -426,7 +427,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
 
         serialized_list = [
             self._serialize_upgrade_env(operation)
-            for operation in BatchUpgradeOperation.objects.order_by("-created")
+            for operation in BatchUpgradeOperation.objects.order_by('-created')
         ]
         with self.assertNumQueries(2):
             r = self.client.get(url)
@@ -450,9 +451,9 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self._serialize_upgrade_env(operation)
             for operation in BatchUpgradeOperation.objects.filter(
                 status='in-progress'
-            ).order_by("-created")
+            ).order_by('-created')
         ]
-        filter_params = dict(status="in-progress")
+        filter_params = dict(status='in-progress')
         with self.assertNumQueries(2):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, serialized_list)
@@ -461,9 +462,9 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self._serialize_upgrade_env(operation)
             for operation in BatchUpgradeOperation.objects.filter(
                 status='success'
-            ).order_by("-created")
+            ).order_by('-created')
         ]
-        filter_params = dict(status="success")
+        filter_params = dict(status='success')
         with self.assertNumQueries(2):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data, serialized_list)
@@ -523,7 +524,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized_list)
 
-        data_filter = {"org": "New org"}
+        data_filter = {'org': 'New org'}
         serialized_list = [self._serialize_upgrade_env(operation2)]
         with self.assertNumQueries(2):
             r = self.client.get(url, data_filter)
@@ -659,7 +660,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         url = reverse('upgrader:api_firmware_list', args=[image2.build.pk])
 
-        data_filter = {"org": "New org"}
+        data_filter = {'org': 'New org'}
         serialized_list = [self._serialize_image(image2)]
         with self.assertNumQueries(3):
             r = self.client.get(url, data_filter)
@@ -670,8 +671,8 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         url = reverse('upgrader:api_firmware_list', args=[build.pk])
         data = {
             # It requires a non-empty file to be uploaded
-            "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
-            "type": self.TPLINK_4300_IMAGE,
+            'file': self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+            'type': self.TPLINK_4300_IMAGE,
         }
         with self.assertNumQueries(9):
             r = self.client.post(url, data)
@@ -687,8 +688,8 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.post(
                 url,
                 {
-                    "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
-                    "type": self.TPLINK_4300_IMAGE,
+                    'file': self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+                    'type': self.TPLINK_4300_IMAGE,
                 },
             )
             with self.subTest(pk=pk):
@@ -724,8 +725,8 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
         data = {
-            "type": self.TPLINK_4300_IL_IMAGE,
-            "file": self._get_simpleuploadedfile(),
+            'type': self.TPLINK_4300_IL_IMAGE,
+            'file': self._get_simpleuploadedfile(),
         }
         r = self.client.put(url, data, content_type='multipart/form-data')
         self.assertEqual(r.status_code, 405)
