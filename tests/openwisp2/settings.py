@@ -37,7 +37,6 @@ INSTALLED_APPS = [
     'django_extensions',
     'private_storage',
     # openwisp2 modules
-    'openwisp_utils',
     'openwisp_users',
     'openwisp_controller.pki',
     'openwisp_controller.config',
@@ -136,7 +135,6 @@ ACCOUNT_LOGOUT_REDIRECT_URL = LOGIN_REDIRECT_URL
 # during development only
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-
 if TESTING:
     CACHES = {
         'default': {
@@ -188,7 +186,6 @@ OPENWISP_CUSTOM_OPENWRT_IMAGES = (
 )
 OPENWISP_USERS_AUTH_API = True
 OPENWISP_FIRMWARE_UPGRADER_API = True
-OPENWISP_USERS_AUTH_THROTTLE_RATE = None  # Disable throttle for testing
 
 if os.environ.get('SAMPLE_APP', False):
     INSTALLED_APPS.remove('openwisp_firmware_upgrader')

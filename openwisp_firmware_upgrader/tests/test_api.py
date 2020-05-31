@@ -1,6 +1,5 @@
 import uuid
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -26,9 +25,6 @@ FirmwareImage = load_model('FirmwareImage')
 UpgradeOperation = load_model('UpgradeOperation')
 
 user_model = get_user_model()
-
-# Disable default rate limit
-setattr(settings, 'REST_FRAMEWORK', {})
 
 
 class TestAPIUpgraderMixin(TestMultitenantAdminMixin, TestUpgraderMixin):
