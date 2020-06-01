@@ -2,7 +2,13 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
-from openwisp_firmware_upgrader.admin import BuildAdmin, FirmwareImageInline, admin
+from openwisp_firmware_upgrader.admin import (
+    BuildAdmin,
+    DeviceAdmin,
+    DeviceFirmwareInline,
+    FirmwareImageInline,
+    admin,
+)
 
 from openwisp_controller.config.models import Device
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
@@ -168,3 +174,27 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
         self.assertIsInstance(inline, FirmwareImageInline)
         self.assertIs(inline.has_change_permission(request), True)
         self.assertIs(inline.has_change_permission(request, obj=env['image1a']), False)
+
+    def test_device_firmware_inline_has_add_permission(self):
+        request = MockRequest()
+        request.user = User.objects.first()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        inline = DeviceFirmwareInline(Device, admin.site)
+        self.assertTrue(inline.has_add_permission(request, obj=None))
+        self.assertTrue(inline.has_add_permission(request, obj=device))
+        self.assertIsInstance(inline, DeviceFirmwareInline)
+        self.assertIn(DeviceFirmwareInline, DeviceAdmin.inlines)
+
+    def test_device_firmware_admin_get_inlines(self):
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        request = MockRequest()
+        request.user = User.objects.first()
+        deviceadmin = DeviceAdmin(model=Device, admin_site=admin.site)
+        self.assertNotIn(
+            DeviceFirmwareInline, deviceadmin.get_inlines(request, obj=None)
+        )
+        self.assertIn(
+            DeviceFirmwareInline, deviceadmin.get_inlines(request, obj=device)
+        )

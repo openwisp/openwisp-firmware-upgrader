@@ -209,8 +209,16 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     extra = 0
     multitenant_shared_relations = ['device']
 
-    def has_add_permission(self, request, obj=None):
-        return obj and not obj._state.adding
+
+def device_admin_get_inlines(self, request, obj):
+    inlines = self.inlines
+    if obj:
+        return inlines
+    # copy the list to avoid modifying the original data structure
+    inlines = list(inlines)
+    inlines.remove(DeviceFirmwareInline)
+    return inlines
 
 
 DeviceAdmin.inlines.append(DeviceFirmwareInline)
+DeviceAdmin.get_inlines = device_admin_get_inlines
