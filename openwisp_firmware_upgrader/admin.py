@@ -3,6 +3,7 @@ import logging
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.safestring import mark_safe
@@ -14,9 +15,9 @@ from openwisp_users.multitenancy import MultitenantAdminMixin
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
 from .swapper import load_model
-from .tasks import batch_upgrade_operation
 
 logger = logging.getLogger(__name__)
+BatchUpgradeOperation = load_model('BatchUpgradeOperation')
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -78,24 +79,23 @@ class BuildAdmin(BaseVersionAdmin):
         upgrade_all = request.POST.get('upgrade_all')
         upgrade_related = request.POST.get('upgrade_related')
         build = queryset.first()
-        url = reverse(f'admin:{app_label}_batchupgradeoperation_changelist')
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
-            text = (
-                _(
-                    'Mass upgrade operation started, you can '
-                    'track its progress from the <a href="%s">list '
-                    'of mass upgrades</a>.'
-                )
-                % url
+            batch = build.batch_upgrade(firmwareless=upgrade_all)
+            text = _(
+                'You can track the progress of this mass upgrade operation '
+                'in this page. Refresh the page from time to time to find '
+                'out the progress of the upgrade.'
             )
             self.message_user(request, mark_safe(text), messages.SUCCESS)
-            batch_upgrade_operation.delay(build_id=build.pk, firmwareless=upgrade_all)
-            # returning None will display the change list page again
-            return None
+            url = reverse(
+                f'admin:{app_label}_batchupgradeoperation_change', args=[batch.pk]
+            )
+            return redirect(url)
         # upgrade needs to be confirmed
-        related_device_fw = build._find_related_device_firmwares(select_devices=True)
-        firmwareless_devices = build._find_firmwareless_devices()
+        result = BatchUpgradeOperation.dry_run(build=build)
+        related_device_fw = result['device_firmwares']
+        firmwareless_devices = result['devices']
         title = _('Confirm mass upgrade operation')
         context = self.admin_site.each_context(request)
         context.update(
@@ -152,7 +152,7 @@ class UpgradeOperationInline(admin.StackedInline):
         return False
 
 
-@admin.register(load_model('BatchUpgradeOperation'))
+@admin.register(BatchUpgradeOperation)
 class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     list_display = ['build', 'status', 'created', 'modified']
     list_filter = ['status', 'build__category']

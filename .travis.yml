@@ -40,6 +40,8 @@ install:
   - pip install -U https://github.com/openwisp/openwisp-utils/tarball/master#egg=openwisp_utils[qa,rest]
   # temporary: remove when openwisp-users with API support is released
   - pip install -U https://github.com/openwisp/openwisp-users/tarball/master#egg=openwisp_users[rest]
+  # temporary: until bug introduced in 4.4.3 is fixed
+  - pip install celery==4.4.2
   - pip install -e .
 
 script:

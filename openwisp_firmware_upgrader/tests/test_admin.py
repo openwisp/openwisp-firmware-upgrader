@@ -116,7 +116,7 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
             follow=True,
         )
         self.assertContains(r, '<li class="success">')
-        self.assertContains(r, 'operation started')
+        self.assertContains(r, 'track the progress')
         self.assertEqual(UpgradeOperation.objects.count(), 2)
         self.assertEqual(fw.count(), 2)
 
@@ -141,7 +141,7 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
             follow=True,
         )
         self.assertContains(r, '<li class="success">')
-        self.assertContains(r, 'operation started')
+        self.assertContains(r, 'track the progress')
         self.assertEqual(UpgradeOperation.objects.count(), 3)
         self.assertEqual(fw.count(), 3)
 

@@ -224,6 +224,24 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
+    def test_dry_run(self, *args):
+        env = self._create_upgrade_env()
+        # check pending upgrades
+        result = BatchUpgradeOperation.dry_run(build=env['build1'])
+        self.assertEqual(
+            list(result['device_firmwares']),
+            list(DeviceFirmware.objects.all().order_by('-created')),
+        )
+        self.assertEqual(list(result['devices']), [])
+        # upgrade devices
+        env['build1'].batch_upgrade(firmwareless=True)
+        # check pending upgrades again
+        result = BatchUpgradeOperation.dry_run(build=env['build1'])
+        self.assertEqual(list(result['device_firmwares']), [])
+        self.assertEqual(list(result['devices']), [])
+
+    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_related_devices(self, *args):
         env = self._create_upgrade_env()
         # check everything is as expected

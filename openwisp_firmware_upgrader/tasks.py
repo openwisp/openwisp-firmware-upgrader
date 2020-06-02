@@ -32,16 +32,15 @@ def upgrade_firmware(self, operation_id):
 
 
 @shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
-def batch_upgrade_operation(self, build_id, firmwareless):
+def batch_upgrade_operation(self, batch_id, firmwareless):
     """
     Calls the ``batch_upgrade()`` method of a
     ``Build`` instance in the background
     """
     try:
-        build = load_model('Build').objects.get(pk=build_id)
-        build.batch_upgrade(firmwareless=firmwareless)
+        batch_operation = load_model('BatchUpgradeOperation').objects.get(pk=batch_id)
+        batch_operation.upgrade(firmwareless=firmwareless)
     except SoftTimeLimitExceeded:
-        batch_operation = build.batchupgradeoperation_set.order_by('-created').last()
         batch_operation.status = 'failed'
         batch_operation.save()
         logger.warn('SoftTimeLimitExceeded raised in batch_upgrade_operation task')
