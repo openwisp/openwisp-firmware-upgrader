@@ -87,6 +87,38 @@ class AbstractBuild(TimeStampedEditableModel):
         batch_upgrade_operation.delay(batch.pk, firmwareless)
         return batch
 
+    def _find_related_device_firmwares(self, select_devices=False):
+        """
+        Returns all the DeviceFirmware objects related
+        to the firmware category of this build
+        """
+        related = ['image']
+        if select_devices:
+            related.append('device')
+        return (
+            load_model('DeviceFirmware')
+            .objects.all()
+            .select_related(*related)
+            .filter(image__build__category_id=self.category_id)
+            .exclude(image__build=self, installed=True)
+            .order_by('-created')
+        )
+
+    def _find_firmwareless_devices(self, boards=None):
+        """
+        Returns devices which have no related DeviceFirmware
+        but that are upgradable to one of the image of this build
+        """
+        if boards is None:
+            boards = []
+            for image in self.firmwareimage_set.all():
+                boards += image.boards
+        return Device.objects.filter(
+            devicefirmware__isnull=True,
+            organization_id=self.category.organization_id,
+            model__in=boards,
+        ).order_by('-created')
+
 
 def get_build_directory(instance, filename):
     build_pk = str(instance.build.pk)
@@ -271,10 +303,8 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
 
     @staticmethod
     def dry_run(build):
-        buo_model = load_model('BatchUpgradeOperation')
-        batch = buo_model(build=build)
-        related_device_fw = batch._find_related_device_firmwares(select_devices=True)
-        firmwareless_devices = batch._find_firmwareless_devices()
+        related_device_fw = build._find_related_device_firmwares(select_devices=True)
+        firmwareless_devices = build._find_firmwareless_devices()
         return {
             'device_firmwares': related_device_fw,
             'devices': firmwareless_devices,
@@ -285,7 +315,7 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
         upgrades all devices which have an
         existing related DeviceFirmware
         """
-        device_firmwares = self._find_related_device_firmwares()
+        device_firmwares = self.build._find_related_device_firmwares()
         for device_fw in device_firmwares:
             image = self.build.firmwareimage_set.filter(
                 type=device_fw.image.type
@@ -294,19 +324,6 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
                 device_fw.image = image
                 device_fw.full_clean()
                 device_fw.save(self)
-
-    def _find_related_device_firmwares(self, select_devices=False):
-        related = ['image']
-        if select_devices:
-            related.append('device')
-        return (
-            load_model('DeviceFirmware')
-            .objects.all()
-            .select_related(*related)
-            .filter(image__build__category_id=self.build.category_id)
-            .exclude(image__build=self.build, installed=True)
-            .order_by('-created')
-        )
 
     def upgrade_firmwareless_devices(self):
         """
@@ -317,28 +334,12 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
         # for each image, find related "firmwareless"
         # devices and perform upgrade one by one
         for image in self.build.firmwareimage_set.all():
-            devices = self._find_firmwareless_devices(image.boards)
+            devices = self.build._find_firmwareless_devices(image.boards)
             for device in devices:
-                df_model = load_model('DeviceFirmware')
-                device_fw = df_model(device=device, image=image)
+                DeviceFirmware = load_model('DeviceFirmware')
+                device_fw = DeviceFirmware(device=device, image=image)
                 device_fw.full_clean()
                 device_fw.save(self)
-
-    def _find_firmwareless_devices(self, boards=None):
-        """
-        returns a queryset used to find "firmwareless" devices
-        according to the ``board`` parameter passed;
-        if ``board`` is ``None`` all related image boads are searched
-        """
-        if boards is None:
-            boards = []
-            for image in self.build.firmwareimage_set.all():
-                boards += image.boards
-        return Device.objects.filter(
-            devicefirmware__isnull=True,
-            organization=self.build.category.organization,
-            model__in=boards,
-        ).order_by('-created')
 
     @cached_property
     def upgrade_operations(self):

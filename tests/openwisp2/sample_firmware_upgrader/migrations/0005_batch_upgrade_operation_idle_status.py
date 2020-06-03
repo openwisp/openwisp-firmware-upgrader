@@ -23,30 +23,5 @@ class Migration(migrations.Migration):
                 default='idle',
                 max_length=12,
             ),
-        ),
-        migrations.AlterField(
-            model_name='firmwareimage',
-            name='type',
-            field=models.CharField(
-                blank=True,
-                choices=[
-                    ('customimage-squashfs-sysupgrade.bin', 'Custom WAP-1200'),
-                    (
-                        'ramips-mt76x8-gl-mt300n-v2-squashfs-sysupgrade.bin',
-                        'GL.iNet GL-MT300N-V2',
-                    ),
-                    (
-                        'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin',
-                        'TP-Link WDR4300 v1 (IL)',
-                    ),
-                    (
-                        'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin',
-                        'TP-Link WDR4300 v1',
-                    ),
-                    ('ar71xx-generic-xd3200-squashfs-sysupgrade.bin', 'YunCore XD3200'),
-                ],
-                help_text='firmware image type: model or architecture. Leave blank to attempt determining automatically',
-                max_length=128,
-            ),
-        ),
+        )
     ]

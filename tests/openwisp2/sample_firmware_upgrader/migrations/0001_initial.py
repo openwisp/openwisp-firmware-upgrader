@@ -7,6 +7,8 @@ import model_utils.fields
 import openwisp_users.mixins
 import uuid
 
+from openwisp_firmware_upgrader.hardware import FIRMWARE_IMAGE_TYPE_CHOICES
+
 
 class Migration(migrations.Migration):
 
@@ -136,21 +138,7 @@ class Migration(migrations.Migration):
                     'type',
                     models.CharField(
                         blank=True,
-                        choices=[
-                            ('customimage-squashfs-sysupgrade.bin', 'Custom WAP-1200'),
-                            (
-                                'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin',
-                                'TP-Link WDR4300 v1 (IL)',
-                            ),
-                            (
-                                'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin',
-                                'TP-Link WDR4300 v1',
-                            ),
-                            (
-                                'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
-                                'YunCore XD3200',
-                            ),
-                        ],
+                        choices=FIRMWARE_IMAGE_TYPE_CHOICES,
                         help_text='firmware image type: model or architecture. Leave blank to attempt determining automatically',
                         max_length=128,
                     ),

@@ -84,8 +84,8 @@ class BuildAdmin(BaseVersionAdmin):
             batch = build.batch_upgrade(firmwareless=upgrade_all)
             text = _(
                 'You can track the progress of this mass upgrade operation '
-                'in this page. Refresh the page from time to time to find '
-                'out the progress of the upgrade.'
+                'in this page. Refresh the page from time to time to check '
+                'its progress.'
             )
             self.message_user(request, mark_safe(text), messages.SUCCESS)
             url = reverse(
