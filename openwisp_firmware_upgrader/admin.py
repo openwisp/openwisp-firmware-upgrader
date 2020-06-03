@@ -1,5 +1,6 @@
 import logging
 
+from dateutil.relativedelta import relativedelta
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
@@ -7,6 +8,7 @@ from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.safestring import mark_safe
+from django.utils.timezone import localtime
 from django.utils.translation import ugettext_lazy as _
 from reversion.admin import VersionAdmin
 
@@ -14,10 +16,12 @@ from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
+# from .hardware import FIRMWARE_IMAGE_MAP
 from .swapper import load_model
 
 logger = logging.getLogger(__name__)
 BatchUpgradeOperation = load_model('BatchUpgradeOperation')
+UpgradeOperation = load_model('UpgradeOperation')
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -200,9 +204,35 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     aborted_rate.short_description = _('abortion rate')
 
 
+class DeviceFirmwareForm(forms.ModelForm):
+    class Meta:
+        model = load_model('DeviceFirmware')
+        fields = '__all__'
+
+    def _get_compatible_boards(self, instance):
+        # instance.device.model in instance.image.boards
+        # boards = FIRMWARE_IMAGE_MAP[instance.image.type]['boards']
+        device_model = instance.device.model
+        qs = load_model('FirmwareImage').objects.filter(
+            build__category__organization=instance.device.organization
+        )  # Or filter by type=...
+        list_of_ids = [
+            fw_image.pk for fw_image in qs if device_model in fw_image.boards
+        ]
+        return qs.filter(id__in=list_of_ids).order_by('-created')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if 'instance' in kwargs:
+            instance = kwargs['instance']
+            self.fields['image'].queryset = self._get_compatible_boards(instance)
+
+
 class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     model = load_model('DeviceFirmware')
+    form = DeviceFirmwareForm
     exclude = ['created']
+    select_related = ['device', 'image']
     readonly_fields = ['installed', 'modified']
     verbose_name = _('Device Firmware')
     verbose_name_plural = verbose_name
@@ -210,12 +240,29 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     multitenant_shared_relations = ['device']
 
 
+class DeviceUpgradeOperationInline(UpgradeOperationInline):
+
+    verbose_name = _('Recent Upgrades')
+    verbose_name_plural = verbose_name
+
+    def get_queryset(self, request):
+        # Return recent upgrade operations (created within the last 7 days)
+        qs = super().get_queryset(request)
+        seven_days = localtime() - relativedelta(days=7)
+        return qs.filter(created__gte=seven_days).order_by('-created')
+
+
 def device_admin_get_inlines(self, request, obj):
-    inlines = self.inlines
-    if obj:
-        return inlines
     # copy the list to avoid modifying the original data structure
-    inlines = list(inlines)
+    inlines = list(self.inlines)
+    if obj:
+        if (
+            DeviceUpgradeOperationInline(UpgradeOperation, admin.site)
+            .get_queryset(request)
+            .exists()
+        ):
+            inlines.append(DeviceUpgradeOperationInline)
+        return inlines
     inlines.remove(DeviceFirmwareInline)
     return inlines
 

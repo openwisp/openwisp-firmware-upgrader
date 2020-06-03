@@ -210,3 +210,13 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         self.assertContains(response, 'Success rate')
         self.assertContains(response, 'Failure rate')
         self.assertContains(response, 'Abortion rate')
+
+    def test_recent_upgrades(self, *args):
+        self._login()
+        env = self._create_upgrade_env()
+        url = reverse('admin:config_device_change', args=[env['d2'].pk])
+        r = self.client.get(url)
+        self.assertNotContains(r, 'Recent Upgrades')
+        env['build2'].batch_upgrade(firmwareless=True)
+        r = self.client.get(url)
+        self.assertContains(r, 'Recent Upgrades')
