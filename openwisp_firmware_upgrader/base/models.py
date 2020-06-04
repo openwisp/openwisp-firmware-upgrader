@@ -80,11 +80,12 @@ class AbstractBuild(TimeStampedEditableModel):
             return super().__str__()
 
     def batch_upgrade(self, firmwareless):
-        batch_model = load_model('BatchUpgradeOperation')
-        batch = batch_model(build=self)
+        batch = load_model('BatchUpgradeOperation')(build=self)
         batch.full_clean()
         batch.save()
-        batch_upgrade_operation.delay(batch.pk, firmwareless)
+        transaction.on_commit(
+            lambda: batch_upgrade_operation.delay(batch.pk, firmwareless)
+        )
         return batch
 
     def _find_related_device_firmwares(self, select_devices=False):

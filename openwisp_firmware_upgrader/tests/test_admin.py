@@ -1,6 +1,8 @@
+from unittest import mock
+
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from openwisp_firmware_upgrader.admin import (
     BuildAdmin,
@@ -29,13 +31,15 @@ class MockRequest:
     pass
 
 
-class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
+class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
     app_label = 'firmware_upgrader'
 
     @property
     def build_list_url(self):
         return reverse(f'admin:{self.app_label}_build_changelist')
 
+
+class TestAdmin(BaseTestAdmin, TestCase):
     def test_build_list(self):
         self._login()
         build = self._create_build()
@@ -95,67 +99,6 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
         self.assertNotContains(r, '<input type="submit" name="upgrade_related"')
         self.assertContains(r, '<input type="submit" name="upgrade_all"')
 
-    def test_upgrade_related(self):
-        self._login()
-        env = self._create_upgrade_env()
-        self._create_firmwareless_device(organization=env['d1'].organization)
-        # check state is good before proceeding
-        fw = DeviceFirmware.objects.filter(
-            image__build_id=env['build2'].pk
-        ).select_related('image')
-        self.assertEqual(Device.objects.count(), 3)
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-        self.assertEqual(fw.count(), 0)
-        r = self.client.post(
-            self.build_list_url,
-            {
-                'action': 'upgrade_selected',
-                'upgrade_related': 'upgrade_related',
-                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
-            },
-            follow=True,
-        )
-        self.assertContains(r, '<li class="success">')
-        self.assertContains(r, 'track the progress')
-        self.assertEqual(UpgradeOperation.objects.count(), 2)
-        self.assertEqual(fw.count(), 2)
-
-    def test_upgrade_all(self):
-        self._login()
-        env = self._create_upgrade_env()
-        self._create_firmwareless_device(organization=env['d1'].organization)
-        # check state is good before proceeding
-        fw = DeviceFirmware.objects.filter(
-            image__build_id=env['build2'].pk
-        ).select_related('image')
-        self.assertEqual(Device.objects.count(), 3)
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-        self.assertEqual(fw.count(), 0)
-        r = self.client.post(
-            self.build_list_url,
-            {
-                'action': 'upgrade_selected',
-                'upgrade_all': 'upgrade_all',
-                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
-            },
-            follow=True,
-        )
-        self.assertContains(r, '<li class="success">')
-        self.assertContains(r, 'track the progress')
-        self.assertEqual(UpgradeOperation.objects.count(), 3)
-        self.assertEqual(fw.count(), 3)
-
-    def test_massive_upgrade_operation_page(self):
-        self.test_upgrade_all()
-        uo = UpgradeOperation.objects.first()
-        url = reverse(
-            f'admin:{self.app_label}_batchupgradeoperation_change', args=[uo.batch.pk]
-        )
-        response = self.client.get(url)
-        self.assertContains(response, 'Success rate')
-        self.assertContains(response, 'Failure rate')
-        self.assertContains(response, 'Abortion rate')
-
     def test_view_device_operator(self):
         device_fw = self._create_device_firmware()
         org = self._get_org()
@@ -198,3 +141,72 @@ class TestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin, TestCase):
         self.assertIn(
             DeviceFirmwareInline, deviceadmin.get_inlines(request, obj=device)
         )
+
+
+_mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
+_mock_connect = 'openwisp_controller.connection.models.DeviceConnection.connect'
+
+
+@mock.patch(_mock_updrade, return_value=True)
+@mock.patch(_mock_connect, return_value=True)
+class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
+    def test_upgrade_related(self, *args):
+        self._login()
+        env = self._create_upgrade_env()
+        self._create_firmwareless_device(organization=env['d1'].organization)
+        # check state is good before proceeding
+        fw = DeviceFirmware.objects.filter(
+            image__build_id=env['build2'].pk
+        ).select_related('image')
+        self.assertEqual(Device.objects.count(), 3)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        self.assertEqual(fw.count(), 0)
+        r = self.client.post(
+            self.build_list_url,
+            {
+                'action': 'upgrade_selected',
+                'upgrade_related': 'upgrade_related',
+                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(r, '<li class="success">')
+        self.assertContains(r, 'track the progress')
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        self.assertEqual(fw.count(), 2)
+
+    def test_upgrade_all(self, *args):
+        self._login()
+        env = self._create_upgrade_env()
+        self._create_firmwareless_device(organization=env['d1'].organization)
+        # check state is good before proceeding
+        fw = DeviceFirmware.objects.filter(
+            image__build_id=env['build2'].pk
+        ).select_related('image')
+        self.assertEqual(Device.objects.count(), 3)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        self.assertEqual(fw.count(), 0)
+        r = self.client.post(
+            self.build_list_url,
+            {
+                'action': 'upgrade_selected',
+                'upgrade_all': 'upgrade_all',
+                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(r, '<li class="success">')
+        self.assertContains(r, 'track the progress')
+        self.assertEqual(UpgradeOperation.objects.count(), 3)
+        self.assertEqual(fw.count(), 3)
+
+    def test_massive_upgrade_operation_page(self, *args):
+        self.test_upgrade_all()
+        uo = UpgradeOperation.objects.first()
+        url = reverse(
+            f'admin:{self.app_label}_batchupgradeoperation_change', args=[uo.batch.pk]
+        )
+        response = self.client.get(url)
+        self.assertContains(response, 'Success rate')
+        self.assertContains(response, 'Failure rate')
+        self.assertContains(response, 'Abortion rate')

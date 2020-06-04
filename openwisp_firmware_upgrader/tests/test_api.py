@@ -532,7 +532,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         operation = BatchUpgradeOperation.objects.get(build=env['build2'])
         serialized = self._serialize_upgrade_env(operation, action='detail')
         url = reverse('upgrader:api_batchupgradeoperation_detail', args=[operation.pk])
-        with self.assertNumQueries(7):
+        with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
 
