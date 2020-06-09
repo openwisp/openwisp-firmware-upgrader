@@ -35,6 +35,10 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
                 {'label': 'YunCore XD3200', 'boards': ('YunCore XD3200',)},
             ),
+            (
+                'ar71xx-generic-ubnt-airrouter-squashfs-sysupgrade.bin',
+                {'label': 'Ubiquiti AirRouter', 'boards': ('Ubiquiti AirRouter',)},
+            ),
         )
     )
 )
