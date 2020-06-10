@@ -43,7 +43,7 @@ class TestModels(TestUpgraderMixin, TestCase):
     def test_fw_str(self):
         fw = self._create_firmware_image()
         self.assertIn(str(fw.build), str(fw))
-        self.assertIn(fw.file.name, str(fw))
+        self.assertIn(fw.build.category.name, str(fw))
 
     def test_fw_str_new(self):
         fw = FirmwareImage()

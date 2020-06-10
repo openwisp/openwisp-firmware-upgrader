@@ -1,12 +1,12 @@
 import logging
+from datetime import timedelta
 
-from dateutil.relativedelta import relativedelta
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
 from django.utils.translation import ugettext_lazy as _
@@ -16,12 +16,14 @@ from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
-# from .hardware import FIRMWARE_IMAGE_MAP
+from .hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from .swapper import load_model
 
 logger = logging.getLogger(__name__)
 BatchUpgradeOperation = load_model('BatchUpgradeOperation')
 UpgradeOperation = load_model('UpgradeOperation')
+DeviceFirmware = load_model('DeviceFirmware')
+FirmwareImage = load_model('FirmwareImage')
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -42,7 +44,7 @@ class CategoryAdmin(BaseVersionAdmin):
 
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
-    model = load_model('FirmwareImage')
+    model = FirmwareImage
     extra = 0
 
     def has_change_permission(self, request, obj=None):
@@ -139,7 +141,7 @@ class UpgradeOperationForm(forms.ModelForm):
 
 
 class UpgradeOperationInline(admin.StackedInline):
-    model = load_model('UpgradeOperation')
+    model = UpgradeOperation
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
@@ -206,66 +208,100 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
 
 class DeviceFirmwareForm(forms.ModelForm):
     class Meta:
-        model = load_model('DeviceFirmware')
+        model = DeviceFirmware
         fields = '__all__'
 
-    def _get_compatible_boards(self, instance):
-        # instance.device.model in instance.image.boards
-        # boards = FIRMWARE_IMAGE_MAP[instance.image.type]['boards']
-        device_model = instance.device.model
-        qs = load_model('FirmwareImage').objects.filter(
-            build__category__organization=instance.device.organization
-        )  # Or filter by type=...
-        list_of_ids = [
-            fw_image.pk for fw_image in qs if device_model in fw_image.boards
-        ]
-        return qs.filter(id__in=list_of_ids).order_by('-created')
+    def _get_image_queryset(self, device):
+        # restrict firmware images to organization of the current device
+        qs = (
+            FirmwareImage.objects.filter(
+                build__category__organization_id=device.organization_id
+            )
+            .order_by('-created')
+            .select_related('build', 'build__category')
+        )
+        # if device model is defined
+        # restrict the images to the ones compatible with it
+        if device.model and device.model in REVERSE_FIRMWARE_IMAGE_MAP:
+            qs = qs.filter(type=REVERSE_FIRMWARE_IMAGE_MAP[device.model])
+        # if DeviceFirmware instance already exists
+        # restrict images to the ones of the same category
+        if not self.instance._state.adding:
+            self.instance.refresh_from_db()
+            qs = qs.filter(build__category_id=self.instance.image.build.category_id)
+        return qs
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, device, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if 'instance' in kwargs:
-            instance = kwargs['instance']
-            self.fields['image'].queryset = self._get_compatible_boards(instance)
+        self.fields['image'].queryset = self._get_image_queryset(device)
+
+
+class DeviceFormSet(forms.BaseInlineFormSet):
+    def get_form_kwargs(self, index):
+        kwargs = super().get_form_kwargs(index)
+        kwargs['device'] = self.instance
+        return kwargs
 
 
 class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
-    model = load_model('DeviceFirmware')
+    model = DeviceFirmware
+    formset = DeviceFormSet
     form = DeviceFirmwareForm
     exclude = ['created']
     select_related = ['device', 'image']
     readonly_fields = ['installed', 'modified']
-    verbose_name = _('Device Firmware')
+    verbose_name = _('Firmware')
     verbose_name_plural = verbose_name
     extra = 0
     multitenant_shared_relations = ['device']
 
 
+class DeviceUpgradeOperationForm(UpgradeOperationForm):
+    class Meta(UpgradeOperationForm.Meta):
+        pass
+
+    def __init__(self, device, *args, **kwargs):
+        self.device = device
+        super().__init__(*args, **kwargs)
+
+
 class DeviceUpgradeOperationInline(UpgradeOperationInline):
-
-    verbose_name = _('Recent Upgrades')
+    verbose_name = _('Recent Firmware Upgrades')
     verbose_name_plural = verbose_name
+    formset = DeviceFormSet
+    form = DeviceUpgradeOperationForm
 
-    def get_queryset(self, request):
-        # Return recent upgrade operations (created within the last 7 days)
+    def get_queryset(self, request, select_related=True):
+        """
+        Return recent upgrade operations for this device
+        (created within the last 7 days)
+        """
         qs = super().get_queryset(request)
-        seven_days = localtime() - relativedelta(days=7)
-        return qs.filter(created__gte=seven_days).order_by('-created')
+        resolved = resolve(request.path_info)
+        if 'object_id' in resolved.kwargs:
+            seven_days = localtime() - timedelta(days=7)
+            qs = qs.filter(
+                device_id=resolved.kwargs['object_id'], created__gte=seven_days
+            ).order_by('-created')
+        if select_related:
+            qs = qs.select_related()
+        return qs
 
 
 def device_admin_get_inlines(self, request, obj):
     # copy the list to avoid modifying the original data structure
-    inlines = list(self.inlines)
+    inlines = self.inlines
     if obj:
+        inlines = list(inlines)  # copy
+        inlines.append(DeviceFirmwareInline)
         if (
             DeviceUpgradeOperationInline(UpgradeOperation, admin.site)
-            .get_queryset(request)
+            .get_queryset(request, select_related=False)
             .exists()
         ):
             inlines.append(DeviceUpgradeOperationInline)
         return inlines
-    inlines.remove(DeviceFirmwareInline)
     return inlines
 
 
-DeviceAdmin.inlines.append(DeviceFirmwareInline)
 DeviceAdmin.get_inlines = device_admin_get_inlines

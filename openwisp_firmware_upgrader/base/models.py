@@ -149,8 +149,8 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         unique_together = ('build', 'type')
 
     def __str__(self):
-        if hasattr(self, 'build') and self.file.name:
-            return f'{self.build}: {self.file.name}'
+        if hasattr(self, 'build') and self.type:
+            return f'{self.build}: {self.get_type_display()}'
         return super().__str__()
 
     @property

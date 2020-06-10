@@ -44,7 +44,12 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
 # eg: AirOS, Raspbian
 FIRMWARE_IMAGE_MAP = OPENWRT_FIRMWARE_IMAGE_MAP
 
-
+# Allows getting type from image board
+REVERSE_FIRMWARE_IMAGE_MAP = {}
+# Choices used in model
 FIRMWARE_IMAGE_TYPE_CHOICES = []
+
 for key, info in FIRMWARE_IMAGE_MAP.items():
     FIRMWARE_IMAGE_TYPE_CHOICES.append((key, info['label']))
+    for board in info['boards']:
+        REVERSE_FIRMWARE_IMAGE_MAP[board] = key
