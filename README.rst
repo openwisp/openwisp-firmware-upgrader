@@ -316,6 +316,17 @@ When browsing the API via the `Live documentation <#live-documentation>`_
 or the `Browsable web page <#browsable-web-interface>`_, you can also use
 the session authentication by logging in the django admin.
 
+Pagination
+~~~~~~~~~~
+
+All *list* endpoints support the ``page_size`` parameter that allows paginating
+the results in conjunction with the ``page`` parameter.
+
+.. code-block:: text
+
+    GET /api/v1/firmware/build/?page_size=10
+    GET /api/v1/firmware/build/?page_size=10&page=2
+
 List of endpoints
 ~~~~~~~~~~~~~~~~~
 
