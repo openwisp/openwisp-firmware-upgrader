@@ -34,6 +34,13 @@ OpenWISP firmware upgrade module (work in progress).
 
 ------------
 
+Requirements
+------------
+
+- Python >= 3.6
+- Django >= 3.0
+- openwisp-controller (and its dependencies) >= 0.7.0
+
 Install Depdendencies
 ---------------------
 
