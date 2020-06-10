@@ -155,7 +155,7 @@ SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
 SESSION_CACHE_ALIAS = 'default'
 
 if not TESTING:
-    CELERY_BROKER_URL = 'redis://localhost/1'
+    CELERY_BROKER_URL = 'redis://localhost/2'
 else:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
@@ -163,7 +163,7 @@ else:
 
 LOGGING = {
     'version': 1,
-    'filters': {'require_debug_true': {'()': 'django.utils.log.RequireDebugTrue',}},
+    'filters': {'require_debug_true': {'()': 'django.utils.log.RequireDebugTrue'}},
     'handlers': {
         'console': {
             'level': 'DEBUG',
@@ -172,9 +172,9 @@ LOGGING = {
         }
     },
     'loggers': {
-        'py.warnings': {'handlers': ['console'],},
-        'celery': {'handlers': ['console'], 'level': 'DEBUG',},
-        'celery.task': {'handlers': ['console'], 'level': 'DEBUG',},
+        'py.warnings': {'handlers': ['console']},
+        'celery': {'handlers': ['console'], 'level': 'DEBUG'},
+        'celery.task': {'handlers': ['console'], 'level': 'DEBUG'},
     },
 }
 
