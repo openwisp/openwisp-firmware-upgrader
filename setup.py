@@ -38,7 +38,6 @@ setup(
         # 'openwisp-controller~=0.7',
         'openwisp-utils[rest]~=0.5',
         'django-private-storage~=2.2',
-        'python-dateutil~=2.8',
         'swapper~=1.1',
     ],
     classifiers=[

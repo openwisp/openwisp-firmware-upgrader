@@ -1,13 +1,17 @@
+from datetime import timedelta
 from unittest import mock
 
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
+from django.utils.timezone import localtime
 from openwisp_firmware_upgrader.admin import (
     BuildAdmin,
     DeviceAdmin,
+    DeviceFirmwareForm,
     DeviceFirmwareInline,
+    DeviceUpgradeOperationInline,
     FirmwareImageInline,
     admin,
 )
@@ -15,6 +19,7 @@ from openwisp_firmware_upgrader.admin import (
 from openwisp_controller.config.models import Device
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
+from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from .base import TestUpgraderMixin
 
@@ -33,6 +38,13 @@ class MockRequest:
 
 class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
     app_label = 'firmware_upgrader'
+
+    def setUp(self, *args, **kwargs):
+        super().setUp(*args, **kwargs)
+        self.factory = RequestFactory()
+
+    def make_device_admin_request(self, pk):
+        return self.factory.get(reverse('admin:config_device_change', args=[pk]))
 
     @property
     def build_list_url(self):
@@ -119,20 +131,23 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertIs(inline.has_change_permission(request, obj=env['image1a']), False)
 
     def test_device_firmware_inline_has_add_permission(self):
-        request = MockRequest()
-        request.user = User.objects.first()
         device_fw = self._create_device_firmware()
         device = device_fw.device
+        request = self.make_device_admin_request(device.pk)
+        request.user = User.objects.first()
         inline = DeviceFirmwareInline(Device, admin.site)
         self.assertTrue(inline.has_add_permission(request, obj=None))
         self.assertTrue(inline.has_add_permission(request, obj=device))
         self.assertIsInstance(inline, DeviceFirmwareInline)
-        self.assertIn(DeviceFirmwareInline, DeviceAdmin.inlines)
+        deviceadmin = DeviceAdmin(model=Device, admin_site=admin.site)
+        self.assertIn(
+            DeviceFirmwareInline, deviceadmin.get_inlines(request, obj=device)
+        )
 
-    def test_device_firmware_admin_get_inlines(self):
+    def test_device_firmware_inline(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device
-        request = MockRequest()
+        request = self.make_device_admin_request(device.pk)
         request.user = User.objects.first()
         deviceadmin = DeviceAdmin(model=Device, admin_site=admin.site)
         self.assertNotIn(
@@ -141,6 +156,93 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertIn(
             DeviceFirmwareInline, deviceadmin.get_inlines(request, obj=device)
         )
+
+    def _prepare_image_qs_test_env(self):
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        request = self.make_device_admin_request(device.pk)
+        request.user = User.objects.first()
+        org2 = self._create_org(name='org2', slug='org2')
+        category_org2 = self._create_category(organization=org2, name='org2')
+        build_org2 = self._create_build(category=category_org2)
+        img_org2 = self._create_firmware_image(build=build_org2)
+        yuncore = self._create_firmware_image(
+            build=device_fw.image.build,
+            type=REVERSE_FIRMWARE_IMAGE_MAP['YunCore XD3200'],
+        )
+        mesh_category = self._create_category(
+            name='mesh', organization=device.organization
+        )
+        mesh_build = self._create_build(category=mesh_category)
+        mesh_image = self._create_firmware_image(build=mesh_build)
+        return device, device_fw, img_org2, yuncore, mesh_image
+
+    def test_image_queryset_existing_device_firmware(self):
+        (
+            device,
+            device_fw,
+            img_org2,
+            yuncore,
+            mesh_image,
+        ) = self._prepare_image_qs_test_env()
+        # existing DeviceFirmware
+        # restricts images to category of image in used
+        form = DeviceFirmwareForm(device=device, instance=device_fw)
+        self.assertEqual(form.fields['image'].queryset.count(), 1)
+        self.assertIn(device_fw.image, form.fields['image'].queryset)
+        self.assertNotIn(img_org2, form.fields['image'].queryset)
+
+    def test_image_queryset_new_device_firmware(self):
+        (
+            device,
+            device_fw,
+            img_org2,
+            yuncore,
+            mesh_image,
+        ) = self._prepare_image_qs_test_env()
+        # new DeviceFirmware
+        # shows all the categories related to the model
+        form = DeviceFirmwareForm(device=device)
+        self.assertEqual(form.fields['image'].queryset.count(), 2)
+        self.assertIn(device_fw.image, form.fields['image'].queryset)
+        self.assertIn(mesh_image, form.fields['image'].queryset)
+        self.assertNotIn(img_org2, form.fields['image'].queryset)
+
+    def test_image_queryset_no_model(self):
+        (
+            device,
+            device_fw,
+            img_org2,
+            yuncore,
+            mesh_image,
+        ) = self._prepare_image_qs_test_env()
+        # existing DeviceFirmware
+        # if no model specified, get all models available
+        device.model = ''
+        device.save()
+        form = DeviceFirmwareForm(device=device, instance=device_fw)
+        self.assertEqual(form.fields['image'].queryset.count(), 2)
+        self.assertIn(yuncore, form.fields['image'].queryset)
+        self.assertNotIn(img_org2, form.fields['image'].queryset)
+
+    def test_image_queryset_no_model_nor_device_firmware(self):
+        (
+            device,
+            device_fw,
+            img_org2,
+            yuncore,
+            mesh_image,
+        ) = self._prepare_image_qs_test_env()
+        # new DeviceFirmware, no model
+        # returns all devices of the org
+        device.model = ''
+        device.save()
+        form = DeviceFirmwareForm(device=device)
+        self.assertEqual(form.fields['image'].queryset.count(), 3)
+        self.assertIn(device_fw.image, form.fields['image'].queryset)
+        self.assertIn(mesh_image, form.fields['image'].queryset)
+        self.assertIn(yuncore, form.fields['image'].queryset)
+        self.assertNotIn(img_org2, form.fields['image'].queryset)
 
 
 _mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
@@ -216,7 +318,39 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         env = self._create_upgrade_env()
         url = reverse('admin:config_device_change', args=[env['d2'].pk])
         r = self.client.get(url)
-        self.assertNotContains(r, 'Recent Upgrades')
+        self.assertNotContains(r, 'Recent Firmware Upgrades')
         env['build2'].batch_upgrade(firmwareless=True)
         r = self.client.get(url)
-        self.assertContains(r, 'Recent Upgrades')
+        self.assertContains(r, 'Recent Firmware Upgrades')
+
+    def test_upgrade_operation_inline(self, *args):
+        device_fw = self._create_device_firmware()
+        device_fw.save(upgrade=True)
+        device = device_fw.device
+        request = self.make_device_admin_request(device.pk)
+        request.user = User.objects.first()
+        deviceadmin = DeviceAdmin(model=Device, admin_site=admin.site)
+        self.assertNotIn(
+            DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=None)
+        )
+        self.assertIn(
+            DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=device)
+        )
+
+    def test_upgrade_operation_inline_queryset(self, *args):
+        device_fw = self._create_device_firmware()
+        device_fw.save(upgrade=True)
+        # expect only 1
+        uo = device_fw.device.upgradeoperation_set.get()
+        device = device_fw.device
+        request = self.make_device_admin_request(device.pk)
+        request.user = User.objects.first()
+        inline = DeviceUpgradeOperationInline(Device, admin.site)
+        qs = inline.get_queryset(request)
+        self.assertEqual(qs.count(), 1)
+        self.assertIn(uo, qs)
+        uo.created = localtime() - timedelta(days=30)
+        uo.modified = uo.created
+        uo.save()
+        qs = inline.get_queryset(request)
+        self.assertEqual(qs.count(), 0)
