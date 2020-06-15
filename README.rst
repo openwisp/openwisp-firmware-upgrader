@@ -41,8 +41,8 @@ Requirements
 - Django >= 3.0
 - openwisp-controller (and its dependencies) >= 0.7.0
 
-Install Depdendencies
----------------------
+Install Dependencies
+--------------------
 
 Install spatialite and sqlite:
 
@@ -51,7 +51,7 @@ Install spatialite and sqlite:
     sudo apt-get install sqlite3 libsqlite3-dev openssl libssl-dev
     sudo apt-get install gdal-bin libproj-dev libgeos-dev libspatialite-dev
 
-Setup (integrate in an existing django project)
+Setup (integrate in an existing Django project)
 -----------------------------------------------
 
 Follow the setup instructions of `openwisp-controller
@@ -329,133 +329,133 @@ List mass upgrade operations
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/batch-upgrade-operation​/
+    GET /api/v1/firmware/batch-upgrade-operation/
 
 Get mass upgrade operation detail
 #################################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/batch-upgrade-operation​/{id}​/
+    GET /api/v1/firmware/batch-upgrade-operation/{id}/
 
 List firmware builds
 ####################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/
+    GET /api/v1/firmware/build/
 
 Create firmware build
 #####################
 
 .. code-block:: text
 
-    POST ​/v1​/firmware​/build​/
+    POST /api/v1/firmware/build/
 
 Get firmware build details
 ##########################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/{id}​/
+    GET /api/v1/firmware/build/{id}/
 
 Change details of firmware build
 ################################
 
 .. code-block:: text
 
-    PUT ​/v1​/firmware​/build​/{id}​/
+    PUT /api/v1/firmware/build/{id}/
 
 Patch details of firmware build
 ###############################
 
 .. code-block:: text
 
-    PATCH ​/v1​/firmware​/build​/{id}​/
+    PATCH /api/v1/firmware/build/{id}/
 
 Delete firmware build
 #####################
 
 .. code-block:: text
 
-    DELETE ​/v1​/firmware​/build​/{id}​/
+    DELETE /api/v1/firmware/build/{id}/
 
 Get list of images of a firmware build
 ######################################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/{id}​/image​/
+    GET /api/v1/firmware/build/{id}/image/
 
 Upload new firmware image to the build
 ######################################
 
 .. code-block:: text
 
-    POST ​/v1​/firmware​/build​/{id}​/image​/
+    POST /api/v1/firmware/build/{id}/image/
 
 Get firmware image details
 ##########################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/
+    GET /api/v1/firmware/build/{build_pk}/image/{id}/
 
 Delete firmware image
 #####################
 
 .. code-block:: text
 
-    DELETE ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/
+    DELETE /api/v1/firmware/build/{build_pk}/image/{id}/
 
 Download firmware image
 #######################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/download​/
+    GET /api/v1/firmware/build/{build_pk}/image/{id}/download/
 
 List firmware categories
 ########################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/category​/
+    GET /api/v1/firmware/category/
 
 Create new firmware category
 ############################
 
 .. code-block:: text
 
-    POST ​/v1​/firmware​/category​/
+    POST /api/v1/firmware/category/
 
 Get firmware category details
 #############################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/category​/{id}​/
+    GET /api/v1/firmware/category/{id}/
 
 Change the details of a firmware category
 #########################################
 
 .. code-block:: text
 
-    PUT ​/v1​/firmware​/category​/{id}​/
+    PUT /api/v1/firmware/category/{id}/
 
 Patch the details of a firmware category
 ########################################
 
 .. code-block:: text
 
-    PATCH ​/v1​/firmware​/category​/{id}​/
+    PATCH /api/v1/firmware/category/{id}/
 
 Delete a firmware category
 ##########################
 
 .. code-block:: text
 
-    DELETE ​/v1​/firmware​/category​/{id}​/
+    DELETE /api/v1/firmware/category/{id}/
 
 Installing for development
 --------------------------
