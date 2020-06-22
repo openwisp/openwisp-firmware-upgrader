@@ -66,6 +66,7 @@ target/
 local_settings.py
 *.db
 *.tar.gz
+Pipfile
 
 # celery
 tests/celerybeat*
