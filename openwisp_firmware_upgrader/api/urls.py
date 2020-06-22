@@ -14,7 +14,9 @@ if app_settings.FIRMWARE_UPGRADER_API:
             include(
                 [
                     path('build/', views.build_list, name='api_build_list'),
-                    path('build/<uuid:pk>/', views.build_detail, name='api_build_detail'),
+                    path(
+                        'build/<uuid:pk>/', views.build_detail, name='api_build_detail'
+                    ),
                     path(
                         'build/<uuid:build_pk>/image/',
                         views.firmware_image_list,
