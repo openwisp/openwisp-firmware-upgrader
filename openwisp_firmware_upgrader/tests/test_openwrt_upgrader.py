@@ -2,6 +2,7 @@ import io
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
+from celery.exceptions import Retry
 from django.test import TransactionTestCase
 from django.utils import timezone
 from paramiko.ssh_exception import NoValidConnectionsError, SSHException
@@ -13,6 +14,7 @@ from openwisp_controller.connection.connectors.openwrt.ssh import (
 from openwisp_controller.connection.tests.base import SshServer
 
 from ..swapper import load_model
+from ..tasks import upgrade_firmware
 from ..upgraders.openwrt import OpenWrt
 from .base import TestUpgraderMixin, spy_mock
 
@@ -74,6 +76,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         build = self._create_build(organization=device_conn.device.organization)
         image = self._create_firmware_image(build=build)
         output = io.StringIO()
+        task_signature = None
         try:
             with redirect_stdout(output):
                 device_fw = self._create_device_firmware(
@@ -85,11 +88,13 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         except Exception as e:
             if exception and isinstance(e, exception):
                 device_fw = DeviceFirmware.objects.order_by('created').last()
+                if hasattr(e, 'sig'):
+                    task_signature = e.sig
             else:
                 raise e
         else:
             if exception:
-                self.fail(f'{exception.__class__} not raised')
+                self.fail(f'{exception.__name__} not raised')
 
         if not upgrade:
             return device_fw, device_conn, output
@@ -98,11 +103,11 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         device_fw.refresh_from_db()
         self.assertEqual(device_fw.image.upgradeoperation_set.count(), 1)
         upgrade_op = device_fw.image.upgradeoperation_set.first()
-        return device_fw, device_conn, upgrade_op, output
+        return device_fw, device_conn, upgrade_op, output, task_signature
 
     @patch('scp.SCPClient.putfo')
     def test_image_test_failed(self, putfo_mocked):
-        device_fw, device_conn, upgrade_op, output = self._trigger_upgrade()
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         putfo_mocked.assert_called_once()
         self.assertEqual(upgrade_op.status, 'aborted')
@@ -113,7 +118,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_not_needed,
     )
     def test_upgrade_not_needed(self, mocked):
-        device_fw, device_conn, upgrade_op, output = self._trigger_upgrade()
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(mocked.call_count, 2)
         self.assertEqual(upgrade_op.status, 'success')
@@ -126,7 +131,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch('billiard.Process.is_alive', return_value=True)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     def test_upgrade_success(self, exec_command, is_alive, putfo):
-        device_fw, device_conn, upgrade_op, output = self._trigger_upgrade()
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         # should be called 6 times but 1 time is
         # executed in a subprocess and not caught by mock
@@ -154,7 +159,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     def test_cant_reconnect_on_write_checksum(self, exec_command, putfo):
         start_time = timezone.now()
         with redirect_stderr(io.StringIO()):
-            device_fw, device_conn, upgrade_op, output = self._trigger_upgrade()
+            device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertEqual(exec_command.call_count, 3)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(connect_fail_on_write_checksum.mock.call_count, 11)
@@ -176,18 +181,26 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
     @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch.object(upgrade_firmware, 'max_retries', 1)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     @patch.object(
         OpenWrtSshConnector, 'connect', side_effect=Exception('Connection failed'),
     )
     def test_connection_failure(self, connect, exec_command, putfo):
-        device_fw, device_conn, upgrade_op, output = self._trigger_upgrade(
-            exception=RuntimeError
-        )
+        (
+            device_fw,
+            device_conn,
+            upgrade_op,
+            output,
+            task_signature,
+        ) = self._trigger_upgrade(exception=Retry)
+        # retry once for testing purposes
+        task_signature.replace().delay()
+        upgrade_op.refresh_from_db()
         self.assertFalse(device_conn.is_working)
         self.assertEqual(exec_command.call_count, 0)
         self.assertEqual(putfo.call_count, 0)
-        self.assertEqual(connect.call_count, 5)
+        self.assertEqual(connect.call_count, 2)
         self.assertEqual(upgrade_op.status, 'failed')
         lines = [
             'Detected a recoverable failure: Connection failed.',
@@ -205,13 +218,20 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     )
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
     @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch.object(upgrade_firmware, 'max_retries', 1)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     def test_upload_failure(self, exec_command, upload):
-        device_fw, device_conn, upgrade_op, output = self._trigger_upgrade(
-            exception=RuntimeError
-        )
+        (
+            device_fw,
+            device_conn,
+            upgrade_op,
+            output,
+            task_signature,
+        ) = self._trigger_upgrade(exception=Retry)
+        task_signature.replace().delay()
+        upgrade_op.refresh_from_db()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(upload.call_count, 5)
+        self.assertEqual(upload.call_count, 2)
         self.assertEqual(upgrade_op.status, 'failed')
         lines = [
             'Image checksum file found',
