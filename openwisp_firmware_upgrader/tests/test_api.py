@@ -220,26 +220,26 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.status_code, 204)
         self.assertEqual(Build.objects.count(), 0)
 
-    def test_build_mass_upgrade(self):
+    def test_api_batch_upgrade(self):
         build = self._create_build()
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
         self.assertEqual(DeviceFirmware.objects.count(), 0)
-        with self.subTest("Existing build"):
-            url = reverse('upgrader:api_build_mass_upgrade', args=[build.pk])
+        with self.subTest('Existing build'):
+            url = reverse('upgrader:api_build_batch_upgrade', args=[build.pk])
             with self.assertNumQueries(7):
                 r = self.client.post(url)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
             self.assertEqual(DeviceFirmware.objects.count(), 0)
             batch = BatchUpgradeOperation.objects.first()
             self.assertEqual(r.status_code, 201)
-            self.assertEqual(r.data, {"batch": str(batch.pk)})
+            self.assertEqual(r.data, {'batch': str(batch.pk)})
 
-        with self.subTest("Non existing build"):
-            url = reverse('upgrader:api_build_mass_upgrade', args=[uuid.uuid4()])
+        with self.subTest('Non existing build'):
+            url = reverse('upgrader:api_build_batch_upgrade', args=[uuid.uuid4()])
             with self.assertNumQueries(4):
                 r = self.client.post(url)
             self.assertEqual(r.status_code, 404)
-            self.assertEqual(r.json(), {"detail": "Not found."})
+            self.assertEqual(r.json(), {'detail': 'Not found.'})
 
 
 class TestCategoryViews(TestAPIUpgraderMixin, TestCase):

@@ -3,7 +3,7 @@ from wsgiref.util import FileWrapper
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, generics, pagination
+from rest_framework import filters, generics, pagination, serializers
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import DjangoModelPermissions
@@ -75,15 +75,15 @@ class BuildDetailView(OrgAPIMixin, generics.RetrieveUpdateDestroyAPIView):
     organization_field = 'category__organization'
 
 
-class BuildMassUpgradeView(OrgAPIMixin, generics.GenericAPIView):
+class BuildBatchUpgradeView(OrgAPIMixin, generics.GenericAPIView):
     model = Build
     queryset = Build.objects.all().select_related('category')
-    serializer_class = BuildSerializer
+    serializer_class = serializers.Serializer
     lookup_fields = ['pk']
     organization_field = 'category__organization'
 
     def post(self, request, pk):
-        upgrade_all = request.POST.get('upgrade_all')
+        upgrade_all = request.POST.get('upgrade_all') is not None
         instance = self.get_object()
         batch = instance.batch_upgrade(firmwareless=upgrade_all)
         return Response({"batch": str(batch.pk)}, status=201)
@@ -186,7 +186,7 @@ class FirmwareImageDownloadView(FirmwareImageMixin, generics.RetrieveAPIView):
 
 build_list = BuildListView.as_view()
 build_detail = BuildDetailView.as_view()
-build_mass_upgrade = BuildMassUpgradeView.as_view()
+api_batch_upgrade = BuildBatchUpgradeView.as_view()
 category_list = CategoryListView.as_view()
 category_detail = CategoryDetailView.as_view()
 batch_upgrade_operation_list = BatchUpgradeOperationListView.as_view()
