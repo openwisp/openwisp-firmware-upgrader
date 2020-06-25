@@ -1,10 +1,8 @@
-# import os
-# from unittest import skipIf
-
 import io
 from contextlib import redirect_stdout
 from unittest import mock
 
+from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.test import TestCase, TransactionTestCase
 
@@ -13,6 +11,7 @@ from openwisp_users.models import Group
 from .. import settings as app_settings
 from ..hardware import FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
+from ..tasks import upgrade_firmware
 from .base import TestUpgraderMixin
 
 BatchUpgradeOperation = load_model('BatchUpgradeOperation')
@@ -287,20 +286,14 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(batch.build, env['build2'])
         self.assertEqual(batch.status, 'success')
 
+    @mock.patch.object(upgrade_firmware, 'max_retries', 0)
     def test_batch_upgrade_failure(self):
         env = self._create_upgrade_env()
-        try:
-            with redirect_stdout(io.StringIO()):
-                env['build2'].batch_upgrade(firmwareless=False)
-        except RuntimeError:
-            pass
-        else:
-            # if this happens, celery internals have changed
-            # and it's time to review the code and ensure
-            # it still works as expected
-            self.fail('RuntimeError not raised')
+        with redirect_stdout(io.StringIO()):
+            env['build2'].batch_upgrade(firmwareless=False)
         batch = BatchUpgradeOperation.objects.first()
         self.assertEqual(batch.status, 'failed')
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
 
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
@@ -325,3 +318,18 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(batch.upgradeoperation_set.count(), 2)
         self.assertEqual(batch.build, env['build1'])
         self.assertEqual(batch.status, 'success')
+
+    def test_upgrade_retried(self):
+        env = self._create_upgrade_env()
+        try:
+            with redirect_stdout(io.StringIO()):
+                env['build2'].batch_upgrade(firmwareless=False)
+        except Retry:
+            pass
+        except Exception as e:
+            self.fail(f'Expected retry, got {e.__class__} instead')
+        else:
+            self.fail('Retry exception not raised')
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
+        batch = BatchUpgradeOperation.objects.first()
+        self.assertEqual(batch.status, 'in-progress')

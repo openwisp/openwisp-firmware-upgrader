@@ -3,7 +3,7 @@ from wsgiref.util import FileWrapper
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, generics
+from rest_framework import filters, generics, pagination
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import DjangoModelPermissions
@@ -26,10 +26,17 @@ Category = load_model('Category')
 FirmwareImage = load_model('FirmwareImage')
 
 
+class ListViewPagination(pagination.PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 class ProtectedAPIMixin(object):
     authentication_classes = [BearerAuthentication, SessionAuthentication]
     permission_classes = [DjangoModelPermissions]
     throttle_scope = 'firmware_upgrader'
+    pagination_class = ListViewPagination
 
 
 class OrgAPIMixin(ProtectedAPIMixin):
