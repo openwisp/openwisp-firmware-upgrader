@@ -603,11 +603,11 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.data['results'], serialized_list)
 
     def test_firmware_list_404(self):
-        for pk in ['123456', uuid.uuid4()]:
-            url = reverse('upgrader:api_firmware_list', args=[pk])
-            r = self.client.get(url)
-            with self.subTest(pk=pk):
-                self.assertEqual(r.status_code, 404)
+        pk = uuid.uuid4()
+        url = reverse('upgrader:api_firmware_list', args=[pk])
+        r = self.client.get(url)
+        with self.subTest(pk=pk):
+            self.assertEqual(r.status_code, 404)
 
     def test_firmware_list_django_filters(self):
         image = self._create_firmware_image(type=self.TPLINK_4300_IMAGE)
@@ -700,17 +700,17 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.data, serialized)
 
     def test_firmware_create_404(self):
-        for pk in ['123456', uuid.uuid4()]:
-            url = reverse('upgrader:api_firmware_list', args=[pk])
-            r = self.client.post(
-                url,
-                {
-                    'file': self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
-                    'type': self.TPLINK_4300_IMAGE,
-                },
-            )
-            with self.subTest(pk=pk):
-                self.assertEqual(r.status_code, 404)
+        pk = uuid.uuid4()
+        url = reverse('upgrader:api_firmware_list', args=[pk])
+        r = self.client.post(
+            url,
+            {
+                'file': self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+                'type': self.TPLINK_4300_IMAGE,
+            },
+        )
+        with self.subTest(pk=pk):
+            self.assertEqual(r.status_code, 404)
 
     def test_firmware_view(self):
         image = self._create_firmware_image()
