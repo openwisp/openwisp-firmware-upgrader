@@ -14,25 +14,27 @@ if app_settings.FIRMWARE_UPGRADER_API:
             include(
                 [
                     path('build/', views.build_list, name='api_build_list'),
-                    path('build/<pk>/', views.build_detail, name='api_build_detail'),
                     path(
-                        'build/<build_pk>/image/',
+                        'build/<uuid:pk>/', views.build_detail, name='api_build_detail'
+                    ),
+                    path(
+                        'build/<uuid:build_pk>/image/',
                         views.firmware_image_list,
                         name='api_firmware_list',
                     ),
                     path(
-                        'build/<build_pk>/image/<pk>/',
+                        'build/<uuid:build_pk>/image/<uuid:pk>/',
                         views.firmware_image_detail,
                         name='api_firmware_detail',
                     ),
                     path(
-                        'build/<build_pk>/image/<pk>/download/',
+                        'build/<uuid:build_pk>/image/<pk>/download/',
                         views.firmware_image_download,
                         name='api_firmware_download',
                     ),
                     path('category/', views.category_list, name='api_category_list'),
                     path(
-                        'category/<pk>/',
+                        'category/<uuid:pk>/',
                         views.category_detail,
                         name='api_category_detail',
                     ),
@@ -42,7 +44,7 @@ if app_settings.FIRMWARE_UPGRADER_API:
                         name='api_batchupgradeoperation_list',
                     ),
                     path(
-                        'batch-upgrade-operation/<pk>/',
+                        'batch-upgrade-operation/<uuid:pk>/',
                         views.batch_upgrade_operation_detail,
                         name='api_batchupgradeoperation_detail',
                     ),
