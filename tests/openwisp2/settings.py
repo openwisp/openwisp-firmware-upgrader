@@ -202,6 +202,8 @@ if os.environ.get('SAMPLE_APP', False):
         'sample_firmware_upgrader.UpgradeOperation'
     )
 
+TEST_RUNNER = 'openwisp_utils.tests.TimeLoggingTestRunner'
+
 # local settings must be imported before test runner otherwise they'll be ignored
 try:
     from openwisp2.local_settings import *
