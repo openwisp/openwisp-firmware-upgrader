@@ -83,10 +83,26 @@ class BuildBatchUpgradeView(OrgAPIMixin, generics.GenericAPIView):
     organization_field = 'category__organization'
 
     def post(self, request, pk):
+        """
+        Upgrades all the devices related to the specified build ID.
+        """
         upgrade_all = request.POST.get('upgrade_all') is not None
         instance = self.get_object()
         batch = instance.batch_upgrade(firmwareless=upgrade_all)
         return Response({"batch": str(batch.pk)}, status=201)
+
+    def get(self, request, pk):
+        """
+        Returns a list of objects (DeviceFirmware and Device)
+        which would be upgraded if POST is used.
+        """
+        self.instance = self.get_object()
+        data = BatchUpgradeOperation.dry_run(build=self.instance)
+        data['device_firmwares'] = [
+            str(device_fw.pk) for device_fw in data['device_firmwares']
+        ]
+        data['devices'] = [str(device.pk) for device in data['devices']]
+        return Response(data)
 
 
 class CategoryListView(OrgAPIMixin, generics.ListCreateAPIView):

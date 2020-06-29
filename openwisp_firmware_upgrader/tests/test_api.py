@@ -241,6 +241,29 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 404)
             self.assertEqual(r.json(), {'detail': 'Not found.'})
 
+    def test_build_upgradeable(self):
+        env = self._create_upgrade_env()
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+        url = reverse('upgrader:api_build_batch_upgrade', args=[env['build2'].pk])
+        with self.assertNumQueries(7):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        device_fw_list = [
+            str(device_fw.pk)
+            for device_fw in DeviceFirmware.objects.all().order_by('-created')
+        ]
+        self.assertEqual(r.data, {'device_firmwares': device_fw_list, 'devices': []})
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+    def test_build_upgradeable_404(self):
+        url = reverse('upgrader:api_build_batch_upgrade', args=[uuid.uuid4()])
+        with self.assertNumQueries(2):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.json(), {'detail': 'Not found.'})
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
 
 class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
     def _serialize_category(self, category):

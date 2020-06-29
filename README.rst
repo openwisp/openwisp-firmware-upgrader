@@ -426,6 +426,28 @@ Download firmware image
 
     GET /api/v1/firmware/build/{build_pk}/image/{id}/download/
 
+Perform batch upgrade
+#####################
+
+Upgrades all the devices related to the specified build ID.
+
+.. code-block:: text
+
+    POST /api/v1/firmware/build/{id}/upgrade/
+
+Dry-run batch upgrade
+#####################
+
+Returns a list representing the ``DeviceFirmware`` and ``Device``
+instances that would be upgraded if POST is used.
+
+ ``Device`` objects are indicated only when no ``DeviceFirmware``
+ object exists for a device which would be upgraded.
+
+.. code-block:: text
+
+    GET /api/v1/firmware/build/{id}/upgrade/
+
 List firmware categories
 ########################
 
