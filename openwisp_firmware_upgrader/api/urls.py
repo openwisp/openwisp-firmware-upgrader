@@ -15,22 +15,17 @@ if app_settings.FIRMWARE_UPGRADER_API:
                 [
                     path('build/', views.build_list, name='api_build_list'),
                     path(
+                        'build/<uuid:pk>/', views.build_detail, name='api_build_detail'
+                    ),
+                    path(
                         'build/<uuid:pk>/upgrade/',
                         views.api_batch_upgrade,
                         name='api_build_batch_upgrade',
                     ),
                     path(
-                        'build/<uuid:pk>/', views.build_detail, name='api_build_detail'
-                    ),
-                    path(
                         'build/<uuid:build_pk>/image/',
                         views.firmware_image_list,
                         name='api_firmware_list',
-                    ),
-                    path(
-                        'build/<uuid:pk>/upgradeable/',
-                        views.build_upgradeable,
-                        name='api_build_upgradeable',
                     ),
                     path(
                         'build/<uuid:build_pk>/image/<uuid:pk>/',

@@ -83,20 +83,19 @@ class BuildBatchUpgradeView(OrgAPIMixin, generics.GenericAPIView):
     organization_field = 'category__organization'
 
     def post(self, request, pk):
+        """
+        Upgrades all the devices related to the specified build ID.
+        """
         upgrade_all = request.POST.get('upgrade_all') is not None
         instance = self.get_object()
         batch = instance.batch_upgrade(firmwareless=upgrade_all)
         return Response({"batch": str(batch.pk)}, status=201)
 
-
-class BuildUpgradeableView(OrgAPIMixin, generics.GenericAPIView):
-    model = Build
-    queryset = Build.objects.all().select_related('category')
-    serializer_class = BuildSerializer
-    lookup_fields = ['pk']
-    organization_field = 'category__organization'
-
     def get(self, request, pk):
+        """
+        Returns a list of objects (DeviceFirmware and Device)
+        which would be upgraded if POST is used.
+        """
         self.instance = self.get_object()
         data = BatchUpgradeOperation.dry_run(build=self.instance)
         data['device_firmwares'] = [
@@ -204,7 +203,6 @@ class FirmwareImageDownloadView(FirmwareImageMixin, generics.RetrieveAPIView):
 build_list = BuildListView.as_view()
 build_detail = BuildDetailView.as_view()
 api_batch_upgrade = BuildBatchUpgradeView.as_view()
-build_upgradeable = BuildUpgradeableView.as_view()
 category_list = CategoryListView.as_view()
 category_detail = CategoryDetailView.as_view()
 batch_upgrade_operation_list = BatchUpgradeOperationListView.as_view()

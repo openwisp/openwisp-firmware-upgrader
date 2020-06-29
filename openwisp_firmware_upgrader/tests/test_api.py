@@ -245,7 +245,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         env = self._create_upgrade_env()
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
-        url = reverse('upgrader:api_build_upgradeable', args=[env['build2'].pk])
+        url = reverse('upgrader:api_build_batch_upgrade', args=[env['build2'].pk])
         with self.assertNumQueries(7):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 200)
@@ -257,7 +257,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
     def test_build_upgradeable_404(self):
-        url = reverse('upgrader:api_build_upgradeable', args=[uuid.uuid4()])
+        url = reverse('upgrader:api_build_batch_upgrade', args=[uuid.uuid4()])
         with self.assertNumQueries(2):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
