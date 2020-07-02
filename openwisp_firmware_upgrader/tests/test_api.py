@@ -33,6 +33,11 @@ class TestAPIUpgraderMixin(TestMultitenantAdminMixin, TestUpgraderMixin):
         self.operator = self._create_operator(organizations=[self.org])
         self._login()
 
+    def _make_operator_org_manager(self):
+        orgrelation = OrganizationUser.objects.get(user=self.operator)
+        orgrelation.is_admin = True
+        orgrelation.save()
+
     def _obtain_auth_token(self, username='operator', password='tester'):
         params = {'username': username, 'password': password}
         url = reverse('users:user_auth_token')
@@ -757,9 +762,17 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with open(self.FAKE_IMAGE_PATH, 'rb') as f:
             content = f.read()
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(6):
-            r = self.client.get(url)
-        self.assertEqual(r.getvalue(), content)
+        with self.subTest("Test as operator"):
+            self._make_operator_org_manager()
+            with self.assertNumQueries(6):
+                response = self.client.get(url)
+            self.assertEqual(response.getvalue(), content)
+        with self.subTest("Test as superuser"):
+            self._get_admin()
+            self._login('admin', 'tester')
+            with self.assertNumQueries(3):
+                response = self.client.get(url)
+            self.assertEqual(response.getvalue(), content)
 
     def test_firmware_no_update(self):
         image = self._create_firmware_image()

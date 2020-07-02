@@ -12,12 +12,9 @@ class FirmwareImageDownloadView(PrivateStorageDetailView):
 
     def can_access_file(self, private_file):
         user = private_file.request.user
-        if not user.is_authenticated:
-            return False
-        if user.is_superuser:
-            return True
-        org = self.object.build.category.organization
-        return user.is_staff and user.is_member(org)
+        return user.is_superuser or (
+            user.is_staff and user.is_manager(self.object.build.category.organization)
+        )
 
 
 firmware_image_download = FirmwareImageDownloadView.as_view()

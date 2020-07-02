@@ -1,7 +1,6 @@
 from django.test import TestCase
 from django.urls import reverse
 
-from openwisp_users.models import OrganizationUser
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
 from .base import TestUpgraderMixin
@@ -50,20 +49,20 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         staff_user = self._get_operator()
         self._create_org_user(user=staff_user, organization=self.test_org)
         self.client.force_login(staff_user)
-        self._download_firmware_assert_status(200)
+        self._download_firmware_assert_status(403)
 
     def test_staff_operator_with_different_organization(self):
         staff_user = self._get_operator()
-        OrganizationUser.objects.create(
-            user=staff_user, is_admin=True, organization=self.default_org
+        self._create_org_user(
+            user=staff_user, organization=self.default_org, is_admin=True
         )
         self.client.force_login(staff_user)
         self._download_firmware_assert_status(403)
 
     def test_staff_operator_with_same_organization(self):
         staff_user = self._get_operator()
-        OrganizationUser.objects.create(
-            user=staff_user, is_admin=True, organization=self.test_org
+        self._create_org_user(
+            user=staff_user, organization=self.test_org, is_admin=True
         )
         self.client.force_login(staff_user)
         self._download_firmware_assert_status(200)
