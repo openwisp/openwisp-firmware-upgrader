@@ -1,4 +1,5 @@
 from django.urls import include, path
+
 from openwisp_firmware_upgrader import settings as app_settings
 
 from . import views

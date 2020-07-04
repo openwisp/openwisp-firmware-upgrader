@@ -1,4 +1,5 @@
 from django.urls import reverse
+
 from openwisp_firmware_upgrader.swapper import load_model
 from openwisp_firmware_upgrader.tests.test_admin import TestAdmin as BaseTestAdmin
 from openwisp_firmware_upgrader.tests.test_admin import (

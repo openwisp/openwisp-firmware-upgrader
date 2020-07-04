@@ -6,6 +6,8 @@ from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils.timezone import localtime
+
+from openwisp_controller.config.models import Device
 from openwisp_firmware_upgrader.admin import (
     BuildAdmin,
     DeviceAdmin,
@@ -15,8 +17,6 @@ from openwisp_firmware_upgrader.admin import (
     FirmwareImageInline,
     admin,
 )
-
-from openwisp_controller.config.models import Device
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP

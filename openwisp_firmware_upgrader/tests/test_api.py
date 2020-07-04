@@ -3,6 +3,7 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
+
 from openwisp_firmware_upgrader.api.serializers import (
     BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
@@ -11,7 +12,6 @@ from openwisp_firmware_upgrader.api.serializers import (
     FirmwareImageSerializer,
 )
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
-
 from openwisp_users.models import OrganizationUser
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
 

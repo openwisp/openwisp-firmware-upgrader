@@ -2,8 +2,9 @@
 import os
 import sys
 
-from openwisp_firmware_upgrader import get_version
 from setuptools import find_packages, setup
+
+from openwisp_firmware_upgrader import get_version
 
 if sys.argv[-1] == 'publish':
     # delete any *.pyc, *.pyo and __pycache__
