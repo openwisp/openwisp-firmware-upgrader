@@ -28,9 +28,14 @@ class CategoryRelationSerializer(ValidatedModelSerializer):
 
 
 class FirmwareImageSerializer(ValidatedModelSerializer):
+    def validate(self, data):
+        data['build'] = self.context['view'].get_parent_queryset().get()
+        return super().validate(data)
+
     class Meta(BaseMeta):
         model = FirmwareImage
         fields = '__all__'
+        read_only_fields = BaseMeta.read_only_fields + ['build']
 
 
 class BuildSerializer(ValidatedModelSerializer):

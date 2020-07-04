@@ -11,9 +11,20 @@ openwisp-firmware-upgrader
    :target: https://requires.io/github/openwisp/openwisp-firmware-upgrader/requirements/?branch=master
    :alt: Requirements Status
 
+.. image:: https://img.shields.io/gitter/room/nwjs/nw.js.svg?style=flat-square
+   :target: https://gitter.im/openwisp/general
+   :alt: support chat
+
+.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
+   :target: https://pypi.org/project/black/
+   :alt: code style: black
+
 ------------
 
 OpenWISP firmware upgrade module (work in progress).
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp2-docs/master/assets/design/openwisp-logo-black.svg
+  :target: http://openwisp.org
 
 ------------
 
@@ -23,8 +34,15 @@ OpenWISP firmware upgrade module (work in progress).
 
 ------------
 
-Install Depdendencies
----------------------
+Requirements
+------------
+
+- Python >= 3.6
+- Django >= 3.0
+- openwisp-controller (and its dependencies) >= 0.7.0
+
+Install Dependencies
+--------------------
 
 Install spatialite and sqlite:
 
@@ -33,7 +51,7 @@ Install spatialite and sqlite:
     sudo apt-get install sqlite3 libsqlite3-dev openssl libssl-dev
     sudo apt-get install gdal-bin libproj-dev libgeos-dev libspatialite-dev
 
-Setup (integrate in an existing django project)
+Setup (integrate in an existing Django project)
 -----------------------------------------------
 
 Follow the setup instructions of `openwisp-controller
@@ -298,6 +316,17 @@ When browsing the API via the `Live documentation <#live-documentation>`_
 or the `Browsable web page <#browsable-web-interface>`_, you can also use
 the session authentication by logging in the django admin.
 
+Pagination
+~~~~~~~~~~
+
+All *list* endpoints support the ``page_size`` parameter that allows paginating
+the results in conjunction with the ``page`` parameter.
+
+.. code-block:: text
+
+    GET /api/v1/firmware/build/?page_size=10
+    GET /api/v1/firmware/build/?page_size=10&page=2
+
 List of endpoints
 ~~~~~~~~~~~~~~~~~
 
@@ -311,133 +340,155 @@ List mass upgrade operations
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/batch-upgrade-operation​/
+    GET /api/v1/firmware/batch-upgrade-operation/
 
 Get mass upgrade operation detail
 #################################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/batch-upgrade-operation​/{id}​/
+    GET /api/v1/firmware/batch-upgrade-operation/{id}/
 
 List firmware builds
 ####################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/
+    GET /api/v1/firmware/build/
 
 Create firmware build
 #####################
 
 .. code-block:: text
 
-    POST ​/v1​/firmware​/build​/
+    POST /api/v1/firmware/build/
 
 Get firmware build details
 ##########################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/{id}​/
+    GET /api/v1/firmware/build/{id}/
 
 Change details of firmware build
 ################################
 
 .. code-block:: text
 
-    PUT ​/v1​/firmware​/build​/{id}​/
+    PUT /api/v1/firmware/build/{id}/
 
 Patch details of firmware build
 ###############################
 
 .. code-block:: text
 
-    PATCH ​/v1​/firmware​/build​/{id}​/
+    PATCH /api/v1/firmware/build/{id}/
 
 Delete firmware build
 #####################
 
 .. code-block:: text
 
-    DELETE ​/v1​/firmware​/build​/{id}​/
+    DELETE /api/v1/firmware/build/{id}/
 
 Get list of images of a firmware build
 ######################################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/{id}​/image​/
+    GET /api/v1/firmware/build/{id}/image/
 
 Upload new firmware image to the build
 ######################################
 
 .. code-block:: text
 
-    POST ​/v1​/firmware​/build​/{id}​/image​/
+    POST /api/v1/firmware/build/{id}/image/
 
 Get firmware image details
 ##########################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/
+    GET /api/v1/firmware/build/{build_pk}/image/{id}/
 
 Delete firmware image
 #####################
 
 .. code-block:: text
 
-    DELETE ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/
+    DELETE /api/v1/firmware/build/{build_pk}/image/{id}/
 
 Download firmware image
 #######################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/build​/{build_pk}​/image​/{id}​/download​/
+    GET /api/v1/firmware/build/{build_pk}/image/{id}/download/
+
+Perform batch upgrade
+#####################
+
+Upgrades all the devices related to the specified build ID.
+
+.. code-block:: text
+
+    POST /api/v1/firmware/build/{id}/upgrade/
+
+Dry-run batch upgrade
+#####################
+
+Returns a list representing the ``DeviceFirmware`` and ``Device``
+instances that would be upgraded if POST is used.
+
+ ``Device`` objects are indicated only when no ``DeviceFirmware``
+ object exists for a device which would be upgraded.
+
+.. code-block:: text
+
+    GET /api/v1/firmware/build/{id}/upgrade/
 
 List firmware categories
 ########################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/category​/
+    GET /api/v1/firmware/category/
 
 Create new firmware category
 ############################
 
 .. code-block:: text
 
-    POST ​/v1​/firmware​/category​/
+    POST /api/v1/firmware/category/
 
 Get firmware category details
 #############################
 
 .. code-block:: text
 
-    GET ​/v1​/firmware​/category​/{id}​/
+    GET /api/v1/firmware/category/{id}/
 
 Change the details of a firmware category
 #########################################
 
 .. code-block:: text
 
-    PUT ​/v1​/firmware​/category​/{id}​/
+    PUT /api/v1/firmware/category/{id}/
 
 Patch the details of a firmware category
 ########################################
 
 .. code-block:: text
 
-    PATCH ​/v1​/firmware​/category​/{id}​/
+    PATCH /api/v1/firmware/category/{id}/
 
 Delete a firmware category
 ##########################
 
 .. code-block:: text
 
-    DELETE ​/v1​/firmware​/category​/{id}​/
+    DELETE /api/v1/firmware/category/{id}/
 
 Installing for development
 --------------------------
@@ -834,3 +885,18 @@ Contributing
 ------------
 
 Please refer to the `OpenWISP contributing guidelines <http://openwisp.io/docs/developer/contributing.html>`_.
+
+Support
+-------
+
+See `OpenWISP Support Channels <http://openwisp.org/support.html>`_.
+
+Changelog
+---------
+
+See `CHANGES <https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/CHANGES.rst>`_.
+
+License
+-------
+
+See `LICENSE <https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/LICENSE>`_.

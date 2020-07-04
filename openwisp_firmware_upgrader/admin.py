@@ -1,11 +1,14 @@
 import logging
+from datetime import timedelta
 
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+from django.shortcuts import redirect
 from django.template.response import TemplateResponse
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.utils.safestring import mark_safe
+from django.utils.timezone import localtime
 from django.utils.translation import ugettext_lazy as _
 from reversion.admin import VersionAdmin
 
@@ -13,10 +16,14 @@ from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
+from .hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from .swapper import load_model
-from .tasks import batch_upgrade_operation
 
 logger = logging.getLogger(__name__)
+BatchUpgradeOperation = load_model('BatchUpgradeOperation')
+UpgradeOperation = load_model('UpgradeOperation')
+DeviceFirmware = load_model('DeviceFirmware')
+FirmwareImage = load_model('FirmwareImage')
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -33,10 +40,11 @@ class CategoryAdmin(BaseVersionAdmin):
     list_filter = ['organization']
     search_fields = ['name']
     save_on_top = True
+    ordering = ['-name', '-created']
 
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
-    model = load_model('FirmwareImage')
+    model = FirmwareImage
     extra = 0
 
     def has_change_permission(self, request, obj=None):
@@ -52,7 +60,7 @@ class BuildAdmin(BaseVersionAdmin):
     save_on_top = True
     select_related = ['category']
     list_filter = ['category']
-    ordering = ['-version']
+    ordering = ['-created', '-version']
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
     multitenant_parent = 'category'
@@ -77,24 +85,23 @@ class BuildAdmin(BaseVersionAdmin):
         upgrade_all = request.POST.get('upgrade_all')
         upgrade_related = request.POST.get('upgrade_related')
         build = queryset.first()
-        url = reverse(f'admin:{app_label}_batchupgradeoperation_changelist')
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
-            text = (
-                _(
-                    'Mass upgrade operation started, you can '
-                    'track its progress from the <a href="%s">list '
-                    'of mass upgrades</a>.'
-                )
-                % url
+            batch = build.batch_upgrade(firmwareless=upgrade_all)
+            text = _(
+                'You can track the progress of this mass upgrade operation '
+                'in this page. Refresh the page from time to time to check '
+                'its progress.'
             )
             self.message_user(request, mark_safe(text), messages.SUCCESS)
-            batch_upgrade_operation.delay(build_id=build.pk, firmwareless=upgrade_all)
-            # returning None will display the change list page again
-            return None
+            url = reverse(
+                f'admin:{app_label}_batchupgradeoperation_change', args=[batch.pk]
+            )
+            return redirect(url)
         # upgrade needs to be confirmed
-        related_device_fw = build._find_related_device_firmwares(select_devices=True)
-        firmwareless_devices = build._find_firmwareless_devices()
+        result = BatchUpgradeOperation.dry_run(build=build)
+        related_device_fw = result['device_firmwares']
+        firmwareless_devices = result['devices']
         title = _('Confirm mass upgrade operation')
         context = self.admin_site.each_context(request)
         context.update(
@@ -134,7 +141,7 @@ class UpgradeOperationForm(forms.ModelForm):
 
 
 class UpgradeOperationInline(admin.StackedInline):
-    model = load_model('UpgradeOperation')
+    model = UpgradeOperation
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
@@ -151,7 +158,7 @@ class UpgradeOperationInline(admin.StackedInline):
         return False
 
 
-@admin.register(load_model('BatchUpgradeOperation'))
+@admin.register(BatchUpgradeOperation)
 class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     list_display = ['build', 'status', 'created', 'modified']
     list_filter = ['status', 'build__category']
@@ -199,17 +206,102 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     aborted_rate.short_description = _('abortion rate')
 
 
+class DeviceFirmwareForm(forms.ModelForm):
+    class Meta:
+        model = DeviceFirmware
+        fields = '__all__'
+
+    def _get_image_queryset(self, device):
+        # restrict firmware images to organization of the current device
+        qs = (
+            FirmwareImage.objects.filter(
+                build__category__organization_id=device.organization_id
+            )
+            .order_by('-created')
+            .select_related('build', 'build__category')
+        )
+        # if device model is defined
+        # restrict the images to the ones compatible with it
+        if device.model and device.model in REVERSE_FIRMWARE_IMAGE_MAP:
+            qs = qs.filter(type=REVERSE_FIRMWARE_IMAGE_MAP[device.model])
+        # if DeviceFirmware instance already exists
+        # restrict images to the ones of the same category
+        if not self.instance._state.adding:
+            self.instance.refresh_from_db()
+            qs = qs.filter(build__category_id=self.instance.image.build.category_id)
+        return qs
+
+    def __init__(self, device, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['image'].queryset = self._get_image_queryset(device)
+
+
+class DeviceFormSet(forms.BaseInlineFormSet):
+    def get_form_kwargs(self, index):
+        kwargs = super().get_form_kwargs(index)
+        kwargs['device'] = self.instance
+        return kwargs
+
+
 class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
-    model = load_model('DeviceFirmware')
+    model = DeviceFirmware
+    formset = DeviceFormSet
+    form = DeviceFirmwareForm
     exclude = ['created']
+    select_related = ['device', 'image']
     readonly_fields = ['installed', 'modified']
-    verbose_name = _('Device Firmware')
+    verbose_name = _('Firmware')
     verbose_name_plural = verbose_name
     extra = 0
     multitenant_shared_relations = ['device']
 
-    def has_add_permission(self, request, obj=None):
-        return obj and not obj._state.adding
+
+class DeviceUpgradeOperationForm(UpgradeOperationForm):
+    class Meta(UpgradeOperationForm.Meta):
+        pass
+
+    def __init__(self, device, *args, **kwargs):
+        self.device = device
+        super().__init__(*args, **kwargs)
 
 
-DeviceAdmin.inlines.append(DeviceFirmwareInline)
+class DeviceUpgradeOperationInline(UpgradeOperationInline):
+    verbose_name = _('Recent Firmware Upgrades')
+    verbose_name_plural = verbose_name
+    formset = DeviceFormSet
+    form = DeviceUpgradeOperationForm
+
+    def get_queryset(self, request, select_related=True):
+        """
+        Return recent upgrade operations for this device
+        (created within the last 7 days)
+        """
+        qs = super().get_queryset(request)
+        resolved = resolve(request.path_info)
+        if 'object_id' in resolved.kwargs:
+            seven_days = localtime() - timedelta(days=7)
+            qs = qs.filter(
+                device_id=resolved.kwargs['object_id'], created__gte=seven_days
+            ).order_by('-created')
+        if select_related:
+            qs = qs.select_related()
+        return qs
+
+
+def device_admin_get_inlines(self, request, obj):
+    # copy the list to avoid modifying the original data structure
+    inlines = self.inlines
+    if obj:
+        inlines = list(inlines)  # copy
+        inlines.append(DeviceFirmwareInline)
+        if (
+            DeviceUpgradeOperationInline(UpgradeOperation, admin.site)
+            .get_queryset(request, select_related=False)
+            .exists()
+        ):
+            inlines.append(DeviceUpgradeOperationInline)
+        return inlines
+    return inlines
+
+
+DeviceAdmin.get_inlines = device_admin_get_inlines

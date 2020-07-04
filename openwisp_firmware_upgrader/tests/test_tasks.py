@@ -36,10 +36,9 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
     )
     def test_batch_upgrade_timeout(self, *args):
         env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(build=env['build2'])
         # will be executed synchronously due to CELERY_IS_EAGER = True
-        tasks.batch_upgrade_operation.delay(
-            build_id=env['build2'].pk, firmwareless=False
-        )
+        tasks.batch_upgrade_operation.delay(batch_id=batch.pk, firmwareless=False)
         self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
         batch = BatchUpgradeOperation.objects.first()
         self.assertEqual(batch.status, 'failed')

@@ -1,6 +1,9 @@
 from django.urls import reverse
 from openwisp_firmware_upgrader.swapper import load_model
 from openwisp_firmware_upgrader.tests.test_admin import TestAdmin as BaseTestAdmin
+from openwisp_firmware_upgrader.tests.test_admin import (
+    TestAdminTransaction as BaseTestAdminTransaction,
+)
 from openwisp_firmware_upgrader.tests.test_api import (
     TestBatchUpgradeOperationViews as BaseTestBatchUpgradeOperationViews,
 )
@@ -37,6 +40,11 @@ UpgradeOperation = load_model('UpgradeOperation')
 
 
 class TestAdmin(BaseTestAdmin):
+    app_label = 'sample_firmware_upgrader'
+    build_list_url = reverse(f'admin:{app_label}_build_changelist')
+
+
+class TestAdminTransaction(BaseTestAdminTransaction):
     app_label = 'sample_firmware_upgrader'
     build_list_url = reverse(f'admin:{app_label}_build_changelist')
 
@@ -84,6 +92,7 @@ class TestOrgAPIMixin(BaseTestOrgAPIMixin):
 # this is necessary to avoid excuting the base test suites
 del BaseTestModels
 del BaseTestAdmin
+del BaseTestAdminTransaction
 del BaseTestModelsTransaction
 del BaseTestOpenwrtUpgrader
 del BaseTestPrivateStorage

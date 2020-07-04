@@ -52,7 +52,11 @@
   <input type="submit" name="upgrade_related" value="{% trans "Upgrade only related devices" %}">
   {% endif %}
   {% endif %}
+  {% if related_count or firmwareless_count %}
   <a href="#" class="button cancel-link">{% trans "Cancel the upgrade" %}</a>
+  {% else %}
+  <a href="#" class="button cancel-link">{% trans "Go back" %}</a>
+  {% endif %}
   </div>
   </form>
 {% endblock %}

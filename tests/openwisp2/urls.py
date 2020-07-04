@@ -6,6 +6,8 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import reverse_lazy
 from django.views.generic import RedirectView
 
+from openwisp_users.api.urls import get_api_urls
+
 redirect_view = RedirectView.as_view(url=reverse_lazy('admin:index'))
 
 urlpatterns = [
@@ -14,7 +16,7 @@ urlpatterns = [
     url(r'^$', redirect_view, name='index'),
     url(r'^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
     url(r'^api/v1/', include('openwisp_utils.api.urls')),
-    url(r'^api/v1/', include('openwisp_users.api.urls')),
+    url(r'^api/v1/', include((get_api_urls(), 'users'), namespace='users')),
     url(r'^api/v1/', include('openwisp_firmware_upgrader.api.urls')),
 ]
 
