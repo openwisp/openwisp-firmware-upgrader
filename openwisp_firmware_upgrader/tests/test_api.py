@@ -757,9 +757,9 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with open(self.FAKE_IMAGE_PATH, 'rb') as f:
             content = f.read()
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(6):
             r = self.client.get(url)
-        self.assertEqual(r.content, content)
+        self.assertEqual(r.getvalue(), content)
 
     def test_firmware_no_update(self):
         image = self._create_firmware_image()
