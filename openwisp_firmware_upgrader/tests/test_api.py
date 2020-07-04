@@ -31,7 +31,6 @@ class TestAPIUpgraderMixin(TestMultitenantAdminMixin, TestUpgraderMixin):
     def setUp(self):
         self.org = self._get_org()
         self.operator = self._create_operator(organizations=[self.org])
-        self.operator.organizations_dict  # force caching
         self._login()
 
     def _obtain_auth_token(self, username='operator', password='tester'):
@@ -55,11 +54,6 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         build = self._create_build()
         org2 = self._create_org(name='org2', slug='org2')
         OrganizationUser.objects.create(user=self.operator, organization=org2)
-
-        url = reverse('upgrader:api_build_detail', args=[build.pk])
-        with self.assertNumQueries(3):
-            r = self.client.get(url)
-        self.assertEqual(r.status_code, 404)
 
         client = Client()
         url = reverse('upgrader:api_build_list')
@@ -282,7 +276,6 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         org2 = self._create_org(name='org2', slug='org2')
         self.operator.openwisp_users_organization.all().delete()
         OrganizationUser.objects.create(user=self.operator, organization=org2)
-        self.operator.organizations_dict  # force caching
 
         url = reverse('upgrader:api_category_detail', args=[category.pk])
         with self.assertNumQueries(2):
@@ -439,7 +432,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         url = reverse(
             'upgrader:api_batchupgradeoperation_detail', args=[env['build2'].pk]
         )
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(2):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
 
@@ -599,7 +592,6 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         org2 = self._create_org(name='org2', slug='org2')
         OrganizationUser.objects.create(user=self.operator, organization=org2)
-        self.operator.organizations_dict  # force caching
 
         client = Client()
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
@@ -765,9 +757,9 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with open(self.FAKE_IMAGE_PATH, 'rb') as f:
             content = f.read()
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(6):
             r = self.client.get(url)
-        self.assertEqual(r.content, content)
+        self.assertEqual(r.getvalue(), content)
 
     def test_firmware_no_update(self):
         image = self._create_firmware_image()

@@ -1,12 +1,7 @@
-from wsgiref.util import FileWrapper
-
 from django.core.exceptions import ValidationError
-from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
-
 from openwisp_firmware_upgrader import private_storage
 from rest_framework import filters, generics, pagination, serializers
-
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import DjangoModelPermissions

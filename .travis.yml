@@ -35,7 +35,7 @@ before_install:
 install:
   - pip install -e .
   # temporary: remove when openwisp-users with API support is released
-  - pip install -U https://github.com/openwisp/openwisp-users/tarball/issue/107#egg=openwisp_users[rest]
+  - pip install -U https://github.com/openwisp/openwisp-users/tarball/master#egg=openwisp_users[rest]
 
 script:
   - ./run-qa-checks

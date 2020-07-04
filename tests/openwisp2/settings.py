@@ -37,7 +37,6 @@ INSTALLED_APPS = [
     'django_extensions',
     'private_storage',
     # openwisp2 modules
-    'openwisp_utils',
     'openwisp_users',
     'openwisp_controller.pki',
     'openwisp_controller.config',
