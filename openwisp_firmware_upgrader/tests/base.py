@@ -1,11 +1,11 @@
 import os
 from unittest import mock
 
+import swapper
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from openwisp_controller.connection.models import Credentials
-from openwisp_controller.connection.tests.base import CreateConnectionsMixin
+from openwisp_controller.connection.tests.utils import CreateConnectionsMixin
 
 from ..swapper import load_model
 
@@ -13,6 +13,8 @@ Build = load_model('Build')
 Category = load_model('Category')
 FirmwareImage = load_model('FirmwareImage')
 DeviceFirmware = load_model('DeviceFirmware')
+DeviceFirmware = load_model('DeviceFirmware')
+Credentials = swapper.load_model('connection', 'Credentials')
 
 
 class TestUpgraderMixin(CreateConnectionsMixin):

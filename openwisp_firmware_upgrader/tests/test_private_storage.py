@@ -1,10 +1,12 @@
+import swapper
 from django.test import TestCase
 from django.urls import reverse
 
-from openwisp_users.models import OrganizationUser
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
 from .base import TestUpgraderMixin
+
+OrganizationUser = swapper.load_model('openwisp_users', 'OrganizationUser')
 
 
 class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase):

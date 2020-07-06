@@ -154,7 +154,7 @@ class Migration(migrations.Migration):
                     'organization',
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to='openwisp_users.Organization',
+                        to=swapper.get_model_name('openwisp_users', 'Organization'),
                         verbose_name='organization',
                     ),
                 ),
@@ -198,7 +198,8 @@ class Migration(migrations.Migration):
                 (
                     'device',
                     models.OneToOneField(
-                        on_delete=django.db.models.deletion.CASCADE, to='config.Device'
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=swapper.get_model_name('config', 'Device'),
                     ),
                 ),
             ],
@@ -321,7 +322,8 @@ class Migration(migrations.Migration):
                 (
                     'device',
                     models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE, to='config.Device'
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=swapper.get_model_name('config', 'Device'),
                     ),
                 ),
                 (

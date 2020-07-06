@@ -6,7 +6,7 @@ import django.utils.timezone
 import model_utils.fields
 import openwisp_users.mixins
 import uuid
-
+import swapper
 from openwisp_firmware_upgrader.hardware import FIRMWARE_IMAGE_TYPE_CHOICES
 
 
@@ -148,7 +148,7 @@ class Migration(migrations.Migration):
                     'build',
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to='sample_firmware_upgrader.Build',
+                        to=swapper.get_model_name('firmware_upgrader', 'Build'),
                     ),
                 ),
             ],
@@ -203,20 +203,23 @@ class Migration(migrations.Migration):
                         blank=True,
                         null=True,
                         on_delete=django.db.models.deletion.CASCADE,
-                        to='sample_firmware_upgrader.BatchUpgradeOperation',
+                        to=swapper.get_model_name(
+                            'firmware_upgrader', 'BatchUpgradeOperation'
+                        ),
                     ),
                 ),
                 (
                     'device',
                     models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE, to='config.Device'
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=swapper.get_model_name('config', 'Device'),
                     ),
                 ),
                 (
                     'image',
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to='sample_firmware_upgrader.FirmwareImage',
+                        to=swapper.get_model_name('firmware_upgrader', 'FirmwareImage'),
                     ),
                 ),
             ],
@@ -255,14 +258,15 @@ class Migration(migrations.Migration):
                 (
                     'device',
                     models.OneToOneField(
-                        on_delete=django.db.models.deletion.CASCADE, to='config.Device'
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=swapper.get_model_name('config', 'Device'),
                     ),
                 ),
                 (
                     'image',
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to='sample_firmware_upgrader.FirmwareImage',
+                        to=swapper.get_model_name('firmware_upgrader', 'FirmwareImage'),
                     ),
                 ),
             ],
@@ -303,7 +307,7 @@ class Migration(migrations.Migration):
                     'organization',
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to='openwisp_users.Organization',
+                        to=swapper.get_model_name('openwisp_users', 'Organization'),
                         verbose_name='organization',
                     ),
                 ),
@@ -317,7 +321,7 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(
                 help_text='if you have different firmware types eg: (BGP routers, wifi APs, DSL gateways) create a category for each.',
                 on_delete=django.db.models.deletion.CASCADE,
-                to='sample_firmware_upgrader.Category',
+                to=swapper.get_model_name('firmware_upgrader', 'Category'),
                 verbose_name='firmware category',
             ),
         ),
@@ -326,7 +330,7 @@ class Migration(migrations.Migration):
             name='build',
             field=models.ForeignKey(
                 on_delete=django.db.models.deletion.CASCADE,
-                to='sample_firmware_upgrader.Build',
+                to=swapper.get_model_name('firmware_upgrader', 'Build'),
             ),
         ),
     ]

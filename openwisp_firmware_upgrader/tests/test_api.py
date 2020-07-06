@@ -1,5 +1,6 @@
 import uuid
 
+import swapper
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -12,7 +13,6 @@ from openwisp_firmware_upgrader.api.serializers import (
     FirmwareImageSerializer,
 )
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
-from openwisp_users.models import OrganizationUser
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
 from ..swapper import load_model
@@ -23,6 +23,7 @@ Category = load_model('Category')
 DeviceFirmware = load_model('DeviceFirmware')
 FirmwareImage = load_model('FirmwareImage')
 UpgradeOperation = load_model('UpgradeOperation')
+OrganizationUser = swapper.load_model('openwisp_users', 'OrganizationUser')
 
 user_model = get_user_model()
 

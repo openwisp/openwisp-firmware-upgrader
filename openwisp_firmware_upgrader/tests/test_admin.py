@@ -1,13 +1,13 @@
 from datetime import timedelta
 from unittest import mock
 
+import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils.timezone import localtime
 
-from openwisp_controller.config.models import Device
 from openwisp_firmware_upgrader.admin import (
     BuildAdmin,
     DeviceAdmin,
@@ -30,6 +30,7 @@ Category = load_model('Category')
 DeviceFirmware = load_model('DeviceFirmware')
 FirmwareImage = load_model('FirmwareImage')
 UpgradeOperation = load_model('UpgradeOperation')
+Device = swapper.load_model('config', 'Device')
 
 
 class MockRequest:
