@@ -23,7 +23,11 @@ from ..exceptions import (
     UpgradeAborted,
     UpgradeNotNeeded,
 )
-from ..hardware import FIRMWARE_IMAGE_MAP, FIRMWARE_IMAGE_TYPE_CHOICES
+from ..hardware import (
+    FIRMWARE_IMAGE_MAP,
+    FIRMWARE_IMAGE_TYPE_CHOICES,
+    REVERSE_FIRMWARE_IMAGE_MAP,
+)
 from ..swapper import get_model_name, load_model
 from ..tasks import batch_upgrade_operation, upgrade_firmware
 
@@ -65,6 +69,17 @@ class AbstractBuild(TimeStampedEditableModel):
             'version, if applicable'
         ),
     )
+    os_identifier = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        help_text=_(
+            'OS identifier as presented by the device, '
+            'used to automatically recognize the firmware '
+            'image used by new devices that register '
+            'into the system'
+        ),
+    )
 
     class Meta:
         abstract = True
@@ -78,6 +93,25 @@ class AbstractBuild(TimeStampedEditableModel):
             return f'{self.category} v{self.version}'
         except ObjectDoesNotExist:
             return super().__str__()
+
+    def clean(self):
+        # Make sure that ('category__organization', 'os_identifier') is unique too
+        if not self.os_identifier:
+            return
+        if (
+            load_model('Build')
+            .objects.filter(
+                category__organization=self.category.organization,
+                os_identifier=self.os_identifier,
+            )
+            .exists()
+        ):
+            raise ValidationError(
+                _(
+                    f'There exists already a build with os_identifier "{self.os_identifier}" '
+                    'in organization "{self.category.organization}"'
+                )
+            )
 
     def batch_upgrade(self, firmwareless):
         batch = load_model('BatchUpgradeOperation')(build=self)
@@ -265,6 +299,33 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         # once changes are committed to the database
         transaction.on_commit(lambda: upgrade_firmware.delay(operation.pk))
         return operation
+
+    @classmethod
+    def auto_add_device_firmware_to_device(cls, instance, created, **kwargs):
+        # Automatically associate DeviceFirmware to the registered Device
+        if not created:
+            return
+        if not instance.device.os or not instance.device.model:
+            return
+        if instance.device.model not in REVERSE_FIRMWARE_IMAGE_MAP:
+            return
+
+        DeviceFirmware = load_model('DeviceFirmware')
+        FirmwareImage = load_model('FirmwareImage')
+
+        try:
+            image = FirmwareImage.objects.get(
+                build__category__organization_id=instance.device.organization_id,
+                build__os_identifier=instance.device.os,
+                type=REVERSE_FIRMWARE_IMAGE_MAP[instance.device.model],
+            )
+            device_fw = DeviceFirmware(
+                device=instance.device, image=image, installed=True
+            )
+            device_fw.full_clean()
+            device_fw.save(upgrade=False)
+        except FirmwareImage.DoesNotExist:
+            pass
 
 
 class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
