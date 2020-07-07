@@ -3,6 +3,7 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
+import swapper
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
@@ -12,7 +13,6 @@ from django.utils.module_loading import import_string
 from django.utils.translation import ugettext_lazy as _
 from private_storage.fields import PrivateFileField
 
-from openwisp_controller.config.models import Device
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
@@ -114,6 +114,7 @@ class AbstractBuild(TimeStampedEditableModel):
             boards = []
             for image in self.firmwareimage_set.all():
                 boards += image.boards
+        Device = swapper.load_model('config', 'Device')
         return Device.objects.filter(
             devicefirmware__isnull=True,
             organization_id=self.category.organization_id,
@@ -198,7 +199,9 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):
-    device = models.OneToOneField('config.Device', on_delete=models.CASCADE)
+    device = models.OneToOneField(
+        swapper.get_model_name('config', 'Device'), on_delete=models.CASCADE
+    )
     image = models.ForeignKey(get_model_name('FirmwareImage'), on_delete=models.CASCADE)
     installed = models.BooleanField(default=False)
     _old_image = None
@@ -388,7 +391,9 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         ('failed', _('failed')),
         ('aborted', _('aborted')),
     )
-    device = models.ForeignKey('config.Device', on_delete=models.CASCADE)
+    device = models.ForeignKey(
+        swapper.get_model_name('config', 'Device'), on_delete=models.CASCADE
+    )
     image = models.ForeignKey(get_model_name('FirmwareImage'), on_delete=models.CASCADE)
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]

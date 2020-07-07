@@ -11,7 +11,7 @@ from openwisp_controller.connection.connectors.exceptions import CommandFailedEx
 from openwisp_controller.connection.connectors.openwrt.ssh import (
     OpenWrt as OpenWrtSshConnector,
 )
-from openwisp_controller.connection.tests.base import SshServer
+from openwisp_controller.connection.tests.utils import SshServer
 
 from ..swapper import load_model
 from ..tasks import upgrade_firmware

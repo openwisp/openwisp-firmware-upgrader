@@ -2,11 +2,10 @@ import io
 from contextlib import redirect_stdout
 from unittest import mock
 
+import swapper
 from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.test import TestCase, TransactionTestCase
-
-from openwisp_users.models import Group
 
 from .. import settings as app_settings
 from ..hardware import FIRMWARE_IMAGE_MAP
@@ -14,6 +13,7 @@ from ..swapper import load_model
 from ..tasks import upgrade_firmware
 from .base import TestUpgraderMixin
 
+Group = swapper.load_model('openwisp_users', 'Group')
 BatchUpgradeOperation = load_model('BatchUpgradeOperation')
 Build = load_model('Build')
 Category = load_model('Category')
