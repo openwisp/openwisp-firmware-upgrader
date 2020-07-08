@@ -6,6 +6,7 @@ from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
+from django.templatetags.static import static
 from django.urls import resolve, reverse
 from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
@@ -64,6 +65,12 @@ class BuildAdmin(BaseVersionAdmin):
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
     multitenant_parent = 'category'
+
+    # Ensures apps which extends this modules can use this template
+    change_form_template = 'admin/firmware_upgrader/change_form.html'
+
+    class Media:
+        css = {'all': (static('admin/css/firmware-upgrader.css'),)}
 
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
@@ -132,6 +139,13 @@ class BuildAdmin(BaseVersionAdmin):
     upgrade_selected.short_description = (
         'Mass-upgrade devices related ' 'to the selected build'
     )
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        app_label = self.model._meta.app_label
+        extra_context = extra_context or {}
+        upgrade_url = f'{app_label}_build_changelist'
+        extra_context.update({'upgrade_url': upgrade_url})
+        return super().change_view(request, object_id, form_url, extra_context)
 
 
 class UpgradeOperationForm(forms.ModelForm):

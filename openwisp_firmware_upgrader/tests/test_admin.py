@@ -65,6 +65,14 @@ class TestAdmin(BaseTestAdmin, TestCase):
         r = self.client.get(self.build_list_url)
         self.assertContains(r, '<option value="upgrade_selected">')
 
+    def test_upgrade_build_admin(self):
+        self._login()
+        b = self._create_build()
+        path = reverse(f'admin:{self.app_label}_build_change', args=[b.pk])
+        r = self.client.get(path)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Launch mass upgrade operation')
+
     def test_upgrade_selected_error(self):
         self._login()
         b1 = self._create_build()
