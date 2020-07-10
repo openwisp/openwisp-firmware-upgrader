@@ -40,8 +40,14 @@ class FirmwareUpdaterConfig(ApiAppConfig):
     def connect_device_signals(self):
         DeviceConnection = load_model('connection', 'DeviceConnection')
         DeviceFirmware = load_model('firmware_upgrader', 'DeviceFirmware')
+        FirmwareImage = load_model('firmware_upgrader', 'FirmwareImage')
         post_save.connect(
             DeviceFirmware.auto_add_device_firmware_to_device,
             sender=DeviceConnection,
             dispatch_uid='connection.auto_add_device_firmware',
+        )
+        post_save.connect(
+            DeviceFirmware.auto_create_device_firmwares,
+            sender=FirmwareImage,
+            dispatch_uid='firmware_image.auto_add_device_firmwares',
         )

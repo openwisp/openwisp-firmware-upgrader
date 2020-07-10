@@ -29,6 +29,9 @@ Credentials = swapper.load_model('connection', 'Credentials')
 class TestModels(TestUpgraderMixin, TestCase):
     app_label = 'openwisp_firmware_upgrader'
 
+    os_identifier = 'OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d'
+    image_type = REVERSE_FIRMWARE_IMAGE_MAP['YunCore XD3200']
+
     def test_category_str(self):
         c = Category(name='WiFi Hotspot')
         self.assertEqual(str(c), c.name)
@@ -47,16 +50,15 @@ class TestModels(TestUpgraderMixin, TestCase):
         org = self._get_org()
         cat1 = self._get_category(organization=org)
         cat2 = self._create_category(name='New category', organization=org)
-        os_identifier = "Linux"
-        self._create_build(organization=org, category=cat1, os_identifier=os_identifier)
+        self._create_build(
+            organization=org, category=cat1, os_identifier=self.os_identifier
+        )
         try:
             self._create_build(
-                organization=org, category=cat2, os_identifier=os_identifier
+                organization=org, category=cat2, os_identifier=self.os_identifier
             )
         except ValidationError as e:
-            self.assertIn(
-                'There exists already a build with os_identifier', e.messages[0]
-            )
+            self.assertIn('os_identifier', e.message_dict)
         else:
             self.fail('ValidationError not raised')
         self.assertEqual(Build.objects.count(), 1)
@@ -147,17 +149,14 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.fail('ValidationError not raised')
 
     def test_device_fw_not_created_on_device_connection_save(self):
-        os_identifier = 'Linux'
         org = self._get_org()
         category = self._get_category(organization=org)
         build1 = self._create_build(
-            category=category, version='0.1', os_identifier=os_identifier
+            category=category, version='0.1', os_identifier=self.os_identifier
         )
-        image1a = self._create_firmware_image(
-            build=build1, type=REVERSE_FIRMWARE_IMAGE_MAP['YunCore XD3200']
-        )
+        image1a = self._create_firmware_image(build=build1, type=self.image_type)
 
-        with self.subTest('Device doesn\'t define os'):
+        with self.subTest("Device doesn't define os"):
             d1 = self._create_device_with_connection(os='', model=image1a.boards[0])
             self.assertEqual(DeviceConnection.objects.count(), 1)
             self.assertEqual(Device.objects.count(), 1)
@@ -165,8 +164,8 @@ class TestModels(TestUpgraderMixin, TestCase):
             d1.delete()
             Credentials.objects.all().delete()
 
-        with self.subTest('Device doesn\'t define model'):
-            d1 = self._create_device_with_connection(os=os_identifier, model='')
+        with self.subTest("Device doesn't define model"):
+            d1 = self._create_device_with_connection(os=self.os_identifier, model='')
             self.assertEqual(DeviceConnection.objects.count(), 1)
             self.assertEqual(Device.objects.count(), 1)
             self.assertEqual(DeviceFirmware.objects.count(), 0)
@@ -176,9 +175,9 @@ class TestModels(TestUpgraderMixin, TestCase):
         build1.os_identifier = None
         build1.save()
 
-        with self.subTest('Build doesn\'t define os_identifier'):
+        with self.subTest("Build doesn't define os_identifier"):
             d1 = self._create_device_with_connection(
-                model=image1a.boards[0], os=os_identifier
+                model=image1a.boards[0], os=self.os_identifier
             )
             self.assertEqual(DeviceConnection.objects.count(), 1)
             self.assertEqual(Device.objects.count(), 1)
@@ -187,16 +186,15 @@ class TestModels(TestUpgraderMixin, TestCase):
     def test_device_fw_created_on_device_connection_save(self):
         self.assertEqual(DeviceFirmware.objects.count(), 0)
         self.assertEqual(Device.objects.count(), 0)
-        os_identifier = 'Linux'
         org = self._get_org()
         category = self._get_category(organization=org)
         build1 = self._create_build(
-            category=category, version='0.1', os_identifier=os_identifier
+            category=category, version='0.1', os_identifier=self.os_identifier
         )
-        image1a = self._create_firmware_image(
-            build=build1, type=REVERSE_FIRMWARE_IMAGE_MAP['YunCore XD3200']
+        image1a = self._create_firmware_image(build=build1, type=self.image_type)
+        self._create_device_with_connection(
+            os=self.os_identifier, model=image1a.boards[0]
         )
-        self._create_device_with_connection(model=image1a.boards[0], os=os_identifier)
         self.assertEqual(Device.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)
         self.assertEqual(DeviceConnection.objects.count(), 1)

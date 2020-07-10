@@ -29,7 +29,12 @@ from ..hardware import (
     REVERSE_FIRMWARE_IMAGE_MAP,
 )
 from ..swapper import get_model_name, load_model
-from ..tasks import batch_upgrade_operation, upgrade_firmware
+from ..tasks import (
+    batch_upgrade_operation,
+    create_all_device_firmwares,
+    create_device_firmware,
+    upgrade_firmware,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +112,12 @@ class AbstractBuild(TimeStampedEditableModel):
             .exists()
         ):
             raise ValidationError(
-                _(
-                    f'There exists already a build with os_identifier "{self.os_identifier}" '
-                    'in organization "{self.category.organization}"'
-                )
+                {
+                    'os_identifier': _(
+                        f'A build with this OS identifier ("{self.os_identifier}") and '
+                        f'organization ("{self.category.organization}") already exists'
+                    )
+                }
             )
 
     def batch_upgrade(self, firmwareless):
@@ -301,6 +308,22 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         return operation
 
     @classmethod
+    def create_for_device(cls, device, firmware_image=None):
+        DeviceFirmware = load_model('DeviceFirmware')
+        FirmwareImage = load_model('FirmwareImage')
+
+        if not firmware_image:
+            firmware_image = FirmwareImage.objects.get(
+                build__category__organization_id=device.organization_id,
+                build__os_identifier=device.os,
+                type=REVERSE_FIRMWARE_IMAGE_MAP[device.model],
+            )
+        device_fw = DeviceFirmware(device=device, image=firmware_image, installed=True)
+        device_fw.full_clean()
+        device_fw.save(upgrade=False)
+        return device_fw
+
+    @classmethod
     def auto_add_device_firmware_to_device(cls, instance, created, **kwargs):
         # Automatically associate DeviceFirmware to the registered Device
         if not created:
@@ -310,22 +333,14 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if instance.device.model not in REVERSE_FIRMWARE_IMAGE_MAP:
             return
 
-        DeviceFirmware = load_model('DeviceFirmware')
-        FirmwareImage = load_model('FirmwareImage')
+        transaction.on_commit(lambda: create_device_firmware.delay(instance.device.pk))
 
-        try:
-            image = FirmwareImage.objects.get(
-                build__category__organization_id=instance.device.organization_id,
-                build__os_identifier=instance.device.os,
-                type=REVERSE_FIRMWARE_IMAGE_MAP[instance.device.model],
+    @classmethod
+    def auto_create_device_firmwares(cls, instance, created, **kwargs):
+        if created:
+            transaction.on_commit(
+                lambda: create_all_device_firmwares.delay(instance.pk)
             )
-            device_fw = DeviceFirmware(
-                device=instance.device, image=image, installed=True
-            )
-            device_fw.full_clean()
-            device_fw.save(upgrade=False)
-        except FirmwareImage.DoesNotExist:
-            pass
 
 
 class AbstractBatchUpgradeOperation(TimeStampedEditableModel):

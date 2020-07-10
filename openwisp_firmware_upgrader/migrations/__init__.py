@@ -6,6 +6,7 @@ from swapper import load_model
 
 
 DeviceConnection = load_model('connection', 'DeviceConnection')
+DeviceFirmware = load_model('firmware_upgrader', 'DeviceFirmware')
 
 
 def create_default_permissions(apps, schema_editor):
@@ -61,5 +62,5 @@ def create_permissions_for_default_groups(apps, schema_editor, app_label):
 
 
 def create_device_firmware_for_connections(apps, schema_editor, app_label):
-    for connection in DeviceConnection.objects.all():
-        connection.save()
+    for device_connection in DeviceConnection.objects.all():
+        DeviceFirmware.create_for_device(device_connection.device)

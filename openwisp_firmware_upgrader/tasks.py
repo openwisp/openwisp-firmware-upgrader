@@ -3,6 +3,8 @@ import logging
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 
+from openwisp_controller.config.models import Device
+
 from . import settings as app_settings
 from .exceptions import RecoverableFailure
 from .swapper import load_model
@@ -44,3 +46,30 @@ def batch_upgrade_operation(self, batch_id, firmwareless):
         batch_operation.status = 'failed'
         batch_operation.save()
         logger.warn('SoftTimeLimitExceeded raised in batch_upgrade_operation task')
+
+
+@shared_task(bind=True)
+def create_device_firmware(self, device_id):
+    DeviceFirmware = load_model('DeviceFirmware')
+    FirmwareImage = load_model('FirmwareImage')
+
+    qs = DeviceFirmware.objects.filter(device_id=device_id)
+    if qs.exists():
+        return
+
+    try:
+        device = Device.objects.get(pk=device_id)
+        DeviceFirmware.create_for_device(device)
+    except FirmwareImage.DoesNotExist:
+        pass
+
+
+@shared_task(bind=True)
+def create_all_device_firmwares(self, firmware_image_id):
+    DeviceFirmware = load_model('DeviceFirmware')
+    FirmwareImage = load_model('FirmwareImage')
+
+    fw_image = FirmwareImage.objects.select_related('build').get(pk=firmware_image_id)
+    queryset = Device.objects.filter(os=fw_image.build.os_identifier)
+    for device in queryset:
+        DeviceFirmware.create_for_device(device, fw_image)
