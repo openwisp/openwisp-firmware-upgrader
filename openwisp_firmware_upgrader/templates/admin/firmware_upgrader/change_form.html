@@ -1,0 +1,17 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_modify %}
+
+{% block object-tools-items %}
+{% if upgrade_url %}
+    <li>
+        <form method="post" action="{% url 'admin:'|add:upgrade_url %}">
+            {% csrf_token %}
+            <input type="hidden" name="post" value="yes">
+            <input type="hidden" name="action" value="upgrade_selected">
+            <input type="hidden" name="_selected_action" value="{{original.id}}">
+            <input type="submit" value="{% trans 'Launch mass upgrade operation' %}" class="object-tools-button">
+        </form>
+    </li>
+{% endif %}
+{{ block.super }}
+{% endblock %}
