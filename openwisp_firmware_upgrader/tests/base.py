@@ -134,7 +134,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         self._create_config(device=d2)
         self._create_device_connection(device=d1, credentials=ssh_credentials)
         self._create_device_connection(device=d2, credentials=ssh_credentials)
-        # create device firmware (optional)
+        # force create device firmware (optional)
         if device_firmware:
             self._create_device_firmware(
                 device=d1, image=image1a, device_connection=False
@@ -171,6 +171,12 @@ class TestUpgraderMixin(CreateConnectionsMixin):
             device=d, credentials=Credentials.objects.first()
         )
         return d
+
+    def _create_device_with_connection(self, **kwargs):
+        d1 = self._create_device(**kwargs)
+        self._create_config(device=d1)
+        self._create_device_connection(device=d1)
+        return d1
 
 
 def spy_mock(method, pre_action):
