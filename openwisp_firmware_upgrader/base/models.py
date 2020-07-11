@@ -65,15 +65,6 @@ class AbstractBuild(TimeStampedEditableModel):
         ),
     )
     version = models.CharField(max_length=32, db_index=True)
-    changelog = models.TextField(
-        _('change log'),
-        blank=True,
-        help_text=_(
-            'descriptive text indicating what '
-            'has changed since the previous '
-            'version, if applicable'
-        ),
-    )
     os = models.CharField(
         _('OS identifier'),
         max_length=64,
@@ -84,6 +75,15 @@ class AbstractBuild(TimeStampedEditableModel):
             'used to automatically recognize the firmware '
             'image used by new devices that register '
             'into the system'
+        ),
+    )
+    changelog = models.TextField(
+        _('change log'),
+        blank=True,
+        help_text=_(
+            'descriptive text indicating what '
+            'has changed since the previous '
+            'version, if applicable'
         ),
     )
 
