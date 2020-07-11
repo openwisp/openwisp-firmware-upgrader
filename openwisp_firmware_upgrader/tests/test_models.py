@@ -28,8 +28,7 @@ Credentials = swapper.load_model('connection', 'Credentials')
 
 class TestModels(TestUpgraderMixin, TestCase):
     app_label = 'openwisp_firmware_upgrader'
-
-    os_identifier = 'OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d'
+    os = 'OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d'
     image_type = REVERSE_FIRMWARE_IMAGE_MAP['YunCore XD3200']
 
     def test_category_str(self):
@@ -50,15 +49,11 @@ class TestModels(TestUpgraderMixin, TestCase):
         org = self._get_org()
         cat1 = self._get_category(organization=org)
         cat2 = self._create_category(name='New category', organization=org)
-        self._create_build(
-            organization=org, category=cat1, os_identifier=self.os_identifier
-        )
+        self._create_build(organization=org, category=cat1, os=self.os)
         try:
-            self._create_build(
-                organization=org, category=cat2, os_identifier=self.os_identifier
-            )
+            self._create_build(organization=org, category=cat2, os=self.os)
         except ValidationError as e:
-            self.assertIn('os_identifier', e.message_dict)
+            self.assertIn('os', e.message_dict)
         else:
             self.fail('ValidationError not raised')
         self.assertEqual(Build.objects.count(), 1)
@@ -147,57 +142,6 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.assertIn('related connection', str(e))
         else:
             self.fail('ValidationError not raised')
-
-    def test_device_fw_not_created_on_device_connection_save(self):
-        org = self._get_org()
-        category = self._get_category(organization=org)
-        build1 = self._create_build(
-            category=category, version='0.1', os_identifier=self.os_identifier
-        )
-        image1a = self._create_firmware_image(build=build1, type=self.image_type)
-
-        with self.subTest("Device doesn't define os"):
-            d1 = self._create_device_with_connection(os='', model=image1a.boards[0])
-            self.assertEqual(DeviceConnection.objects.count(), 1)
-            self.assertEqual(Device.objects.count(), 1)
-            self.assertEqual(DeviceFirmware.objects.count(), 0)
-            d1.delete()
-            Credentials.objects.all().delete()
-
-        with self.subTest("Device doesn't define model"):
-            d1 = self._create_device_with_connection(os=self.os_identifier, model='')
-            self.assertEqual(DeviceConnection.objects.count(), 1)
-            self.assertEqual(Device.objects.count(), 1)
-            self.assertEqual(DeviceFirmware.objects.count(), 0)
-            d1.delete()
-            Credentials.objects.all().delete()
-
-        build1.os_identifier = None
-        build1.save()
-
-        with self.subTest("Build doesn't define os_identifier"):
-            d1 = self._create_device_with_connection(
-                model=image1a.boards[0], os=self.os_identifier
-            )
-            self.assertEqual(DeviceConnection.objects.count(), 1)
-            self.assertEqual(Device.objects.count(), 1)
-            self.assertEqual(DeviceFirmware.objects.count(), 0)
-
-    def test_device_fw_created_on_device_connection_save(self):
-        self.assertEqual(DeviceFirmware.objects.count(), 0)
-        self.assertEqual(Device.objects.count(), 0)
-        org = self._get_org()
-        category = self._get_category(organization=org)
-        build1 = self._create_build(
-            category=category, version='0.1', os_identifier=self.os_identifier
-        )
-        image1a = self._create_firmware_image(build=build1, type=self.image_type)
-        self._create_device_with_connection(
-            os=self.os_identifier, model=image1a.boards[0]
-        )
-        self.assertEqual(Device.objects.count(), 1)
-        self.assertEqual(DeviceFirmware.objects.count(), 1)
-        self.assertEqual(DeviceConnection.objects.count(), 1)
 
     def test_invalid_board(self):
         image = FIRMWARE_IMAGE_MAP[
@@ -291,10 +235,19 @@ class TestModels(TestUpgraderMixin, TestCase):
                 codename = '{}_{}'.format(action, model_name)
                 self.assertIn(codename, admin_permissions)
 
+    def test_create_for_device_validation_error(self):
+        device_fw = self._create_device_firmware()
+        device_fw.image.build.os = device_fw.device.os
+        device_fw.image.build.save()
+        result = DeviceFirmware.create_for_device(device_fw.device)
+        self.assertIsNone(result)
+
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
     _mock_connect = 'openwisp_controller.connection.models.DeviceConnection.connect'
+    os = TestModels.os
+    image_type = TestModels.image_type
 
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
@@ -408,3 +361,48 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
         batch = BatchUpgradeOperation.objects.first()
         self.assertEqual(batch.status, 'in-progress')
+
+    def test_device_fw_not_created_on_device_connection_save(self):
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build1 = self._create_build(category=category, version='0.1', os=self.os)
+        image1a = self._create_firmware_image(build=build1, type=self.image_type)
+
+        with self.subTest("Device doesn't define os"):
+            d1 = self._create_device_with_connection(os='', model=image1a.boards[0])
+            self.assertEqual(DeviceConnection.objects.count(), 1)
+            self.assertEqual(Device.objects.count(), 1)
+            self.assertEqual(DeviceFirmware.objects.count(), 0)
+            d1.delete()
+            Credentials.objects.all().delete()
+
+        with self.subTest("Device doesn't define model"):
+            d1 = self._create_device_with_connection(os=self.os, model='')
+            self.assertEqual(DeviceConnection.objects.count(), 1)
+            self.assertEqual(Device.objects.count(), 1)
+            self.assertEqual(DeviceFirmware.objects.count(), 0)
+            d1.delete()
+            Credentials.objects.all().delete()
+
+        build1.os = None
+        build1.save()
+
+        with self.subTest("Build doesn't define os"):
+            d1 = self._create_device_with_connection(
+                model=image1a.boards[0], os=self.os
+            )
+            self.assertEqual(DeviceConnection.objects.count(), 1)
+            self.assertEqual(Device.objects.count(), 1)
+            self.assertEqual(DeviceFirmware.objects.count(), 0)
+
+    def test_device_fw_created_on_device_connection_save(self):
+        self.assertEqual(DeviceFirmware.objects.count(), 0)
+        self.assertEqual(Device.objects.count(), 0)
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build1 = self._create_build(category=category, version='0.1', os=self.os)
+        image1a = self._create_firmware_image(build=build1, type=self.image_type)
+        self._create_device_with_connection(os=self.os, model=image1a.boards[0])
+        self.assertEqual(Device.objects.count(), 1)
+        self.assertEqual(DeviceFirmware.objects.count(), 1)
+        self.assertEqual(DeviceConnection.objects.count(), 1)

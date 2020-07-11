@@ -51,17 +51,13 @@ def batch_upgrade_operation(self, batch_id, firmwareless):
 @shared_task(bind=True)
 def create_device_firmware(self, device_id):
     DeviceFirmware = load_model('DeviceFirmware')
-    FirmwareImage = load_model('FirmwareImage')
 
     qs = DeviceFirmware.objects.filter(device_id=device_id)
     if qs.exists():
         return
 
-    try:
-        device = Device.objects.get(pk=device_id)
-        DeviceFirmware.create_for_device(device)
-    except FirmwareImage.DoesNotExist:
-        pass
+    device = Device.objects.get(pk=device_id)
+    DeviceFirmware.create_for_device(device)
 
 
 @shared_task(bind=True)
@@ -70,6 +66,6 @@ def create_all_device_firmwares(self, firmware_image_id):
     FirmwareImage = load_model('FirmwareImage')
 
     fw_image = FirmwareImage.objects.select_related('build').get(pk=firmware_image_id)
-    queryset = Device.objects.filter(os=fw_image.build.os_identifier)
-    for device in queryset:
+    queryset = Device.objects.filter(os=fw_image.build.os)
+    for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)

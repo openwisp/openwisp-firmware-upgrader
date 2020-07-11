@@ -2,13 +2,6 @@
 
 from django.db import migrations, models
 
-from . import create_device_firmware_for_connections
-
-
-def create_device_firmware_for_connections_helper(apps, schema_editor):
-    app_label = 'firmware_upgrader'
-    create_device_firmware_for_connections(apps, schema_editor, app_label)
-
 
 class Migration(migrations.Migration):
 
@@ -19,16 +12,13 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name='build',
-            name='os_identifier',
+            name='os',
             field=models.CharField(
                 blank=True,
                 help_text='OS identifier as presented by the device, used to automatically recognize the firmware image used by new devices that register into the system',
                 max_length=64,
                 null=True,
+                verbose_name='OS identifier',
             ),
-        ),
-        migrations.RunPython(
-            create_device_firmware_for_connections_helper,
-            reverse_code=migrations.RunPython.noop,
         ),
     ]

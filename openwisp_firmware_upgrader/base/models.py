@@ -74,7 +74,8 @@ class AbstractBuild(TimeStampedEditableModel):
             'version, if applicable'
         ),
     )
-    os_identifier = models.CharField(
+    os = models.CharField(
+        _('OS identifier'),
         max_length=64,
         blank=True,
         null=True,
@@ -100,21 +101,20 @@ class AbstractBuild(TimeStampedEditableModel):
             return super().__str__()
 
     def clean(self):
-        # Make sure that ('category__organization', 'os_identifier') is unique too
-        if not self.os_identifier:
+        # Make sure that ('category__organization', 'os') is unique too
+        if not self.os:
             return
         if (
             load_model('Build')
             .objects.filter(
-                category__organization=self.category.organization,
-                os_identifier=self.os_identifier,
+                category__organization=self.category.organization, os=self.os,
             )
             .exists()
         ):
             raise ValidationError(
                 {
-                    'os_identifier': _(
-                        f'A build with this OS identifier ("{self.os_identifier}") and '
+                    'os': _(
+                        f'A build with this OS identifier ("{self.os}") and '
                         f'organization ("{self.category.organization}") already exists'
                     )
                 }
@@ -309,17 +309,36 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
     @classmethod
     def create_for_device(cls, device, firmware_image=None):
+        """
+        Creates a ``DeviceFirmware`` instance for the specified device
+        If ``firmware_image`` is not supplied, it will be tried
+        to be determined automatically.
+
+        May return ``None`` if it was not possible to create the DeviceFirmware.
+        """
         DeviceFirmware = load_model('DeviceFirmware')
         FirmwareImage = load_model('FirmwareImage')
+        image_type = REVERSE_FIRMWARE_IMAGE_MAP.get(device.model)
+
+        if not image_type:
+            return
 
         if not firmware_image:
-            firmware_image = FirmwareImage.objects.get(
-                build__category__organization_id=device.organization_id,
-                build__os_identifier=device.os,
-                type=REVERSE_FIRMWARE_IMAGE_MAP[device.model],
-            )
+            try:
+                firmware_image = FirmwareImage.objects.get(
+                    build__category__organization_id=device.organization_id,
+                    build__os=device.os,
+                    type=image_type,
+                )
+            except FirmwareImage.DoesNotExist:
+                return
+
         device_fw = DeviceFirmware(device=device, image=firmware_image, installed=True)
-        device_fw.full_clean()
+        try:
+            device_fw.full_clean()
+        except ValidationError as e:
+            logger.warning(e)
+            return
         device_fw.save(upgrade=False)
         return device_fw
 
