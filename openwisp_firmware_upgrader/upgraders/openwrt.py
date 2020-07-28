@@ -14,15 +14,16 @@ from ..exceptions import (
     UpgradeAborted,
     UpgradeNotNeeded,
 )
+from ..settings import OPENWRT_SETTINGS
 
 
 class OpenWrt(BaseOpenWrt):
     CHECKSUM_FILE = '/etc/openwisp/firmware_checksum'
     REMOTE_UPLOAD_DIR = '/tmp'
-    UPGRADE_TIMEOUT = 70
-    RECONNECT_DELAY = 60
-    RECONNECT_RETRY_DELAY = 12
-    RECONNECT_MAX_RETRIES = 10
+    RECONNECT_DELAY = OPENWRT_SETTINGS.get('reconnect_delay', 120)
+    RECONNECT_RETRY_DELAY = OPENWRT_SETTINGS.get('reconnect_retry_delay', 20)
+    RECONNECT_MAX_RETRIES = OPENWRT_SETTINGS.get('reconnect_max_retries', 15)
+    UPGRADE_TIMEOUT = OPENWRT_SETTINGS.get('upgrade_timeout', 90)
     UPGRADE_COMMAND = 'sysupgrade -v -c {path}'
 
     log_lines = None

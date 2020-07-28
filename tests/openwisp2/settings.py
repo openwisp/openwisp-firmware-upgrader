@@ -185,6 +185,13 @@ OPENWISP_CUSTOM_OPENWRT_IMAGES = (
 )
 OPENWISP_USERS_AUTH_API = True
 OPENWISP_FIRMWARE_UPGRADER_API = True
+# for testing purposes
+OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS = {
+    'reconnect_delay': 150,
+    'reconnect_retry_delay': 30,
+    'reconnect_max_retries': 10,
+    'upgrade_timeout': 80,
+}
 
 if os.environ.get('SAMPLE_APP', False):
     INSTALLED_APPS.remove('openwisp_firmware_upgrader')

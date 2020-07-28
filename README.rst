@@ -282,6 +282,41 @@ This setting can be used to set the maximum size limit for firmware images, eg:
 
 Indicates whether the API for Firmware Upgrader is enabled or not.
 
+
+``OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++--------------+-----------+
+| **type**:    | ``dict``  |
++--------------+-----------+
+| **default**: | ``{}``    |
++--------------+-----------+
+
+Allows changing the default OpenWRT upgrader settings, eg:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS = {
+        'reconnect_delay': 120,
+        'reconnect_retry_delay': 20,
+        'reconnect_max_retries': 15,
+        'upgrade_timeout': 90,
+    }
+
+- ``reconnect_delay``: amount of seconds to wait before trying to connect
+  again to the device after the upgrade command has been launched;
+  the re-connection step is necessary to verify the upgrade has completed successfully;
+  defaults to ``120`` seconds
+- ``reconnect_retry_delay``: amount of seconds to wait after a
+  re-connection attempt has failed;
+  defaults to ``20`` seconds
+- ``reconnect_max_retries``: maximum re-connection attempts
+  defaults to ``15`` attempts
+- ``upgrade_timeout``: amount of seconds before the shell session
+  is closed after the upgrade command is launched on the device,
+  useful in case  the upgrade command hangs (it happens on older OpenWRT versions);
+  defaults to ``90`` seconds
+
 REST API
 --------
 

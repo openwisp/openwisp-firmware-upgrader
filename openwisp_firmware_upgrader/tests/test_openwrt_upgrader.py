@@ -288,3 +288,9 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
+
+    def test_openwrt_settings(self):
+        self.assertEqual(OpenWrt.RECONNECT_DELAY, 150)
+        self.assertEqual(OpenWrt.RECONNECT_RETRY_DELAY, 30)
+        self.assertEqual(OpenWrt.RECONNECT_MAX_RETRIES, 10)
+        self.assertEqual(OpenWrt.UPGRADE_TIMEOUT, 80)
