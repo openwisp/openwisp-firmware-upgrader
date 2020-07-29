@@ -268,6 +268,10 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     verbose_name_plural = verbose_name
     extra = 0
     multitenant_shared_relations = ['device']
+    # hack for openwisp-monitoring integartion
+    # TODO: remove when this issue solved:
+    # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
+    sortable_options = {'disabled': True}
 
 
 class DeviceUpgradeOperationForm(UpgradeOperationForm):
@@ -284,6 +288,10 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
     verbose_name_plural = verbose_name
     formset = DeviceFormSet
     form = DeviceUpgradeOperationForm
+    # hack for openwisp-monitoring integartion
+    # TODO: remove when this issue solved:
+    # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
+    sortable_options = {'disabled': True}
 
     def get_queryset(self, request, select_related=True):
         """
