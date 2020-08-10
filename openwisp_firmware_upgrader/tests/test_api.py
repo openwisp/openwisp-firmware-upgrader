@@ -153,7 +153,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
-        data_filter = {'org': 'New org'}
+        data_filter = {'organization': 'new-org'}
         serialized_list = [
             self._serialize_build(build2),
         ]
@@ -357,7 +357,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
-        data_filter = {'org': 'New org'}
+        data_filter = {'organization': 'new-org'}
         serialized_list = [
             self._serialize_category(category2),
         ]
@@ -570,7 +570,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
-        data_filter = {'org': 'New org'}
+        data_filter = {'organization': 'new-org'}
         serialized_list = [self._serialize_upgrade_env(operation2)]
         with self.assertNumQueries(3):
             r = self.client.get(url, data_filter)

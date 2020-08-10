@@ -45,10 +45,10 @@ class OrgAPIMixin(ProtectedAPIMixin):
             user_orgs = self.request.user.organizations_dict.keys()
             organization_filter = {filter_key: user_orgs}
             queryset = queryset.filter(**organization_filter)
-        org = self.request.query_params.get('org', None)
+        org = self.request.query_params.get('organization', None)
         try:
             if org:
-                organization_filter = {self.organization_field + '__name': org}
+                organization_filter = {self.organization_field + '__slug': org}
                 queryset = queryset.filter(**organization_filter)
         except ValidationError:
             # when uuid is not valid

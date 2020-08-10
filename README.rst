@@ -362,6 +362,15 @@ the results in conjunction with the ``page`` parameter.
     GET /api/v1/firmware/build/?page_size=10
     GET /api/v1/firmware/build/?page_size=10&page=2
 
+Filtering by organization slug
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Most endpoints allow to filter by organization slug, eg:
+
+.. code-block:: text
+
+    GET /api/v1/firmware/build/?organization=org-slug
+
 List of endpoints
 ~~~~~~~~~~~~~~~~~
 
