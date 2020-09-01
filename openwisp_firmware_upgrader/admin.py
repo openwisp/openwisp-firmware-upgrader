@@ -160,11 +160,6 @@ class UpgradeOperationInline(admin.StackedInline):
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
 
-    def last_updated(self, obj):
-        return obj.modified
-
-    last_updated.short_description = _('last updated at')
-
     def has_delete_permission(self, request, obj):
         return False
 
@@ -288,7 +283,7 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
     verbose_name_plural = verbose_name
     formset = DeviceFormSet
     form = DeviceUpgradeOperationForm
-    # hack for openwisp-monitoring integartion
+    # hack for openwisp-monitoring integration
     # TODO: remove when this issue solved:
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
     sortable_options = {'disabled': True}
