@@ -36,7 +36,7 @@ setup(
     zip_safe=False,
     install_requires=[
         'openwisp-controller~=0.7.post1',
-        'openwisp-utils[rest]~=0.5.1',
+        'openwisp-utils[rest]~=0.6.0',
         'django-private-storage~=2.2',
         'swapper~=1.1',
     ],
