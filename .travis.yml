@@ -18,6 +18,11 @@ python:
   - "3.6"
   - "3.7"
 
+notifications:
+  # will post summary as comment on github in case of failure
+  webhooks: https://www.travisbuddy.com/
+  on_success: never
+
 env:
   - DJANGO="django>=3.0,<3.1"
 
