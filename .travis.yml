@@ -29,7 +29,6 @@ env:
 branches:
   only:
     - master
-    - api
 
 before_install:
   - pip install -U pip wheel setuptools
@@ -40,14 +39,11 @@ install:
   - pip install -e .
   # TODO: To be removed after release of openwisp-controller 0.8.0
   - pip install -U https://github.com/openwisp/openwisp-controller/tarball/master
-  # TODO: remove when openwisp-users with API support is released
-  - pip install -U https://github.com/openwisp/openwisp-users/tarball/master#egg=openwisp_users[rest]
-  # TODO: remove when openwisp-utils 0.5.2 is released
-  - pip install -U https://github.com/openwisp/openwisp-utils/tarball/master#egg=openwisp_utils[qa]
 
 script:
   - ./run-qa-checks
-  - SAMPLE_APP=1 coverage run --source=openwisp_firmware_upgrader runtests.py
+  - # SAMPLE_APP tests do not affect coverage so can be run in parallel to speed up
+  - SAMPLE_APP=1 ./runtests.py --parallel
   - coverage run -a --source=openwisp_firmware_upgrader runtests.py
 
 after_success:
