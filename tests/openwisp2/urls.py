@@ -18,6 +18,7 @@ urlpatterns = [
     url(r'^api/v1/', include('openwisp_utils.api.urls')),
     url(r'^api/v1/', include((get_api_urls(), 'users'), namespace='users')),
     url(r'^api/v1/', include('openwisp_firmware_upgrader.api.urls')),
+    url(r'', include('openwisp_notifications.urls')),
 ]
 
 urlpatterns += staticfiles_urlpatterns()

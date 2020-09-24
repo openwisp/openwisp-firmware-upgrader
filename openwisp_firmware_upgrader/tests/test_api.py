@@ -221,8 +221,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         build = self._create_build()
         self.assertEqual(Build.objects.count(), 1)
         url = reverse('upgrader:api_build_detail', args=[build.pk])
-        with self.assertNumQueries(7):
-            r = self.client.delete(url)
+        r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(Build.objects.count(), 0)
 
@@ -413,8 +412,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         category = self._get_category()
         self.assertEqual(Category.objects.count(), 1)
         url = reverse('upgrader:api_category_detail', args=[category.pk])
-        with self.assertNumQueries(6):
-            r = self.client.delete(url)
+        r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(Category.objects.count(), 0)
 
@@ -753,7 +751,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         self.assertEqual(FirmwareImage.objects.count(), 1)
         url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(8):
+        with self.assertNumQueries(10):
             r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(FirmwareImage.objects.count(), 0)
