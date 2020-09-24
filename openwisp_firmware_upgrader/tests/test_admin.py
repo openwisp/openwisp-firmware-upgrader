@@ -90,7 +90,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(14):
+        with self.assertNumQueries(16):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -106,7 +106,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(12):
+        with self.assertNumQueries(14):
             r = self.client.post(
                 self.build_list_url,
                 {

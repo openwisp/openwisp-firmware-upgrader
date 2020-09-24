@@ -14,7 +14,7 @@ from django.utils.translation import ugettext_lazy as _
 from reversion.admin import VersionAdmin
 
 from openwisp_controller.config.admin import DeviceAdmin
-from openwisp_users.multitenancy import MultitenantAdminMixin
+from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
 from .hardware import REVERSE_FIRMWARE_IMAGE_MAP
@@ -28,19 +28,20 @@ FirmwareImage = load_model('FirmwareImage')
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
-    pass
+    save_on_top = True
 
 
 class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdmin):
     history_latest_first = True
+    save_on_top = True
 
 
 @admin.register(load_model('Category'))
 class CategoryAdmin(BaseVersionAdmin):
     list_display = ['name', 'organization', 'created', 'modified']
-    list_filter = ['organization']
+    list_filter = [('organization', MultitenantOrgFilter)]
+    list_select_related = ['organization']
     search_fields = ['name']
-    save_on_top = True
     ordering = ['-name', '-created']
 
 
@@ -54,13 +55,19 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
         return True
 
 
+class CategoryFilter(MultitenantOrgFilter):
+    multitenant_lookup = 'organization_id__in'
+
+
 @admin.register(load_model('Build'))
 class BuildAdmin(BaseVersionAdmin):
-    list_display = ['__str__', 'category', 'created', 'modified']
+    list_display = ['__str__', 'organization', 'category', 'created', 'modified']
+    list_filter = [
+        ('category__organization', MultitenantOrgFilter),
+        ('category', CategoryFilter),
+    ]
+    list_select_related = ['category', 'category__organization']
     search_fields = ['name']
-    save_on_top = True
-    select_related = ['category']
-    list_filter = ['category']
     ordering = ['-created', '-version']
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
@@ -71,6 +78,11 @@ class BuildAdmin(BaseVersionAdmin):
 
     class Media:
         css = {'all': (static('admin/css/firmware-upgrader.css'),)}
+
+    def organization(self, obj):
+        return obj.category.organization
+
+    organization.short_description = _('organization')
 
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
@@ -169,9 +181,13 @@ class UpgradeOperationInline(admin.StackedInline):
 
 @admin.register(BatchUpgradeOperation)
 class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
-    list_display = ['build', 'status', 'created', 'modified']
-    list_filter = ['status', 'build__category']
-    save_on_top = True
+    list_display = ['build', 'organization', 'status', 'created', 'modified']
+    list_filter = [
+        ('build__category__organization', MultitenantOrgFilter),
+        'status',
+        ('build__category', CategoryFilter),
+    ]
+    list_select_related = ['build__category__organization']
     select_related = ['build']
     ordering = ['-created']
     inlines = [UpgradeOperationInline]
@@ -187,6 +203,11 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
         'modified',
     ]
     readonly_fields = ['completed', 'success_rate', 'failed_rate', 'aborted_rate']
+
+    def organization(self, obj):
+        return obj.build.category.organization
+
+    organization.short_description = _('organization')
 
     def get_readonly_fields(self, request, obj):
         fields = super().get_readonly_fields(request, obj)
