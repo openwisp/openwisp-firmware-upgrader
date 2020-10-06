@@ -67,7 +67,7 @@ class BuildAdmin(BaseVersionAdmin):
         ('category', CategoryFilter),
     ]
     list_select_related = ['category', 'category__organization']
-    search_fields = ['name']
+    search_fields = ['category__name', 'version', 'os']
     ordering = ['-created', '-version']
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
