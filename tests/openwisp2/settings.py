@@ -88,7 +88,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'openwisp2.urls'
 
-ASGI_APPLICATION = 'openwisp_controller.geo.channels.routing.channel_routing'
+ASGI_APPLICATION = 'openwisp2.routing.application'
 CHANNEL_LAYERS = {
     'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'},
 }
