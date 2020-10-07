@@ -279,6 +279,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         category = self._create_category()
 
         org2 = self._create_org(name='org2', slug='org2')
+        self.tearDown()
         self.operator.openwisp_users_organization.all().delete()
         OrganizationUser.objects.create(user=self.operator, organization=org2)
 
@@ -430,6 +431,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         env['build2'].batch_upgrade(firmwareless=False)
 
         org2 = self._create_org(name='org2', slug='org2')
+        self.tearDown()
         self.operator.openwisp_users_organization.all().delete()
         OrganizationUser.objects.create(user=self.operator, organization=org2)
 
