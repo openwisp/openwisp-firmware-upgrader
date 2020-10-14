@@ -2,6 +2,7 @@ import logging
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
+from django.core.exceptions import ObjectDoesNotExist
 from django.utils.translation import gettext_lazy as _
 
 from openwisp_controller.config.models import Device
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
     bind=True,
     autoretry_for=(RecoverableFailure,),
     soft_time_limit=app_settings.TASK_TIMEOUT,
-    **app_settings.RETRY_OPTIONS
+    **app_settings.RETRY_OPTIONS,
 )
 def upgrade_firmware(self, operation_id):
     """
@@ -30,8 +31,12 @@ def upgrade_firmware(self, operation_id):
         operation.upgrade(recoverable=recoverable)
     except SoftTimeLimitExceeded:
         operation.status = 'failed'
-        operation.log_line(_('Operation timed out.'))
+        operation.log_line('Operation timed out.')
         logger.warn('SoftTimeLimitExceeded raised in upgrade_firmware task')
+    except ObjectDoesNotExist:
+        logger.warn(
+            f'The UpgradeOperation object with id {operation_id} has been deleted'
+        )
 
 
 @shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
@@ -47,6 +52,10 @@ def batch_upgrade_operation(self, batch_id, firmwareless):
         batch_operation.status = 'failed'
         batch_operation.save()
         logger.warn('SoftTimeLimitExceeded raised in batch_upgrade_operation task')
+    except ObjectDoesNotExist:
+        logger.warn(
+            f'The BatchUpgradeOperation object with id {batch_id} has been deleted'
+        )
 
 
 @shared_task(bind=True)
