@@ -31,7 +31,7 @@ def upgrade_firmware(self, operation_id):
         operation.upgrade(recoverable=recoverable)
     except SoftTimeLimitExceeded:
         operation.status = 'failed'
-        operation.log_line('Operation timed out.')
+        operation.log_line(_'Operation timed out.')
         logger.warn('SoftTimeLimitExceeded raised in upgrade_firmware task')
     except ObjectDoesNotExist:
         logger.warn(
