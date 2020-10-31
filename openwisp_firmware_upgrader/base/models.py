@@ -10,7 +10,7 @@ from django.db import models, transaction
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from private_storage.fields import PrivateFileField
 
 from openwisp_users.mixins import OrgMixin
@@ -528,7 +528,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         )
         if qs.count() > 0:
             message = 'Another upgrade operation is in progress, aborting...'
-            logger.warn(message)
+            logger.warning(message)
             self.log_line(message, save=False)
             self.status = 'aborted'
             self.save()
