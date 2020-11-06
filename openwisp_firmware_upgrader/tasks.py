@@ -32,9 +32,9 @@ def upgrade_firmware(self, operation_id):
     except SoftTimeLimitExceeded:
         operation.status = 'failed'
         operation.log_line(_('Operation timed out.'))
-        logger.warn('SoftTimeLimitExceeded raised in upgrade_firmware task')
+        logger.warning('SoftTimeLimitExceeded raised in upgrade_firmware task')
     except ObjectDoesNotExist:
-        logger.warn(
+        logger.warning(
             f'The UpgradeOperation object with id {operation_id} has been deleted'
         )
 
@@ -51,9 +51,9 @@ def batch_upgrade_operation(self, batch_id, firmwareless):
     except SoftTimeLimitExceeded:
         batch_operation.status = 'failed'
         batch_operation.save()
-        logger.warn('SoftTimeLimitExceeded raised in batch_upgrade_operation task')
+        logger.warning('SoftTimeLimitExceeded raised in batch_upgrade_operation task')
     except ObjectDoesNotExist:
-        logger.warn(
+        logger.warning(
             f'The BatchUpgradeOperation object with id {batch_id} has been deleted'
         )
 

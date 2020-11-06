@@ -10,7 +10,7 @@ from django.templatetags.static import static
 from django.urls import resolve, reverse
 from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
 
 from openwisp_controller.config.admin import DeviceAdmin

@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.db.models.signals import post_save
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from swapper import load_model
 
 from openwisp_utils.api.apps import ApiAppConfig
