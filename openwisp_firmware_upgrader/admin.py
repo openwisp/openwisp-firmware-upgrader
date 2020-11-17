@@ -6,7 +6,6 @@ from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
-from django.templatetags.static import static
 from django.urls import resolve, reverse
 from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
@@ -73,11 +72,11 @@ class BuildAdmin(BaseVersionAdmin):
     actions = ['upgrade_selected']
     multitenant_parent = 'category'
 
-    # Ensures apps which extends this modules can use this template
+    # Allows apps that extend this modules to use this template with less hacks
     change_form_template = 'admin/firmware_upgrader/change_form.html'
 
     class Media:
-        css = {'all': (static('admin/css/firmware-upgrader.css'),)}
+        css = {'all': ('admin/css/firmware-upgrader.css',)}
 
     def organization(self, obj):
         return obj.category.organization
