@@ -135,9 +135,8 @@ Other settings needed in ``settings.py``:
     urlpatterns = [
         url(r'^admin/', include(admin.site.urls)),
         url(r'', include('openwisp_controller.urls')),
-        url(r'^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+        url(r'', include('openwisp_firmware_upgrader.urls')),
         url(r'^api/v1/', include('openwisp_users.api.urls')),
-        url(r'^api/v1/', include('openwisp_firmware_upgrader.api.urls')),
         url(r'', include('openwisp_notifications.urls')),
     ]
 
