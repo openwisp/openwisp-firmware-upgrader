@@ -15,6 +15,14 @@ openwisp-firmware-upgrader
    :target: https://gitter.im/openwisp/general
    :alt: support chat
 
+.. image:: https://badge.fury.io/py/openwisp-firmware-upgrader.svg
+  :target: http://badge.fury.io/py/openwisp-firmware-upgrader
+  :alt: Pypi Version
+
+.. image:: https://pepy.tech/badge/openwisp-firmware-upgrader
+  :target: https://pepy.tech/project/openwisp-firmware-upgrader
+  :alt: Downloads
+
 .. image:: https://img.shields.io/badge/code%20style-black-000000.svg
    :target: https://pypi.org/project/black/
    :alt: code style: black
