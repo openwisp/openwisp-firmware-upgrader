@@ -255,7 +255,7 @@ to add it.
 4. Perform a firmware upgrade to a specific device
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. image:: docs/images/device-firmware-upgrade.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/device-firmware-upgrade.png
 
 Once a new build is ready, has been created in the system and its image have been uploaded,
 it will be the time to finally upgrade our devices.
@@ -456,14 +456,14 @@ must be set to ``True``.
 Live documentation
 ~~~~~~~~~~~~~~~~~~
 
-.. image:: docs/images/api-docs.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/api-docs.gif
 
 A general live API documentation (following the OpenAPI specification) at ``/api/v1/docs/``.
 
 Browsable web interface
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. image:: docs/images/api-ui.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/api-ui.png
 
 Additionally, opening any of the endpoints `listed below <#list-of-endpoints>`_
 directly in the browser will show the `browsable API interface of Django-REST-Framework
