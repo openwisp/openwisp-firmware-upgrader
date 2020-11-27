@@ -16,7 +16,6 @@ urlpatterns = [
     url(r'^$', redirect_view, name='index'),
     url(r'', include('openwisp_firmware_upgrader.urls')),
     url(r'^api/v1/', include((get_api_urls(), 'users'), namespace='users')),
-    url(r'', include('openwisp_notifications.urls')),
 ]
 
 urlpatterns += staticfiles_urlpatterns()
