@@ -414,11 +414,10 @@ This setting can be used to set the maximum size limit for firmware images, eg:
 +--------------+-----------+
 | **type**:    | ``bool``  |
 +--------------+-----------+
-| **default**: | ``False`` |
+| **default**: | ``True``  |
 +--------------+-----------+
 
 Indicates whether the API for Firmware Upgrader is enabled or not.
-
 
 ``OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
