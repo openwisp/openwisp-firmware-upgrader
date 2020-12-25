@@ -44,6 +44,43 @@ class TestAdmin(BaseTestAdmin):
     app_label = 'sample_firmware_upgrader'
     build_list_url = reverse(f'admin:{app_label}_build_changelist')
 
+    def test_category_details(self):
+        self._login()
+        category = self._create_category(details='sample category details')
+        path = reverse(f'admin:{self.app_label}_category_change', args=[category.pk])
+        r = self.client.get(path)
+        self.assertContains(
+            r, '<input type="text" name="details" value="sample category details"'
+        )
+
+    def test_build_details(self):
+        self._login()
+        build = self._create_build(details='sample build details')
+        path = reverse(f'admin:{self.app_label}_build_change', args=[build.pk])
+        r = self.client.get(path)
+        self.assertContains(
+            r, '<input type="text" name="details" value="sample build details"'
+        )
+
+    def test_firmware_image_details(self):
+        self._login()
+        build = self._create_build()
+        self._create_firmware_image(details='sample fw_image details', build=build)
+        path = reverse(f'admin:{self.app_label}_build_change', args=[build.pk])
+        r = self.client.get(path)
+        self.assertContains(r, '<div class="readonly">sample fw_image details')
+
+    def test_device_firmware_details(self):
+        self._login()
+        device_fw = self._create_device_firmware(details='sample device_fw details')
+        path = reverse('admin:config_device_change', args=[device_fw.device_id])
+        r = self.client.get(path)
+        self.assertContains(
+            r,
+            '<input type="text" name="devicefirmware-0-details" '
+            'value="sample device_fw details" class="vTextField"',
+        )
+
 
 class TestAdminTransaction(BaseTestAdminTransaction):
     app_label = 'sample_firmware_upgrader'
