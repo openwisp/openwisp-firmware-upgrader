@@ -21,42 +21,27 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {'label': 'GL.iNet GL-MT300N-V2', 'boards': ('GL-MT300N-V2',)},
             ),
             (
-                'ipq806x-generic-tplink_c2600-squashfs-sysupgrade.bin',
-                {
-                    'label': 'TP-Link Archer C2600',
-                    'boards': ('TP-LINK Archer C2600',),
-                },
+                'openwrt-ipq806x-generic-tplink_c2600-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link Archer C2600', 'boards': ('TP-Link Archer C2600',)},
             ),
             (
-                'mvebu-cortexa9-linksys_wrt3200acm-squashfs-sysupgrade.bin',
-                {
-                    'label': 'Linksys WRT3200ACM-EU',
-                    'boards': ('Linksys WRT3200ACM-EU',),
-                },
+                'openwrt-mvebu-cortexa9-linksys_wrt3200acm-squashfs-sysupgrade.bin',
+                {'label': 'Linksys WRT3200ACM-EU', 'boards': ('Linksys WRT3200ACM',)},
             ),
             (
-                'ar71xx-generic-tl-wr1043nd-v4-squashfs-sysupgrade.bin',
-                {
-                    'label': 'TP-Link WR1043ND v4',
-                    'boards': ('TP-LINK TL-WR1043ND v4',),
-                },
+                'openwrt-ar71xx-generic-tl-wr1043nd-v4-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link WR1043ND v4', 'boards': ('TP-Link TL-WR1043N/ND v4',)},
             ),
             (
-                'ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin',
-                {
-                    'label': 'TP-Link WDR3600 v1',
-                    'boards': ('TP-LINK TL-WDR3600 v1',),
-                },
+                'openwrt-ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link WDR3600 v1', 'boards': ('TP-Link TL-WDR3600 v1',)},
             ),
             (
                 'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin',
-                {
-                    'label': 'TP-Link WDR4300 v1 (IL)',
-                    'boards': ('TP-LINK TL-WDR4300 v1 (IL)',),
-                },
+                {'label': 'TP-Link WDR4300 v1 (IL)', 'boards': ('TP-LINK TL-WDR4300 v1 (IL)',)},
             ),
             (
-                'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin',
+                'openwrt-ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin',
                 {'label': 'TP-Link WDR4300 v1', 'boards': ('TP-Link TL-WDR4300 v1',)},
             ),
             (
