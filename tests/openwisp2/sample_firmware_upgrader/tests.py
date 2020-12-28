@@ -81,6 +81,30 @@ class TestAdmin(BaseTestAdmin):
             'value="sample device_fw details" class="vTextField"',
         )
 
+    def test_batch_upgrade_operation_details(self):
+        self._login()
+        env = self._create_upgrade_env()
+        env['build1'].batch_upgrade(firmwareless=True)
+        buo = BatchUpgradeOperation.objects.first()
+        buo.details = 'Test BatchUpgrade details'
+        buo.save()
+        url = reverse(
+            f'admin:{self.app_label}_batchupgradeoperation_change', args=[buo.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, '<div class="readonly">Test BatchUpgrade details')
+
+    def test_upgrede_operation_details(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device_fw.save(upgrade=True)
+        uo = UpgradeOperation.objects.first()
+        uo.details = 'Test Upgrade device details'
+        uo.save()
+        url = reverse('admin:config_device_change', args=[device_fw.device.pk])
+        r = self.client.get(url)
+        self.assertContains(r, '<div class="readonly">Test Upgrade device details')
+
 
 class TestAdminTransaction(BaseTestAdminTransaction):
     app_label = 'sample_firmware_upgrader'
