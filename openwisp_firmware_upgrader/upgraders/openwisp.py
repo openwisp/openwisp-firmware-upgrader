@@ -1,6 +1,8 @@
 import shlex
 import subprocess
 
+from django.utils.translation import gettext_lazy as _
+
 from .openwrt import OpenWrt
 
 
@@ -22,15 +24,19 @@ class OpenWisp1(OpenWrt):
         )
         if 'Usage:' in help_text and '--test' not in help_text:
             self.log(
-                'This image does not support sysupgrade --test, skipping this step...'
+                _(
+                    'This image does not support sysupgrade --test, skipping this step...'
+                )
             )
         else:
             super()._test_image(path)
 
     def _reflash_legacy(self, path, timeout):  # pragma: no cover
         self.log(
-            'The version used is OpenWRT Backfire, '
-            'using legacy reflash instructions.'
+            _(
+                'The version used is OpenWRT Backfire, '
+                'using legacy reflash instructions.'
+            )
         )
 
         credentials = self.connection.credentials.params
@@ -97,10 +103,12 @@ class OpenWisp1(OpenWrt):
             'echo /etc/dropbear/dropbear_rsa_host_key >> /etc/sysupgrade.conf'
         )
         upgrader.log(
-            'Written openwisp config file in /etc/config/openwisp.\n'
-            'Added entries to /etc/sysupgrade.conf:\n'
-            '- /etc/config/network\n'
-            '- /etc/dropbear/dropbear_rsa_host_key\n'
+            _(
+                'Written openwisp config file in /etc/config/openwisp.\n'
+                'Added entries to /etc/sysupgrade.conf:\n'
+                '- /etc/config/network\n'
+                '- /etc/dropbear/dropbear_rsa_host_key\n'
+            )
         )
         output, exit_code = upgrader.exec_command(
             'cat /etc/openwrt_release', raise_unexpected_exit=False
