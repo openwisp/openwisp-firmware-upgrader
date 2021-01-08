@@ -49,14 +49,21 @@ class TestModels(TestUpgraderMixin, TestCase):
         org = self._get_org()
         cat1 = self._get_category(organization=org)
         cat2 = self._create_category(name='New category', organization=org)
-        self._create_build(organization=org, category=cat1, os=self.os)
-        try:
-            self._create_build(organization=org, category=cat2, os=self.os)
-        except ValidationError as e:
-            self.assertIn('os', e.message_dict)
-        else:
-            self.fail('ValidationError not raised')
-        self.assertEqual(Build.objects.count(), 1)
+        b1 = self._create_build(organization=org, category=cat1, os=self.os)
+
+        with self.subTest('validation error should be raised'):
+            try:
+                self._create_build(organization=org, category=cat2, os=self.os)
+            except ValidationError as e:
+                self.assertIn('os', e.message_dict)
+            else:
+                self.fail('ValidationError not raised')
+
+        with self.subTest('1 build object expected'):
+            self.assertEqual(Build.objects.count(), 1)
+
+        with self.subTest('validating the same object again should work'):
+            b1.full_clean()
 
     def test_fw_str(self):
         fw = self._create_firmware_image()

@@ -109,6 +109,7 @@ class AbstractBuild(TimeStampedEditableModel):
             .objects.filter(
                 category__organization=self.category.organization, os=self.os,
             )
+            .exclude(pk=self.pk)
             .exists()
         ):
             raise ValidationError(
