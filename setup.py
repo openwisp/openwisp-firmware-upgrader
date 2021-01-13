@@ -24,7 +24,7 @@ setup(
     version=get_version(),
     license='GPL3',
     author='Federico Capoano',
-    author_email='federico.capoano@gmail.com',
+    author_email='support@openwisp.io',
     description='Firmware upgrader module of OpenWISP',
     long_description=open('README.rst').read(),
     url='http://openwisp.org',
