@@ -249,6 +249,14 @@ class TestModels(TestUpgraderMixin, TestCase):
         result = DeviceFirmware.create_for_device(device_fw.device)
         self.assertIsNone(result)
 
+    def test_upgrade_operation_retention_on_image_delete(self):
+        device_fw = self._create_device_firmware()
+        uo = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image
+        )
+        FirmwareImage.objects.get(pk=device_fw.image.pk).delete()
+        self.assertEqual(UpgradeOperation.objects.get(pk=uo.pk).image, None)
+
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
