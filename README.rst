@@ -1,8 +1,8 @@
 openwisp-firmware-upgrader
 ==========================
 
-.. image:: https://travis-ci.org/openwisp/openwisp-firmware-upgrader.svg
-   :target: https://travis-ci.org/openwisp/openwisp-firmware-upgrader
+.. image:: https://github.com/openwisp/openwisp-firmware-upgrader/workflows/OpenWISP%20Firmware%20Upgrader%20CI%20Build/badge.svg?branch=master
+   :target: https://github.com/openwisp/openwisp-firmware-upgrader/actions?query=OpenWISP+Firmware+Upgrader+CI+Build
 
 .. image:: https://coveralls.io/repos/openwisp/openwisp-firmware-upgrader/badge.svg
   :target: https://coveralls.io/r/openwisp/openwisp-firmware-upgrader
