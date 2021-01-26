@@ -1,11 +1,10 @@
 import logging
 
+import swapper
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils.translation import gettext_lazy as _
-
-from openwisp_controller.config.models import Device
 
 from . import settings as app_settings
 from .exceptions import RecoverableFailure
@@ -66,6 +65,7 @@ def create_device_firmware(self, device_id):
     if qs.exists():
         return
 
+    Device = swapper.load_model('config', 'Device')
     device = Device.objects.get(pk=device_id)
     DeviceFirmware.create_for_device(device)
 
@@ -76,6 +76,7 @@ def create_all_device_firmwares(self, firmware_image_id):
     FirmwareImage = load_model('FirmwareImage')
 
     fw_image = FirmwareImage.objects.select_related('build').get(pk=firmware_image_id)
+    Device = swapper.load_model('config', 'Device')
     queryset = Device.objects.filter(os=fw_image.build.os)
     for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)
