@@ -60,12 +60,12 @@ def batch_upgrade_operation(self, batch_id, firmwareless):
 @shared_task(bind=True)
 def create_device_firmware(self, device_id):
     DeviceFirmware = load_model('DeviceFirmware')
+    Device = swapper.load_model('config', 'Device')
 
     qs = DeviceFirmware.objects.filter(device_id=device_id)
     if qs.exists():
         return
 
-    Device = swapper.load_model('config', 'Device')
     device = Device.objects.get(pk=device_id)
     DeviceFirmware.create_for_device(device)
 
@@ -74,9 +74,10 @@ def create_device_firmware(self, device_id):
 def create_all_device_firmwares(self, firmware_image_id):
     DeviceFirmware = load_model('DeviceFirmware')
     FirmwareImage = load_model('FirmwareImage')
+    Device = swapper.load_model('config', 'Device')
 
     fw_image = FirmwareImage.objects.select_related('build').get(pk=firmware_image_id)
-    Device = swapper.load_model('config', 'Device')
+
     queryset = Device.objects.filter(os=fw_image.build.os)
     for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)
