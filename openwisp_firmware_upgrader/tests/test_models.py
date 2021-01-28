@@ -7,8 +7,6 @@ from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.test import TestCase, TransactionTestCase
 
-from openwisp_controller.config.models import Device
-
 from .. import settings as app_settings
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
@@ -24,6 +22,7 @@ FirmwareImage = load_model('FirmwareImage')
 UpgradeOperation = load_model('UpgradeOperation')
 DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
 Credentials = swapper.load_model('connection', 'Credentials')
+Device = swapper.load_model('config', 'Device')
 
 
 class TestModels(TestUpgraderMixin, TestCase):
