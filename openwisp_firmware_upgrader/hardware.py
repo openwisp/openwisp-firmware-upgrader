@@ -72,6 +72,26 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'tl-wr902ac-v3-squashfs-sysupgrade.bin',
                 {'label': 'TP-Link TL-WR902AC v3', 'boards': ('TP-Link TL-WR902AC v3',)},
             ),
+            (
+                'brcm2708-bcm2710-rpi-3-ext4-sysupgrade.img.gz',
+                {'label': 'Raspberry Pi 3 Model B', 'boards': ('Raspberry Pi 3 Model B Rev 1.2',)},
+            ),
+            (
+                'brcm2708-bcm2709-rpi-2-ext4-sysupgrade.img.gz',
+                {'label': 'Raspberry Pi 2 Model B', 'boards': ('Raspberry Pi 2 Model B Rev 1.0','Raspberry Pi 2 Model B Rev 1.1','Raspberry Pi 2 Model B Rev 1.2',)},
+            ),
+            (
+                'x86-64-generic-squashfs-sysupgrade.bin',
+                {'label': 'VMware, Inc. VMware Virtual Platform', 'boards': ('VMware, Inc. VMware Virtual Platform',)},
+            ),
+            (
+                'mvebu-cortexa9-linksys_wrt900acs-squashfs-sysupgrade.img',
+                {'label': 'Linksys WRT1900ACS', 'boards': ('Linksys WRT1900ACS',)},
+            ),
+            (
+                'mvebu-cortexa9-linksys_wrt3200acm-squashfs-sysupgrade.img',
+                {'label': 'Linksys WRT3200ACM', 'boards': ('Linksys WRT3200ACM',)},
+            ),
         )
     )
 )
