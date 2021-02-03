@@ -22,14 +22,11 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             ),
             (
                 'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin',
-                {
-                    'label': 'TP-Link WDR4300 v1 (IL)',
-                    'boards': ('TP-LINK TL-WDR4300 v1 (IL)',),
-                },
+                {'label': 'TP-Link WDR4300 v1 (IL)', 'boards': ('TP-LINK TL-WDR4300 v1 (IL)',)},
             ),
             (
                 'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin',
-                {'label': 'TP-Link WDR4300 v1', 'boards': ('TP-Link TL-WDR4300 v1',)},
+                {'label': 'TP-Link WDR4300 v1','boards': ('TP-Link TL-WDR4300 v1',) },
             ),
             (
                 'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
@@ -38,6 +35,42 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-airrouter-squashfs-sysupgrade.bin',
                 {'label': 'Ubiquiti AirRouter', 'boards': ('Ubiquiti AirRouter',)},
+            ),
+            (
+                'zbt-wg3526-16M-squashfs-sysupgrade.bin',
+                {'label': 'ZBT-WG3526 (16M)', 'boards': ('ZBT-WG3526 (16M)',)},
+            ),
+            (
+                'tl-wr2543-v1-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link TL-WR2543N/ND', 'boards': ('TP-Link TL-WR2543N/ND',)},
+            ),
+            (
+                'cpe210-v3-squashfs-sysupgrade.bin',
+                {'label': 'TP-LINK CPE210 v3', 'boards': ('TP-LINK CPE210 v3',)},
+            ),
+            (
+                'cpe510-v3-squashfs-sysupgrade.bin',
+                {'label': 'TP-LINK CPE510 v3', 'boards': ('TP-LINK CPE510 v3',)},
+            ),
+            (
+                'archer-c7-v1-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link Archer C7 v1', 'boards': ('tplink,archer-c7-v1',)},
+            ),
+            (
+                'archer-c7-v2-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link Archer C7 v2', 'boards': ('TP-Link Archer C7 v2','TP-Link Archer C7 v3',)},
+            ),
+            (
+                'archer-c7-v4-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link Archer C7 v4', 'boards': ('TP-Link Archer C7 v4',)},
+            ),
+            (
+                'archer-c7-v5-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link Archer C7 v5', 'boards': ('TP-Link Archer C7 v5',)},
+            ),
+            (
+                'tl-wr902ac-v3-squashfs-sysupgrade.bin',
+                {'label': 'TP-Link TL-WR902AC v3', 'boards': ('TP-Link TL-WR902AC v3',)},
             ),
         )
     )
