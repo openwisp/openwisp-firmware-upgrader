@@ -36,11 +36,16 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
     cases = {
         'test -f /etc/openwisp/firmware_checksum': defaults,
         'cat /etc/openwisp/firmware_checksum': defaults,
-        'sysupgrade --test /tmp/openwrt-ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin': defaults,
-        'sysupgrade -v -c /tmp/openwrt-ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin': defaults,
         'mkdir -p /etc/openwisp': defaults,
         f'echo {TEST_CHECKSUM} > /etc/openwisp/firmware_checksum': defaults,
     }
+    variable_cases = (
+        'sysupgrade --test /tmp/openwrt-',
+        'sysupgrade -v -c /tmp/openwrt-',
+    )
+    for variable_case in variable_cases:
+        if command.startswith(variable_case):
+            return defaults
     try:
         return cases[command]
     except KeyError:

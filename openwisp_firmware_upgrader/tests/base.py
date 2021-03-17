@@ -20,8 +20,10 @@ Credentials = swapper.load_model('connection', 'Credentials')
 class TestUpgraderMixin(CreateConnectionsMixin):
     FAKE_IMAGE_PATH = os.path.join(settings.PRIVATE_STORAGE_ROOT, 'fake-img.bin')
     FAKE_IMAGE_PATH2 = os.path.join(settings.PRIVATE_STORAGE_ROOT, 'fake-img2.bin')
-    TPLINK_4300_IMAGE = 'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin'
-    TPLINK_4300_IL_IMAGE = 'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin'
+    TPLINK_4300_IMAGE = 'ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin'
+    TPLINK_4300_IL_IMAGE = (
+        'ath79-generic-tplink_tl-wdr4300-v1-il-squashfs-sysupgrade.bin'
+    )
 
     def tearDown(self):
         for fw in FirmwareImage.objects.all():

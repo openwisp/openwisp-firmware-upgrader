@@ -150,9 +150,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.fail('ValidationError not raised')
 
     def test_invalid_board(self):
-        image = FIRMWARE_IMAGE_MAP[
-            'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin'
-        ]
+        image = FIRMWARE_IMAGE_MAP[self.TPLINK_4300_IMAGE]
         boards = image['boards']
         del image['boards']
         err = None
