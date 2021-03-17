@@ -1,8 +1,5 @@
-coverage
-coveralls
-isort
-flake8
+openwisp-utils[qa] @ https://github.com/openwisp/openwisp-utils/tarball/master
 redis>=3.4.1,<4.0.0
 django-redis>=4.11.0,<5.0
 mock-ssh-server~=0.8.0
-openwisp-utils[qa] @ https://github.com/openwisp/openwisp-utils/tarball/master
+responses~=0.12.1
