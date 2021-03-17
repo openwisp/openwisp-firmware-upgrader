@@ -621,8 +621,8 @@ Dry-run batch upgrade
 Returns a list representing the ``DeviceFirmware`` and ``Device``
 instances that would be upgraded if POST is used.
 
- ``Device`` objects are indicated only when no ``DeviceFirmware``
- object exists for a device which would be upgraded.
+``Device`` objects are indicated only when no ``DeviceFirmware``
+object exists for a device which would be upgraded.
 
 .. code-block:: text
 
