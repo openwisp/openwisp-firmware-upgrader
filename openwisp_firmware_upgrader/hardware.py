@@ -249,6 +249,30 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     'boards': ('Ubiquiti Nanostation M',),
                 },
             ),
+            # Bullet XW AR71XX
+            (
+                'ar71xx-generic-ubnt-bullet-m-xw-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti Picostation Bullet XW (OpenWRT 19.07 and earlier)',
+                    'boards': ('Ubiquiti Bullet-M XW',),
+                },
+            ),
+            # Picostation M2HP & Bullet AR71XX
+            (
+                'ar71xx-generic-ubnt-bullet-m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti Picostation M2HP & Bullet (OpenWRT 19.07 and earlier)',
+                    'boards': ('Ubiquiti Bullet-M',),
+                },
+            ),
+            # Picostation M ATH79
+            (
+                'ath79-generic-ubnt_picostation-m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti Picostation M (OpenWRT 19.07 and later)',
+                    'boards': ('Ubiquiti Picostation M',),
+                },
+            ),
             (
                 'x86-64-generic-squashfs-sysupgrade.bin',
                 {
