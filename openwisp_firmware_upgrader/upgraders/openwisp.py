@@ -7,4 +7,4 @@ class OpenWisp1(OpenWrt):
     Used to migrate legacy OpenWISP systems to OpenWISP 2.
     """
 
-    pass
+    UPGRADE_COMMAND = 'sysupgrade -v -n {path}'
