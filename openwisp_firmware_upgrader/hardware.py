@@ -323,6 +323,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'ramips-mt7621-zbt-wg3526-16M-squashfs-sysupgrade.bin',
                 {'label': 'ZBT-WG3526 (16M)', 'boards': ('ZBT-WG3526 (16M)',)},
             ),
+            (
+                'x86-generic-combined-squashfs.img.gz',
+                {
+                    'label': 'x86 32 bit (various models)',
+                    'boards': ('PC Engines APU2',),
+                },
+            ),
         )
     )
 )
