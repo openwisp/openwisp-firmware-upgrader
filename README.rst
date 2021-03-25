@@ -77,8 +77,8 @@ Install spatialite and sqlite:
 Setup (integrate in an existing Django project)
 -----------------------------------------------
 
-Follow the setup instructions of `openwisp-controller
-<https://github.com/openwisp/openwisp-controller>`_, then add the settings described below.
+Follow the `setup instructions of openwisp-controller
+<https://github.com/openwisp/openwisp-controller#setup-integrate-in-an-existing-django-project>`_, then add the settings described below.
 
 .. code-block:: python
 
@@ -117,87 +117,9 @@ Follow the setup instructions of `openwisp-controller
         # channels
         'channels',
     ]
-
-Other settings needed in ``settings.py``:
-
-.. code-block:: python
-
-    TEMPLATES = [
-        {
-            'BACKEND': 'django.template.backends.django.DjangoTemplates',
-            'DIRS': [],
-            'OPTIONS': {
-                'loaders': [
-                    'django.template.loaders.filesystem.Loader',
-                    'django.template.loaders.app_directories.Loader',
-                    'openwisp_utils.loaders.DependencyLoader',
-                ],
-                'context_processors': [
-                    'django.template.context_processors.debug',
-                    'django.template.context_processors.request',
-                    'django.contrib.auth.context_processors.auth',
-                    'django.contrib.messages.context_processors.messages',
-                    'openwisp_utils.admin_theme.context_processor.menu_items',
-                    'openwisp_notifications.context_processors.notification_api_settings',
-                ],
-            },
-        }
-    ]
-
-    FORM_RENDERER = 'django.forms.renderers.TemplatesSetting'
-    PRIVATE_STORAGE_ROOT = '{0}/firmware/'.format(BASE_DIR)
-
-``urls.py``:
-
-.. code-block:: python
-
-    from django.conf import settings
-    from django.contrib import admin
-    from django.conf.urls import include, url
-    from django.contrib.staticfiles.urls import staticfiles_urlpatterns
-
-    urlpatterns = [
-        url(r'^admin/', include(admin.site.urls)),
-        url(r'', include('openwisp_controller.urls')),
-        url(r'', include('openwisp_firmware_upgrader.urls')),
-        url(r'^api/v1/', include('openwisp_users.api.urls')),
-        url(r'', include('openwisp_notifications.urls')),
-    ]
-
-    urlpatterns += staticfiles_urlpatterns()
-
-Configure caching (you may use a different cache storage if you want):
-
-.. code-block:: python
-
-    CACHES = {
-        'default': {
-            'BACKEND': 'django_redis.cache.RedisCache',
-            'LOCATION': 'redis://localhost/0',
-            'OPTIONS': {
-                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            }
-        }
-    }
-
-    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-    SESSION_CACHE_ALIAS = 'default'
-
-Configure celery (you may use a different broker if you want):
-
-.. code-block:: python
-
-    # here we show how to configure celery with redis but you can
-    # use other brokers if you want, consult the celery docs
-    CELERY_BROKER_URL = 'redis://localhost/1'
-
-    INSTALLED_APPS.append('djcelery_email')
-    EMAIL_BACKEND = 'djcelery_email.backends.CeleryEmailBackend'
-
-If you decide to use redis (as shown in these examples),
-install the requierd python packages::
-
-    pip install redis django-redis
+    
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+    PRIVATE_STORAGE_ROOT = os.path.join(MEDIA_ROOT, 'firmware')
 
 Quickstart
 ----------
