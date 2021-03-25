@@ -306,7 +306,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                'x86-64-generic-squashfs-sysupgrade.bin',
+                'x86-64-combined-squashfs.img.gz',
                 {
                     'label': 'VMware, Inc. VMware Virtual Platform',
                     'boards': ('VMware, Inc. VMware Virtual Platform',),
