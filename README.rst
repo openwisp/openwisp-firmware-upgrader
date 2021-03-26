@@ -117,9 +117,29 @@ Follow the `setup instructions of openwisp-controller
         # channels
         'channels',
     ]
-    
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
     PRIVATE_STORAGE_ROOT = os.path.join(MEDIA_ROOT, 'firmware')
+
+The root URLconf (``urls.py``) should look like the following example:
+
+.. code-block:: python
+
+    from django.conf import settings
+    from django.contrib import admin
+    from django.conf.urls import include, url
+    from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+
+    urlpatterns = [
+        url(r'^admin/', include(admin.site.urls)),
+        url(r'', include('openwisp_controller.urls')),
+        url(r'', include('openwisp_firmware_upgrader.urls')),
+        # token auth API
+        url(r'^api/v1/', include((get_api_urls(), 'users'), namespace='users')),
+        # needed for API docs
+        url(r'^api/v1/', include('openwisp_utils.api.urls')),
+    ]
+
+    urlpatterns += staticfiles_urlpatterns()
 
 Quickstart
 ----------

@@ -820,3 +820,20 @@ class TestOrgAPIMixin(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
         self.assertEqual(r.status_code, 200)
+
+
+class TestApiMisc(TestAPIUpgraderMixin, TestCase):
+    def test_api_docs(self):
+        url = reverse('schema-swagger-ui')
+
+        with self.subTest('not authenticated'):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 403)
+
+        with self.subTest('authenticated'):
+            self._create_operator(
+                username='admin', email='admin@test.com', is_superuser=True
+            )
+            self._login('admin', 'tester')
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 403)

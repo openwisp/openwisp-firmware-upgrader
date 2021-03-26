@@ -15,7 +15,10 @@ urlpatterns = [
     url(r'', include('openwisp_controller.urls')),
     url(r'^$', redirect_view, name='index'),
     url(r'', include('openwisp_firmware_upgrader.urls')),
+    # token auth API
     url(r'^api/v1/', include((get_api_urls(), 'users'), namespace='users')),
+    # needed for API docs
+    url(r'^api/v1/', include('openwisp_utils.api.urls')),
 ]
 
 urlpatterns += staticfiles_urlpatterns()
