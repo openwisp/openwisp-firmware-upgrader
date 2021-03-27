@@ -117,6 +117,7 @@ Follow the `setup instructions of openwisp-controller
         # channels
         'channels',
     ]
+
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
     PRIVATE_STORAGE_ROOT = os.path.join(MEDIA_ROOT, 'firmware')
 
@@ -394,6 +395,20 @@ Allows changing the default OpenWRT upgrader settings, eg:
   is closed after the upgrade command is launched on the device,
   useful in case  the upgrade command hangs (it happens on older OpenWRT versions);
   defaults to ``90`` seconds
+
+``OPENWISP_FIRMWARE_IMAGE_BASEURL``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++--------------+-----------+
+| **type**:    | ``dict``  |
++--------------+-----------+
+| **default**: | ``None``  |
++--------------+-----------+
+
+If you have a seperate instance of openwisp-firmware-upgrader API on a
+different domain, you can use this option to change the base of the image
+download url, this will enable you to point to your API server's domain,
+example value: https://myfirmware.myapp.com.
 
 REST API
 --------
