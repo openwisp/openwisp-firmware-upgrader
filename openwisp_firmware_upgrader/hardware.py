@@ -262,7 +262,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'ar71xx-generic-ubnt-bullet-m-squashfs-sysupgrade.bin',
                 {
                     'label': 'Ubiquiti Picostation M2HP & Bullet (OpenWRT 19.07 and earlier)',
-                    'boards': ('Ubiquiti Bullet-M',),
+                    'boards': ('Ubiquiti Bullet-M', 'Ubiquiti PicoStation M2'),
                 },
             ),
             # Picostation M ATH79
@@ -278,7 +278,11 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'ar71xx-generic-ubnt-unifiac-mesh-squashfs-sysupgrade.bin',
                 {
                     'label': 'Ubiquiti Unifi AC Mesh (OpenWRT 19.07 and earlier)',
-                    'boards': ('Ubiquiti UniFi AC-Mesh', 'Ubiquiti UniFi-AC-LITE/MESH'),
+                    'boards': (
+                        'Ubiquiti UniFi AC-Mesh',
+                        'Ubiquiti UniFi-AC-MESH',
+                        'Ubiquiti UniFi-AC-LITE/MESH',
+                    ),
                 },
             ),
             # Unifi AC Mesh ATH79
@@ -286,7 +290,11 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'ath79-generic-ubnt_unifiac-mesh-squashfs-sysupgrade.bin',
                 {
                     'label': 'Ubiquiti Unifi AC Mesh (OpenWRT 19.07 and later)',
-                    'boards': ('Ubiquiti UniFi AC-Mesh', 'Ubiquiti UniFi-AC-LITE/MESH'),
+                    'boards': (
+                        'Ubiquiti UniFi AC-Mesh',
+                        'Ubiquiti UniFi-AC-MESH',
+                        'Ubiquiti UniFi-AC-LITE/MESH',
+                    ),
                 },
             ),
             # Unifi AC Mesh Pro AR71XX
