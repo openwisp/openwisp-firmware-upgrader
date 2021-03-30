@@ -38,6 +38,7 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
         'cat /etc/openwisp/firmware_checksum': defaults,
         'mkdir -p /etc/openwisp': defaults,
         f'echo {TEST_CHECKSUM} > /etc/openwisp/firmware_checksum': defaults,
+        'sysupgrade --help': ['--test', 1],
     }
     variable_cases = (
         'sysupgrade --test /tmp/openwrt-',
