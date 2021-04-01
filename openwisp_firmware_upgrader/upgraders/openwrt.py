@@ -24,7 +24,9 @@ class OpenWrt(BaseOpenWrt):
     RECONNECT_RETRY_DELAY = OPENWRT_SETTINGS.get('reconnect_retry_delay', 20)
     RECONNECT_MAX_RETRIES = OPENWRT_SETTINGS.get('reconnect_max_retries', 40)
     UPGRADE_TIMEOUT = OPENWRT_SETTINGS.get('upgrade_timeout', 90)
-    UPGRADE_COMMAND = 'sysupgrade -v -c {path}'
+    UPGRADE_COMMAND = '{sysupgrade} -v -c {path}'
+    # path to sysupgrade command
+    _SYSUPGRADE = '/sbin/sysupgrade'
 
     log_lines = None
 
@@ -66,7 +68,7 @@ class OpenWrt(BaseOpenWrt):
         return os.path.join(self.REMOTE_UPLOAD_DIR, filename)
 
     def get_upgrade_command(self, path):
-        return self.UPGRADE_COMMAND.format(path=path)
+        return self.UPGRADE_COMMAND.format(sysupgrade=self._SYSUPGRADE, path=path)
 
     def _test_checksum(self, image):
         """
@@ -107,7 +109,7 @@ class OpenWrt(BaseOpenWrt):
 
     def _test_image(self, path):
         try:
-            self.exec_command(f'sysupgrade --test {path}')
+            self.exec_command(f'{self._SYSUPGRADE} --test {path}')
         except Exception as e:
             self.log(str(e), save=False)
             self.disconnect()

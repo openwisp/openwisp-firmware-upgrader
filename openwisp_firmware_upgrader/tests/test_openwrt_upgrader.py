@@ -25,24 +25,26 @@ TEST_CHECKSUM = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85
 
 def mocked_exec_upgrade_not_needed(command, exit_codes=None):
     cases = {
-        'test -f /etc/openwisp/firmware_checksum': ['', 0],
-        'cat /etc/openwisp/firmware_checksum': [TEST_CHECKSUM, 0],
+        f'test -f {OpenWrt.CHECKSUM_FILE}': ['', 0],
+        f'cat {OpenWrt.CHECKSUM_FILE}': [TEST_CHECKSUM, 0],
     }
     return cases[command]
 
 
 def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
     defaults = ['', 0]
+    _sysupgrade = OpenWrt._SYSUPGRADE
+    _checksum = OpenWrt.CHECKSUM_FILE
     cases = {
-        'test -f /etc/openwisp/firmware_checksum': defaults,
-        'cat /etc/openwisp/firmware_checksum': defaults,
+        f'test -f {_checksum}': defaults,
+        f'cat {_checksum}': defaults,
         'mkdir -p /etc/openwisp': defaults,
-        f'echo {TEST_CHECKSUM} > /etc/openwisp/firmware_checksum': defaults,
-        'sysupgrade --help': ['--test', 1],
+        f'echo {TEST_CHECKSUM} > {_checksum}': defaults,
+        f'{_sysupgrade} --help': ['--test', 1],
     }
     variable_cases = (
-        'sysupgrade --test /tmp/openwrt-',
-        'sysupgrade -v -c /tmp/openwrt-',
+        f'{_sysupgrade} --test /tmp/openwrt-',
+        f'{_sysupgrade} -v -c /tmp/openwrt-',
     )
     for variable_case in variable_cases:
         if command.startswith(variable_case):
