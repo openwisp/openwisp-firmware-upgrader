@@ -86,7 +86,7 @@ class OpenWrt(BaseOpenWrt):
             self.log('Image checksum file found', save=False)
             cat = f'cat {self.CHECKSUM_FILE}'
             output, code = self.exec_command(cat)
-            if checksum == output:
+            if checksum == output.strip():
                 message = (
                     'Firmware already upgraded previously. '
                     'Identical checksum found in the filesystem, '
