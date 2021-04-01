@@ -3,7 +3,7 @@ import socket
 from hashlib import sha256
 from time import sleep
 
-from billiard import Process
+from billiard import Process, Queue
 from paramiko.ssh_exception import NoValidConnectionsError
 
 from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
@@ -121,7 +121,7 @@ class OpenWrt(BaseOpenWrt):
 
     def _reflash(self, path):
         """
-        this will execute the upgrade operation in another process
+        this method will execute the reflashing operation in another process
         because the SSH connection may hang indefinitely while reflashing
         and would block the program; setting a timeout to `exec_command`
         doesn't seem to take effect on some OpenWRT versions
@@ -129,17 +129,22 @@ class OpenWrt(BaseOpenWrt):
         `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
         """
         self.disconnect()
-        command = self.get_upgrade_command(path)
 
-        def upgrade(conn, path, timeout):
-            conn.connect()
-            conn.exec_command(command, timeout=timeout)
-            conn.disconnect()
-
-        subprocess = Process(target=upgrade, args=[self, path, self.UPGRADE_TIMEOUT])
+        failure_queue = Queue()
+        subprocess = Process(
+            target=self._call_reflash_command,
+            args=[self, path, self.UPGRADE_TIMEOUT, failure_queue],
+        )
         subprocess.start()
         self.log('Upgrade operation in progress...')
         subprocess.join(timeout=self.UPGRADE_TIMEOUT)
+
+        # if the child process catched an exception, raise it here in the
+        # parent so it will be logged and will flag the upgrade as failed
+        if not failure_queue.empty():
+            raise failure_queue.get()
+        failure_queue.close()
+
         self.log(
             f'SSH connection closed, will wait {self.RECONNECT_DELAY} seconds before '
             'attempting to reconnect...'
@@ -149,6 +154,16 @@ class OpenWrt(BaseOpenWrt):
         if subprocess.is_alive():
             subprocess.terminate()
             subprocess.join()
+
+    @classmethod
+    def _call_reflash_command(cls, upgrader, path, timeout, failure_queue):
+        upgrader.connect()
+        command = upgrader.get_upgrade_command(path)
+        try:
+            upgrader.exec_command(command, timeout=timeout)
+        except Exception as e:
+            failure_queue.put(e)
+        upgrader.disconnect()
 
     def _refresh_addresses(self):
         """

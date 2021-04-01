@@ -1,7 +1,9 @@
 import io
 from contextlib import redirect_stderr, redirect_stdout
+from time import sleep
 from unittest.mock import patch
 
+from billiard import Queue
 from celery.exceptions import Retry
 from django.test import TransactionTestCase
 from django.utils import timezone
@@ -53,6 +55,14 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
         return cases[command]
     except KeyError:
         raise CommandFailedException()
+
+
+def mocked_sysupgrade_failure(command, exit_codes=None, timeout=None):
+    if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c '):
+        raise CommandFailedException(
+            "Invalid image type\nImage check " "'platform_check_image' failed."
+        )
+    return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
 
 
 def connect_fail_on_write_checksum_pre_action(*args, **kwargs):
@@ -297,8 +307,90 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         for line in lines:
             self.assertIn(line, upgrade_op.log)
 
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_sysupgrade_failure)
+    def test_sysupgrade_failure(self, exec_command, is_alive, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(putfo.call_count, 1)
+        self.assertEqual(is_alive.call_count, 0)
+        self.assertEqual(upgrade_op.status, 'failed')
+        lines = [
+            'Image checksum file found',
+            'Checksum different, proceeding',
+            'Upgrade operation in progress',
+            'Invalid image type',
+            "Image check 'platform_check_image' failed.",
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertFalse(device_fw.installed)
+
     def test_openwrt_settings(self):
         self.assertEqual(OpenWrt.RECONNECT_DELAY, 150)
         self.assertEqual(OpenWrt.RECONNECT_RETRY_DELAY, 30)
         self.assertEqual(OpenWrt.RECONNECT_MAX_RETRIES, 10)
         self.assertEqual(OpenWrt.UPGRADE_TIMEOUT, 80)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    def test_get_upgrade_command(self, exec_command, is_alive, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        upgrader = OpenWrt(upgrade_op, device_conn)
+        upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
+        self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -c /tmp/test.bin')
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    def test_call_reflash_command(self, is_alive, putfo):
+        with patch.object(
+            OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success
+        ) as exec_command:
+            device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+
+        upgrader = OpenWrt(upgrade_op, device_conn)
+        path = '/tmp/openwrt-image.bin'
+        command = f'/sbin/sysupgrade -v -c {path}'
+
+        with self.subTest('success'):
+            with patch.object(
+                OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success
+            ) as exec_command:
+                failure_queue = Queue()
+                OpenWrt._call_reflash_command(
+                    upgrader, path, upgrader.UPGRADE_TIMEOUT, failure_queue
+                )
+                exec_command.assert_called_once_with(
+                    command, timeout=upgrader.UPGRADE_TIMEOUT, exit_codes=[0, -1]
+                )
+                self.assertTrue(failure_queue.empty())
+                failure_queue.close()
+
+        with self.subTest('failure'):
+            with patch.object(
+                OpenWrt, 'exec_command', side_effect=mocked_sysupgrade_failure
+            ) as exec_command:
+                failure_queue = Queue()
+                OpenWrt._call_reflash_command(
+                    upgrader, path, upgrader.UPGRADE_TIMEOUT, failure_queue
+                )
+                exec_command.assert_called_once_with(
+                    command, timeout=upgrader.UPGRADE_TIMEOUT, exit_codes=[0, -1]
+                )
+                sleep(0.05)
+                self.assertFalse(failure_queue.empty())
+                exception = failure_queue.get()
+                failure_queue.close()
+                self.assertIsInstance(exception, CommandFailedException)
+                self.assertEqual(
+                    str(exception),
+                    "Invalid image type\nImage check 'platform_check_image' failed.",
+                )
