@@ -12,6 +12,7 @@ from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 from django.utils.translation import gettext_lazy as _
 from private_storage.fields import PrivateFileField
+from private_storage.storage.files import PrivateFileSystemStorage
 
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
@@ -28,6 +29,7 @@ from ..hardware import (
     FIRMWARE_IMAGE_TYPE_CHOICES,
     REVERSE_FIRMWARE_IMAGE_MAP,
 )
+from ..settings import FIRMWARE_IMAGE_BASEURL
 from ..swapper import get_model_name, load_model
 from ..tasks import (
     batch_upgrade_operation,
@@ -107,7 +109,7 @@ class AbstractBuild(TimeStampedEditableModel):
         if (
             load_model('Build')
             .objects.filter(
-                category__organization=self.category.organization, os=self.os,
+                category__organization=self.category.organization, os=self.os
             )
             .exclude(pk=self.pk)
             .exists()
@@ -172,7 +174,10 @@ def get_build_directory(instance, filename):
 class AbstractFirmwareImage(TimeStampedEditableModel):
     build = models.ForeignKey(get_model_name('Build'), on_delete=models.CASCADE)
     file = PrivateFileField(
-        'File', upload_to=get_build_directory, max_file_size=app_settings.MAX_FILE_SIZE
+        'File',
+        upload_to=get_build_directory,
+        max_file_size=app_settings.MAX_FILE_SIZE,
+        storage=PrivateFileSystemStorage(base_url=FIRMWARE_IMAGE_BASEURL),
     )
     type = models.CharField(
         blank=True,
