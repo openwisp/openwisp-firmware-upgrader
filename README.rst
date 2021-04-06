@@ -145,6 +145,13 @@ The root URLconf (``urls.py``) should look like the following example:
 Quickstart
 ----------
 
+Requirements:
+
+- Devices running at least OpenWRT 12.09 Attitude Adjustment, older versions
+  of OpenWRT have not worked at all in our tests
+- Devices must have enough free RAM to be able to upload the
+  new image to `/tmp``
+
 1. Create a category
 ~~~~~~~~~~~~~~~~~~~~
 
