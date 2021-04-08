@@ -183,10 +183,10 @@ class OpenWrt(BaseOpenWrt):
             )
             try:
                 self.connect()
-            except (NoValidConnectionsError, socket.timeout):
+            except (NoValidConnectionsError, socket.timeout) as error:
                 self.log(
-                    'Device not reachable yet, '
-                    f'retrying in {self.RECONNECT_RETRY_DELAY} seconds...'
+                    f'Device not reachable yet ({error}).\n'
+                    f'Retrying in {self.RECONNECT_RETRY_DELAY} seconds...'
                 )
                 sleep(self.RECONNECT_RETRY_DELAY)
                 continue
