@@ -44,13 +44,17 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
         f'echo {TEST_CHECKSUM} > {_checksum}': defaults,
         f'{_sysupgrade} --help': ['--test', 1],
     }
-    variable_cases = (
-        f'{_sysupgrade} --test /tmp/openwrt-',
-        f'{_sysupgrade} -v -c /tmp/openwrt-',
-    )
-    for variable_case in variable_cases:
-        if command.startswith(variable_case):
-            return defaults
+    if command.startswith(f'{_sysupgrade} --test /tmp/openwrt-'):
+        return defaults
+    if command.startswith(f'{_sysupgrade} -v -c /tmp/openwrt-'):
+        return [
+            (
+                'Image metadata not found\n'
+                'Reading partition table from bootdisk...\n'
+                'Reading partition table from image...\n'
+            ),
+            -1,
+        ]
     try:
         return cases[command]
     except KeyError:

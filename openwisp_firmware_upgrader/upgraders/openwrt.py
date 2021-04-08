@@ -20,9 +20,9 @@ from ..settings import OPENWRT_SETTINGS
 class OpenWrt(BaseOpenWrt):
     CHECKSUM_FILE = '/etc/openwisp/firmware_checksum'
     REMOTE_UPLOAD_DIR = '/tmp'
-    RECONNECT_DELAY = OPENWRT_SETTINGS.get('reconnect_delay', 120)
+    RECONNECT_DELAY = OPENWRT_SETTINGS.get('reconnect_delay', 180)
     RECONNECT_RETRY_DELAY = OPENWRT_SETTINGS.get('reconnect_retry_delay', 20)
-    RECONNECT_MAX_RETRIES = OPENWRT_SETTINGS.get('reconnect_max_retries', 40)
+    RECONNECT_MAX_RETRIES = OPENWRT_SETTINGS.get('reconnect_max_retries', 35)
     UPGRADE_TIMEOUT = OPENWRT_SETTINGS.get('upgrade_timeout', 90)
     UPGRADE_COMMAND = '{sysupgrade} -v -c {path}'
     # path to sysupgrade command
@@ -129,6 +129,7 @@ class OpenWrt(BaseOpenWrt):
         `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
         """
         self.disconnect()
+        self.log('Upgrade operation in progress...')
 
         failure_queue = Queue()
         subprocess = Process(
@@ -136,7 +137,6 @@ class OpenWrt(BaseOpenWrt):
             args=[self, path, self.UPGRADE_TIMEOUT, failure_queue],
         )
         subprocess.start()
-        self.log('Upgrade operation in progress...')
         subprocess.join(timeout=self.UPGRADE_TIMEOUT)
 
         # if the child process catched an exception, raise it here in the
@@ -145,6 +145,7 @@ class OpenWrt(BaseOpenWrt):
             raise failure_queue.get()
         failure_queue.close()
 
+        self._refresh_addresses()
         self.log(
             f'SSH connection closed, will wait {self.RECONNECT_DELAY} seconds before '
             'attempting to reconnect...'
@@ -160,7 +161,9 @@ class OpenWrt(BaseOpenWrt):
         upgrader.connect()
         command = upgrader.get_upgrade_command(path)
         try:
-            upgrader.exec_command(command, timeout=timeout)
+            output, exit_code = upgrader.exec_command(
+                command, timeout=timeout, exit_codes=[0, -1]
+            )
         except Exception as e:
             failure_queue.put(e)
         upgrader.disconnect()
