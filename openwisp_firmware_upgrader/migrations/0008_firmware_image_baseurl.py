@@ -4,7 +4,7 @@ from django.db import migrations
 import openwisp_firmware_upgrader.base.models
 import private_storage.fields
 import private_storage.storage.files
-from ..settings import FIRMWARE_IMAGE_BASEURL
+from ..settings import FIRMWARE_API_BASEURL
 
 
 class Migration(migrations.Migration):
@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
             name='file',
             field=private_storage.fields.PrivateFileField(
                 storage=private_storage.storage.files.PrivateFileSystemStorage(
-                    base_url=FIRMWARE_IMAGE_BASEURL
+                    base_url=FIRMWARE_API_BASEURL
                 ),
                 upload_to=openwisp_firmware_upgrader.base.models.get_build_directory,
                 verbose_name='File',
