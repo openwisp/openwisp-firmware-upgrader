@@ -396,8 +396,8 @@ Allows changing the default OpenWRT upgrader settings, eg:
   useful in case  the upgrade command hangs (it happens on older OpenWRT versions);
   defaults to ``90`` seconds
 
-``OPENWISP_FIRMWARE_IMAGE_BASEURL``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``OPENWISP_FIRMWARE_API_BASEURL``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 +--------------+-----------+
 | **type**:    | ``dict``  |
