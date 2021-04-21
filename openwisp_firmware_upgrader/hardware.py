@@ -193,6 +193,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     'boards': ('Ubiquiti AirRouter',),
                 },
             ),
+            (
+                'octeon-erlite-squashfs-sysupgrade.tar',
+                {
+                    'label': 'Ubiquiti EdgeRouter Lite',
+                    'boards': ('Ubiquiti EdgeRouter Lite',),
+                },
+            ),
             # Nanostation Loco M XW AR71XX
             (
                 'ar71xx-generic-ubnt-loco-m-xw-squashfs-sysupgrade.bin',
