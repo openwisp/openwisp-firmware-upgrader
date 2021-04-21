@@ -237,7 +237,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'ar71xx-generic-ubnt-nano-m-squashfs-sysupgrade.bin',
                 {
                     'label': 'Ubiquiti Nanostation M (OpenWRT 19.07 and earlier)',
-                    'boards': ('Ubiquiti Nano-M',),
+                    'boards': ('Ubiquiti Nano-M', 'Ubiquiti NanoStation M2'),
                 },
             ),
             # Nanostation M XW ATH79
@@ -272,7 +272,11 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'ar71xx-generic-ubnt-bullet-m-squashfs-sysupgrade.bin',
                 {
                     'label': 'Ubiquiti Picostation M2HP & Bullet (OpenWRT 19.07 and earlier)',
-                    'boards': ('Ubiquiti Bullet-M', 'Ubiquiti PicoStation M2'),
+                    'boards': (
+                        'Ubiquiti Bullet-M',
+                        'Ubiquiti PicoStation M2',
+                        'Ubiquiti PicoStation M2HP',
+                    ),
                 },
             ),
             # Picostation M ATH79
