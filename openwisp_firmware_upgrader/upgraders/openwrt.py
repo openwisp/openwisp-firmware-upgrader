@@ -145,7 +145,7 @@ class OpenWrt(BaseOpenWrt):
             raise failure_queue.get()
         failure_queue.close()
 
-        self._refresh_addresses()
+        self.upgrade_operation.refresh_from_db()
         self.log(
             f'SSH connection closed, will wait {self.RECONNECT_DELAY} seconds before '
             'attempting to reconnect...'
