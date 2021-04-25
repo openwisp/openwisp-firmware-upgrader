@@ -12,7 +12,8 @@ import private_storage.storage.files
 import uuid
 import swapper
 from openwisp_firmware_upgrader.hardware import FIRMWARE_IMAGE_TYPE_CHOICES
-from openwisp_firmware_upgrader.settings import FIRMWARE_API_BASEURL
+from openwisp_firmware_upgrader.settings import FIRMWARE_API_BASEURL, IMAGE_URL_PATH
+from urllib.parse import urljoin
 
 
 class Migration(migrations.Migration):
@@ -162,7 +163,7 @@ class Migration(migrations.Migration):
                     'file',
                     private_storage.fields.PrivateFileField(
                         storage=private_storage.storage.files.PrivateFileSystemStorage(
-                            base_url=FIRMWARE_API_BASEURL
+                            base_url=urljoin(FIRMWARE_API_BASEURL, IMAGE_URL_PATH),
                         ),
                         upload_to=openwisp_firmware_upgrader.base.models.get_build_directory,
                         verbose_name='File',

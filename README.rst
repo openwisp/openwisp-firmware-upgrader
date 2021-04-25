@@ -399,16 +399,16 @@ Allows changing the default OpenWRT upgrader settings, eg:
 ``OPENWISP_FIRMWARE_API_BASEURL``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-+--------------+-----------+
-| **type**:    | ``dict``  |
-+--------------+-----------+
-| **default**: | ``None``  |
-+--------------+-----------+
++--------------+-----------------------------------+
+| **type**:    | ``dict``                          |
++--------------+-----------------------------------+
+| **default**: |  ``/`` (points to same server)    |
++--------------+-----------------------------------+
 
 If you have a seperate instance of openwisp-firmware-upgrader API on a
 different domain, you can use this option to change the base of the image
 download url, this will enable you to point to your API server's domain,
-example value: https://myfirmware.myapp.com.
+example value: ``https://myfirmware.myapp.com``.
 
 REST API
 --------

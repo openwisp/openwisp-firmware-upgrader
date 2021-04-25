@@ -22,5 +22,8 @@ RETRY_OPTIONS = getattr(
 TASK_TIMEOUT = getattr(settings, 'OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT', 600)
 
 FIRMWARE_UPGRADER_API = getattr(settings, 'OPENWISP_FIRMWARE_UPGRADER_API', True)
-FIRMWARE_API_BASEURL = getattr(settings, 'OPENWISP_FIRMWARE_API_BASEURL', None)
+FIRMWARE_API_BASEURL = getattr(settings, 'OPENWISP_FIRMWARE_API_BASEURL', '/')
 OPENWRT_SETTINGS = getattr(settings, 'OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS', {})
+
+# Path of urls that need to be refered in migrations files.
+IMAGE_URL_PATH = 'firmware/'

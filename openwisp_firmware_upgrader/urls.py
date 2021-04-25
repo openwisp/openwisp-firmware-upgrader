@@ -3,7 +3,7 @@ from django.urls import include, path
 from openwisp_firmware_upgrader import settings as app_settings
 
 urlpatterns = [
-    path('firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+    path('', include('openwisp_firmware_upgrader.private_storage.urls')),
 ]
 
 if app_settings.FIRMWARE_UPGRADER_API:
