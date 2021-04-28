@@ -38,11 +38,17 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
     _sysupgrade = OpenWrt._SYSUPGRADE
     _checksum = OpenWrt.CHECKSUM_FILE
     cases = {
+        'rm -rf /tmp/opkg-lists/': defaults,
+        'sync && echo 3 > /proc/sys/vm/drop_caches': defaults,
+        'cat /proc/meminfo | grep MemAvailable': ['MemAvailable:      66984 kB', 0],
         f'test -f {_checksum}': defaults,
         f'cat {_checksum}': defaults,
         'mkdir -p /etc/openwisp': defaults,
         f'echo {TEST_CHECKSUM} > {_checksum}': defaults,
         f'{_sysupgrade} --help': ['--test', 1],
+        # used in memory check tests
+        'test -f /sbin/wifi && /sbin/wifi down': defaults,
+        'test -f /sbin/wifi && /sbin/wifi up': defaults,
     }
     if command.startswith(f'{_sysupgrade} --test /tmp/openwrt-'):
         return defaults
@@ -64,9 +70,63 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
 def mocked_sysupgrade_failure(command, exit_codes=None, timeout=None):
     if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c '):
         raise CommandFailedException(
-            "Invalid image type\nImage check " "'platform_check_image' failed."
+            "Invalid image type\nImage check 'platform_check_image' failed."
         )
     return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
+
+
+def mocked_sysupgrade_test_failure(command, exit_codes=None, timeout=None):
+    if command.startswith(f'{OpenWrt._SYSUPGRADE} --test'):
+        raise CommandFailedException('Invalid image type')
+    return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
+
+
+def mocked_exec_upgrade_memory_success(
+    command, exit_codes=None, timeout=None, raise_unexpected_exit=None
+):
+    global _mock_memory_success_called
+    if command.startswith('test -f /etc/init.d/'):
+        return ['', 0]
+    elif (
+        not _mock_memory_success_called
+        and command == 'cat /proc/meminfo | grep MemAvailable'
+    ):
+        _mock_memory_success_called = True
+        return ['MemAvailable:      0 kB', 0]
+    return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
+
+
+def mocked_exec_upgrade_memory_success_legacy(
+    command, exit_codes=None, timeout=None, raise_unexpected_exit=None
+):
+    global _mock_memory_success_called
+    if command == 'cat /proc/meminfo | grep MemAvailable':
+        return ['', 1]
+    elif command == 'cat /proc/meminfo | grep MemFree':
+        if not _mock_memory_success_called:
+            _mock_memory_success_called = True
+            return ['MemFree:      0 kB', 0]
+        else:
+            return ['MemFree:      66984 kB', 0]
+    return mocked_exec_upgrade_memory_success(
+        command, exit_codes, timeout, raise_unexpected_exit
+    )
+
+
+def mocked_exec_upgrade_memory_failure(
+    command, exit_codes=None, timeout=None, raise_unexpected_exit=None
+):
+    if command == 'cat /proc/meminfo | grep MemAvailable':
+        return ['MemAvailable:      0 kB', 0]
+    return mocked_exec_upgrade_memory_success(command, exit_codes=None, timeout=None)
+
+
+def mocked_exec_upgrade_memory_aborted(
+    command, exit_codes=None, timeout=None, raise_unexpected_exit=None
+):
+    if command.startswith(f'{OpenWrt._SYSUPGRADE} --test'):
+        raise CommandFailedException('Invalid image type')
+    return mocked_exec_upgrade_memory_success(command, exit_codes=None, timeout=None)
 
 
 def connect_fail_on_write_checksum_pre_action(*args, **kwargs):
@@ -74,6 +134,7 @@ def connect_fail_on_write_checksum_pre_action(*args, **kwargs):
         raise NoValidConnectionsError(errors={'127.0.0.1': 'mocked error'})
 
 
+_mock_memory_success_called = False
 connect_fail_on_write_checksum = spy_mock(
     OpenWrt.connect, connect_fail_on_write_checksum_pre_action
 )
@@ -128,12 +189,16 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         return device_fw, device_conn, upgrade_op, output, task_signature
 
     @patch('scp.SCPClient.putfo')
-    def test_image_test_failed(self, putfo_mocked):
+    @patch.object(
+        OpenWrt, 'exec_command', side_effect=mocked_sysupgrade_test_failure,
+    )
+    def test_image_test_failed(self, exec_command, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        putfo_mocked.assert_called_once()
+        self.assertEqual(exec_command.call_count, 6)
+        putfo.assert_called_once()
         self.assertEqual(upgrade_op.status, 'aborted')
-        self.assertIn('sysupgrade: not found', upgrade_op.log)
+        self.assertIn('Invalid image type', upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
     @patch.object(
@@ -157,10 +222,10 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertTrue(device_conn.is_working)
         # should be called 6 times but 1 time is
         # executed in a subprocess and not caught by mock
-        self.assertEqual(exec_command.call_count, 5)
+        self.assertEqual(upgrade_op.status, 'success')
+        self.assertEqual(exec_command.call_count, 8)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 1)
-        self.assertEqual(upgrade_op.status, 'success')
         lines = [
             'Image checksum file found',
             'Checksum different, proceeding',
@@ -182,7 +247,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         start_time = timezone.now()
         with redirect_stderr(io.StringIO()):
             device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
-        self.assertEqual(exec_command.call_count, 3)
+        self.assertEqual(exec_command.call_count, 6)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(connect_fail_on_write_checksum.mock.call_count, 11)
         self.assertEqual(upgrade_op.status, 'failed')
@@ -299,7 +364,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op = device_fw.image.upgradeoperation_set.first()
         device_fw.refresh_from_db()
 
-        self.assertEqual(exec_command.call_count, 3)
+        self.assertEqual(exec_command.call_count, 6)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(upgrade_op.status, 'failed')
         lines = [
@@ -398,3 +463,166 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                     str(exception),
                     "Invalid image type\nImage check 'platform_check_image' failed.",
                 )
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(
+        OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_memory_success
+    )
+    def test_upgrade_free_memory_success(self, exec_command, is_alive, putfo):
+        global _mock_memory_success_called
+        _mock_memory_success_called = False
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(upgrade_op.status, 'success')
+        self.assertEqual(exec_command.call_count, 20)
+        self.assertEqual(
+            exec_command.call_args_list[5].args[0],
+            'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd stop',
+        )
+        self.assertEqual(
+            exec_command.call_args_list[12].args[0],
+            'test -f /etc/init.d/log && /etc/init.d/log stop',
+        )
+        self.assertEqual(
+            exec_command.call_args_list[13].args[0],
+            'test -f /sbin/wifi && /sbin/wifi down',
+        )
+        self.assertEqual(putfo.call_count, 1)
+        self.assertEqual(is_alive.call_count, 1)
+        lines = [
+            'Image checksum file found',
+            'Checksum different, proceeding',
+            'The image size (0 MiB) is greater than the available memory on the system (0 MiB).',
+            'For this reason the upgrade procedure will try to free up',
+            'Enough available memory was freed up on the system (65.41 MiB)!',
+            'Upgrade operation in progress',
+            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
+            'Connected! Writing checksum',
+            'Upgrade completed successfully',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertTrue(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(
+        OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_memory_success_legacy
+    )
+    def test_upgrade_free_memory_success_legacy(self, exec_command, is_alive, putfo):
+        global _mock_memory_success_called
+        _mock_memory_success_called = False
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(upgrade_op.status, 'success')
+        self.assertEqual(exec_command.call_count, 22)
+        self.assertEqual(
+            exec_command.call_args_list[4].args[0],
+            'cat /proc/meminfo | grep MemAvailable',
+        )
+        self.assertEqual(
+            exec_command.call_args_list[5].args[0], 'cat /proc/meminfo | grep MemFree'
+        )
+        self.assertEqual(putfo.call_count, 1)
+        self.assertEqual(is_alive.call_count, 1)
+        lines = [
+            'Image checksum file found',
+            'Checksum different, proceeding',
+            'The image size (0 MiB) is greater than the available memory on the system (0 MiB).',
+            'For this reason the upgrade procedure will try to free up',
+            'Enough available memory was freed up on the system (65.41 MiB)!',
+            'Upgrade operation in progress',
+            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
+            'Connected! Writing checksum',
+            'Upgrade completed successfully',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertTrue(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(
+        OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_memory_failure
+    )
+    def test_upgrade_free_memory_failure(self, exec_command, is_alive, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(exec_command.call_count, 26)
+        self.assertEqual(
+            exec_command.call_args_list[17].args[0],
+            'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start',
+        )
+        self.assertEqual(
+            exec_command.call_args_list[24].args[0],
+            'test -f /etc/init.d/log && /etc/init.d/log start',
+        )
+        self.assertEqual(
+            exec_command.call_args_list[25].args[0],
+            'test -f /sbin/wifi && /sbin/wifi up',
+        )
+        self.assertEqual(putfo.call_count, 0)
+        self.assertEqual(is_alive.call_count, 0)
+        lines = [
+            'Image checksum file found',
+            'Checksum different, proceeding',
+            'The image size (0 MiB) is greater than the available memory on the system (0 MiB).',
+            'For this reason the upgrade procedure will try to free up',
+            'There is still not enough available memory on the system (0 MiB)',
+            'Starting non critical services again...',
+            'Non critical services started, aborting upgrade',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertFalse(device_fw.installed)
+
+    test_upgrade_free_memory_aborted = None
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(
+        OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_memory_aborted
+    )
+    def test_upgrade_free_memory_aborted(self, exec_command, is_alive, putfo):
+        global _mock_memory_success_called
+        _mock_memory_success_called = False
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(exec_command.call_count, 27)
+        self.assertEqual(
+            exec_command.call_args_list[18].args[0],
+            'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start',
+        )
+        self.assertEqual(
+            exec_command.call_args_list[25].args[0],
+            'test -f /etc/init.d/log && /etc/init.d/log start',
+        )
+        self.assertEqual(
+            exec_command.call_args_list[26].args[0],
+            'test -f /sbin/wifi && /sbin/wifi up',
+        )
+        self.assertEqual(putfo.call_count, 1)
+        self.assertEqual(is_alive.call_count, 0)
+        lines = [
+            'Image checksum file found',
+            'Checksum different, proceeding',
+            'The image size (0 MiB) is greater than the available memory on the system (0 MiB).',
+            'For this reason the upgrade procedure will try to free up',
+            'Enough available memory was freed up on the system (65.41 MiB)!',
+            'Invalid image type',
+            'Starting non critical services again...',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertFalse(device_fw.installed)
