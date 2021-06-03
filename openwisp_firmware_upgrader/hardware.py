@@ -327,6 +327,14 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     'boards': ('Ubiquiti UniFi AC-Mesh Pro',),
                 },
             ),
+            # Unifi AC Pro ATH79
+            (
+                'ath79-generic-ubnt_unifiac-pro-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti UniFi AC Pro (OpenWRT 19.07 and later)',
+                    'boards': ('Ubiquiti UniFi AC Pro',),
+                },
+            ),
             (
                 'x86-64-combined-squashfs.img.gz',
                 {
