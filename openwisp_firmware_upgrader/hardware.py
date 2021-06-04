@@ -237,7 +237,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'ar71xx-generic-ubnt-nano-m-squashfs-sysupgrade.bin',
                 {
                     'label': 'Ubiquiti Nanostation M (OpenWRT 19.07 and earlier)',
-                    'boards': ('Ubiquiti Nano-M', 'Ubiquiti NanoStation M2'),
+                    'boards': (
+                        'Ubiquiti Nano-M',
+                        'Ubiquiti NanoStation M2',
+                        'Ubiquiti NanoStation M5',
+                        'Ubiquiti NanoStation loco M2',
+                        'Ubiquiti NanoStation loco M5',
+                    ),
                 },
             ),
             # Nanostation M XW ATH79
