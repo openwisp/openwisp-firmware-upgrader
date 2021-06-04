@@ -334,7 +334,4 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
 
 
 # DeviceAdmin.get_inlines = device_admin_get_inlines
-DeviceAdmin.conditional_inlines += [
-    DeviceFirmwareInline,
-    DeviceUpgradeOperationInline
-]
+DeviceAdmin.conditional_inlines += [DeviceFirmwareInline, DeviceUpgradeOperationInline]
