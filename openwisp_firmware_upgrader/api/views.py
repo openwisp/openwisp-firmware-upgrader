@@ -3,11 +3,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics, pagination, serializers
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import NotFound
-from rest_framework.permissions import DjangoModelPermissions
 from rest_framework.response import Response
 
 from openwisp_firmware_upgrader import private_storage
 from openwisp_users.api.authentication import BearerAuthentication
+from openwisp_users.api.mixins import FilterByOrganizationManaged
+from openwisp_users.api.permissions import DjangoModelPermissions, IsOrganizationManager
 
 from ..swapper import load_model
 from .serializers import (
@@ -30,33 +31,32 @@ class ListViewPagination(pagination.PageNumberPagination):
     max_page_size = 100
 
 
-class ProtectedAPIMixin(object):
-    authentication_classes = [BearerAuthentication, SessionAuthentication]
-    permission_classes = [DjangoModelPermissions]
+class ProtectedAPIMixin(FilterByOrganizationManaged):
+    authentication_classes = (
+        BearerAuthentication,
+        SessionAuthentication,
+    )
+    permission_classes = (
+        IsOrganizationManager,
+        DjangoModelPermissions,
+    )
     throttle_scope = 'firmware_upgrader'
     pagination_class = ListViewPagination
 
-
-class OrgAPIMixin(ProtectedAPIMixin):
     def get_queryset(self):
-        queryset = self.queryset.all()
-        if not self.request.user.is_superuser:
-            filter_key = f'{self.organization_field}__in'
-            user_orgs = self.request.user.organizations_dict.keys()
-            organization_filter = {filter_key: user_orgs}
-            queryset = queryset.filter(**organization_filter)
-        org = self.request.query_params.get('organization', None)
+        qs = super().get_queryset()
+        org_filtered = self.request.query_params.get('organization', None)
         try:
-            if org:
-                organization_filter = {self.organization_field + '__slug': org}
-                queryset = queryset.filter(**organization_filter)
+            if org_filtered:
+                organization_filter = {self.organization_field + '__slug': org_filtered}
+                qs = qs.filter(**organization_filter)
         except ValidationError:
             # when uuid is not valid
-            queryset = []
-        return queryset
+            qs = []
+        return qs
 
 
-class BuildListView(OrgAPIMixin, generics.ListCreateAPIView):
+class BuildListView(ProtectedAPIMixin, generics.ListCreateAPIView):
     queryset = Build.objects.all().select_related('category')
     serializer_class = BuildSerializer
     organization_field = 'category__organization'
@@ -66,14 +66,14 @@ class BuildListView(OrgAPIMixin, generics.ListCreateAPIView):
     ordering = ['-created', '-version']
 
 
-class BuildDetailView(OrgAPIMixin, generics.RetrieveUpdateDestroyAPIView):
+class BuildDetailView(ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIView):
     queryset = Build.objects.all().select_related('category')
     serializer_class = BuildSerializer
     lookup_fields = ['pk']
     organization_field = 'category__organization'
 
 
-class BuildBatchUpgradeView(OrgAPIMixin, generics.GenericAPIView):
+class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
     model = Build
     queryset = Build.objects.all().select_related('category')
     serializer_class = serializers.Serializer
@@ -103,7 +103,7 @@ class BuildBatchUpgradeView(OrgAPIMixin, generics.GenericAPIView):
         return Response(data)
 
 
-class CategoryListView(OrgAPIMixin, generics.ListCreateAPIView):
+class CategoryListView(ProtectedAPIMixin, generics.ListCreateAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     organization_field = 'organization'
@@ -112,14 +112,14 @@ class CategoryListView(OrgAPIMixin, generics.ListCreateAPIView):
     ordering = ['-name', '-created']
 
 
-class CategoryDetailView(OrgAPIMixin, generics.RetrieveUpdateDestroyAPIView):
+class CategoryDetailView(ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     lookup_fields = ['pk']
     organization_field = 'organization'
 
 
-class BatchUpgradeOperationListView(OrgAPIMixin, generics.ListAPIView):
+class BatchUpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     queryset = BatchUpgradeOperation.objects.all().select_related(
         'build', 'build__category'
     )
@@ -131,7 +131,7 @@ class BatchUpgradeOperationListView(OrgAPIMixin, generics.ListAPIView):
     ordering = ['-created']
 
 
-class BatchUpgradeOperationDetailView(OrgAPIMixin, generics.RetrieveAPIView):
+class BatchUpgradeOperationDetailView(ProtectedAPIMixin, generics.RetrieveAPIView):
     queryset = (
         BatchUpgradeOperation.objects.all()
         .select_related('build', 'build__category')
@@ -142,7 +142,7 @@ class BatchUpgradeOperationDetailView(OrgAPIMixin, generics.RetrieveAPIView):
     organization_field = 'build__category__organization'
 
 
-class FirmwareImageMixin(OrgAPIMixin):
+class FirmwareImageMixin(ProtectedAPIMixin):
     queryset = FirmwareImage.objects.all()
     parent = None
 

@@ -14,6 +14,7 @@ from openwisp_firmware_upgrader.api.serializers import (
 )
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
+from openwisp_utils.tests import AssertNumQueriesSubTestMixin
 
 from ..swapper import load_model
 
@@ -28,7 +29,9 @@ OrganizationUser = swapper.load_model('openwisp_users', 'OrganizationUser')
 user_model = get_user_model()
 
 
-class TestAPIUpgraderMixin(TestMultitenantAdminMixin, TestUpgraderMixin):
+class TestAPIUpgraderMixin(
+    AssertNumQueriesSubTestMixin, TestMultitenantAdminMixin, TestUpgraderMixin
+):
     def setUp(self):
         self.org = self._get_org()
         self.operator = self._create_operator(organizations=[self.org])
