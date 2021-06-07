@@ -61,7 +61,7 @@ class BuildListView(OrgAPIMixin, generics.ListCreateAPIView):
     serializer_class = BuildSerializer
     organization_field = 'category__organization'
     filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
-    filterset_fields = ['category']
+    filterset_fields = ['category', 'version', 'os']
     ordering_fields = ['version', 'created', 'modified']
     ordering = ['-created', '-version']
 
