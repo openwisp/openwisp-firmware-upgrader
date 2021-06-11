@@ -16,7 +16,7 @@ class BaseMeta:
     read_only_fields = ['created', 'modified']
 
 
-class BaseSerializer(ValidatedModelSerializer, FilterSerializerByOrgManaged):
+class BaseSerializer(FilterSerializerByOrgManaged, ValidatedModelSerializer):
     pass
 
 
