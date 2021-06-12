@@ -46,6 +46,7 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
         'mkdir -p /etc/openwisp': defaults,
         f'echo {TEST_CHECKSUM} > {_checksum}': defaults,
         f'{_sysupgrade} --help': ['--test', 1],
+        'rm /etc/openwisp/checksum 2> /dev/null': defaults,
         # used in memory check tests
         'test -f /sbin/wifi && /sbin/wifi down': defaults,
         'test -f /sbin/wifi && /sbin/wifi up': defaults,
@@ -437,8 +438,18 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                 OpenWrt._call_reflash_command(
                     upgrader, path, upgrader.UPGRADE_TIMEOUT, failure_queue
                 )
-                exec_command.assert_called_once_with(
-                    command, timeout=upgrader.UPGRADE_TIMEOUT, exit_codes=[0, -1]
+                self.assertEqual(exec_command.call_count, 2)
+                self.assertEqual(
+                    exec_command.call_args_list[0].args,
+                    ('rm /etc/openwisp/checksum 2> /dev/null',),
+                )
+                self.assertEqual(
+                    exec_command.call_args_list[0].kwargs, dict(exit_codes=[0, -1])
+                )
+                self.assertEqual(exec_command.call_args_list[1].args, (command,))
+                self.assertEqual(
+                    exec_command.call_args_list[1].kwargs,
+                    dict(timeout=upgrader.UPGRADE_TIMEOUT, exit_codes=[0, -1]),
                 )
                 self.assertTrue(failure_queue.empty())
                 failure_queue.close()
@@ -451,9 +462,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                 OpenWrt._call_reflash_command(
                     upgrader, path, upgrader.UPGRADE_TIMEOUT, failure_queue
                 )
-                exec_command.assert_called_once_with(
-                    command, timeout=upgrader.UPGRADE_TIMEOUT, exit_codes=[0, -1]
-                )
+                self.assertEqual(exec_command.call_count, 2)
                 sleep(0.05)
                 self.assertFalse(failure_queue.empty())
                 exception = failure_queue.get()
