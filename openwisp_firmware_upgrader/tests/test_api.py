@@ -92,6 +92,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
 
         build1 = self._create_build(category=category1)
         build2 = self._create_build(version='0.2', category=category2)
+        build3 = self._create_build(version='0.2.1', category=category2)
         url = reverse('upgrader:api_build_list')
 
         filter_params = dict(category=category1.pk)
@@ -102,19 +103,34 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         filter_params = dict(category=category2.pk)
         with self.assertNumQueries(4):
             r = self.client.get(url, filter_params)
-        self.assertEqual(r.data['results'], [self._serialize_build(build2)])
+        self.assertEqual(
+            r.data['results'],
+            [self._serialize_build(build3), self._serialize_build(build2)],
+        )
 
         with self.subTest('test version filter'):
             with self.assertNumQueries(3):
                 r = self.client.get(url, {'version': '0.2'})
             self.assertEqual(r.data['results'], [self._serialize_build(build2)])
 
+            with self.assertNumQueries(3):
+                r = self.client.get(url, {'version': '0.2.1'})
+            self.assertEqual(r.data['results'], [self._serialize_build(build3)])
+
         with self.subTest('test os filter'):
             build1.os = 'abcdefg'
             build1.save(update_fields=('os',))
+            build2.os = 'abcdefg-old'
+            build2.save(update_fields=('os',))
             with self.assertNumQueries(3):
                 r = self.client.get(url, {'os': build1.os})
             self.assertEqual(r.data['results'], [self._serialize_build(build1)])
+
+        with self.subTest('test version, os, category should AND'):
+            filter_params.update({'version': '0.2', 'os': 'abcdefg-old'})
+            with self.assertNumQueries(4):
+                r = self.client.get(url, filter_params)
+            self.assertEqual(r.data['results'], [self._serialize_build(build2)])
 
     def test_build_list_filter_org(self):
         org2 = self._create_org(name='New org', slug='new-org')
