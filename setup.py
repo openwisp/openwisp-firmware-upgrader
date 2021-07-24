@@ -6,6 +6,9 @@ from setuptools import find_packages, setup
 
 from openwisp_firmware_upgrader import get_version
 
+# TODO: change before merge
+controller = 'https://github.com/openwisp/openwisp-controller/tarball/issues/472-register-menu-groups'
+
 if sys.argv[-1] == 'publish':
     # delete any *.pyc, *.pyo and __pycache__
     os.system('find . | grep -E "(__pycache__|\.pyc|\.pyo$)" | xargs rm -rf')
@@ -35,8 +38,8 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        'openwisp-controller~=0.8',
-        'openwisp-utils[rest]~=0.7.1',
+        f'openwisp-controller @ {controller}',
+        'openwisp-utils[rest]',
         'django-private-storage~=2.2',
         'swapper~=1.1',
     ],

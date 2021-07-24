@@ -1,8 +1,8 @@
-from django.conf import settings
 from django.db.models.signals import post_save
 from django.utils.translation import gettext_lazy as _
-from swapper import load_model
+from swapper import get_model_name, load_model
 
+from openwisp_utils.admin_theme.menu import register_menu_group
 from openwisp_utils.api.apps import ApiAppConfig
 from openwisp_utils.utils import default_or_test
 
@@ -23,19 +23,37 @@ class FirmwareUpdaterConfig(ApiAppConfig):
 
     def ready(self, *args, **kwargs):
         super().ready(*args, **kwargs)
-        self.add_default_menu_items()
+        self.register_menu_groups()
         self.connect_device_signals()
 
-    def add_default_menu_items(self):
-        menu_setting = 'OPENWISP_DEFAULT_ADMIN_MENU_ITEMS'
-        items = [
-            {'model': f'{self.label}.Build'},
-        ]
-        if not hasattr(settings, menu_setting):  # pragma: no cover
-            setattr(settings, menu_setting, items)
-        else:
-            current_menu = getattr(settings, menu_setting)
-            current_menu += items
+    def register_menu_groups(self):
+        register_menu_group(
+            position=100,
+            config={
+                'label': _('Firmware'),
+                'items': {
+                    1: {
+                        'label': _('Builds'),
+                        'model': get_model_name(self.label, 'Build'),
+                        'name': 'changelist',
+                        'icon': 'ow-build',
+                    },
+                    2: {
+                        'label': _('Categories'),
+                        'model': get_model_name(self.label, 'Category'),
+                        'name': 'changelist',
+                        'icon': 'ow-category',
+                    },
+                    3: {
+                        'label': _('Mass Upgrade Operation'),
+                        'model': get_model_name(self.label, 'BatchUpgradeOperation'),
+                        'name': 'changelist',
+                        'icon': 'ow-mass-upgrade',
+                    },
+                },
+                'icon': 'ow-firmware',
+            },
+        )
 
     def connect_device_signals(self):
         DeviceConnection = load_model('connection', 'DeviceConnection')
