@@ -330,7 +330,9 @@ This setting can be used to add new image types for OpenWRT, eg:
   displayed in the UI
 - ``boards`` is a tuple of board names with which the different versions
   of the hardware are identified on OpenWRT; this field is used to
-  recognize automatically devices which have registered into OpenWISP
+  recognize automatically devices which have registered into OpenWISP.
+  The board name of the device on OpenWRT is read from the output of
+  the command ``cat /tmp/sysinfo/model``
 
 ``OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
