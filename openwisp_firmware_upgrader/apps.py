@@ -45,7 +45,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
                         'icon': 'ow-category',
                     },
                     3: {
-                        'label': _('Mass Upgrade Operation'),
+                        'label': _('Mass Upgrade Operations'),
                         'model': get_model_name(self.label, 'BatchUpgradeOperation'),
                         'name': 'changelist',
                         'icon': 'ow-mass-upgrade',
