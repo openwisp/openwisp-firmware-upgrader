@@ -411,7 +411,7 @@ download url, this will enable you to point to your API server's domain,
 example value: ``https://myfirmware.myapp.com``.
 
 ``OPENWISP_FIRMWARE_UPGRADERS_MAP``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 +--------------+-------------------------------------------------------------------------------------------------------------------------------+
 | **type**:    | ``dict``                                                                                                                      |
