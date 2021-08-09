@@ -325,9 +325,13 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
         return qs
 
 
+# TODO:
+# DeviceAdmin.inlines += [DeviceFirmwareInline]
+# DeviceAdmin.conditional_inlines += [DeviceUpgradeOperationInline]
+old_device_admin_get_inlines = DeviceAdmin.get_inlines
 def device_admin_get_inlines(self, request, obj):
     # copy the list to avoid modifying the original data structure
-    inlines = self.inlines
+    inlines = old_device_admin_get_inlines(self, request, obj)
     if obj:
         inlines = list(inlines)  # copy
         inlines.append(DeviceFirmwareInline)
