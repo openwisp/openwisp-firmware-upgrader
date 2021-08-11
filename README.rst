@@ -330,7 +330,9 @@ This setting can be used to add new image types for OpenWRT, eg:
   displayed in the UI
 - ``boards`` is a tuple of board names with which the different versions
   of the hardware are identified on OpenWRT; this field is used to
-  recognize automatically devices which have registered into OpenWISP
+  recognize automatically devices which have registered into OpenWISP.
+  The board name of the device on OpenWRT is read from the output of
+  the command ``cat /tmp/sysinfo/model``
 
 ``OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -409,6 +411,27 @@ If you have a seperate instance of openwisp-firmware-upgrader API on a
 different domain, you can use this option to change the base of the image
 download url, this will enable you to point to your API server's domain,
 example value: ``https://myfirmware.myapp.com``.
+
+``OPENWISP_FIRMWARE_UPGRADERS_MAP``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++--------------+-------------------------------------------------------------------------------------------------------------------------------+
+| **type**:    | ``dict``                                                                                                                      |
++--------------+-------------------------------------------------------------------------------------------------------------------------------+
+| **default**: | .. code-block:: python                                                                                                        |
+|              |                                                                                                                               |
+|              |   {                                                                                                                           |
+|              |     'openwisp_controller.connection.connectors.openwrt.ssh.OpenWrt': 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt',  |
+|              |   }                                                                                                                           |
++--------------+-------------------------------------------------------------------------------------------------------------------------------+
+
+A dictionary that maps update strategies to upgraders.
+
+If you want to use a custom update strategy you will need to use this setting
+to provide an entry with the class path of your update strategy as the key.
+
+If you want to use a custom upgrader you will need to use this setting to
+provide an entry with the class path of your upgrader as the value.
 
 REST API
 --------
