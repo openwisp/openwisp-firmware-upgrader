@@ -85,7 +85,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             for build in Build.objects.all().order_by('-created')
         ]
         url = reverse('upgrader:api_build_list')
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -98,24 +98,24 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         url = reverse('upgrader:api_build_list')
 
         filter_params = dict(category=category1.pk)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data['results'], [self._serialize_build(build1)])
 
         filter_params = dict(category=category2.pk)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data['results'], [self._serialize_build(build2)])
 
         with self.subTest('test version filter'):
-            with self.assertNumQueries(3):
+            with self.assertNumQueries(5):
                 r = self.client.get(url, {'version': '0.2'})
             self.assertEqual(r.data['results'], [self._serialize_build(build2)])
 
         with self.subTest('test os filter'):
             build1.os = 'abcdefg'
             build1.save(update_fields=('os',))
-            with self.assertNumQueries(3):
+            with self.assertNumQueries(5):
                 r = self.client.get(url, {'os': build1.os})
             self.assertEqual(r.data['results'], [self._serialize_build(build1)])
 
@@ -135,7 +135,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         serialized_list = [
             self._serialize_build(build),
         ]
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -143,7 +143,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         serialized_list = [
             self._serialize_build(build2),
         ]
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -201,7 +201,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         build = self._create_build()
         serialized = self._serialize_build(build)
         url = reverse('upgrader:api_build_detail', args=[build.pk])
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
 
@@ -214,7 +214,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             'version': '20.04',
             'changelog': 'PUT update',
         }
-        with self.assertNumQueries(9):
+        with self.assertNumQueries(10):
             r = self.client.put(url, data, content_type='application/json')
         self.assertEqual(r.data['id'], str(build.pk))
         self.assertEqual(r.data['category'], build.category.pk)
@@ -225,7 +225,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         build = self._create_build()
         url = reverse('upgrader:api_build_detail', args=[build.pk])
         data = dict(changelog='PATCH update')
-        with self.assertNumQueries(8):
+        with self.assertNumQueries(9):
             r = self.client.patch(url, data, content_type='application/json')
         self.assertEqual(r.data['id'], str(build.pk))
         self.assertEqual(r.data['category'], build.category.pk)
@@ -246,7 +246,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 0)
         with self.subTest('Existing build'):
             url = reverse('upgrader:api_build_batch_upgrade', args=[build.pk])
-            with self.assertNumQueries(7):
+            with self.assertNumQueries(8):
                 r = self.client.post(url)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
             self.assertEqual(DeviceFirmware.objects.count(), 0)
@@ -266,7 +266,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
         url = reverse('upgrader:api_build_batch_upgrade', args=[env['build2'].pk])
-        with self.assertNumQueries(7):
+        with self.assertNumQueries(10):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 200)
         device_fw_list = [
@@ -278,7 +278,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
 
     def test_build_upgradeable_404(self):
         url = reverse('upgrader:api_build_batch_upgrade', args=[uuid.uuid4()])
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
         self.assertEqual(r.json(), {'detail': 'Not found.'})
@@ -299,7 +299,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         OrganizationUser.objects.create(user=self.operator, organization=org2)
 
         url = reverse('upgrader:api_category_detail', args=[category.pk])
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
 
@@ -321,7 +321,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
             for category in Category.objects.all().order_by('-name')
         ]
         url = reverse('upgrader:api_category_list')
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -340,7 +340,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         serialized_list = [
             self._serialize_category(category),
         ]
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -348,7 +348,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         serialized_list = [
             self._serialize_category(category2),
         ]
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -397,7 +397,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         category = self._get_category()
         serialized = self._serialize_category(category)
         url = reverse('upgrader:api_category_detail', args=[category.pk])
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
 
@@ -408,7 +408,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
             'name': 'New name',
             'organization': category.organization.pk,
         }
-        with self.assertNumQueries(9):
+        with self.assertNumQueries(10):
             r = self.client.put(url, data, content_type='application/json')
         self.assertEqual(r.data['id'], str(category.pk))
         self.assertEqual(r.data['name'], 'New name')
@@ -453,7 +453,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         url = reverse(
             'upgrader:api_batchupgradeoperation_detail', args=[env['build2'].pk]
         )
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
 
@@ -475,7 +475,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         operation = BatchUpgradeOperation.objects.get(build=env['build2'])
         serialized_list = [self._serialize_upgrade_env(operation)]
         url = reverse('upgrader:api_batchupgradeoperation_list')
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -490,21 +490,21 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self._serialize_upgrade_env(operation)
             for operation in BatchUpgradeOperation.objects.order_by('-created')
         ]
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
         operation = BatchUpgradeOperation.objects.get(build=env['build1'])
         serialized_list = [self._serialize_upgrade_env(operation)]
         filter_params = dict(build=env['build1'].pk)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data['results'], serialized_list)
 
         operation = BatchUpgradeOperation.objects.get(build=env['build2'])
         serialized_list = [self._serialize_upgrade_env(operation)]
         filter_params = dict(build=env['build2'].pk)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -515,7 +515,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             ).order_by('-created')
         ]
         filter_params = dict(status='in-progress')
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(4):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -526,7 +526,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             ).order_by('-created')
         ]
         filter_params = dict(status='success')
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(4):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -547,14 +547,14 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self._login('operator', 'tester')
         operation = BatchUpgradeOperation.objects.get(build=env['build2'])
         serialized_list = [self._serialize_upgrade_env(operation)]
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
         self._login('operator2', 'tester')
         operation2 = BatchUpgradeOperation.objects.get(build=env2['build2'])
         serialized_list = [self._serialize_upgrade_env(operation2)]
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -597,7 +597,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         operation = BatchUpgradeOperation.objects.get(build=env['build2'])
         serialized = self._serialize_upgrade_env(operation, action='detail')
         url = reverse('upgrader:api_batchupgradeoperation_detail', args=[operation.pk])
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(7):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
 
@@ -642,7 +642,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             for image in FirmwareImage.objects.all().order_by('-created')
         ]
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -660,14 +660,14 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
 
         filter_params = dict(type=self.TPLINK_4300_IMAGE)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data['results'], [self._serialize_image(image)])
 
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
 
         filter_params = dict(type=self.TPLINK_4300_IL_IMAGE)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data['results'], [self._serialize_image(image2)])
 
@@ -686,14 +686,14 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         self._login('operator', 'tester')
         serialized_list = [self._serialize_image(image)]
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
         url = reverse('upgrader:api_firmware_list', args=[image2.build.pk])
         self._login('operator2', 'tester')
         serialized_list = [self._serialize_image(image2)]
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
@@ -760,7 +760,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         serialized = self._serialize_image(image)
         url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(8):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
 
@@ -768,7 +768,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         self.assertEqual(FirmwareImage.objects.count(), 1)
         url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(10):
+        with self.assertNumQueries(13):
             r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(FirmwareImage.objects.count(), 0)
@@ -780,7 +780,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
         with self.subTest("Test as operator"):
             self._make_operator_org_manager()
-            with self.assertNumQueries(6):
+            with self.assertNumQueries(8):
                 response = self.client.get(url)
             self.assertEqual(response.getvalue(), content)
         with self.subTest("Test as superuser"):
@@ -831,7 +831,7 @@ class TestOrgAPIMixin(TestAPIUpgraderMixin, TestCase):
             self._serialize_build(build)
             for build in Build.objects.all().order_by('-created')
         ]
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
         self.assertEqual(r.status_code, 200)
