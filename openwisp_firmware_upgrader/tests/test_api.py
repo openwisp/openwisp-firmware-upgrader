@@ -116,7 +116,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
                 r = self.client.get(url, {'version': '0.2'})
             self.assertEqual(r.data['results'], [self._serialize_build(build2)])
 
-            with self.assertNumQueries(3):
+            with self.assertNumQueries(5):
                 r = self.client.get(url, {'version': '0.2.1'})
             self.assertEqual(r.data['results'], [self._serialize_build(build3)])
 
@@ -125,13 +125,13 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             build1.save(update_fields=('os',))
             build2.os = 'abcdefg-old'
             build2.save(update_fields=('os',))
-            with self.assertNumQueries(3):
+            with self.assertNumQueries(5):
                 r = self.client.get(url, {'os': build1.os})
             self.assertEqual(r.data['results'], [self._serialize_build(build1)])
 
         with self.subTest('test version, os, category should AND'):
             filter_params.update({'version': '0.2', 'os': 'abcdefg-old'})
-            with self.assertNumQueries(4):
+            with self.assertNumQueries(6):
                 r = self.client.get(url, filter_params)
             self.assertEqual(r.data['results'], [self._serialize_build(build2)])
 
