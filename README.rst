@@ -86,6 +86,7 @@ Follow the `setup instructions of openwisp-controller
         # django apps
         # all-auth
         'django.contrib.sites',
+        'openwisp_users.accounts',
         'allauth',
         'allauth.account',
         'django_extensions',

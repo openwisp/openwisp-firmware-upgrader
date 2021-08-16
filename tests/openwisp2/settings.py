@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'django.contrib.gis',
     # all-auth
     'django.contrib.sites',
+    'openwisp_users.accounts',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
