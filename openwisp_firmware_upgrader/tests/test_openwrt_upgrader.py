@@ -239,12 +239,13 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             self.assertIn(line, upgrade_op.log)
         self.assertTrue(device_fw.installed)
 
+    @patch.object(OpenWrt, '_call_reflash_command')
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
     @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     @patch.object(OpenWrt, 'connect', connect_fail_on_write_checksum)
-    def test_cant_reconnect_on_write_checksum(self, exec_command, putfo):
+    def test_cant_reconnect_on_write_checksum(self, exec_command, putfo, *args):
         start_time = timezone.now()
         with redirect_stderr(io.StringIO()):
             device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
@@ -332,12 +333,13 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
+    @patch.object(OpenWrt, '_call_reflash_command')
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
     @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
     @patch('billiard.Process.is_alive', return_value=True)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
-    def test_device_ip_changed_after_reflash(self, exec_command, alive, putfo):
+    def test_device_ip_changed_after_reflash(self, exec_command, alive, putfo, *args):
         device_fw, device_conn, output = self._trigger_upgrade(upgrade=False)
 
         def connect_pre_action(upgrader):
@@ -444,7 +446,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                     ('rm /etc/openwisp/checksum 2> /dev/null',),
                 )
                 self.assertEqual(
-                    exec_command.call_args_list[0].kwargs, dict(exit_codes=[0, -1])
+                    exec_command.call_args_list[0].kwargs, dict(exit_codes=[0, -1, 1])
                 )
                 self.assertEqual(exec_command.call_args_list[1].args, (command,))
                 self.assertEqual(

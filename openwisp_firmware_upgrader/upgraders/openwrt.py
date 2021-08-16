@@ -278,14 +278,14 @@ class OpenWrt(BaseOpenWrt):
 
     @classmethod
     def _call_reflash_command(cls, upgrader, path, timeout, failure_queue):
-        upgrader.connect()
-        command = upgrader.get_upgrade_command(path)
-        # remove persistent checksum if present (introduced in openwisp-config 0.6.0)
-        # otherwise the device will not download the configuration again after reflash
-        upgrader.exec_command(
-            'rm /etc/openwisp/checksum 2> /dev/null', exit_codes=[0, -1]
-        )
         try:
+            upgrader.connect()
+            command = upgrader.get_upgrade_command(path)
+            # remove persistent checksum if present (introduced in openwisp-config 0.6.0)
+            # otherwise the device will not download the configuration again after reflash
+            upgrader.exec_command(
+                'rm /etc/openwisp/checksum 2> /dev/null', exit_codes=[0, -1, 1]
+            )
             output, exit_code = upgrader.exec_command(
                 command, timeout=timeout, exit_codes=[0, -1]
             )
