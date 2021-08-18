@@ -1,11 +1,9 @@
 input.object-tools-button {
-    padding: 5px 15px;
-    background-color: #999;
-    font-weight: 400;
-    font-size: 13px;
+    padding: 0.4rem 0.8rem;
+    text-transform: uppercase;
     line-height: 20px;
+    display: inline-block;
+    font-size: 13px;
     margin: 0;
-    display: block;
-    float: left;
-    border-radius: 15px;
+    letter-spacing: 0.5px;
 }
