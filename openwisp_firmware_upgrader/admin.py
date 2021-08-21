@@ -75,9 +75,6 @@ class BuildAdmin(BaseVersionAdmin):
     # Allows apps that extend this modules to use this template with less hacks
     change_form_template = 'admin/firmware_upgrader/change_form.html'
 
-    class Media:
-        css = {'all': ('admin/css/firmware-upgrader.css',)}
-
     def organization(self, obj):
         return obj.category.organization
 
