@@ -113,9 +113,7 @@ class AbstractBuild(TimeStampedEditableModel):
             return
         if (
             load_model('Build')
-            .objects.filter(
-                category__organization=category.organization, os=self.os
-            )
+            .objects.filter(category__organization=category.organization, os=self.os)
             .exclude(pk=self.pk)
             .exists()
         ):
