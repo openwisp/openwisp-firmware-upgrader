@@ -105,12 +105,16 @@ class AbstractBuild(TimeStampedEditableModel):
 
     def clean(self):
         # Make sure that ('category__organization', 'os') is unique too
-        if not (self.os and hasattr(self, "category")):
+        try:
+            category = self.category
+        except ObjectDoesNotExist:
+            return
+        if not self.os:
             return
         if (
             load_model('Build')
             .objects.filter(
-                category__organization=self.category.organization, os=self.os
+                category__organization=category.organization, os=self.os
             )
             .exclude(pk=self.pk)
             .exists()
@@ -119,7 +123,7 @@ class AbstractBuild(TimeStampedEditableModel):
                 {
                     'os': _(
                         f'A build with this OS identifier ("{self.os}") and '
-                        f'organization ("{self.category.organization}") already exists'
+                        f'organization ("{category.organization}") already exists'
                     )
                 }
             )
