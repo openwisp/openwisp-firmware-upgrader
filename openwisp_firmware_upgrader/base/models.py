@@ -254,6 +254,12 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     )
     image = models.ForeignKey(get_model_name('FirmwareImage'), on_delete=models.CASCADE)
     installed = models.BooleanField(default=False)
+    no_preserve_settings = models.BooleanField(default=False)
+    no_preserve_settings.verbose_name = _('Upgrade without keeping settings')
+    no_preserve_settings.help_text = _('Does not preserve any changes made on the local device, i.e. a clean installation')
+    force_upgrade = models.BooleanField(default=False)
+    force_upgrade.help_text = _('Force installation of the firmware even if image compatibilty checks fail. '  
+                                'Warning: this can brick the device - only use this if you know what you are doing.')
     _old_image = None
 
     def __init__(self, *args, **kwargs):
@@ -283,7 +289,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                 )
             )
         if self.device.model not in self.image.boards:
-            raise ValidationError(_('Device model and image model do not match'))
+            if (self.force_upgrade == False):
+                raise ValidationError(_('Device model and image model do not match. Force upgrade to proceed anyway. You could brick this device.'))
 
     @property
     def image_has_changed(self):
@@ -306,7 +313,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
     def create_upgrade_operation(self, batch):
         uo_model = load_model('UpgradeOperation')
-        operation = uo_model(device=self.device, image=self.image)
+        operation = uo_model(device=self.device, image=self.image, force_upgrade=self.force_upgrade, no_preserve_settings=self.no_preserve_settings)
         if batch:
             operation.batch = batch
         operation.full_clean()
@@ -501,6 +508,9 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
     image = models.ForeignKey(
         get_model_name('FirmwareImage'), null=True, on_delete=models.SET_NULL
     )
+    force_upgrade = models.BooleanField(default=False)
+    no_preserve_settings = models.BooleanField(default=False)
+
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
     )

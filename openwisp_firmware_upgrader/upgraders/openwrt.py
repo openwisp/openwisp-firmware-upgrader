@@ -24,7 +24,10 @@ class OpenWrt(BaseOpenWrt):
     RECONNECT_RETRY_DELAY = OPENWRT_SETTINGS.get('reconnect_retry_delay', 20)
     RECONNECT_MAX_RETRIES = OPENWRT_SETTINGS.get('reconnect_max_retries', 35)
     UPGRADE_TIMEOUT = OPENWRT_SETTINGS.get('upgrade_timeout', 90)
-    UPGRADE_COMMAND = '{sysupgrade} -v -c {path}'
+    UPGRADE_COMMAND = '{sysupgrade} {chosen_options} -v {path}'
+    UPGRADE_FORCE = ' --force'
+    UPGRADE_PRESERVE_ETC = ' -c'
+    UPGRADE_NO_PRESERVE = ' -n'
     # path to sysupgrade command
     _SYSUPGRADE = '/sbin/sysupgrade'
 
@@ -47,7 +50,8 @@ class OpenWrt(BaseOpenWrt):
         checksum = self._test_checksum(image)
         remote_path = self.get_remote_path(image)
         self.upload(image.file, remote_path)
-        self._test_image(remote_path)
+        if (self.upgrade_operation.force_upgrade == False):
+            self._test_image(remote_path)
         self._reflash(remote_path)
         self._write_checksum(checksum)
 
@@ -184,7 +188,14 @@ class OpenWrt(BaseOpenWrt):
         return os.path.join(self.REMOTE_UPLOAD_DIR, filename)
 
     def get_upgrade_command(self, path):
-        return self.UPGRADE_COMMAND.format(sysupgrade=self._SYSUPGRADE, path=path)
+        options = "" 
+        if (self.upgrade_operation.force_upgrade == True):
+            options += self.UPGRADE_FORCE
+        if (self.upgrade_operation.no_preserve_settings == True):
+            options += self.UPGRADE_NO_PRESERVE
+        else:
+            options += self.UPGRADE_PRESERVE_ETC
+        return self.UPGRADE_COMMAND.format(sysupgrade=self._SYSUPGRADE, chosen_options=options, path=path)
 
     def _test_checksum(self, image):
         """
