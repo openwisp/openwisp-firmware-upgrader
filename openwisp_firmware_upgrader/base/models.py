@@ -105,7 +105,7 @@ class AbstractBuild(TimeStampedEditableModel):
 
     def clean(self):
         # Make sure that ('category__organization', 'os') is unique too
-        if not self.os:
+        if not (self.os and hasattr(self, "category")):
             return
         if (
             load_model('Build')
