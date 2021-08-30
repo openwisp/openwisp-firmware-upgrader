@@ -64,6 +64,18 @@ class TestModels(TestUpgraderMixin, TestCase):
         with self.subTest('validating the same object again should work'):
             b1.full_clean()
 
+        with self.subTest('validation error should be raised on empty category'):
+            try:
+                b2 = self._create_build(
+                    os=self.os + '_2', version='0.2', organization=org
+                )
+                b2.category = None
+                b2.full_clean()
+            except ValidationError as e:
+                self.assertIn('category', e.message_dict)
+            else:
+                self.fail('ValidationError not raised when build category is empty')
+
     def test_fw_str(self):
         fw = self._create_firmware_image()
         self.assertIn(str(fw.build), str(fw))
