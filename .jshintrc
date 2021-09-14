@@ -1,0 +1,21 @@
+{
+    "unused": true,
+    "esversion": 6,
+    "curly": true,
+    "strict": "global",
+    "globals": {
+        "django": true,
+        "gettext": true,
+        "ReconnectingWebSocket": true,
+        "notificationApiHost": true,
+        "notificationSound": true,
+        "notificationSocket": true,
+        "owNotifyObjectId": true,
+        "owNotifyAppLabel": true,
+        "owNotifyModelName": true,
+        "owIsChangeForm": true,
+        "getAbsoluteUrl": true,
+        "dateTimeStampToDateTimeLocaleString": true
+    },
+    "browser": true
+}
