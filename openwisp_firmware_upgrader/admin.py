@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 from django import forms
+from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.shortcuts import redirect
@@ -9,6 +10,7 @@ from django.template.response import TemplateResponse
 from django.urls import resolve, reverse
 from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
+from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
 
@@ -47,6 +49,25 @@ class CategoryAdmin(BaseVersionAdmin):
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
     model = FirmwareImage
     extra = 0
+
+    class Media:
+        extra = '' if getattr(settings, 'DEBUG', False) else '.min'
+        i18n_name = admin.widgets.SELECT2_TRANSLATIONS.get(get_language())
+        i18n_file = (
+            ('admin/js/vendor/select2/i18n/%s.js' % i18n_name,) if i18n_name else ()
+        )
+        js = (
+            (
+                'admin/js/vendor/jquery/jquery%s.js' % extra,
+                'admin/js/vendor/select2/select2.full%s.js' % extra,
+            )
+            + i18n_file
+            + ('admin/js/jquery.init.js', 'firmware-upgrader/js/build.js')
+        )
+
+        css = {
+            'screen': ('admin/css/vendor/select2/select2%s.css' % extra,),
+        }
 
     def has_change_permission(self, request, obj=None):
         if obj:
