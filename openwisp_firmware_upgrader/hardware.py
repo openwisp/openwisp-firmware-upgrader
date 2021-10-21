@@ -311,6 +311,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     'label': 'Ubiquiti Unifi AC Mesh (OpenWRT 19.07 and later)',
                     'boards': (
+                        'Ubiquiti UniFi AC Mesh',
                         'Ubiquiti UniFi AC-Mesh',
                         'Ubiquiti UniFi-AC-MESH',
                         'Ubiquiti UniFi-AC-LITE/MESH',
