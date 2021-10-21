@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'django.contrib.gis',
     # all-auth
     'django.contrib.sites',
+    'openwisp_users.accounts',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
@@ -88,7 +89,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'openwisp2.urls'
 
-ASGI_APPLICATION = 'openwisp_controller.geo.channels.routing.channel_routing'
+ASGI_APPLICATION = 'openwisp2.routing.application'
 CHANNEL_LAYERS = {
     'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'},
 }

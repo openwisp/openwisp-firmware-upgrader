@@ -784,7 +784,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         self.assertEqual(FirmwareImage.objects.count(), 1)
         url = reverse('upgrader:api_firmware_detail', args=[image.build.pk, image.pk])
-        with self.assertNumQueries(13):
+        with self.assertNumQueries(11):
             r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(FirmwareImage.objects.count(), 0)

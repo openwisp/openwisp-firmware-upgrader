@@ -1,7 +1,6 @@
 [run]
 omit =
-    /*/test*
-    /tests
     /*/__init__.py
-    /setup.py
+    /*/tests/*
     /*/migrations/*
+    /*/upgraders/openwisp.py
