@@ -1,6 +1,6 @@
 """
 Mapping between hardware models and firwmare image
-This if focused on OpenWRT only fpr now, but it should
+This if focused on OpenWRT only for now, but it should
 be possible to add support for different embedded
 systems in the future.
 """
