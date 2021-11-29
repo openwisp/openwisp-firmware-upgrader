@@ -363,16 +363,20 @@ class Migration(migrations.Migration):
             model_name='batchupgradeoperation',
             name='build',
             field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE, to=get_model_name('Build'),
+                on_delete=django.db.models.deletion.CASCADE,
+                to=get_model_name('Build'),
             ),
         ),
         migrations.AlterUniqueTogether(
-            name='firmwareimage', unique_together={('build', 'type')},
+            name='firmwareimage',
+            unique_together={('build', 'type')},
         ),
         migrations.AlterUniqueTogether(
-            name='category', unique_together={('name', 'organization')},
+            name='category',
+            unique_together={('name', 'organization')},
         ),
         migrations.AlterUniqueTogether(
-            name='build', unique_together={('category', 'version')},
+            name='build',
+            unique_together={('category', 'version')},
         ),
     ]

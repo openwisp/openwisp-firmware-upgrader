@@ -264,7 +264,9 @@ class Migration(migrations.Migration):
                     ),
                 ),
             ],
-            options={'abstract': False,},
+            options={
+                'abstract': False,
+            },
         ),
         migrations.CreateModel(
             name='DeviceFirmware',
@@ -311,7 +313,10 @@ class Migration(migrations.Migration):
                     ),
                 ),
             ],
-            options={'verbose_name': 'Device Firmware', 'abstract': False,},
+            options={
+                'verbose_name': 'Device Firmware',
+                'abstract': False,
+            },
         ),
         migrations.CreateModel(
             name='Category',
@@ -380,6 +385,7 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.AlterUniqueTogether(
-            name='build', unique_together={('category', 'version')},
+            name='build',
+            unique_together={('category', 'version')},
         ),
     ]

@@ -265,7 +265,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 self.assertContains(response, f'class="mg-link" href="{url}"')
         with self.subTest('test firmware group is registered'):
             self.assertContains(
-                response, '<div class="mg-dropdown-label">Firmware </div>', html=True,
+                response,
+                '<div class="mg-dropdown-label">Firmware </div>',
+                html=True,
             )
 
 
