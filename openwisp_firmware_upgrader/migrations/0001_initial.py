@@ -6,6 +6,8 @@ import openwisp_users.mixins
 import uuid
 import swapper
 from ..swapper import get_model_name
+from swapper import dependency, split
+from django.conf import settings
 
 from ..hardware import FIRMWARE_IMAGE_TYPE_CHOICES
 
@@ -16,7 +18,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('config', '0015_default_groups_permissions'),
-        ('openwisp_users', '0004_default_groups'),
+        dependency(*split(settings.AUTH_USER_MODEL), version='0004_default_groups'),
         swapper.dependency('firmware_upgrader', 'Category'),
         swapper.dependency('firmware_upgrader', 'Build'),
         swapper.dependency('firmware_upgrader', 'FirmwareImage'),
