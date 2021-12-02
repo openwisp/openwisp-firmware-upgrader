@@ -191,7 +191,9 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
 
     @patch('scp.SCPClient.putfo')
     @patch.object(
-        OpenWrt, 'exec_command', side_effect=mocked_sysupgrade_test_failure,
+        OpenWrt,
+        'exec_command',
+        side_effect=mocked_sysupgrade_test_failure,
     )
     def test_image_test_failed(self, exec_command, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
@@ -203,7 +205,9 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertFalse(device_fw.installed)
 
     @patch.object(
-        OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_not_needed,
+        OpenWrt,
+        'exec_command',
+        side_effect=mocked_exec_upgrade_not_needed,
     )
     def test_upgrade_not_needed(self, mocked):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
@@ -273,7 +277,9 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch.object(upgrade_firmware, 'max_retries', 1)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     @patch.object(
-        OpenWrtSshConnector, 'connect', side_effect=Exception('Connection failed'),
+        OpenWrtSshConnector,
+        'connect',
+        side_effect=Exception('Connection failed'),
     )
     def test_connection_failure(self, connect, exec_command, putfo):
         (
