@@ -43,7 +43,6 @@ setup(
         f'openwisp-controller @ {controller}',
         f'openwisp-utils[rest] @ {utils}',
         'django-private-storage~=2.2',
-        'swapper~=1.1.0',
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',
