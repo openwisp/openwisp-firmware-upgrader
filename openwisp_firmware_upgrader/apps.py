@@ -13,6 +13,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
     name = 'openwisp_firmware_upgrader'
     label = 'firmware_upgrader'
     verbose_name = _('Firmware Management')
+    default_auto_field = 'django.db.models.AutoField'
 
     API_ENABLED = app_settings.FIRMWARE_UPGRADER_API
     REST_FRAMEWORK_SETTINGS = {
