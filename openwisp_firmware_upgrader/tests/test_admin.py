@@ -8,6 +8,7 @@ from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils.timezone import localtime
 
+from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
 from openwisp_firmware_upgrader.admin import (
     BuildAdmin,
     DeviceAdmin,
@@ -39,6 +40,24 @@ class MockRequest:
 
 class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
     app_label = 'firmware_upgrader'
+    _device_params = TestConfigAdmin._device_params.copy()
+    _device_params.update(
+        {
+            'devicefirmware-0-image': '',
+            'devicefirmware-0-id': '',
+            'devicefirmware-TOTAL_FORMS': 0,
+            'devicefirmware-INITIAL_FORMS': 0,
+            'devicefirmware-MIN_NUM_FORMS': 0,
+            'devicefirmware-MAX_NUM_FORMS': 1,
+            'deviceconnection_set-TOTAL_FORMS': 1,
+            'deviceconnection_set-INITIAL_FORMS': 1,
+            'devicelocation-TOTAL_FORMS': 1,
+            'devicelocation-INITIAL_FORMS': 0,
+            'devicelocation-MIN_NUM_FORMS': 0,
+            'devicelocation-MAX_NUM_FORMS': 1,
+            'config-INITIAL_FORMS': 1,
+        }
+    )
 
     def setUp(self, *args, **kwargs):
         super().setUp(*args, **kwargs)
@@ -270,6 +289,33 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 html=True,
             )
 
+    def test_save_device_with_deleted_devicefirmware(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        device_params = self._device_params.copy()
+        device_params.update(
+            {
+                'devicefirmware-0-image': str(device_fw.image_id),
+                'devicefirmware-0-id': str(device_fw.id),
+                'organization': str(device.organization.id),
+                'config-0-id': str(device.config.pk),
+                'config-0-device': str(device.id),
+                'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
+                'deviceconnection_set-0-id': str(device_conn.id),
+                'devicefirmware-TOTAL_FORMS': 1,
+                'devicefirmware-INITIAL_FORMS': 1,
+            }
+        )
+        FirmwareImage.objects.all().delete()
+        response = self.client.post(
+            reverse('admin:config_device_change', args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+
 
 _mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
 _mock_connect = 'openwisp_controller.connection.models.DeviceConnection.connect'
@@ -380,3 +426,6 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         uo.save()
         qs = inline.get_queryset(request)
         self.assertEqual(qs.count(), 0)
+
+
+del TestConfigAdmin
