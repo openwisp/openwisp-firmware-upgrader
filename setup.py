@@ -42,7 +42,7 @@ setup(
     install_requires=[
         f'openwisp-controller @ {controller}',
         f'openwisp-utils[rest] @ {utils}',
-        'django-private-storage~=2.2',
+        'django-private-storage~=3.0.0',
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',

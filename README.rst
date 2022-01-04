@@ -132,13 +132,12 @@ The root URLconf (``urls.py``) should look like the following example:
     from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 
     urlpatterns = [
-        url(r'^admin/', include(admin.site.urls)),
-        url(r'', include('openwisp_controller.urls')),
-        url(r'', include('openwisp_firmware_upgrader.urls')),
-        # token auth API
-        url(r'^api/v1/', include((get_api_urls(), 'users'), namespace='users')),
-        # needed for API docs
-        url(r'^api/v1/', include('openwisp_utils.api.urls')),
+        path('admin/', admin.site.urls),
+        path('', include('openwisp_controller.urls')),
+        path('', redirect_view, name='index'),
+        path('', include('openwisp_firmware_upgrader.urls')),
+        path('api/v1/', include((get_api_urls(), 'users'), namespace='users')),
+        path('api/v1/', include('openwisp_utils.api.urls')),
     ]
 
     urlpatterns += staticfiles_urlpatterns()
@@ -1015,7 +1014,7 @@ Step 2: remove the following line from your root ``urls.py`` file:
 
 .. code-block:: python
 
-    url('^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+    path('firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
 
 Step 3: add an URL route pointing to your custom view in ``urls.py`` file:
 
@@ -1026,7 +1025,7 @@ Step 3: add an URL route pointing to your custom view in ``urls.py`` file:
 
     urlpatterns = [
         # ... other URLs
-        url(r'^(?P<path>.*)$', FirmwareImageDownloadView.as_view(), name='serve_private_file',),
+        path('<your-custom-path>', FirmwareImageDownloadView.as_view(), name='serve_private_file',),
     ]
 
 For more information regarding django views, please refer to the
