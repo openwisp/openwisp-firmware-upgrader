@@ -267,6 +267,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         abstract = True
 
     def clean(self):
+        if not hasattr(self, 'image') or not hasattr(self, 'device'):
+            return
         if self.image.build.category.organization != self.device.organization:
             raise ValidationError(
                 {
