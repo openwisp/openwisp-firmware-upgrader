@@ -7,9 +7,9 @@ openwisp-firmware-upgrader
 .. image:: https://coveralls.io/repos/openwisp/openwisp-firmware-upgrader/badge.svg
   :target: https://coveralls.io/r/openwisp/openwisp-firmware-upgrader
 
-.. image:: https://requires.io/github/openwisp/openwisp-firmware-upgrader/requirements.svg?branch=master
-   :target: https://requires.io/github/openwisp/openwisp-firmware-upgrader/requirements/?branch=master
-   :alt: Requirements Status
+.. image:: https://img.shields.io/librariesio/release/github/openwisp/openwisp-firmware-upgrader
+  :target: https://libraries.io/github/openwisp/openwisp-firmware-upgrader#repository_dependencies
+  :alt: Dependency monitoring
 
 .. image:: https://img.shields.io/gitter/room/nwjs/nw.js.svg?style=flat-square
    :target: https://gitter.im/openwisp/general
@@ -60,8 +60,7 @@ Firmware upgrade module of OpenWISP.
 Requirements
 ------------
 
-- Python >= 3.6
-- Django >= 3.0
+- Python >= 3.7
 - openwisp-controller (and its dependencies) >= 0.8.0
 
 Install Dependencies
