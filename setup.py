@@ -7,7 +7,10 @@ from setuptools import find_packages, setup
 from openwisp_firmware_upgrader import get_version
 
 # TODO: change this when next version of openwisp_controller is released
-controller = 'https://github.com/openwisp/openwisp-controller/tarball/master'
+controller = (
+    'https://github.com/openwisp/openwisp-controller/tarball/'
+    'improved-deleted-device-reversion'
+)
 # TODO: change this when next version of openwisp_utils is released
 utils = 'https://github.com/openwisp/openwisp-utils/tarball/master'
 
