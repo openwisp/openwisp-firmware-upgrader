@@ -23,9 +23,7 @@ UpgradeOperation = load_model('UpgradeOperation')
 DeviceFirmware = load_model('DeviceFirmware')
 
 
-class TestDeviceConnectionInlineAdmin(
-    TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase
-):
+class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
     config_app_label = 'config'
     admin_username = 'admin'
     admin_password = 'password'
@@ -80,7 +78,11 @@ class TestDeviceConnectionInlineAdmin(
         category = self._get_category(organization=org)
         build = self._create_build(category=category, version='0.1', os=self.os)
         image = self._create_firmware_image(build=build, type=self.image_type)
-        device = self._create_device_with_connection(os=self.os, model=image.boards[0])
+        self._create_credentials(auto_add=True, organization=org)
+        device = self._create_device(
+            os=self.os, model=image.boards[0], organization=org
+        )
+        self._create_config(device=device)
         self.assertEqual(Device.objects.count(), 1)
         self.assertEqual(DeviceConnection.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)

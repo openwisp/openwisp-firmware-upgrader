@@ -115,11 +115,8 @@ class BuildAdmin(BaseVersionAdmin):
         if model == FirmwareImage:
             kwargs['follow'] = (
                 *kwargs['follow'],
-                'devicefirmware_set',
                 'build',
             )
-        if model == Build:
-            kwargs['follow'] = (*kwargs['follow'],)
         return super().reversion_register(model, **kwargs)
 
     def upgrade_selected(self, request, queryset):
@@ -376,5 +373,5 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
 DeviceAdmin.conditional_inlines += [DeviceFirmwareInline, DeviceUpgradeOperationInline]
 
 reversion.register(model=DeviceFirmware, follow=['device', 'image'])
-reversion.register(model=UpgradeOperation, follow=['device', 'image'])
+reversion.register(model=UpgradeOperation)
 DeviceAdmin.add_reversion_following(follow=['devicefirmware', 'upgradeoperation_set'])
