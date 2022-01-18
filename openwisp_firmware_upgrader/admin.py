@@ -1,6 +1,8 @@
 import logging
 from datetime import timedelta
 
+import reversion
+import swapper
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
@@ -26,6 +28,9 @@ BatchUpgradeOperation = load_model('BatchUpgradeOperation')
 UpgradeOperation = load_model('UpgradeOperation')
 DeviceFirmware = load_model('DeviceFirmware')
 FirmwareImage = load_model('FirmwareImage')
+Category = load_model('Category')
+Build = load_model('Build')
+Device = swapper.load_model('config', 'Device')
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -44,6 +49,11 @@ class CategoryAdmin(BaseVersionAdmin):
     list_select_related = ['organization']
     search_fields = ['name']
     ordering = ['-name', '-created']
+
+    def reversion_register(self, model, **kwargs):
+        if model == Category:
+            kwargs['follow'] = (*kwargs['follow'], 'build_set')
+        return super().reversion_register(model, **kwargs)
 
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
@@ -100,6 +110,14 @@ class BuildAdmin(BaseVersionAdmin):
         return obj.category.organization
 
     organization.short_description = _('organization')
+
+    def reversion_register(self, model, **kwargs):
+        if model == FirmwareImage:
+            kwargs['follow'] = (
+                *kwargs['follow'],
+                'build',
+            )
+        return super().reversion_register(model, **kwargs)
 
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
@@ -353,3 +371,7 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
 
 # DeviceAdmin.get_inlines = device_admin_get_inlines
 DeviceAdmin.conditional_inlines += [DeviceFirmwareInline, DeviceUpgradeOperationInline]
+
+reversion.register(model=DeviceFirmware, follow=['device', 'image'])
+reversion.register(model=UpgradeOperation)
+DeviceAdmin.add_reversion_following(follow=['devicefirmware', 'upgradeoperation_set'])
