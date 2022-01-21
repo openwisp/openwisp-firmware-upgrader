@@ -1,6 +1,5 @@
 import logging
 from datetime import timedelta
-
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
@@ -12,7 +11,6 @@ from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
-from reversion.admin import VersionAdmin
 
 from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
@@ -32,7 +30,7 @@ class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin)
     save_on_top = True
 
 
-class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdmin):
+class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     history_latest_first = True
     save_on_top = True
 

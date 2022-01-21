@@ -106,7 +106,6 @@ Follow the `setup instructions of openwisp-controller
         'django.forms',
         # other dependencies
         'sortedm2m',
-        'reversion',
         'leaflet',
         'flat_json_widget',
         # rest framework

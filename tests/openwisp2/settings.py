@@ -50,7 +50,6 @@ INSTALLED_APPS = [
     'django.forms',
     # other dependencies
     'sortedm2m',
-    'reversion',
     'leaflet',
     'flat_json_widget',
     # rest framework
