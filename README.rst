@@ -98,6 +98,7 @@ Follow the `setup instructions of openwisp-controller
         'openwisp_firmware_upgrader',
         'openwisp_users',
         'openwisp_notifications',
+        'openwisp_ipam',
         # openwisp2 admin theme (must be loaded here)
         'openwisp_utils.admin_theme',
         # admin
