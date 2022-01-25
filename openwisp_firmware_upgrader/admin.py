@@ -1,5 +1,8 @@
 import logging
 from datetime import timedelta
+
+import reversion
+import swapper
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
@@ -11,7 +14,7 @@ from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
-
+from reversion.admin import VersionAdmin
 from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
@@ -24,12 +27,15 @@ BatchUpgradeOperation = load_model('BatchUpgradeOperation')
 UpgradeOperation = load_model('UpgradeOperation')
 DeviceFirmware = load_model('DeviceFirmware')
 FirmwareImage = load_model('FirmwareImage')
+Category = load_model('Category')
+Build = load_model('Build')
+Device = swapper.load_model('config', 'Device')
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     save_on_top = True
 
-
+#replaced VersionAdmin with ModelAdmin as it is no longer desired to provide a recovery option for deleted Firmware Builds
 class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     history_latest_first = True
     save_on_top = True
@@ -42,6 +48,11 @@ class CategoryAdmin(BaseVersionAdmin):
     list_select_related = ['organization']
     search_fields = ['name']
     ordering = ['-name', '-created']
+
+    def reversion_register(self, model, **kwargs):
+        if model == Category:
+            kwargs['follow'] = (*kwargs['follow'], 'build_set')
+        return super().reversion_register(model, **kwargs)
 
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
@@ -98,6 +109,8 @@ class BuildAdmin(BaseVersionAdmin):
         return obj.category.organization
 
     organization.short_description = _('organization')
+
+    #removed the reversion_register function as that was meant to register this model for reversion
 
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
@@ -351,3 +364,7 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
 
 # DeviceAdmin.get_inlines = device_admin_get_inlines
 DeviceAdmin.conditional_inlines += [DeviceFirmwareInline, DeviceUpgradeOperationInline]
+
+reversion.register(model=DeviceFirmware, follow=['device', 'image'])
+reversion.register(model=UpgradeOperation)
+DeviceAdmin.add_reversion_following(follow=['devicefirmware', 'upgradeoperation_set'])

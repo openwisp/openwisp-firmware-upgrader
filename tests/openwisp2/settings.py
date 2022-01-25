@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'openwisp_firmware_upgrader',
     'openwisp_users',
     'openwisp_notifications',
+    'openwisp_ipam',
     # openwisp2 admin theme
     # (must be loaded here)
     'openwisp_utils.admin_theme',
@@ -50,6 +51,7 @@ INSTALLED_APPS = [
     'django.forms',
     # other dependencies
     'sortedm2m',
+    'reversion',
     'leaflet',
     'flat_json_widget',
     # rest framework
@@ -196,9 +198,10 @@ OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS = {
 }
 
 if os.environ.get('SAMPLE_APP', False):
+    firmware_upgrader_index = INSTALLED_APPS.index('openwisp_firmware_upgrader')
     INSTALLED_APPS.remove('openwisp_firmware_upgrader')
     EXTENDED_APPS.append('openwisp_firmware_upgrader')
-    INSTALLED_APPS.append('openwisp2.sample_firmware_upgrader')
+    INSTALLED_APPS.insert(firmware_upgrader_index, 'openwisp2.sample_firmware_upgrader')
     FIRMWARE_UPGRADER_CATEGORY_MODEL = 'sample_firmware_upgrader.Category'
     FIRMWARE_UPGRADER_BUILD_MODEL = 'sample_firmware_upgrader.Build'
     FIRMWARE_UPGRADER_FIRMWAREIMAGE_MODEL = 'sample_firmware_upgrader.FirmwareImage'
