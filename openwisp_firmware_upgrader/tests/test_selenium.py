@@ -14,6 +14,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from openwisp_controller.tests.utils import SeleniumTestMixin
 from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
+from openwisp_utils.tests import capture_any_output
 
 from ..swapper import load_model
 
@@ -73,6 +74,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             EC.visibility_of_element_located((By.XPATH, '//*[@id="site-name"]'))
         )
 
+    @capture_any_output()
     def test_restoring_deleted_device(self):
         org = self._get_org()
         category = self._get_category(organization=org)
