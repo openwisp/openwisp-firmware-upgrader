@@ -279,7 +279,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch.object(
         OpenWrtSshConnector,
         'connect',
-        side_effect=Exception('Connection failed'),
+        side_effect=SSHException('Connection failed'),
     )
     def test_connection_failure(self, connect, exec_command, putfo):
         (
