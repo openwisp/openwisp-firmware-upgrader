@@ -5,7 +5,7 @@ from time import sleep
 
 from billiard import Process, Queue
 from django.utils.translation import gettext_lazy as _
-from paramiko.ssh_exception import NoValidConnectionsError
+from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 
 from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
 
@@ -334,7 +334,7 @@ class OpenWrt(BaseOpenWrt):
             )
             try:
                 self.connect()
-            except (NoValidConnectionsError, socket.timeout) as error:
+            except (NoValidConnectionsError, socket.timeout, SSHException) as error:
                 self.log(
                     _(
                         'Device not reachable yet, ({0}).\n'
