@@ -15,6 +15,7 @@ from django.utils.timezone import localtime
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
+
 from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
@@ -35,8 +36,8 @@ Device = swapper.load_model('config', 'Device')
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     save_on_top = True
 
-#replaced VersionAdmin with ModelAdmin as it is no longer desired to provide a recovery option for deleted Firmware Builds
-class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
+
+class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdmin):
     history_latest_first = True
     save_on_top = True
 
@@ -89,7 +90,7 @@ class CategoryFilter(MultitenantOrgFilter):
 
 
 @admin.register(load_model('Build'))
-class BuildAdmin(BaseVersionAdmin):
+class BuildAdmin(BaseAdmin):
     list_display = ['__str__', 'organization', 'category', 'created', 'modified']
     list_filter = [
         ('category__organization', MultitenantOrgFilter),
@@ -110,7 +111,7 @@ class BuildAdmin(BaseVersionAdmin):
 
     organization.short_description = _('organization')
 
-    #removed the reversion_register function as that was meant to register this model for reversion
+    # removed overriding reversion_register as recovery operation is no longer desired
 
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
