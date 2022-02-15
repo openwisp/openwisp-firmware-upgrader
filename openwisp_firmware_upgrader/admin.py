@@ -50,11 +50,6 @@ class CategoryAdmin(BaseVersionAdmin):
     search_fields = ['name']
     ordering = ['-name', '-created']
 
-    def reversion_register(self, model, **kwargs):
-        if model == Category:
-            kwargs['follow'] = (*kwargs['follow'], 'build_set')
-        return super().reversion_register(model, **kwargs)
-
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
     model = FirmwareImage
