@@ -7,6 +7,8 @@ from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.test import TestCase, TransactionTestCase
 
+from openwisp_utils.tests import capture_any_output
+
 from .. import settings as app_settings
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
@@ -251,6 +253,7 @@ class TestModels(TestUpgraderMixin, TestCase):
                 codename = '{}_{}'.format(action, model_name)
                 self.assertIn(codename, admin_permissions)
 
+    @capture_any_output()
     def test_create_for_device_validation_error(self):
         device_fw = self._create_device_firmware()
         device_fw.image.build.os = device_fw.device.os

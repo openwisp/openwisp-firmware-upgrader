@@ -3,6 +3,8 @@ from unittest import mock
 from celery.exceptions import SoftTimeLimitExceeded
 from django.test import TransactionTestCase
 
+from openwisp_utils.tests import capture_any_output
+
 from .. import tasks
 from ..swapper import load_model
 from .base import TestUpgraderMixin
@@ -21,6 +23,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         'openwisp_firmware_upgrader.base.models.AbstractUpgradeOperation.upgrade',
         side_effect=SoftTimeLimitExceeded(),
     )
+    @capture_any_output()
     def test_upgrade_firmware_timeout(self, *args):
         device_fw = self._create_device_firmware(upgrade=True)
         self.assertEqual(UpgradeOperation.objects.count(), 1)
@@ -34,6 +37,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         'openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation',
         side_effect=SoftTimeLimitExceeded(),
     )
+    @capture_any_output()
     def test_batch_upgrade_timeout(self, *args):
         env = self._create_upgrade_env()
         batch = BatchUpgradeOperation.objects.create(build=env['build2'])
