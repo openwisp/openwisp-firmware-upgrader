@@ -361,6 +361,6 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
 # DeviceAdmin.get_inlines = device_admin_get_inlines
 DeviceAdmin.conditional_inlines += [DeviceFirmwareInline, DeviceUpgradeOperationInline]
 
-reversion.register(model=DeviceFirmware, follow=['device', 'image'])
+reversion.register(model=DeviceFirmware, follow=['device'])
 reversion.register(model=UpgradeOperation)
 DeviceAdmin.add_reversion_following(follow=['devicefirmware', 'upgradeoperation_set'])
