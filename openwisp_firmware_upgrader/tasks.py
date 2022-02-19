@@ -6,6 +6,9 @@ from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils.translation import gettext_lazy as _
 
+# Openwispcelerytast
+from openwisp_utils.tasks import OpenwispCeleryTask
+
 from . import settings as app_settings
 from .exceptions import RecoverableFailure
 from .swapper import load_model
@@ -57,7 +60,7 @@ def batch_upgrade_operation(self, batch_id, firmwareless):
         )
 
 
-@shared_task(bind=True)
+@shared_task(base=OpenwispCeleryTask, bind=True)
 def create_device_firmware(self, device_id):
     DeviceFirmware = load_model('DeviceFirmware')
     Device = swapper.load_model('config', 'Device')
@@ -70,7 +73,7 @@ def create_device_firmware(self, device_id):
     DeviceFirmware.create_for_device(device)
 
 
-@shared_task(bind=True)
+@shared_task(base=OpenwispCeleryTask, bind=True)
 def create_all_device_firmwares(self, firmware_image_id):
     DeviceFirmware = load_model('DeviceFirmware')
     FirmwareImage = load_model('FirmwareImage')
