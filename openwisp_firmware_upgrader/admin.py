@@ -106,8 +106,6 @@ class BuildAdmin(BaseAdmin):
 
     organization.short_description = _('organization')
 
-    # removed overriding reversion_register as recovery operation is no longer desired
-
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
         app_label = opts.app_label
