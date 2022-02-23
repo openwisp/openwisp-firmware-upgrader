@@ -50,11 +50,6 @@ class CategoryAdmin(BaseVersionAdmin):
     search_fields = ['name']
     ordering = ['-name', '-created']
 
-    def reversion_register(self, model, **kwargs):
-        if model == Category:
-            kwargs['follow'] = (*kwargs['follow'], 'build_set')
-        return super().reversion_register(model, **kwargs)
-
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
     model = FirmwareImage
@@ -90,7 +85,7 @@ class CategoryFilter(MultitenantOrgFilter):
 
 
 @admin.register(load_model('Build'))
-class BuildAdmin(BaseVersionAdmin):
+class BuildAdmin(BaseAdmin):
     list_display = ['__str__', 'organization', 'category', 'created', 'modified']
     list_filter = [
         ('category__organization', MultitenantOrgFilter),
@@ -110,14 +105,6 @@ class BuildAdmin(BaseVersionAdmin):
         return obj.category.organization
 
     organization.short_description = _('organization')
-
-    def reversion_register(self, model, **kwargs):
-        if model == FirmwareImage:
-            kwargs['follow'] = (
-                *kwargs['follow'],
-                'build',
-            )
-        return super().reversion_register(model, **kwargs)
 
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
@@ -372,6 +359,6 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
 # DeviceAdmin.get_inlines = device_admin_get_inlines
 DeviceAdmin.conditional_inlines += [DeviceFirmwareInline, DeviceUpgradeOperationInline]
 
-reversion.register(model=DeviceFirmware, follow=['device', 'image'])
+reversion.register(model=DeviceFirmware, follow=['device'])
 reversion.register(model=UpgradeOperation)
 DeviceAdmin.add_reversion_following(follow=['devicefirmware', 'upgradeoperation_set'])
