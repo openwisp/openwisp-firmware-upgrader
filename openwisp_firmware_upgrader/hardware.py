@@ -19,15 +19,15 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-cf-e320n-v2-squashfs-sysupgrade.bin',
                 {
-                    'label': 'EnGenius EAP1300',
-                    'boards': ('EnGenius EAP1300',),
+                    'label': 'COMFAST CF-E320N v2 (OpenWRT 19.07 and earlier)',
+                    'boards': ('COMFAST CF-E320N v2',),
                 },
             ),
             (
                 'ipq40xx-generic-engenius_eap1300-squashfs-sysupgrade.bin',
                 {
-                    'label': 'COMFAST CF-E320N v2 (OpenWRT 19.07 and earlier)',
-                    'boards': ('COMFAST CF-E320N v2',),
+                    'label': 'EnGenius EAP1300',
+                    'boards': ('EnGenius EAP1300',),
                 },
             ),
             (
