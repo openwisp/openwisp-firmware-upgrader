@@ -35,21 +35,17 @@ class TestAPIUpgraderMixin(
     def setUp(self):
         self.org = self._get_org()
         self.operator = self._create_operator(organizations=[self.org])
+        self.administrator = self._create_administrator(organizations=[self.org])
         self._login()
 
-    def _make_operator_org_manager(self):
-        orgrelation = OrganizationUser.objects.get(user=self.operator)
-        orgrelation.is_admin = True
-        orgrelation.save()
-
-    def _obtain_auth_token(self, username='operator', password='tester'):
+    def _obtain_auth_token(self, username='administrator', password='tester'):
         params = {'username': username, 'password': password}
         url = reverse('users:user_auth_token')
         r = self.client.post(url, params)
         self.assertEqual(r.status_code, 200)
         return r.data['token']
 
-    def _login(self, username='operator', password='tester'):
+    def _login(self, username='administrator', password='tester'):
         token = self._obtain_auth_token(username, password)
         self.client = Client(HTTP_AUTHORIZATION='Bearer ' + token)
 
@@ -312,7 +308,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         org2 = self._create_org(name='org2', slug='org2')
         self.tearDown()
         self.operator.openwisp_users_organization.all().delete()
-        OrganizationUser.objects.create(user=self.operator, organization=org2)
+        OrganizationUser.objects.create(user=self.administrator, organization=org2)
 
         url = reverse('upgrader:api_category_detail', args=[category.pk])
         with self.assertNumQueries(3):
@@ -343,8 +339,10 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
 
     def test_category_list_filter_org(self):
         org2 = self._create_org(name='New org', slug='new-org')
-        self._create_operator(
-            organizations=[org2], username='operator2', email='operator2@test.com'
+        self._create_administrator(
+            organizations=[org2],
+            username='administrator2',
+            email='administrator2@test.com',
         )
 
         category = self._create_category()
@@ -352,7 +350,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
 
         url = reverse('upgrader:api_category_list')
 
-        self._login('operator', 'tester')
+        self._login('administrator', 'tester')
         serialized_list = [
             self._serialize_category(category),
         ]
@@ -360,7 +358,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data['results'], serialized_list)
 
-        self._login('operator2', 'tester')
+        self._login('administrator2', 'tester')
         serialized_list = [
             self._serialize_category(category2),
         ]
@@ -463,8 +461,8 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
 
         org2 = self._create_org(name='org2', slug='org2')
         self.tearDown()
-        self.operator.openwisp_users_organization.all().delete()
-        OrganizationUser.objects.create(user=self.operator, organization=org2)
+        self.administrator.openwisp_users_organization.all().delete()
+        OrganizationUser.objects.create(user=self.administrator, organization=org2)
 
         url = reverse(
             'upgrader:api_batchupgradeoperation_detail', args=[env['build2'].pk]
@@ -795,7 +793,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             content = f.read()
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
         with self.subTest("Test as operator"):
-            self._make_operator_org_manager()
+            self._login('operator', 'tester')
             with self.assertNumQueries(8):
                 response = self.client.get(url)
             self.assertEqual(response.getvalue(), content)
