@@ -6,7 +6,6 @@ from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils.translation import gettext_lazy as _
 
-# Openwispcelerytast
 from openwisp_utils.tasks import OpenwispCeleryTask
 
 from . import settings as app_settings
