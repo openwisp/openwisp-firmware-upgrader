@@ -109,7 +109,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(17):
+        with self.assertNumQueries(15):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -125,7 +125,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(15):
+        with self.assertNumQueries(13):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -139,11 +139,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertNotContains(r, '<input type="submit" name="upgrade_related"')
         self.assertContains(r, '<input type="submit" name="upgrade_all"')
 
-    def test_view_device_operator(self):
+    def test_view_device_administrator(self):
         device_fw = self._create_device_firmware()
         org = self._get_org()
-        self._create_operator(organizations=[org])
-        self._login(username='operator', password='tester')
+        self._create_administrator(organizations=[org])
+        self._login(username='administrator', password='tester')
         url = reverse('admin:config_device_change', args=[device_fw.device_id])
         r = self.client.get(url)
         self.assertContains(r, str(device_fw.image_id))
