@@ -173,6 +173,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link WDR3600 v1 (OpenWRT 19.07 and later)',
+                    'boards': ('TP-Link TL-WDR3600 v1',),
+                },
+            ),
+            (
                 'ar71xx-generic-tl-wr2543-v1-squashfs-sysupgrade.bin',
                 {
                     'label': 'TP-Link WR2543N/ND (OpenWRT 19.07 and earlier)',
