@@ -482,8 +482,8 @@ the results in conjunction with the ``page`` parameter.
 
 .. code-block:: text
 
-    GET /api/v1/firmware/build/?page_size=10
-    GET /api/v1/firmware/build/?page_size=10&page=2
+    GET /api/v1/firmware-upgrader/build/?page_size=10
+    GET /api/v1/firmware-upgrader/build/?page_size=10&page=2
 
 Filtering by organization slug
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -492,7 +492,7 @@ Most endpoints allow to filter by organization slug, eg:
 
 .. code-block:: text
 
-    GET /api/v1/firmware/build/?organization=org-slug
+    GET /api/v1/firmware-upgrader/build/?organization=org-slug
 
 List of endpoints
 ~~~~~~~~~~~~~~~~~
@@ -507,91 +507,91 @@ List mass upgrade operations
 
 .. code-block:: text
 
-    GET /api/v1/firmware/batch-upgrade-operation/
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/
 
 Get mass upgrade operation detail
 #################################
 
 .. code-block:: text
 
-    GET /api/v1/firmware/batch-upgrade-operation/{id}/
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/
 
 List firmware builds
 ####################
 
 .. code-block:: text
 
-    GET /api/v1/firmware/build/
+    GET /api/v1/firmware-upgrader/build/
 
 Create firmware build
 #####################
 
 .. code-block:: text
 
-    POST /api/v1/firmware/build/
+    POST /api/v1/firmware-upgrader/build/
 
 Get firmware build details
 ##########################
 
 .. code-block:: text
 
-    GET /api/v1/firmware/build/{id}/
+    GET /api/v1/firmware-upgrader/build/{id}/
 
 Change details of firmware build
 ################################
 
 .. code-block:: text
 
-    PUT /api/v1/firmware/build/{id}/
+    PUT /api/v1/firmware-upgrader/build/{id}/
 
 Patch details of firmware build
 ###############################
 
 .. code-block:: text
 
-    PATCH /api/v1/firmware/build/{id}/
+    PATCH /api/v1/firmware-upgrader/build/{id}/
 
 Delete firmware build
 #####################
 
 .. code-block:: text
 
-    DELETE /api/v1/firmware/build/{id}/
+    DELETE /api/v1/firmware-upgrader/build/{id}/
 
 Get list of images of a firmware build
 ######################################
 
 .. code-block:: text
 
-    GET /api/v1/firmware/build/{id}/image/
+    GET /api/v1/firmware-upgrader/build/{id}/image/
 
 Upload new firmware image to the build
 ######################################
 
 .. code-block:: text
 
-    POST /api/v1/firmware/build/{id}/image/
+    POST /api/v1/firmware-upgrader/build/{id}/image/
 
 Get firmware image details
 ##########################
 
 .. code-block:: text
 
-    GET /api/v1/firmware/build/{build_pk}/image/{id}/
+    GET /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/
 
 Delete firmware image
 #####################
 
 .. code-block:: text
 
-    DELETE /api/v1/firmware/build/{build_pk}/image/{id}/
+    DELETE /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/
 
 Download firmware image
 #######################
 
 .. code-block:: text
 
-    GET /api/v1/firmware/build/{build_pk}/image/{id}/download/
+    GET /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/download/
 
 Perform batch upgrade
 #####################
@@ -600,7 +600,7 @@ Upgrades all the devices related to the specified build ID.
 
 .. code-block:: text
 
-    POST /api/v1/firmware/build/{id}/upgrade/
+    POST /api/v1/firmware-upgrader/build/{id}/upgrade/
 
 Dry-run batch upgrade
 #####################
@@ -613,49 +613,49 @@ object exists for a device which would be upgraded.
 
 .. code-block:: text
 
-    GET /api/v1/firmware/build/{id}/upgrade/
+    GET /api/v1/firmware-upgrader/build/{id}/upgrade/
 
 List firmware categories
 ########################
 
 .. code-block:: text
 
-    GET /api/v1/firmware/category/
+    GET /api/v1/firmware-upgrader/category/
 
 Create new firmware category
 ############################
 
 .. code-block:: text
 
-    POST /api/v1/firmware/category/
+    POST /api/v1/firmware-upgrader/category/
 
 Get firmware category details
 #############################
 
 .. code-block:: text
 
-    GET /api/v1/firmware/category/{id}/
+    GET /api/v1/firmware-upgrader/category/{id}/
 
 Change the details of a firmware category
 #########################################
 
 .. code-block:: text
 
-    PUT /api/v1/firmware/category/{id}/
+    PUT /api/v1/firmware-upgrader/category/{id}/
 
 Patch the details of a firmware category
 ########################################
 
 .. code-block:: text
 
-    PATCH /api/v1/firmware/category/{id}/
+    PATCH /api/v1/firmware-upgrader/category/{id}/
 
 Delete a firmware category
 ##########################
 
 .. code-block:: text
 
-    DELETE /api/v1/firmware/category/{id}/
+    DELETE /api/v1/firmware-upgrader/category/{id}/
 
 Installing for development
 --------------------------
