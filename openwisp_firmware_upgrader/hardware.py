@@ -145,6 +145,20 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link WDR3600 v1 (OpenWRT 19.07 and earlier)',
+                    'boards': ('TP-Link TL-WDR3600 v1',),
+                },
+            ),
+            (
+                'ath79-generic-tplink_tl-wdr3600-v1-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link WDR3600 v1 (OpenWRT 19.07 and later)',
+                    'boards': ('TP-Link TL-WDR3600 v1',),
+                },
+            ),
+            (
                 'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin',
                 {
                     'label': 'TP-Link WDR4300 v1 (OpenWRT 19.07 and earlier)',
@@ -170,13 +184,6 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     'label': 'TP-Link WDR4300 v1 Israel Version (OpenWRT 19.07 and later)',
                     'boards': ('TP-LINK TL-WDR4300 v1 (IL)',),
-                },
-            ),
-            (
-                'ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin',
-                {
-                    'label': 'TP-Link WDR3600 v1 (OpenWRT 19.07 and later)',
-                    'boards': ('TP-Link TL-WDR3600 v1',),
                 },
             ),
             (
