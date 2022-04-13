@@ -308,10 +308,11 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         org2 = self._create_org(name='org2', slug='org2')
         self.tearDown()
         self.operator.openwisp_users_organization.all().delete()
-        OrganizationUser.objects.create(user=self.administrator, organization=org2)
-
+        OrganizationUser.objects.create(
+            user=self.administrator, organization=org2, is_admin=True
+        )
         url = reverse('upgrader:api_category_detail', args=[category.pk])
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
 
@@ -462,12 +463,14 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         org2 = self._create_org(name='org2', slug='org2')
         self.tearDown()
         self.administrator.openwisp_users_organization.all().delete()
-        OrganizationUser.objects.create(user=self.administrator, organization=org2)
+        OrganizationUser.objects.create(
+            user=self.administrator, organization=org2, is_admin=True
+        )
 
         url = reverse(
             'upgrader:api_batchupgradeoperation_detail', args=[env['build2'].pk]
         )
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
 

@@ -6,7 +6,7 @@ app_name = 'upgrader'
 
 urlpatterns = [
     path(
-        'firmware/',
+        'firmware-upgrader/',
         include(
             [
                 path('build/', views.build_list, name='api_build_list'),
