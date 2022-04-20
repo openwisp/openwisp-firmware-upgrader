@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from decimal import Decimal
@@ -8,6 +9,7 @@ import swapper
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
+from django.forms import model_to_dict
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
@@ -376,7 +378,9 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
 
 class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
-    build = models.ForeignKey(get_model_name('Build'), on_delete=models.CASCADE)
+    build = models.ForeignKey(
+        get_model_name('Build'), on_delete=models.SET_NULL, null=True
+    )
     STATUS_CHOICES = (
         ('idle', _('idle')),
         ('in-progress', _('in progress')),
@@ -386,14 +390,26 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
     )
+    # Preserves the data of deleted build
+    build_json = models.JSONField(blank=True, null=True)
 
     class Meta:
         abstract = True
         verbose_name = _('Mass upgrade operation')
         verbose_name_plural = _('Mass upgrade operations')
 
+    @property
+    def build_data(self):
+        return json.loads(self.build_json)
+
     def __str__(self):
-        return f'Upgrade of {self.build} on {self.created}'
+        build, created = self.build, self.created
+        if self.build is None:
+            build = '{name} v{version}'.format(
+                version=self.build_data.get('version'),
+                name=self.build_data.get('category').get('name'),
+            )
+        return f'Upgrade of {build} on {created}'
 
     def update(self):
         operations = self.upgradeoperation_set
@@ -490,6 +506,12 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
     def __get_rate(self, number):
         result = Decimal(number) / Decimal(self.total_operations) * 100
         return round(result, 2)
+
+    def save(self, *args, **kwargs):
+        build_data = model_to_dict(self.build)
+        build_data['category'] = model_to_dict(self.build.category)
+        self.build_json = json.dumps(build_data, default=str)
+        return super().save(*args, **kwargs)
 
 
 class AbstractUpgradeOperation(TimeStampedEditableModel):

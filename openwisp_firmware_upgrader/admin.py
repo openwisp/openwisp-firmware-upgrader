@@ -205,15 +205,15 @@ class UpgradeOperationInline(admin.StackedInline):
 class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     list_display = ['build', 'organization', 'status', 'created', 'modified']
     list_filter = [
-        ('build__category__organization', MultitenantOrgFilter),
+        # ('build__category__organization', MultitenantOrgFilter),
         'status',
-        ('build__category', CategoryFilter),
+        # ('build__category', CategoryFilter),
     ]
-    list_select_related = ['build__category__organization']
+    # list_select_related = ['build__category__organization']
     select_related = ['build']
     ordering = ['-created']
     inlines = [UpgradeOperationInline]
-    multitenant_parent = 'build__category'
+    # multitenant_parent = 'build__category'
     fields = [
         'build',
         'status',
@@ -227,6 +227,9 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     readonly_fields = ['completed', 'success_rate', 'failed_rate', 'aborted_rate']
 
     def organization(self, obj):
+        if obj.build is None:
+            # build object is not available after delete
+            return 'default'
         return obj.build.category.organization
 
     organization.short_description = _('organization')
