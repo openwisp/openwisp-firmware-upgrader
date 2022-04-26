@@ -8,7 +8,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from django.shortcuts import HttpResponseRedirect, redirect
+from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import resolve, reverse
 from django.utils.safestring import mark_safe
@@ -79,37 +79,6 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
         if obj:
             return False
         return True
-
-    def get_parent_object(self, request):
-        """
-        method to get the instance from model' s parent class
-        in context with the ForeignKey relation
-        """
-        resolved = resolve(request.path_info)
-        if resolved.kwargs:
-            return self.parent_model.objects.get(pk=resolved.kwargs["object_id"])
-        return None
-
-    def get_queryset(self, request):
-        """
-        overriding queryset to remove any FirmwareImage instances,
-        where the image file has been manually deleted by the user
-        from the file system
-        """
-        qs = super(FirmwareImageInline, self).get_queryset(request)
-        build = self.get_parent_object(request)
-        qs = qs.filter(build=build)
-        for imageObject in qs:
-            if imageObject.file is not None:
-                path = imageObject.file.path
-                if not os.path.isfile(path):
-                    try:
-                        type = imageObject.type
-                        imageObject.delete()
-                        logger.warning(f"Image object {type} was removed")
-                    except Exception:
-                        pass
-        return qs
 
 
 class CategoryFilter(MultitenantOrgFilter):
@@ -211,21 +180,24 @@ class BuildAdmin(BaseAdmin):
         extra_context = extra_context or {}
         upgrade_url = f'{app_label}_build_changelist'
         extra_context.update({'upgrade_url': upgrade_url})
-        # preventing change_view to throw an error/exception
+        # preventing change_view to throw an error
         try:
             return super().change_view(request, object_id, form_url, extra_context)
-        except Exception as e:
-            if type(e).__name__ == "FileNotFoundError":
-                self.message_user(
-                    request, "Please reload the page", level=logging.ERROR
-                )
-            else:
-                self.message_user(
-                    request,
-                    "Image objects have been removed or form data didn't validate",
-                    level=logging.ERROR,
-                )
-                return HttpResponseRedirect(request.path)
+        except FileNotFoundError as e:
+            path = e.filename
+            directories = path.split('/')
+            n = len(directories)
+            dirPath = ""
+            for i in range(0, n - 1):
+                if i > 0:
+                    dirPath = dirPath + '/'
+                dirPath = dirPath + directories[i]
+            if not os.path.isdir(dirPath):
+                os.mkdir(dirPath)
+            f = open(e.filename, "w+")
+            f.write("To be deleted")
+            f.close()
+            return self.change_view(request, object_id, form_url, extra_context)
 
 
 class UpgradeOperationForm(forms.ModelForm):

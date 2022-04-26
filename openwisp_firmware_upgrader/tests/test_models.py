@@ -132,6 +132,12 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.assertEqual(UpgradeOperation.objects.count(), 1)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
+    def test_device_fw_image_deleted(self, *args):
+        with mock.patch(
+            f'{self.app_label}.models.UpgradeOperation.upgrade', return_value=None
+        ):
+            pass
+
     def test_device_fw_created(self, *args):
         with mock.patch(
             f'{self.app_label}.models.UpgradeOperation.upgrade', return_value=None
