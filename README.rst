@@ -160,6 +160,8 @@ by going to *Firmware management > Firmware categories > Add firmware category*,
 if you use only one firmware type in your network, you could simply
 name the category "default" or "standard".
 
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-category.gif
+
 If you use multiple firmware images with different features, create one category
 for each firmware type, eg:
 
@@ -181,6 +183,8 @@ supported by the system.
 
 The version field indicates the firmware version, the change log field is optional but
 we recommend filling it to help operators know the differences between each version.
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-build.gif
 
 An important but optional field of the build model is **OS identifier**, this field
 should match the value of the **Operating System** field which gets automatically filled
@@ -205,6 +209,8 @@ Now save the build object to create it.
 Now is time to add images to the build, we suggest adding one image at time.
 Alternatively the `REST API <#rest-api>`__ can be used to automate this step.
 
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-firmwareimage.gif
+
 If you use a hardware model which is not listed in the image types, if the
 hardware model is officially supported by OpenWRT, you can send us a pull-request to add it,
 otherwise you can use `the setting OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp-custom-openwrt-images>`__
@@ -213,7 +219,7 @@ to add it.
 4. Perform a firmware upgrade to a specific device
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/device-firmware-upgrade.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-devicefirmware.gif
 
 Once a new build is ready, has been created in the system and its image have been uploaded,
 it will be the time to finally upgrade our devices.
@@ -246,6 +252,8 @@ At this stage you can try a mass upgrade by doing the following:
 - select the build which contains the latest firmware images you
   want the devices to be upgraded with
 - click on "Mass-upgrade devices related to the selected build".
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
 
 At this point you should see a summary page which will inform you of which devices
 are going to be upgraded, you can either confirm the operation or cancel.
@@ -450,14 +458,14 @@ must be set to ``True``.
 Live documentation
 ~~~~~~~~~~~~~~~~~~
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/api-docs.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/api-docs.png
 
 A general live API documentation (following the OpenAPI specification) at ``/api/v1/docs/``.
 
 Browsable web interface
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/api-ui.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/api-ui.png
 
 Additionally, opening any of the endpoints `listed below <#list-of-endpoints>`_
 directly in the browser will show the `browsable API interface of Django-REST-Framework
