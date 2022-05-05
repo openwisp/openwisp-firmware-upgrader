@@ -229,8 +229,8 @@ To perform the upgrade of a single device, navigate to the device details,
 then go to the "Firmware" tab.
 
 If you correctly filled **OS identifier** in step 2, you should have a situation
-similar to the one above: in this example, the device is using version ``2020-03-25``
-and we want to upgrade it to version ``2020-05-15``, once the new firmware image
+similar to the one above: in this example, the device is using version ``1.0``
+and we want to upgrade it to version ``2.0``, once the new firmware image
 is selected we just have to hit save, then a new tab will appear in the device page
 which allows us to see what's going on during the upgrade.
 
