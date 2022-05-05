@@ -117,6 +117,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ramips-mt76x8-tplink_archer-c50-v4-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link Archer C50 v4',
+                    'boards': ('TP-Link Archer C50 v4',),
+                },
+            ),
+            (
                 'ar71xx-generic-cpe210-220-v1-squashfs-sysupgrade.bin',
                 {
                     'label': 'TP-LINK CPE210 v3 (OpenWRT 19.07 and earlier)',
