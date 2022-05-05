@@ -214,7 +214,7 @@ Alternatively the `REST API <#rest-api>`__ can be used to automate this step.
 
 If you use a hardware model which is not listed in the image types, if the
 hardware model is officially supported by OpenWRT, you can send us a pull-request to add it,
-otherwise you can use `the setting OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp-custom-openwrt-images>`__
+otherwise you can use `the setting OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`__
 to add it.
 
 4. Perform a firmware upgrade to a specific device
@@ -295,7 +295,7 @@ This value is then saved in the ``Device.model`` field.
 *OpenWISP Firmware Upgrader* uses this field to automatically detect
 the correct firmware image for the device.
 
-Use the `OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp-custom-openwrt-images>`_
+Use the `OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`_
 setting to add additional firmware image in your project.
 
 Writing Custom Firmware Upgrader Classes
