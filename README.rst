@@ -42,7 +42,7 @@ Firmware upgrade module of OpenWISP.
 - Mass upgrades
 - Possibility to divide firmware images in categories
 - `REST API <#rest-api>`__
-- `Possibility of writing custom upgraders <#custom-firmware-upgrader>`_ for other
+- `Possibility of writing custom upgraders <#writing-custom-firmware-upgrader-classes>`_ for other
   firmware OSes or for custom OpenWRT based firmwares
 - Configurable timeouts
 - `Extensible <#extending-openwisp-firmware-upgrader>`_
