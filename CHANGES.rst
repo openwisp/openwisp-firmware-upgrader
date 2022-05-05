@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Version 1.0.0 [2022-05-01]
+Version 1.0.0 [2022-05-05]
 --------------------------
 
 Features
@@ -29,6 +29,7 @@ Features
   - TP-Link Archer C7 v4 (OpenWRT 19.07 and later)
   - TP-Link Archer C7 v5 (OpenWRT 19.07 and earlier)
   - TP-Link Archer C7 v5 (OpenWRT 19.07 and later)
+  - TP-Link Archer C50 v4
   - TP-LINK CPE210 v3 (OpenWRT 19.07 and earlier)
   - TP-LINK CPE210 v2 (OpenWRT 19.07 and later)
   - TP-LINK CPE210 v3 (OpenWRT 19.07 and later)
