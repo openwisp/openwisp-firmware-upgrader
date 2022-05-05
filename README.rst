@@ -42,7 +42,8 @@ Firmware upgrade module of OpenWISP.
 - Mass upgrades
 - Possibility to divide firmware images in categories
 - `REST API <#rest-api>`__
-- Possibility of writing custom upgraders for other firmware OSes or for custom OpenWRT based firmwares
+- `Possibility of writing custom upgraders <#writing-custom-firmware-upgrader-classes>`_ for other
+  firmware OSes or for custom OpenWRT based firmwares
 - Configurable timeouts
 - `Extensible <#extending-openwisp-firmware-upgrader>`_
 
@@ -150,7 +151,7 @@ Requirements:
 - Devices running at least OpenWRT 12.09 Attitude Adjustment, older versions
   of OpenWRT have not worked at all in our tests
 - Devices must have enough free RAM to be able to upload the
-  new image to ```/tmp``
+  new image to ``/tmp``
 
 1. Create a category
 ~~~~~~~~~~~~~~~~~~~~
@@ -159,6 +160,8 @@ Create a category for your firmware images
 by going to *Firmware management > Firmware categories > Add firmware category*,
 if you use only one firmware type in your network, you could simply
 name the category "default" or "standard".
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-category.gif
 
 If you use multiple firmware images with different features, create one category
 for each firmware type, eg:
@@ -181,6 +184,8 @@ supported by the system.
 
 The version field indicates the firmware version, the change log field is optional but
 we recommend filling it to help operators know the differences between each version.
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-build.gif
 
 An important but optional field of the build model is **OS identifier**, this field
 should match the value of the **Operating System** field which gets automatically filled
@@ -205,15 +210,17 @@ Now save the build object to create it.
 Now is time to add images to the build, we suggest adding one image at time.
 Alternatively the `REST API <#rest-api>`__ can be used to automate this step.
 
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-firmwareimage.gif
+
 If you use a hardware model which is not listed in the image types, if the
 hardware model is officially supported by OpenWRT, you can send us a pull-request to add it,
-otherwise you can use `the setting OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp-custom-openwrt-images>`__
+otherwise you can use `the setting OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`__
 to add it.
 
 4. Perform a firmware upgrade to a specific device
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/device-firmware-upgrade.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-devicefirmware.gif
 
 Once a new build is ready, has been created in the system and its image have been uploaded,
 it will be the time to finally upgrade our devices.
@@ -222,8 +229,8 @@ To perform the upgrade of a single device, navigate to the device details,
 then go to the "Firmware" tab.
 
 If you correctly filled **OS identifier** in step 2, you should have a situation
-similar to the one above: in this example, the device is using version ``2020-03-25``
-and we want to upgrade it to version ``2020-05-15``, once the new firmware image
+similar to the one above: in this example, the device is using version ``1.0``
+and we want to upgrade it to version ``2.0``, once the new firmware image
 is selected we just have to hit save, then a new tab will appear in the device page
 which allows us to see what's going on during the upgrade.
 
@@ -247,6 +254,8 @@ At this stage you can try a mass upgrade by doing the following:
   want the devices to be upgraded with
 - click on "Mass-upgrade devices related to the selected build".
 
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
+
 At this point you should see a summary page which will inform you of which devices
 are going to be upgraded, you can either confirm the operation or cancel.
 
@@ -256,6 +265,68 @@ can monitor the progress of the upgrade operations.
 Right now, the update of the upgrade information is not asynchronous yet, so you will
 have to reload the page periodically to find new information. This will be addressed
 in a future release.
+
+Automatic device firmware detection
+-----------------------------------
+
+*OpenWISP Firmware Upgrader* maintains a data structure for mapping
+the firmware image files to board names called ``OPENWRT_FIRMWARE_IMAGE_MAP``.
+
+Here is an example firmware image item from ``OPENWRT_FIRMWARE_IMAGE_MAP``
+
+.. code-block:: python
+
+    {
+        # Firmware image file name.
+        'ar71xx-generic-cf-e320n-v2-squashfs-sysupgrade.bin': {
+            # Human readable name of the model which is displayed on
+            # the UI
+            'label': 'COMFAST CF-E320N v2 (OpenWRT 19.07 and earlier)',
+            # Tupe of board names with which the different versions
+            # of the hardware are identified on OpenWrt
+            'boards': ('COMFAST CF-E320N v2',),
+        }
+    }
+
+When a device registers on OpenWISP, the `openwisp-config agent
+<https://github.com/openwisp/openwisp-config#openwisp-config>`_
+read the device board name from `/tmp/sysinfo/model` and sends it to OpenWISP.
+This value is then saved in the ``Device.model`` field.
+*OpenWISP Firmware Upgrader* uses this field to automatically detect
+the correct firmware image for the device.
+
+Use the `OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`_
+setting to add additional firmware image in your project.
+
+Writing Custom Firmware Upgrader Classes
+----------------------------------------
+
+You can write custom upgraders for other firmware OSes or for
+custom OpenWrt based firmwares.
+
+Here is an example custom OpenWrt firmware upgrader class:
+
+.. code-block:: python
+
+    from openwisp_firmware_upgrader.upgraders.openwrt import OpenWrt
+
+    class CustomOpenWrtBasedFirmware(OpenWrt):
+        # this firmware uses a custom upgrade command
+        UPGRADE_COMMAND = 'upgrade_firmware.sh --keep-config'
+        # it takes somewhat more time to boot so it needs more time
+        RECONNECT_DELAY = 150
+        RECONNECT_RETRY_DELAY = 5
+        RECONNECT_MAX_RETRIES = 20
+
+        def get_remote_path(self, image):
+            return '/tmp/firmware.img'
+
+        def get_upgrade_command(self, path):
+            return self.UPGRADE_COMMAND
+
+You will need to place your custom upgrader class on the python path
+of your application and then add this path to the `OPENWISP_FIRMWARE_UPGRADERS_MAP
+<#openwisp_firmware_upgraders_map>`_ setting.
 
 Settings
 --------
@@ -320,26 +391,30 @@ will end up affecting negatively the rest of the application.
 | **default**: | ``None``    |
 +--------------+-------------+
 
-This setting can be used to add new image types for OpenWRT, eg:
+This setting can be used to extend the list of firmware image types
+included in *OpenWISP Firmware Upgrader*. This setting is suited to
+add support for custom OpenWrt images.
 
 .. code-block:: python
 
     OPENWISP_CUSTOM_OPENWRT_IMAGES = (
-        ('customimage-squashfs-sysupgrade.bin', {
-            'label': 'Custom WAP-1200',
-            'boards': ('CWAP1200',)
-        }),
+        (
+            # Firmware image file name.
+            'customimage-squashfs-sysupgrade.bin', {
+                # Human readable name of the model which is displayed on
+                # the UI
+                'label': 'Custom WAP-1200',
+                # Tuple of board names with which the different versions of
+                # the hardware are identified on OpenWrt
+                'boards': ('CWAP1200',)
+            }
+        ),
     )
 
-**Notes**:
-
-- ``label`` it's the human readable name of the model which will be
-  displayed in the UI
-- ``boards`` is a tuple of board names with which the different versions
-  of the hardware are identified on OpenWRT; this field is used to
-  recognize automatically devices which have registered into OpenWISP.
-  The board name of the device on OpenWRT is read from the output of
-  the command ``cat /tmp/sysinfo/model``
+Kindly read `"Automatic detection of firmware of device"
+<#automatic-device-firmware-detection>`_
+section of this documentation to know how *OpenWISP Firmware Upgrader*
+uses this setting in upgrades.
 
 ``OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -437,8 +512,9 @@ A dictionary that maps update strategies to upgraders.
 If you want to use a custom update strategy you will need to use this setting
 to provide an entry with the class path of your update strategy as the key.
 
-If you want to use a custom upgrader you will need to use this setting to
-provide an entry with the class path of your upgrader as the value.
+If you need to use a `custom upgrader class <#writing-custom-firmware-upgrader-classes>`_
+you will need to use this setting to provide an entry with the class path of your upgrader
+as the value.
 
 REST API
 --------
@@ -450,14 +526,14 @@ must be set to ``True``.
 Live documentation
 ~~~~~~~~~~~~~~~~~~
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/api-docs.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/api-docs.png
 
 A general live API documentation (following the OpenAPI specification) at ``/api/v1/docs/``.
 
 Browsable web interface
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/api-ui.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/api-ui.png
 
 Additionally, opening any of the endpoints `listed below <#list-of-endpoints>`_
 directly in the browser will show the `browsable API interface of Django-REST-Framework
