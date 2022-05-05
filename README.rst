@@ -151,7 +151,7 @@ Requirements:
 - Devices running at least OpenWRT 12.09 Attitude Adjustment, older versions
   of OpenWRT have not worked at all in our tests
 - Devices must have enough free RAM to be able to upload the
-  new image to ```/tmp``
+  new image to ``/tmp``
 
 1. Create a category
 ~~~~~~~~~~~~~~~~~~~~
@@ -703,8 +703,8 @@ the correct firmware image for the device.
 Use the `OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp-custom-openwrt-images>`_
 setting to add additional firmware image in your project.
 
-Custom Firmware Upgraders
--------------------------
+Custom Firmware Upgrader
+------------------------
 
 You can write custom upgraders for other firmware OSes or for
 custom OpenWrt based firmwares.
