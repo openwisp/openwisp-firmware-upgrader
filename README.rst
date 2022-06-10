@@ -805,6 +805,22 @@ If you need to use a `custom upgrader class <#writing-custom-firmware-upgrader-c
 you will need to use this setting to provide an entry with the class path of your upgrader
 as the value.
 
+``OPENWISP_FIRMWARE_PRIVATE_STORAGE_INSTANCE``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++--------------+-------------------------------------------------------------------------------------+
+| **type**:    | ``str``                                                                             |
++--------------+-------------------------------------------------------------------------------------+
+| **default**: |  ``openwisp_firmware_upgrader.private_storage.storage.file_system_private_storage`` |
++--------------+-------------------------------------------------------------------------------------+
+
+Dotted path to an instance of any one of the storage classes in
+`private_storage <https://github.com/edoburu/django-private-storage#django-private-storage>`_.
+This instance is used to store firmware image files.
+
+By default, an instance of ``private_storage.storage.files.PrivateFileSystemStorage``
+is used.
+
 Extending openwisp-firmware-upgrader
 ------------------------------------
 

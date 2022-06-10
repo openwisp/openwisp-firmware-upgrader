@@ -106,7 +106,7 @@ STATIC_URL = '/static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = '{0}/media/'.format(BASE_DIR)
 
-PRIVATE_STORAGE_ROOT = '{0}/firmware/'.format(BASE_DIR)
+PRIVATE_STORAGE_ROOT = os.path.join(BASE_DIR, 'private', 'firmware')
 
 TEMPLATES = [
     {

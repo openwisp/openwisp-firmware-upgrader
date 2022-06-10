@@ -2,7 +2,6 @@ import logging
 import os
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import urljoin
 
 import swapper
 from django.conf import settings
@@ -13,7 +12,6 @@ from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 from django.utils.translation import gettext_lazy as _
 from private_storage.fields import PrivateFileField
-from private_storage.storage.files import PrivateFileSystemStorage
 
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
@@ -30,7 +28,6 @@ from ..hardware import (
     FIRMWARE_IMAGE_TYPE_CHOICES,
     REVERSE_FIRMWARE_IMAGE_MAP,
 )
-from ..settings import FIRMWARE_API_BASEURL, IMAGE_URL_PATH
 from ..swapper import get_model_name, load_model
 from ..tasks import (
     batch_upgrade_operation,
@@ -180,9 +177,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         'File',
         upload_to=get_build_directory,
         max_file_size=app_settings.MAX_FILE_SIZE,
-        storage=PrivateFileSystemStorage(
-            base_url=urljoin(FIRMWARE_API_BASEURL, IMAGE_URL_PATH)
-        ),
+        storage=app_settings.PRIVATE_STORAGE_INSTANCE,
     )
     type = models.CharField(
         blank=True,
