@@ -1,6 +1,24 @@
 Changelog
 =========
 
+Version 1.0.1 [2022-06-10]
+--------------------------
+
+Bugfixes
+--------
+
+- Fixed `hardcoded storage backend of the "FirmwareImage.file" field
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/195>`_.
+  ``FirmwareImage.file`` was configured to use ``PrivateFileSystemStorage``,
+  which made it impossible to use other private storage backends.
+  The `"OPENWISP_FIRMWARE_PRIVATE_STORAGE_INSTANCE"
+  <https://github.com/openwisp/openwisp-firmware-upgrader#openwisp_firmware_private_storage_instance>`_
+  setting is added to make the ``FirmwareImage.file`` storage configurable.
+- Fixed `inconsistent URL keyword argument in "serve_private_file"
+  URL pattern <https://github.com/openwisp/openwisp-firmware-upgrader/issues/197>`_.
+  This broke the reverse proxy feature of `django-private-storage
+  <https://github.com/edoburu/django-private-storage>`_.
+
 Version 1.0.0 [2022-05-05]
 --------------------------
 
