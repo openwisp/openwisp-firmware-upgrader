@@ -1,10 +1,8 @@
 import logging
 import os
 from decimal import Decimal
-from pathlib import Path
 
 import swapper
-from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
 from django.utils import timezone
@@ -215,7 +213,21 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     def delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
         self._remove_file()
-        self._remove_empty_directory()
+
+    def _remove_file(self):
+        firmware_filename = self.file.name
+        self.file.storage.delete(firmware_filename)
+        # Delete the file directory
+        dir = os.path.split(firmware_filename)[0]
+        if dir:
+            try:
+                self.file.storage.delete(dir)
+            except OSError as error:
+                # A build can have multiple firmware images,
+                # therefore, deleting directory might not be
+                # always feasible.
+                if 'Directory not empty' not in str(error):
+                    raise error
 
     def _clean_type(self):
         """
@@ -226,23 +238,6 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         filename = self.file.name
         # removes leading prefix
         self.type = '-'.join(filename.split('-')[1:])
-
-    def _remove_file(self):
-        path = self.file.path
-        if os.path.isfile(path):
-            os.remove(path)
-        else:
-            msg = 'firmware image not found while deleting {0}:\n{1}'
-            logger.error(msg.format(self, path))
-
-    def _remove_empty_directory(self):
-        path = os.path.dirname(self.file.path)
-        # TODO: precauton when migrating to private storage
-        # avoid accidentally deleting the MEDIA_ROOT dir
-        # remove this before or after first release
-        is_media_root = Path(path).absolute() != Path(settings.MEDIA_ROOT).absolute()
-        if not os.listdir(path) and is_media_root:
-            os.rmdir(path)
 
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):
