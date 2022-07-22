@@ -433,3 +433,21 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(Device.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)
         self.assertEqual(DeviceConnection.objects.count(), 1)
+
+    def test_delete_firmware_image_file(self):
+        file_storage_backend = FirmwareImage.file.field.storage
+
+        with self.subTest('Test deleting object deletes file'):
+            image = self._create_firmware_image()
+            file_name = image.file.name
+            image.delete()
+            self.assertEqual(file_storage_backend.exists(file_name), False)
+
+        with self.subTest('Test deleting object with a deleted file'):
+            image = self._create_firmware_image()
+            file_name = image.file.name
+            # Delete the file from the storage backend before
+            # deleting the object
+            file_storage_backend.delete(file_name)
+            self.assertNotEqual(image.file, None)
+            image.delete()
