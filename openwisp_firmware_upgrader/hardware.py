@@ -31,6 +31,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ath79-nand-glinet_gl-ar300m-nand-squashfs-sysupgrade.bin',
+                {
+                    'label': 'GL.iNet GL-AR300M (NAND)',
+                    'boards': ('GL.iNet GL-AR300M (NAND)',),
+                },
+            ),
+            (
                 'ramips-mt76x8-gl-mt300n-v2-squashfs-sysupgrade.bin',
                 {'label': 'GL.iNet GL-MT300N-V2', 'boards': ('GL-MT300N-V2',)},
             ),
