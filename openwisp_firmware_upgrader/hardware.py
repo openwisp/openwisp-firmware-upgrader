@@ -399,6 +399,20 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ramips-mt7620-zbtlink_zbt-we826-16m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Zbtlink ZBT-WE826 (16M)',
+                    'boards': ('Zbtlink ZBT-WE826 (16M)',),
+                },
+            ),
+            (
+                'ramips-mt7620-zbtlink_zbt-we826-32m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Zbtlink ZBT-WE826 (32M)',
+                    'boards': ('Zbtlink ZBT-WE826 (32M)',),
+                },
+            ),
+            (
                 'ramips-mt7621-zbt-wg3526-16M-squashfs-sysupgrade.bin',
                 {
                     'label': 'Zbtlink ZBT-WG3526 (16M)',
