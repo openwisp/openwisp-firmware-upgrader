@@ -29,6 +29,8 @@ openwisp-firmware-upgrader
 
 ------------
 
+**Need a quick overview?** `Try the OpenWISP Demo <https://openwisp.org/demo.html>`_.
+
 Firmware upgrade module of OpenWISP.
 
 **Features**:
