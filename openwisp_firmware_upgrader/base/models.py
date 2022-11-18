@@ -11,6 +11,7 @@ from django.utils.module_loading import import_string
 from django.utils.translation import gettext_lazy as _
 from private_storage.fields import PrivateFileField
 
+from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
@@ -518,12 +519,29 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         if save:
             self.save()
 
+    def _recoverable_failure_handler(self, recoverable, error):
+        cause = str(error)
+        if recoverable:
+            self.log_line(f'Detected a recoverable failure: {cause}.\n', save=False)
+            self.log_line('The upgrade operation will be retried soon.')
+            raise error
+        self.status = 'failed'
+        self.log_line(f'Max retries exceeded. Upgrade failed: {cause}.', save=False)
+
     def upgrade(self, recoverable=True):
-        conn = self.device.deviceconnection_set.first()
-        installed = False
-        if not conn:
+        DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
+        if self.device.deviceconnection_set.count() == 0:
             self.log_line('No device connection available')
             return
+        try:
+            conn = DeviceConnection.get_working_connection(self.device)
+        except NoWorkingDeviceConnectionError:
+            self._recoverable_failure_handler(
+                recoverable, RecoverableFailure('Connection failed')
+            )
+            self.save()
+            return
+        installed = False
         # prevent multiple upgrade operations for
         # the same device running at the same time
         qs = (
@@ -560,13 +578,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         # raising this exception will cause celery to retry again
         # the upgrade according to its configuration
         except RecoverableFailure as e:
-            cause = str(e)
-            if recoverable:
-                self.log_line(f'Detected a recoverable failure: {cause}.\n', save=False)
-                self.log_line('The upgrade operation will be retried soon.')
-                raise e
-            self.status = 'failed'
-            self.log_line(f'Max retries exceeded. Upgrade failed: {cause}.', save=False)
+            self._recoverable_failure_handler(recoverable, e)
         # failure to reconnect to the device after reflashing or any
         # other unexpected exception will flag the upgrade as failed
         except (Exception, ReconnectionFailed) as e:

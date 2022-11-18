@@ -339,6 +339,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
+    @patch('openwisp_controller.connection.settings.MANAGEMENT_IP_ONLY', False)
     @patch.object(OpenWrt, '_call_reflash_command')
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
