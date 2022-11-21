@@ -60,7 +60,11 @@ jobs:
           pip install ${{ matrix.django-version }}
 
       - name: Install openwisp-firmware-upgrader
-        run: pip install -e .
+        run: |
+          pip install -e .
+          # fixes build issue
+          # TODO: remove when openwisp-controller version is updated to 1.1.0
+          pip install -U pyOpenSSL
 
       - name: QA checks
         run: |
