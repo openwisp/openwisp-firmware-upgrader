@@ -537,7 +537,11 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
             conn = DeviceConnection.get_working_connection(self.device)
         except NoWorkingDeviceConnectionError:
             self._recoverable_failure_handler(
-                recoverable, RecoverableFailure('Connection failed')
+                recoverable,
+                RecoverableFailure(
+                    'Failed to establish connection with the device,'
+                    ' tried all DeviceConnections'
+                ),
             )
             self.save()
             return

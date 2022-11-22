@@ -13,14 +13,17 @@ from openwisp_controller.connection.connectors.exceptions import CommandFailedEx
 from openwisp_controller.connection.connectors.openwrt.ssh import (
     OpenWrt as OpenWrtSshConnector,
 )
+from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_controller.connection.tests.utils import SshServer
 
-from ..swapper import load_model
+from ..swapper import load_model, swapper_load_model
 from ..tasks import upgrade_firmware
 from ..upgraders.openwrt import OpenWrt
 from .base import TestUpgraderMixin, spy_mock
 
 DeviceFirmware = load_model('DeviceFirmware')
+DeviceConnection = swapper_load_model('connection', 'DeviceConnection')
+
 
 TEST_CHECKSUM = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 
@@ -277,11 +280,11 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch.object(upgrade_firmware, 'max_retries', 1)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     @patch.object(
-        OpenWrtSshConnector,
-        'connect',
-        side_effect=SSHException('Connection failed'),
+        DeviceConnection,
+        'get_working_connection',
+        side_effect=NoWorkingDeviceConnectionError(connection=None),
     )
-    def test_connection_failure(self, connect, exec_command, putfo):
+    def test_connection_failure(self, get_working_connection, exec_command, putfo):
         (
             device_fw,
             device_conn,
@@ -295,12 +298,16 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertFalse(device_conn.is_working)
         self.assertEqual(exec_command.call_count, 0)
         self.assertEqual(putfo.call_count, 0)
-        self.assertEqual(connect.call_count, 2)
+        self.assertEqual(get_working_connection.call_count, 2)
         self.assertEqual(upgrade_op.status, 'failed')
+        device_conn_error = (
+            'Failed to establish connection with the device,'
+            ' tried all DeviceConnections.'
+        )
         lines = [
-            'Detected a recoverable failure: Connection failed.',
+            f'Detected a recoverable failure: {device_conn_error}',
             'The upgrade operation will be retried soon.',
-            'Max retries exceeded. Upgrade failed: Connection failed.',
+            f'Max retries exceeded. Upgrade failed: {device_conn_error}',
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
