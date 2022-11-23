@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     # openwisp2 admin theme
     # (must be loaded here)
     'openwisp_utils.admin_theme',
+    'admin_auto_filters',
     # admin
     'django.contrib.admin',
     'django.forms',
@@ -59,6 +60,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'rest_framework_gis',
     'django_filters',
+    'import_export',
     'drf_yasg',
     # channels
     'channels',
