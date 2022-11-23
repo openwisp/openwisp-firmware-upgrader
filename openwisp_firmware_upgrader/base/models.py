@@ -530,17 +530,32 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
 
     def upgrade(self, recoverable=True):
         DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
-        if self.device.deviceconnection_set.count() == 0:
-            self.log_line('No device connection available')
-            return
         try:
             conn = DeviceConnection.get_working_connection(self.device)
-        except NoWorkingDeviceConnectionError:
+        except NoWorkingDeviceConnectionError as error:
+            if error.connection is None:
+                self.log_line('No device connection available')
+                return
+
+            log_template = (
+                'Failed to connect with device using {credentials}.'
+                ' Error: {failure_reason}'
+            )
+            for conn in self.device.deviceconnection_set.select_related('credentials'):
+                self.log_line(
+                    log_template.format(
+                        credentials=conn.credentials,
+                        failure_reason=conn.failure_reason,
+                    ),
+                    save=False,
+                )
             self._recoverable_failure_handler(
                 recoverable,
                 RecoverableFailure(
-                    'Failed to establish connection with the device,'
-                    ' tried all DeviceConnections'
+                    (
+                        'Failed to establish connection with the device,'
+                        ' tried all DeviceConnections'
+                    )
                 ),
             )
             self.save()

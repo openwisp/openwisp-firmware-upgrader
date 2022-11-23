@@ -282,7 +282,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch.object(
         DeviceConnection,
         'get_working_connection',
-        side_effect=NoWorkingDeviceConnectionError(connection=None),
+        side_effect=NoWorkingDeviceConnectionError(connection=DeviceConnection()),
     )
     def test_connection_failure(self, get_working_connection, exec_command, putfo):
         (
@@ -305,9 +305,61 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             ' tried all DeviceConnections.'
         )
         lines = [
+            (
+                f'Failed to connect with device using {device_conn.credentials}.'
+                f' Error: {device_conn.failure_reason}'
+            ),
             f'Detected a recoverable failure: {device_conn_error}',
             'The upgrade operation will be retried soon.',
             f'Max retries exceeded. Upgrade failed: {device_conn_error}',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertFalse(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch.object(upgrade_firmware, 'max_retries', 0)
+    @patch.object(
+        OpenWrtSshConnector,
+        'connect',
+        side_effect=[
+            SSHException('Connection failed'),
+            SSHException('Authentication failed'),
+        ],
+    )
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    def test_connection_failure_log_all_failure(
+        self, mocked_connect, exec_command, putfo
+    ):
+        org = self._get_org()
+        cred1 = self._create_credentials(name='Cred1', organization=org)
+        cred2 = self._create_credentials(name='Cred2', organization=org)
+        device = self._create_config(organization=org).device
+        conn1 = self._create_device_connection(device=device, credentials=cred1)
+        conn2 = self._create_device_connection(device=device, credentials=cred2)
+        device_fw = self._create_device_firmware(
+            device=device,
+            device_connection=False,
+            upgrade=True,
+        )
+        upgrade_op = device_fw.image.upgradeoperation_set.first()
+        upgrade_op.refresh_from_db()
+        lines = [
+            (
+                f'Failed to connect with device using {conn1.credentials}.'
+                f' Error: {conn1.failure_reason}'
+            ),
+            (
+                f'Failed to connect with device using {conn2.credentials}.'
+                f' Error: {conn2.failure_reason}'
+            ),
+            (
+                'Max retries exceeded. Upgrade failed:'
+                ' Failed to establish connection with the device,'
+                ' tried all DeviceConnections.'
+            ),
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)

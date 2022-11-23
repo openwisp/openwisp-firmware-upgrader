@@ -35,7 +35,10 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        'openwisp-controller @ https://github.com/openwisp/openwisp-controller/tarball/master',
+        (
+            'openwisp-controller @'
+            ' https://github.com/openwisp/openwisp-controller/tarball/fix-get-working-device-conn'
+        ),
         'openwisp-utils[rest] @ https://github.com/openwisp/openwisp-utils/tarball/master',
         'django-private-storage~=3.0.0',
     ],
