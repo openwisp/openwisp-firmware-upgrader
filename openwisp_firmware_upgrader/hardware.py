@@ -441,6 +441,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'x86-64-generic-squashfs-combined.img.gz',
+                {
+                    'label': 'Generic x86/64 (various models)',
+                    'boards': ('QEMU/KVM',),
+                },
+            ),
+            (
                 'x86-geode-combined-squashfs.img.gz',
                 {
                     'label': 'x86 Geode(TM) Integrated Processor by AMD',
