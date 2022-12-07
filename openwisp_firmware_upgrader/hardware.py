@@ -24,6 +24,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ath79-generic-comfast_cf-e375ac-squashfs-sysupgrade.bin',
+                {
+                    'label': 'COMFAST CF-E375AC',
+                    'boards': ('COMFAST CF-E375AC',),
+                },
+            ),
+            (
                 'ipq40xx-generic-engenius_eap1300-squashfs-sysupgrade.bin',
                 {
                     'label': 'EnGenius EAP1300',
