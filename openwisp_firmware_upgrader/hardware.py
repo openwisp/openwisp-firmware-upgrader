@@ -385,13 +385,6 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                'x86-64-combined-squashfs.img.gz',
-                {
-                    'label': 'VMware, Inc. VMware Virtual Platform',
-                    'boards': ('VMware, Inc. VMware Virtual Platform',),
-                },
-            ),
-            (
                 'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
                 {
                     'label': 'YunCore XD3200 (OpenWRT 19.07 and earlier)',
@@ -434,17 +427,24 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'x86-64-generic-squashfs-combined.img.gz',
+                {
+                    'label': 'Generic x86/64 (QEMU/KVM)',
+                    'boards': ('x86_64',),
+                },
+            ),
+            (
+                'x86-64-combined-squashfs.img.gz',
+                {
+                    'label': 'VMware, Inc. VMware Virtual Platform',
+                    'boards': ('VMware, Inc. VMware Virtual Platform',),
+                },
+            ),
+            (
                 'x86-generic-combined-squashfs.img.gz',
                 {
                     'label': 'x86 32 bit (various models)',
                     'boards': ('PC Engines APU2',),
-                },
-            ),
-            (
-                'x86-64-generic-squashfs-combined.img.gz',
-                {
-                    'label': 'Generic x86/64 (various models)',
-                    'boards': ('QEMU/KVM',),
                 },
             ),
             (
