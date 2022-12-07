@@ -385,13 +385,6 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                'x86-64-combined-squashfs.img.gz',
-                {
-                    'label': 'VMware, Inc. VMware Virtual Platform',
-                    'boards': ('VMware, Inc. VMware Virtual Platform',),
-                },
-            ),
-            (
                 'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
                 {
                     'label': 'YunCore XD3200 (OpenWRT 19.07 and earlier)',
@@ -431,6 +424,20 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     'label': 'Zbtlink ZBT-WG3526 (32M)',
                     'boards': ('ZBT-WG3526 (32M)', 'Zbtlink ZBT-WG3526 (32M)'),
+                },
+            ),
+            (
+                'x86-64-generic-squashfs-combined.img.gz',
+                {
+                    'label': 'Generic x86/64 (QEMU/KVM)',
+                    'boards': ('x86_64',),
+                },
+            ),
+            (
+                'x86-64-combined-squashfs.img.gz',
+                {
+                    'label': 'VMware, Inc. VMware Virtual Platform',
+                    'boards': ('VMware, Inc. VMware Virtual Platform',),
                 },
             ),
             (
