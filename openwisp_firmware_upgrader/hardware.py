@@ -166,6 +166,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ath79-generic-tplink_eap225-outdoor-v3-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link EAP225-Outdoor v3',
+                    'boards': ('TP-Link EAP225-Outdoor v3',),
+                },
+            ),
+            (
                 'ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin',
                 {
                     'label': 'TP-Link WDR3600 v1 (OpenWRT 19.07 and earlier)',
