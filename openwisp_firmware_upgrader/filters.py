@@ -1,6 +1,9 @@
 from django.utils.translation import gettext_lazy as _
 
-from openwisp_users.multitenancy import MultitenantOrgFilter
+from openwisp_users.multitenancy import (
+    MultitenantOrgFilter,
+    MultitenantRelatedOrgFilter,
+)
 
 from .swapper import load_model
 
@@ -8,7 +11,7 @@ Build = load_model('Build')
 Category = load_model('Category')
 
 
-class CategoryFilter(MultitenantOrgFilter):
+class CategoryFilter(MultitenantRelatedOrgFilter):
     field_name = 'category'
     parameter_name = 'category_id'
     title = _('category')
@@ -19,7 +22,7 @@ class CategoryOrganizationFilter(MultitenantOrgFilter):
     rel_model = Category
 
 
-class BuildCategoryFilter(MultitenantOrgFilter):
+class BuildCategoryFilter(MultitenantRelatedOrgFilter):
     field_name = 'category'
     parameter_name = 'build__category'
     title = _('category')
