@@ -20,6 +20,12 @@ from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
+from .filters import (
+    BuildCategoryFilter,
+    BuildCategoryOrganizationFilter,
+    CategoryFilter,
+    CategoryOrganizationFilter,
+)
 from .hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from .swapper import load_model
 
@@ -45,8 +51,9 @@ class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdm
 @admin.register(load_model('Category'))
 class CategoryAdmin(BaseVersionAdmin):
     list_display = ['name', 'organization', 'created', 'modified']
-    list_filter = [('organization', MultitenantOrgFilter)]
+    list_filter = [MultitenantOrgFilter]
     list_select_related = ['organization']
+    autocomplete_fields = ['organization']
     search_fields = ['name']
     ordering = ['-name', '-created']
 
@@ -80,23 +87,17 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
         return True
 
 
-class CategoryFilter(MultitenantOrgFilter):
-    multitenant_lookup = 'organization_id__in'
-
-
 @admin.register(load_model('Build'))
 class BuildAdmin(BaseAdmin):
     list_display = ['__str__', 'organization', 'category', 'created', 'modified']
-    list_filter = [
-        ('category__organization', MultitenantOrgFilter),
-        ('category', CategoryFilter),
-    ]
+    list_filter = [CategoryOrganizationFilter, CategoryFilter]
     list_select_related = ['category', 'category__organization']
     search_fields = ['category__name', 'version', 'os']
     ordering = ['-created', '-version']
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
     multitenant_parent = 'category'
+    autocomplete_fields = ['category']
 
     # Allows apps that extend this modules to use this template with less hacks
     change_form_template = 'admin/firmware_upgrader/change_form.html'
@@ -205,12 +206,11 @@ class UpgradeOperationInline(admin.StackedInline):
 class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     list_display = ['build', 'organization', 'status', 'created', 'modified']
     list_filter = [
-        ('build__category__organization', MultitenantOrgFilter),
+        BuildCategoryOrganizationFilter,
         'status',
-        ('build__category', CategoryFilter),
+        BuildCategoryFilter,
     ]
     list_select_related = ['build__category__organization']
-    select_related = ['build']
     ordering = ['-created']
     inlines = [UpgradeOperationInline]
     multitenant_parent = 'build__category'
@@ -224,6 +224,7 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
         'created',
         'modified',
     ]
+    autocomplete_fields = ['build']
     readonly_fields = ['completed', 'success_rate', 'failed_rate', 'aborted_rate']
 
     def organization(self, obj):
