@@ -1,7 +1,10 @@
 import logging
 from datetime import timedelta
 
+import reversion
+import swapper
 from django import forms
+from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.shortcuts import redirect
@@ -9,6 +12,7 @@ from django.template.response import TemplateResponse
 from django.urls import resolve, reverse
 from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
+from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
 
@@ -16,6 +20,12 @@ from openwisp_controller.config.admin import DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
+from .filters import (
+    BuildCategoryFilter,
+    BuildCategoryOrganizationFilter,
+    CategoryFilter,
+    CategoryOrganizationFilter,
+)
 from .hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from .swapper import load_model
 
@@ -24,6 +34,9 @@ BatchUpgradeOperation = load_model('BatchUpgradeOperation')
 UpgradeOperation = load_model('UpgradeOperation')
 DeviceFirmware = load_model('DeviceFirmware')
 FirmwareImage = load_model('FirmwareImage')
+Category = load_model('Category')
+Build = load_model('Build')
+Device = swapper.load_model('config', 'Device')
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -38,8 +51,9 @@ class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdm
 @admin.register(load_model('Category'))
 class CategoryAdmin(BaseVersionAdmin):
     list_display = ['name', 'organization', 'created', 'modified']
-    list_filter = [('organization', MultitenantOrgFilter)]
+    list_filter = [MultitenantOrgFilter]
     list_select_related = ['organization']
+    autocomplete_fields = ['organization']
     search_fields = ['name']
     ordering = ['-name', '-created']
 
@@ -48,29 +62,42 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
     model = FirmwareImage
     extra = 0
 
+    class Media:
+        extra = '' if getattr(settings, 'DEBUG', False) else '.min'
+        i18n_name = admin.widgets.SELECT2_TRANSLATIONS.get(get_language())
+        i18n_file = (
+            ('admin/js/vendor/select2/i18n/%s.js' % i18n_name,) if i18n_name else ()
+        )
+        js = (
+            (
+                'admin/js/vendor/jquery/jquery%s.js' % extra,
+                'admin/js/vendor/select2/select2.full%s.js' % extra,
+            )
+            + i18n_file
+            + ('admin/js/jquery.init.js', 'firmware-upgrader/js/build.js')
+        )
+
+        css = {
+            'screen': ('admin/css/vendor/select2/select2%s.css' % extra,),
+        }
+
     def has_change_permission(self, request, obj=None):
         if obj:
             return False
         return True
 
 
-class CategoryFilter(MultitenantOrgFilter):
-    multitenant_lookup = 'organization_id__in'
-
-
 @admin.register(load_model('Build'))
-class BuildAdmin(BaseVersionAdmin):
+class BuildAdmin(BaseAdmin):
     list_display = ['__str__', 'organization', 'category', 'created', 'modified']
-    list_filter = [
-        ('category__organization', MultitenantOrgFilter),
-        ('category', CategoryFilter),
-    ]
+    list_filter = [CategoryOrganizationFilter, CategoryFilter]
     list_select_related = ['category', 'category__organization']
     search_fields = ['category__name', 'version', 'os']
     ordering = ['-created', '-version']
     inlines = [FirmwareImageInline]
     actions = ['upgrade_selected']
     multitenant_parent = 'category'
+    autocomplete_fields = ['category']
 
     # Allows apps that extend this modules to use this template with less hacks
     change_form_template = 'admin/firmware_upgrader/change_form.html'
@@ -179,12 +206,11 @@ class UpgradeOperationInline(admin.StackedInline):
 class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     list_display = ['build', 'organization', 'status', 'created', 'modified']
     list_filter = [
-        ('build__category__organization', MultitenantOrgFilter),
+        BuildCategoryOrganizationFilter,
         'status',
-        ('build__category', CategoryFilter),
+        BuildCategoryFilter,
     ]
     list_select_related = ['build__category__organization']
-    select_related = ['build']
     ordering = ['-created']
     inlines = [UpgradeOperationInline]
     multitenant_parent = 'build__category'
@@ -198,6 +224,7 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
         'created',
         'modified',
     ]
+    autocomplete_fields = ['build']
     readonly_fields = ['completed', 'success_rate', 'failed_rate', 'aborted_rate']
 
     def organization(self, obj):
@@ -332,3 +359,7 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
 
 # DeviceAdmin.get_inlines = device_admin_get_inlines
 DeviceAdmin.conditional_inlines += [DeviceFirmwareInline, DeviceUpgradeOperationInline]
+
+reversion.register(model=DeviceFirmware, follow=['device'])
+reversion.register(model=UpgradeOperation)
+DeviceAdmin.add_reversion_following(follow=['devicefirmware', 'upgradeoperation_set'])

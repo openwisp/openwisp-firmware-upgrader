@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from openwisp_users.api.mixins import FilterSerializerByOrgManaged
 from openwisp_utils.api.serializers import ValidatedModelSerializer
 
 from ..swapper import load_model
@@ -15,19 +16,23 @@ class BaseMeta:
     read_only_fields = ['created', 'modified']
 
 
-class CategorySerializer(ValidatedModelSerializer):
+class BaseSerializer(FilterSerializerByOrgManaged, ValidatedModelSerializer):
+    pass
+
+
+class CategorySerializer(BaseSerializer):
     class Meta(BaseMeta):
         model = Category
         fields = '__all__'
 
 
-class CategoryRelationSerializer(ValidatedModelSerializer):
+class CategoryRelationSerializer(BaseSerializer):
     class Meta:
         model = Category
         fields = ['name', 'organization']
 
 
-class FirmwareImageSerializer(ValidatedModelSerializer):
+class FirmwareImageSerializer(BaseSerializer):
     def validate(self, data):
         data['build'] = self.context['view'].get_parent_queryset().get()
         return super().validate(data)
@@ -38,7 +43,7 @@ class FirmwareImageSerializer(ValidatedModelSerializer):
         read_only_fields = BaseMeta.read_only_fields + ['build']
 
 
-class BuildSerializer(ValidatedModelSerializer):
+class BuildSerializer(BaseSerializer):
     category_relation = CategoryRelationSerializer(read_only=True, source='category')
 
     class Meta(BaseMeta):
@@ -46,13 +51,13 @@ class BuildSerializer(ValidatedModelSerializer):
         fields = '__all__'
 
 
-class UpgradeOperationSerializer(ValidatedModelSerializer):
+class UpgradeOperationSerializer(BaseSerializer):
     class Meta:
         model = UpgradeOperation
         exclude = ['batch']
 
 
-class BatchUpgradeOperationListSerializer(ValidatedModelSerializer):
+class BatchUpgradeOperationListSerializer(BaseSerializer):
     build = BuildSerializer(read_only=True)
 
     class Meta:

@@ -42,9 +42,11 @@ INSTALLED_APPS = [
     'openwisp_firmware_upgrader',
     'openwisp_users',
     'openwisp_notifications',
+    'openwisp_ipam',
     # openwisp2 admin theme
     # (must be loaded here)
     'openwisp_utils.admin_theme',
+    'admin_auto_filters',
     # admin
     'django.contrib.admin',
     'django.forms',
@@ -58,6 +60,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'rest_framework_gis',
     'django_filters',
+    'import_export',
     'drf_yasg',
     # channels
     'channels',
@@ -105,7 +108,7 @@ STATIC_URL = '/static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = '{0}/media/'.format(BASE_DIR)
 
-PRIVATE_STORAGE_ROOT = '{0}/firmware/'.format(BASE_DIR)
+PRIVATE_STORAGE_ROOT = os.path.join(BASE_DIR, 'private', 'firmware')
 
 TEMPLATES = [
     {
@@ -197,9 +200,10 @@ OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS = {
 }
 
 if os.environ.get('SAMPLE_APP', False):
+    firmware_upgrader_index = INSTALLED_APPS.index('openwisp_firmware_upgrader')
     INSTALLED_APPS.remove('openwisp_firmware_upgrader')
     EXTENDED_APPS.append('openwisp_firmware_upgrader')
-    INSTALLED_APPS.append('openwisp2.sample_firmware_upgrader')
+    INSTALLED_APPS.insert(firmware_upgrader_index, 'openwisp2.sample_firmware_upgrader')
     FIRMWARE_UPGRADER_CATEGORY_MODEL = 'sample_firmware_upgrader.Category'
     FIRMWARE_UPGRADER_BUILD_MODEL = 'sample_firmware_upgrader.Build'
     FIRMWARE_UPGRADER_FIRMWAREIMAGE_MODEL = 'sample_firmware_upgrader.FirmwareImage'

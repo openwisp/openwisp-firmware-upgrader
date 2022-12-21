@@ -7,7 +7,11 @@ from . import views
 
 urlpatterns = [
     path(
-        urljoin(IMAGE_URL_PATH, '<path:imagefile>'),
+        # Use "path" URL kwarg to make it consistent with
+        # django-private-storage. Otherwise, the S3 reverse
+        # proxy feature of django-private-storage does
+        # not work.
+        urljoin(IMAGE_URL_PATH, '<path:path>'),
         views.firmware_image_download,
         name='serve_private_file',
     ),

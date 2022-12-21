@@ -6,11 +6,6 @@ from setuptools import find_packages, setup
 
 from openwisp_firmware_upgrader import get_version
 
-# TODO: change this when next version of openwisp_controller is released
-controller = 'https://github.com/openwisp/openwisp-controller/tarball/master'
-# TODO: change this when next version of openwisp_utils is released
-utils = 'https://github.com/openwisp/openwisp-utils/tarball/master'
-
 if sys.argv[-1] == 'publish':
     # delete any *.pyc, *.pyo and __pycache__
     os.system('find . | grep -E "(__pycache__|\.pyc|\.pyo$)" | xargs rm -rf')
@@ -40,10 +35,9 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        f'openwisp-controller @ {controller}',
-        f'openwisp-utils[rest] @ {utils}',
-        'django-private-storage~=2.2',
-        'swapper~=1.1.0',
+        'openwisp-controller @ https://github.com/openwisp/openwisp-controller/tarball/master',
+        'openwisp-utils[rest] @ https://github.com/openwisp/openwisp-utils/tarball/master',
+        'django-private-storage~=3.0.0',
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',

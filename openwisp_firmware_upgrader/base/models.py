@@ -1,11 +1,8 @@
 import logging
 import os
 from decimal import Decimal
-from pathlib import Path
-from urllib.parse import urljoin
 
 import swapper
-from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
 from django.utils import timezone
@@ -13,8 +10,8 @@ from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 from django.utils.translation import gettext_lazy as _
 from private_storage.fields import PrivateFileField
-from private_storage.storage.files import PrivateFileSystemStorage
 
+from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_users.mixins import OrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
@@ -30,7 +27,6 @@ from ..hardware import (
     FIRMWARE_IMAGE_TYPE_CHOICES,
     REVERSE_FIRMWARE_IMAGE_MAP,
 )
-from ..settings import FIRMWARE_API_BASEURL, IMAGE_URL_PATH
 from ..swapper import get_model_name, load_model
 from ..tasks import (
     batch_upgrade_operation,
@@ -105,13 +101,15 @@ class AbstractBuild(TimeStampedEditableModel):
 
     def clean(self):
         # Make sure that ('category__organization', 'os') is unique too
+        try:
+            category = self.category
+        except ObjectDoesNotExist:
+            return
         if not self.os:
             return
         if (
             load_model('Build')
-            .objects.filter(
-                category__organization=self.category.organization, os=self.os
-            )
+            .objects.filter(category__organization=category.organization, os=self.os)
             .exclude(pk=self.pk)
             .exists()
         ):
@@ -119,7 +117,7 @@ class AbstractBuild(TimeStampedEditableModel):
                 {
                     'os': _(
                         f'A build with this OS identifier ("{self.os}") and '
-                        f'organization ("{self.category.organization}") already exists'
+                        f'organization ("{category.organization}") already exists'
                     )
                 }
             )
@@ -178,9 +176,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         'File',
         upload_to=get_build_directory,
         max_file_size=app_settings.MAX_FILE_SIZE,
-        storage=PrivateFileSystemStorage(
-            base_url=urljoin(FIRMWARE_API_BASEURL, IMAGE_URL_PATH)
-        ),
+        storage=app_settings.PRIVATE_STORAGE_INSTANCE,
     )
     type = models.CharField(
         blank=True,
@@ -218,7 +214,21 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     def delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
         self._remove_file()
-        self._remove_empty_directory()
+
+    def _remove_file(self):
+        firmware_filename = self.file.name
+        self.file.storage.delete(firmware_filename)
+        # Delete the file directory
+        dir = os.path.split(firmware_filename)[0]
+        if dir:
+            try:
+                self.file.storage.delete(dir)
+            except OSError as error:
+                # A build can have multiple firmware images,
+                # therefore, deleting directory might not be
+                # always feasible.
+                if 'Directory not empty' not in str(error):
+                    raise error
 
     def _clean_type(self):
         """
@@ -229,23 +239,6 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         filename = self.file.name
         # removes leading prefix
         self.type = '-'.join(filename.split('-')[1:])
-
-    def _remove_file(self):
-        path = self.file.path
-        if os.path.isfile(path):
-            os.remove(path)
-        else:
-            msg = 'firmware image not found while deleting {0}:\n{1}'
-            logger.error(msg.format(self, path))
-
-    def _remove_empty_directory(self):
-        path = os.path.dirname(self.file.path)
-        # TODO: precauton when migrating to private storage
-        # avoid accidentally deleting the MEDIA_ROOT dir
-        # remove this before or after first release
-        is_media_root = Path(path).absolute() != Path(settings.MEDIA_ROOT).absolute()
-        if not os.listdir(path) and is_media_root:
-            os.rmdir(path)
 
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):
@@ -271,6 +264,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         abstract = True
 
     def clean(self):
+        if not hasattr(self, 'image') or not hasattr(self, 'device'):
+            return
         if self.image.build.category.organization != self.device.organization:
             raise ValidationError(
                 {
@@ -534,12 +529,48 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         if save:
             self.save()
 
+    def _recoverable_failure_handler(self, recoverable, error):
+        cause = str(error)
+        if recoverable:
+            self.log_line(f'Detected a recoverable failure: {cause}.\n', save=False)
+            self.log_line('The upgrade operation will be retried soon.')
+            raise error
+        self.status = 'failed'
+        self.log_line(f'Max retries exceeded. Upgrade failed: {cause}.', save=False)
+
     def upgrade(self, recoverable=True):
-        conn = self.device.deviceconnection_set.first()
-        installed = False
-        if not conn:
-            self.log_line('No device connection available')
+        DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
+        try:
+            conn = DeviceConnection.get_working_connection(self.device)
+        except NoWorkingDeviceConnectionError as error:
+            if error.connection is None:
+                self.log_line('No device connection available')
+                return
+
+            log_template = (
+                'Failed to connect with device using {credentials}.'
+                ' Error: {failure_reason}'
+            )
+            for conn in self.device.deviceconnection_set.select_related('credentials'):
+                self.log_line(
+                    log_template.format(
+                        credentials=conn.credentials,
+                        failure_reason=conn.failure_reason,
+                    ),
+                    save=False,
+                )
+            self._recoverable_failure_handler(
+                recoverable,
+                RecoverableFailure(
+                    (
+                        'Failed to establish connection with the device,'
+                        ' tried all DeviceConnections'
+                    )
+                ),
+            )
+            self.save()
             return
+        installed = False
         # prevent multiple upgrade operations for
         # the same device running at the same time
         qs = (
@@ -576,13 +607,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         # raising this exception will cause celery to retry again
         # the upgrade according to its configuration
         except RecoverableFailure as e:
-            cause = str(e)
-            if recoverable:
-                self.log_line(f'Detected a recoverable failure: {cause}.\n', save=False)
-                self.log_line('The upgrade operation will be retried soon.')
-                raise e
-            self.status = 'failed'
-            self.log_line(f'Max retries exceeded. Upgrade failed: {cause}.', save=False)
+            self._recoverable_failure_handler(recoverable, e)
         # failure to reconnect to the device after reflashing or any
         # other unexpected exception will flag the upgrade as failed
         except (Exception, ReconnectionFailed) as e:

@@ -7,9 +7,9 @@ openwisp-firmware-upgrader
 .. image:: https://coveralls.io/repos/openwisp/openwisp-firmware-upgrader/badge.svg
   :target: https://coveralls.io/r/openwisp/openwisp-firmware-upgrader
 
-.. image:: https://requires.io/github/openwisp/openwisp-firmware-upgrader/requirements.svg?branch=master
-   :target: https://requires.io/github/openwisp/openwisp-firmware-upgrader/requirements/?branch=master
-   :alt: Requirements Status
+.. image:: https://img.shields.io/librariesio/release/github/openwisp/openwisp-firmware-upgrader
+  :target: https://libraries.io/github/openwisp/openwisp-firmware-upgrader#repository_dependencies
+  :alt: Dependency monitoring
 
 .. image:: https://img.shields.io/gitter/room/nwjs/nw.js.svg?style=flat-square
    :target: https://gitter.im/openwisp/general
@@ -29,6 +29,8 @@ openwisp-firmware-upgrader
 
 ------------
 
+**Need a quick overview?** `Try the OpenWISP Demo <https://openwisp.org/demo.html>`_.
+
 Firmware upgrade module of OpenWISP.
 
 **Features**:
@@ -42,12 +44,21 @@ Firmware upgrade module of OpenWISP.
 - Mass upgrades
 - Possibility to divide firmware images in categories
 - `REST API <#rest-api>`__
-- Possibility of writing custom upgraders for other firmware OSes or for custom OpenWRT based firmwares
+- `Possibility of writing custom upgraders <#writing-custom-firmware-upgrader-classes>`_ for other
+  firmware OSes or for custom OpenWRT based firmwares
 - Configurable timeouts
 - `Extensible <#extending-openwisp-firmware-upgrader>`_
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp2-docs/master/assets/design/openwisp-logo-black.svg
   :target: http://openwisp.org
+
+**For a more complete overview of the OpenWISP modules and architecture**,
+see the
+`OpenWISP Architecture Overview
+<https://openwisp.io/docs/general/architecture.html>`_.
+
+**Want to help OpenWISP?** `Find out how to help us grow here
+<http://openwisp.io/docs/general/help-us.html>`_.
 
 ------------
 
@@ -57,15 +68,17 @@ Firmware upgrade module of OpenWISP.
 
 ------------
 
-Requirements
-------------
+Installation instructions
+-------------------------
 
-- Python >= 3.6
-- Django >= 3.0
-- openwisp-controller (and its dependencies) >= 0.8.0
+Requirements
+~~~~~~~~~~~~
+
+- Python >= 3.7
+- openwisp-controller (and its dependencies) >= 1.0.0
 
 Install Dependencies
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 Install spatialite and sqlite:
 
@@ -75,7 +88,7 @@ Install spatialite and sqlite:
     sudo apt-get install gdal-bin libproj-dev libgeos-dev libspatialite-dev
 
 Setup (integrate in an existing Django project)
------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Follow the `setup instructions of openwisp-controller
 <https://github.com/openwisp/openwisp-controller#setup-integrate-in-an-existing-django-project>`_, then add the settings described below.
@@ -99,6 +112,7 @@ Follow the `setup instructions of openwisp-controller
         'openwisp_firmware_upgrader',
         'openwisp_users',
         'openwisp_notifications',
+        'openwisp_ipam',
         # openwisp2 admin theme (must be loaded here)
         'openwisp_utils.admin_theme',
         # admin
@@ -132,26 +146,86 @@ The root URLconf (``urls.py``) should look like the following example:
     from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 
     urlpatterns = [
-        url(r'^admin/', include(admin.site.urls)),
-        url(r'', include('openwisp_controller.urls')),
-        url(r'', include('openwisp_firmware_upgrader.urls')),
-        # token auth API
-        url(r'^api/v1/', include((get_api_urls(), 'users'), namespace='users')),
-        # needed for API docs
-        url(r'^api/v1/', include('openwisp_utils.api.urls')),
+        path('admin/', admin.site.urls),
+        path('', include('openwisp_controller.urls')),
+        path('', redirect_view, name='index'),
+        path('', include('openwisp_firmware_upgrader.urls')),
+        path('api/v1/', include((get_api_urls(), 'users'), namespace='users')),
+        path('api/v1/', include('openwisp_utils.api.urls')),
     ]
 
     urlpatterns += staticfiles_urlpatterns()
 
-Quickstart
-----------
+Installing for development
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Install your forked repo:
+
+.. code-block:: shell
+
+    git clone git://github.com/<your_fork>/openwisp-firmware-upgrader
+    cd openwisp-firmware-upgrader/
+    python setup.py develop
+
+Install test requirements:
+
+.. code-block:: shell
+
+    pip install -r requirements-test.txt
+
+Create database:
+
+.. code-block:: shell
+
+    cd tests/
+    ./manage.py migrate
+    ./manage.py createsuperuser
+
+Launch development server:
+
+.. code-block:: shell
+
+    ./manage.py runserver 0.0.0.0:8000
+
+You can access the admin interface at http://127.0.0.1:8000/admin/.
+
+Run celery and celery-beat with the following commands
+(separate terminal windows are needed):
+
+.. code-block:: shell
+
+    # (cd tests)
+    celery -A openwisp2 worker -l info
+    celery -A openwisp2 beat -l info
+
+Run tests with:
+
+.. code-block:: shell
+
+    # run qa checks
+    ./run-qa-checks
+
+    # standard tests
+    ./runtests.py
+
+    # tests for the sample app
+    SAMPLE_APP=1 ./runtests.py --keepdb --failfast
+
+When running the last line of the previous example, the environment variable
+``SAMPLE_APP`` activates the app in ``/tests/openwisp2/sample_firmware_upgrader/``
+which is a simple django app that extends ``openwisp-firmware-upgrader`` with
+the sole purpose of testing its extensibility, for more information regarding
+this concept, read the following section.
+
+Quickstart Guide
+----------------
 
 Requirements:
 
 - Devices running at least OpenWRT 12.09 Attitude Adjustment, older versions
   of OpenWRT have not worked at all in our tests
 - Devices must have enough free RAM to be able to upload the
-  new image to `/tmp``
+  new image to ``/tmp``
 
 1. Create a category
 ~~~~~~~~~~~~~~~~~~~~
@@ -160,6 +234,8 @@ Create a category for your firmware images
 by going to *Firmware management > Firmware categories > Add firmware category*,
 if you use only one firmware type in your network, you could simply
 name the category "default" or "standard".
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-category.gif
 
 If you use multiple firmware images with different features, create one category
 for each firmware type, eg:
@@ -182,6 +258,8 @@ supported by the system.
 
 The version field indicates the firmware version, the change log field is optional but
 we recommend filling it to help operators know the differences between each version.
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-build.gif
 
 An important but optional field of the build model is **OS identifier**, this field
 should match the value of the **Operating System** field which gets automatically filled
@@ -206,15 +284,17 @@ Now save the build object to create it.
 Now is time to add images to the build, we suggest adding one image at time.
 Alternatively the `REST API <#rest-api>`__ can be used to automate this step.
 
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-firmwareimage.gif
+
 If you use a hardware model which is not listed in the image types, if the
 hardware model is officially supported by OpenWRT, you can send us a pull-request to add it,
-otherwise you can use `the setting OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp-custom-openwrt-images>`__
+otherwise you can use `the setting OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`__
 to add it.
 
 4. Perform a firmware upgrade to a specific device
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/device-firmware-upgrade.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-devicefirmware.gif
 
 Once a new build is ready, has been created in the system and its image have been uploaded,
 it will be the time to finally upgrade our devices.
@@ -223,8 +303,8 @@ To perform the upgrade of a single device, navigate to the device details,
 then go to the "Firmware" tab.
 
 If you correctly filled **OS identifier** in step 2, you should have a situation
-similar to the one above: in this example, the device is using version ``2020-03-25``
-and we want to upgrade it to version ``2020-05-15``, once the new firmware image
+similar to the one above: in this example, the device is using version ``1.0``
+and we want to upgrade it to version ``2.0``, once the new firmware image
 is selected we just have to hit save, then a new tab will appear in the device page
 which allows us to see what's going on during the upgrade.
 
@@ -248,6 +328,8 @@ At this stage you can try a mass upgrade by doing the following:
   want the devices to be upgraded with
 - click on "Mass-upgrade devices related to the selected build".
 
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
+
 At this point you should see a summary page which will inform you of which devices
 are going to be upgraded, you can either confirm the operation or cancel.
 
@@ -257,6 +339,285 @@ can monitor the progress of the upgrade operations.
 Right now, the update of the upgrade information is not asynchronous yet, so you will
 have to reload the page periodically to find new information. This will be addressed
 in a future release.
+
+Automatic device firmware detection
+-----------------------------------
+
+*OpenWISP Firmware Upgrader* maintains a data structure for mapping
+the firmware image files to board names called ``OPENWRT_FIRMWARE_IMAGE_MAP``.
+
+Here is an example firmware image item from ``OPENWRT_FIRMWARE_IMAGE_MAP``
+
+.. code-block:: python
+
+    {
+        # Firmware image file name.
+        'ar71xx-generic-cf-e320n-v2-squashfs-sysupgrade.bin': {
+            # Human readable name of the model which is displayed on
+            # the UI
+            'label': 'COMFAST CF-E320N v2 (OpenWRT 19.07 and earlier)',
+            # Tupe of board names with which the different versions
+            # of the hardware are identified on OpenWrt
+            'boards': ('COMFAST CF-E320N v2',),
+        }
+    }
+
+When a device registers on OpenWISP, the `openwisp-config agent
+<https://github.com/openwisp/openwisp-config#openwisp-config>`_
+read the device board name from `/tmp/sysinfo/model` and sends it to OpenWISP.
+This value is then saved in the ``Device.model`` field.
+*OpenWISP Firmware Upgrader* uses this field to automatically detect
+the correct firmware image for the device.
+
+Use the `OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`_
+setting to add additional firmware image in your project.
+
+Writing Custom Firmware Upgrader Classes
+----------------------------------------
+
+You can write custom upgraders for other firmware OSes or for
+custom OpenWrt based firmwares.
+
+Here is an example custom OpenWrt firmware upgrader class:
+
+.. code-block:: python
+
+    from openwisp_firmware_upgrader.upgraders.openwrt import OpenWrt
+
+    class CustomOpenWrtBasedFirmware(OpenWrt):
+        # this firmware uses a custom upgrade command
+        UPGRADE_COMMAND = 'upgrade_firmware.sh --keep-config'
+        # it takes somewhat more time to boot so it needs more time
+        RECONNECT_DELAY = 150
+        RECONNECT_RETRY_DELAY = 5
+        RECONNECT_MAX_RETRIES = 20
+
+        def get_remote_path(self, image):
+            return '/tmp/firmware.img'
+
+        def get_upgrade_command(self, path):
+            return self.UPGRADE_COMMAND
+
+You will need to place your custom upgrader class on the python path
+of your application and then add this path to the `OPENWISP_FIRMWARE_UPGRADERS_MAP
+<#openwisp_firmware_upgraders_map>`_ setting.
+
+REST API
+--------
+
+To enable the API the setting
+`OPENWISP_FIRMWARE_UPGRADER_API <#openwisp-firmware-upgrader-api>`_
+must be set to ``True``.
+
+Live documentation
+~~~~~~~~~~~~~~~~~~
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/api-docs.png
+
+A general live API documentation (following the OpenAPI specification) at ``/api/v1/docs/``.
+
+Browsable web interface
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/api-ui.png
+
+Additionally, opening any of the endpoints `listed below <#list-of-endpoints>`_
+directly in the browser will show the `browsable API interface of Django-REST-Framework
+<https://www.django-rest-framework.org/topics/browsable-api/>`_,
+which makes it even easier to find out the details of each endpoint.
+
+Authentication
+~~~~~~~~~~~~~~
+
+See openwisp-users: `authenticating with the user token
+<https://github.com/openwisp/openwisp-users#authenticating-with-the-user-token>`_.
+
+When browsing the API via the `Live documentation <#live-documentation>`_
+or the `Browsable web page <#browsable-web-interface>`_, you can also use
+the session authentication by logging in the django admin.
+
+Pagination
+~~~~~~~~~~
+
+All *list* endpoints support the ``page_size`` parameter that allows paginating
+the results in conjunction with the ``page`` parameter.
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/?page_size=10
+    GET /api/v1/firmware-upgrader/build/?page_size=10&page=2
+
+Filtering by organization slug
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Most endpoints allow to filter by organization slug, eg:
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/?organization=org-slug
+
+List of endpoints
+~~~~~~~~~~~~~~~~~
+
+Since the detailed explanation is contained in the `Live documentation <#live-documentation>`_
+and in the `Browsable web page <#browsable-web-interface>`_ of each point,
+here we'll provide just a list of the available endpoints,
+for further information please open the URL of the endpoint in your browser.
+
+List mass upgrade operations
+############################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/
+
+Get mass upgrade operation detail
+#################################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/
+
+List firmware builds
+####################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/
+
+Create firmware build
+#####################
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/build/
+
+Get firmware build details
+##########################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/{id}/
+
+Change details of firmware build
+################################
+
+.. code-block:: text
+
+    PUT /api/v1/firmware-upgrader/build/{id}/
+
+Patch details of firmware build
+###############################
+
+.. code-block:: text
+
+    PATCH /api/v1/firmware-upgrader/build/{id}/
+
+Delete firmware build
+#####################
+
+.. code-block:: text
+
+    DELETE /api/v1/firmware-upgrader/build/{id}/
+
+Get list of images of a firmware build
+######################################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/{id}/image/
+
+Upload new firmware image to the build
+######################################
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/build/{id}/image/
+
+Get firmware image details
+##########################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/
+
+Delete firmware image
+#####################
+
+.. code-block:: text
+
+    DELETE /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/
+
+Download firmware image
+#######################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/download/
+
+Perform batch upgrade
+#####################
+
+Upgrades all the devices related to the specified build ID.
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/build/{id}/upgrade/
+
+Dry-run batch upgrade
+#####################
+
+Returns a list representing the ``DeviceFirmware`` and ``Device``
+instances that would be upgraded if POST is used.
+
+``Device`` objects are indicated only when no ``DeviceFirmware``
+object exists for a device which would be upgraded.
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/{id}/upgrade/
+
+List firmware categories
+########################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/category/
+
+Create new firmware category
+############################
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/category/
+
+Get firmware category details
+#############################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/category/{id}/
+
+Change the details of a firmware category
+#########################################
+
+.. code-block:: text
+
+    PUT /api/v1/firmware-upgrader/category/{id}/
+
+Patch the details of a firmware category
+########################################
+
+.. code-block:: text
+
+    PATCH /api/v1/firmware-upgrader/category/{id}/
+
+Delete a firmware category
+##########################
+
+.. code-block:: text
+
+    DELETE /api/v1/firmware-upgrader/category/{id}/
 
 Settings
 --------
@@ -321,26 +682,30 @@ will end up affecting negatively the rest of the application.
 | **default**: | ``None``    |
 +--------------+-------------+
 
-This setting can be used to add new image types for OpenWRT, eg:
+This setting can be used to extend the list of firmware image types
+included in *OpenWISP Firmware Upgrader*. This setting is suited to
+add support for custom OpenWrt images.
 
 .. code-block:: python
 
     OPENWISP_CUSTOM_OPENWRT_IMAGES = (
-        ('customimage-squashfs-sysupgrade.bin', {
-            'label': 'Custom WAP-1200',
-            'boards': ('CWAP1200',)
-        }),
+        (
+            # Firmware image file name.
+            'customimage-squashfs-sysupgrade.bin', {
+                # Human readable name of the model which is displayed on
+                # the UI
+                'label': 'Custom WAP-1200',
+                # Tuple of board names with which the different versions of
+                # the hardware are identified on OpenWrt
+                'boards': ('CWAP1200',)
+            }
+        ),
     )
 
-**Notes**:
-
-- ``label`` it's the human readable name of the model which will be
-  displayed in the UI
-- ``boards`` is a tuple of board names with which the different versions
-  of the hardware are identified on OpenWRT; this field is used to
-  recognize automatically devices which have registered into OpenWISP.
-  The board name of the device on OpenWRT is read from the output of
-  the command ``cat /tmp/sysinfo/model``
+Kindly read `"Automatic detection of firmware of device"
+<#automatic-device-firmware-detection>`_
+section of this documentation to know how *OpenWISP Firmware Upgrader*
+uses this setting in upgrades.
 
 ``OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -438,302 +803,41 @@ A dictionary that maps update strategies to upgraders.
 If you want to use a custom update strategy you will need to use this setting
 to provide an entry with the class path of your update strategy as the key.
 
-If you want to use a custom upgrader you will need to use this setting to
-provide an entry with the class path of your upgrader as the value.
-
-REST API
---------
-
-To enable the API the setting
-`OPENWISP_FIRMWARE_UPGRADER_API <#openwisp-firmware-upgrader-api>`_
-must be set to ``True``.
-
-Live documentation
-~~~~~~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/api-docs.gif
-
-A general live API documentation (following the OpenAPI specification) at ``/api/v1/docs/``.
-
-Browsable web interface
-~~~~~~~~~~~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/master/docs/images/api-ui.png
-
-Additionally, opening any of the endpoints `listed below <#list-of-endpoints>`_
-directly in the browser will show the `browsable API interface of Django-REST-Framework
-<https://www.django-rest-framework.org/topics/browsable-api/>`_,
-which makes it even easier to find out the details of each endpoint.
-
-Authentication
-~~~~~~~~~~~~~~
-
-See openwisp-users: `authenticating with the user token
-<https://github.com/openwisp/openwisp-users#authenticating-with-the-user-token>`_.
-
-When browsing the API via the `Live documentation <#live-documentation>`_
-or the `Browsable web page <#browsable-web-interface>`_, you can also use
-the session authentication by logging in the django admin.
-
-Pagination
-~~~~~~~~~~
-
-All *list* endpoints support the ``page_size`` parameter that allows paginating
-the results in conjunction with the ``page`` parameter.
-
-.. code-block:: text
-
-    GET /api/v1/firmware/build/?page_size=10
-    GET /api/v1/firmware/build/?page_size=10&page=2
-
-Filtering by organization slug
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Most endpoints allow to filter by organization slug, eg:
-
-.. code-block:: text
-
-    GET /api/v1/firmware/build/?organization=org-slug
-
-List of endpoints
-~~~~~~~~~~~~~~~~~
-
-Since the detailed explanation is contained in the `Live documentation <#live-documentation>`_
-and in the `Browsable web page <#browsable-web-interface>`_ of each point,
-here we'll provide just a list of the available endpoints,
-for further information please open the URL of the endpoint in your browser.
-
-List mass upgrade operations
-############################
-
-.. code-block:: text
-
-    GET /api/v1/firmware/batch-upgrade-operation/
-
-Get mass upgrade operation detail
-#################################
-
-.. code-block:: text
-
-    GET /api/v1/firmware/batch-upgrade-operation/{id}/
-
-List firmware builds
-####################
-
-.. code-block:: text
-
-    GET /api/v1/firmware/build/
-
-Create firmware build
-#####################
-
-.. code-block:: text
-
-    POST /api/v1/firmware/build/
-
-Get firmware build details
-##########################
-
-.. code-block:: text
-
-    GET /api/v1/firmware/build/{id}/
-
-Change details of firmware build
-################################
-
-.. code-block:: text
-
-    PUT /api/v1/firmware/build/{id}/
-
-Patch details of firmware build
-###############################
-
-.. code-block:: text
-
-    PATCH /api/v1/firmware/build/{id}/
-
-Delete firmware build
-#####################
-
-.. code-block:: text
-
-    DELETE /api/v1/firmware/build/{id}/
-
-Get list of images of a firmware build
-######################################
-
-.. code-block:: text
-
-    GET /api/v1/firmware/build/{id}/image/
-
-Upload new firmware image to the build
-######################################
-
-.. code-block:: text
-
-    POST /api/v1/firmware/build/{id}/image/
-
-Get firmware image details
-##########################
-
-.. code-block:: text
-
-    GET /api/v1/firmware/build/{build_pk}/image/{id}/
-
-Delete firmware image
-#####################
-
-.. code-block:: text
-
-    DELETE /api/v1/firmware/build/{build_pk}/image/{id}/
-
-Download firmware image
-#######################
-
-.. code-block:: text
-
-    GET /api/v1/firmware/build/{build_pk}/image/{id}/download/
-
-Perform batch upgrade
-#####################
-
-Upgrades all the devices related to the specified build ID.
-
-.. code-block:: text
-
-    POST /api/v1/firmware/build/{id}/upgrade/
-
-Dry-run batch upgrade
-#####################
-
-Returns a list representing the ``DeviceFirmware`` and ``Device``
-instances that would be upgraded if POST is used.
-
-``Device`` objects are indicated only when no ``DeviceFirmware``
-object exists for a device which would be upgraded.
-
-.. code-block:: text
-
-    GET /api/v1/firmware/build/{id}/upgrade/
-
-List firmware categories
-########################
-
-.. code-block:: text
-
-    GET /api/v1/firmware/category/
-
-Create new firmware category
-############################
-
-.. code-block:: text
-
-    POST /api/v1/firmware/category/
-
-Get firmware category details
-#############################
-
-.. code-block:: text
-
-    GET /api/v1/firmware/category/{id}/
-
-Change the details of a firmware category
-#########################################
-
-.. code-block:: text
-
-    PUT /api/v1/firmware/category/{id}/
-
-Patch the details of a firmware category
-########################################
-
-.. code-block:: text
-
-    PATCH /api/v1/firmware/category/{id}/
-
-Delete a firmware category
-##########################
-
-.. code-block:: text
-
-    DELETE /api/v1/firmware/category/{id}/
-
-Installing for development
---------------------------
-
-Install your forked repo:
-
-.. code-block:: shell
-
-    git clone git://github.com/<your_fork>/openwisp-firmware-upgrader
-    cd openwisp-firmware-upgrader/
-    python setup.py develop
-
-Install test requirements:
-
-.. code-block:: shell
-
-    pip install -r requirements-test.txt
-
-Create database:
-
-.. code-block:: shell
-
-    cd tests/
-    ./manage.py migrate
-    ./manage.py createsuperuser
-
-Launch development server:
-
-.. code-block:: shell
-
-    ./manage.py runserver 0.0.0.0:8000
-
-You can access the admin interface at http://127.0.0.1:8000/admin/.
-
-Run celery and celery-beat with the following commands
-(separate terminal windows are needed):
-
-.. code-block:: shell
-
-    # (cd tests)
-    celery -A openwisp2 worker -l info
-    celery -A openwisp2 beat -l info
-
-Run tests with:
-
-.. code-block:: shell
-
-    # run qa checks
-    ./run-qa-checks
-
-    # standard tests
-    ./runtests.py
-
-    # tests for the sample app
-    SAMPLE_APP=1 ./runtests.py --keepdb --failfast
-
-When running the last line of the previous example, the environment variable
-``SAMPLE_APP`` activates the app in ``/tests/openwisp2/sample_firmware_upgrader/``
-which is a simple django app that extends ``openwisp-firmware-upgrader`` with
-the sole purpose of testing its extensibility, for more information regarding
-this concept, read the following section.
+If you need to use a `custom upgrader class <#writing-custom-firmware-upgrader-classes>`_
+you will need to use this setting to provide an entry with the class path of your upgrader
+as the value.
+
+``OPENWISP_FIRMWARE_PRIVATE_STORAGE_INSTANCE``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++--------------+-------------------------------------------------------------------------------------+
+| **type**:    | ``str``                                                                             |
++--------------+-------------------------------------------------------------------------------------+
+| **default**: |  ``openwisp_firmware_upgrader.private_storage.storage.file_system_private_storage`` |
++--------------+-------------------------------------------------------------------------------------+
+
+Dotted path to an instance of any one of the storage classes in
+`private_storage <https://github.com/edoburu/django-private-storage#django-private-storage>`_.
+This instance is used to store firmware image files.
+
+By default, an instance of ``private_storage.storage.files.PrivateFileSystemStorage``
+is used.
 
 Extending openwisp-firmware-upgrader
 ------------------------------------
 
 One of the core values of the OpenWISP project is `Software Reusability <http://openwisp.io/docs/general/values.html#software-reusability-means-long-term-sustainability>`_,
-for this reason *openwisp-firmware-upgrader* provides a set of base classes
+for this reason *OpenWISP Firmware Upgrader* provides a set of base classes
 which can be imported, extended and reused to create derivative apps.
 
-In order to implement your custom version of *openwisp-firmware-upgrader*,
+In order to implement your custom version of *OpenWISP Firmware Upgrader*,
 you need to perform the steps described in this section.
 
 When in doubt, the code in the `test project <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/>`_
 and the `sample app <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/sample_firmware_upgrader/>`_
 will serve you as source of truth:
 just replicate and adapt that code to get a basic derivative of
-*openwisp-firmware-upgrader* working.
+*OpenWISP Firmware Upgrader* working.
 
 **Premise**: if you plan on using a customized version of this module,
 we suggest to start with it since the beginning, because migrating your data
@@ -743,7 +847,7 @@ from the default module to your extended version may be time consuming.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The first thing you need to do is to create a new django app which will
-contain your custom version of *openwisp-firmware-upgrader*.
+contain your custom version of *OpenWISP Firmware Upgrader*.
 
 A django app is nothing more than a
 `python package <https://docs.python.org/3/tutorial/modules.html#packages>`_
@@ -966,7 +1070,7 @@ For more information about the usage of celery in django, please refer to the
 
 When developing a custom application based on this module, it's a good
 idea to import and run the base tests too, so that you can be sure the changes
-you're introducing are not breaking some of the existing features of *openwisp-firmware-upgrader*.
+you're introducing are not breaking some of the existing features of *OpenWISP Firmware Upgrader*.
 
 In case you need to add breaking changes, you can overwrite the tests defined
 in the base classes to test your own behavior.
@@ -1015,7 +1119,7 @@ Step 2: remove the following line from your root ``urls.py`` file:
 
 .. code-block:: python
 
-    url('^firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
+    path('firmware/', include('openwisp_firmware_upgrader.private_storage.urls')),
 
 Step 3: add an URL route pointing to your custom view in ``urls.py`` file:
 
@@ -1026,7 +1130,7 @@ Step 3: add an URL route pointing to your custom view in ``urls.py`` file:
 
     urlpatterns = [
         # ... other URLs
-        url(r'^(?P<path>.*)$', FirmwareImageDownloadView.as_view(), name='serve_private_file',),
+        path('<your-custom-path>', FirmwareImageDownloadView.as_view(), name='serve_private_file',),
     ]
 
 For more information regarding django views, please refer to the

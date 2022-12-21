@@ -7,6 +7,8 @@ from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.test import TestCase, TransactionTestCase
 
+from openwisp_utils.tests import capture_any_output
+
 from .. import settings as app_settings
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
@@ -63,6 +65,18 @@ class TestModels(TestUpgraderMixin, TestCase):
 
         with self.subTest('validating the same object again should work'):
             b1.full_clean()
+
+        with self.subTest('validation error should be raised on empty category'):
+            try:
+                b2 = self._create_build(
+                    os=self.os + '_2', version='0.2', organization=org
+                )
+                b2.category = None
+                b2.full_clean()
+            except ValidationError as e:
+                self.assertIn('category', e.message_dict)
+            else:
+                self.fail('ValidationError not raised when build category is empty')
 
     def test_fw_str(self):
         fw = self._create_firmware_image()
@@ -239,6 +253,7 @@ class TestModels(TestUpgraderMixin, TestCase):
                 codename = '{}_{}'.format(action, model_name)
                 self.assertIn(codename, admin_permissions)
 
+    @capture_any_output()
     def test_create_for_device_validation_error(self):
         device_fw = self._create_device_firmware()
         device_fw.image.build.os = device_fw.device.os
@@ -418,3 +433,21 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(Device.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)
         self.assertEqual(DeviceConnection.objects.count(), 1)
+
+    def test_delete_firmware_image_file(self):
+        file_storage_backend = FirmwareImage.file.field.storage
+
+        with self.subTest('Test deleting object deletes file'):
+            image = self._create_firmware_image()
+            file_name = image.file.name
+            image.delete()
+            self.assertEqual(file_storage_backend.exists(file_name), False)
+
+        with self.subTest('Test deleting object with a deleted file'):
+            image = self._create_firmware_image()
+            file_name = image.file.name
+            # Delete the file from the storage backend before
+            # deleting the object
+            file_storage_backend.delete(file_name)
+            self.assertNotEqual(image.file, None)
+            image.delete()

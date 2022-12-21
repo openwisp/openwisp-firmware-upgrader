@@ -8,7 +8,7 @@ class FirmwareImageDownloadView(PrivateStorageDetailView):
     model_file_field = 'file'
 
     slug_field = 'file'
-    slug_url_kwarg = 'imagefile'
+    slug_url_kwarg = 'path'
 
     def can_access_file(self, private_file):
         user = private_file.request.user

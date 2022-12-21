@@ -1,4 +1,6 @@
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+from django.utils.module_loading import import_string
 
 from openwisp_controller.connection import settings as conn_settings
 
@@ -28,3 +30,16 @@ OPENWRT_SETTINGS = getattr(settings, 'OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTING
 
 # Path of urls that need to be refered in migrations files.
 IMAGE_URL_PATH = 'firmware/'
+
+try:
+    PRIVATE_STORAGE_INSTANCE = import_string(
+        getattr(
+            settings,
+            'OPENWISP_FIRMWARE_PRIVATE_STORAGE_INSTANCE',
+            'openwisp_firmware_upgrader.private_storage.storage.file_system_private_storage',
+        )
+    )
+except ImportError:
+    raise ImproperlyConfigured(
+        'Failed to import FIRMWARE_UPGRADER_PRIVATE_STORAGE_INSTANCE'
+    )

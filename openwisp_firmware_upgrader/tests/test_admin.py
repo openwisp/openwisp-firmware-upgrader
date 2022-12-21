@@ -8,6 +8,7 @@ from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils.timezone import localtime
 
+from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
 from openwisp_firmware_upgrader.admin import (
     BuildAdmin,
     DeviceAdmin,
@@ -39,6 +40,24 @@ class MockRequest:
 
 class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
     app_label = 'firmware_upgrader'
+    _device_params = TestConfigAdmin._device_params.copy()
+    _device_params.update(
+        {
+            'devicefirmware-0-image': '',
+            'devicefirmware-0-id': '',
+            'devicefirmware-TOTAL_FORMS': 0,
+            'devicefirmware-INITIAL_FORMS': 0,
+            'devicefirmware-MIN_NUM_FORMS': 0,
+            'devicefirmware-MAX_NUM_FORMS': 1,
+            'deviceconnection_set-TOTAL_FORMS': 1,
+            'deviceconnection_set-INITIAL_FORMS': 1,
+            'devicelocation-TOTAL_FORMS': 1,
+            'devicelocation-INITIAL_FORMS': 0,
+            'devicelocation-MIN_NUM_FORMS': 0,
+            'devicelocation-MAX_NUM_FORMS': 1,
+            'config-INITIAL_FORMS': 1,
+        }
+    )
 
     def setUp(self, *args, **kwargs):
         super().setUp(*args, **kwargs)
@@ -90,7 +109,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(17):
+        with self.assertNumQueries(11):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -106,7 +125,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(15):
+        with self.assertNumQueries(9):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -120,11 +139,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertNotContains(r, '<input type="submit" name="upgrade_related"')
         self.assertContains(r, '<input type="submit" name="upgrade_all"')
 
-    def test_view_device_operator(self):
+    def test_view_device_administrator(self):
         device_fw = self._create_device_firmware()
         org = self._get_org()
-        self._create_operator(organizations=[org])
-        self._login(username='operator', password='tester')
+        self._create_administrator(organizations=[org])
+        self._login(username='administrator', password='tester')
         url = reverse('admin:config_device_change', args=[device_fw.device_id])
         r = self.client.get(url)
         self.assertContains(r, str(device_fw.image_id))
@@ -265,8 +284,37 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 self.assertContains(response, f'class="mg-link" href="{url}"')
         with self.subTest('test firmware group is registered'):
             self.assertContains(
-                response, '<div class="mg-dropdown-label">Firmware </div>', html=True,
+                response,
+                '<div class="mg-dropdown-label">Firmware </div>',
+                html=True,
             )
+
+    def test_save_device_with_deleted_devicefirmware(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        device_params = self._device_params.copy()
+        device_params.update(
+            {
+                'devicefirmware-0-image': str(device_fw.image_id),
+                'devicefirmware-0-id': str(device_fw.id),
+                'organization': str(device.organization.id),
+                'config-0-id': str(device.config.pk),
+                'config-0-device': str(device.id),
+                'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
+                'deviceconnection_set-0-id': str(device_conn.id),
+                'devicefirmware-TOTAL_FORMS': 1,
+                'devicefirmware-INITIAL_FORMS': 1,
+            }
+        )
+        FirmwareImage.objects.all().delete()
+        response = self.client.post(
+            reverse('admin:config_device_change', args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
 
 
 _mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
@@ -378,3 +426,6 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         uo.save()
         qs = inline.get_queryset(request)
         self.assertEqual(qs.count(), 0)
+
+
+del TestConfigAdmin

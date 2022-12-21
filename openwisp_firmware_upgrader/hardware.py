@@ -1,6 +1,6 @@
 """
 Mapping between hardware models and firwmare image
-This if focused on OpenWRT only fpr now, but it should
+This if focused on OpenWRT only for now, but it should
 be possible to add support for different embedded
 systems in the future.
 """
@@ -16,6 +16,34 @@ else:  # pragma: no cover
 OPENWRT_FIRMWARE_IMAGE_MAP.update(
     OrderedDict(
         (
+            (
+                'ar71xx-generic-cf-e320n-v2-squashfs-sysupgrade.bin',
+                {
+                    'label': 'COMFAST CF-E320N v2 (OpenWRT 19.07 and earlier)',
+                    'boards': ('COMFAST CF-E320N v2',),
+                },
+            ),
+            (
+                'ath79-generic-comfast_cf-e375ac-squashfs-sysupgrade.bin',
+                {
+                    'label': 'COMFAST CF-E375AC',
+                    'boards': ('COMFAST CF-E375AC',),
+                },
+            ),
+            (
+                'ipq40xx-generic-engenius_eap1300-squashfs-sysupgrade.bin',
+                {
+                    'label': 'EnGenius EAP1300',
+                    'boards': ('EnGenius EAP1300',),
+                },
+            ),
+            (
+                'ath79-nand-glinet_gl-ar300m-nand-squashfs-sysupgrade.bin',
+                {
+                    'label': 'GL.iNet GL-AR300M (NAND)',
+                    'boards': ('GL.iNet GL-AR300M (NAND)',),
+                },
+            ),
             (
                 'ramips-mt76x8-gl-mt300n-v2-squashfs-sysupgrade.bin',
                 {'label': 'GL.iNet GL-MT300N-V2', 'boards': ('GL-MT300N-V2',)},
@@ -103,6 +131,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ramips-mt76x8-tplink_archer-c50-v4-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link Archer C50 v4',
+                    'boards': ('TP-Link Archer C50 v4',),
+                },
+            ),
+            (
                 'ar71xx-generic-cpe210-220-v1-squashfs-sysupgrade.bin',
                 {
                     'label': 'TP-LINK CPE210 v3 (OpenWRT 19.07 and earlier)',
@@ -128,6 +163,27 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     'label': 'TP-LINK CPE510 v3 (OpenWRT 19.07 and later)',
                     'boards': ('TP-LINK CPE510 v3',),
+                },
+            ),
+            (
+                'ath79-generic-tplink_eap225-outdoor-v3-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link EAP225-Outdoor v3',
+                    'boards': ('TP-Link EAP225-Outdoor v3',),
+                },
+            ),
+            (
+                'ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link WDR3600 v1 (OpenWRT 19.07 and earlier)',
+                    'boards': ('TP-Link TL-WDR3600 v1',),
+                },
+            ),
+            (
+                'ath79-generic-tplink_tl-wdr3600-v1-squashfs-sysupgrade.bin',
+                {
+                    'label': 'TP-Link WDR3600 v1 (OpenWRT 19.07 and later)',
+                    'boards': ('TP-Link TL-WDR3600 v1',),
                 },
             ),
             (
@@ -311,6 +367,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     'label': 'Ubiquiti Unifi AC Mesh (OpenWRT 19.07 and later)',
                     'boards': (
+                        'Ubiquiti UniFi AC Mesh',
                         'Ubiquiti UniFi AC-Mesh',
                         'Ubiquiti UniFi-AC-MESH',
                         'Ubiquiti UniFi-AC-LITE/MESH',
@@ -342,13 +399,6 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                'x86-64-combined-squashfs.img.gz',
-                {
-                    'label': 'VMware, Inc. VMware Virtual Platform',
-                    'boards': ('VMware, Inc. VMware Virtual Platform',),
-                },
-            ),
-            (
                 'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
                 {
                     'label': 'YunCore XD3200 (OpenWRT 19.07 and earlier)',
@@ -356,8 +406,53 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ramips-mt7620-zbtlink_zbt-we1026-5g-16m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Zbtlink ZBT-WE1026-5G (16M)',
+                    'boards': ('Zbtlink ZBT-WE1026-5G (16M)',),
+                },
+            ),
+            (
+                'ramips-mt7620-zbtlink_zbt-we826-16m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Zbtlink ZBT-WE826 (16M)',
+                    'boards': ('Zbtlink ZBT-WE826 (16M)',),
+                },
+            ),
+            (
+                'ramips-mt7620-zbtlink_zbt-we826-32m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Zbtlink ZBT-WE826 (32M)',
+                    'boards': ('Zbtlink ZBT-WE826 (32M)',),
+                },
+            ),
+            (
                 'ramips-mt7621-zbt-wg3526-16M-squashfs-sysupgrade.bin',
-                {'label': 'ZBT-WG3526 (16M)', 'boards': ('ZBT-WG3526 (16M)',)},
+                {
+                    'label': 'Zbtlink ZBT-WG3526 (16M)',
+                    'boards': ('ZBT-WG3526 (16M)', 'Zbtlink ZBT-WG3526 (16M)'),
+                },
+            ),
+            (
+                'ramips-mt7621-zbt-wg3526-32M-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Zbtlink ZBT-WG3526 (32M)',
+                    'boards': ('ZBT-WG3526 (32M)', 'Zbtlink ZBT-WG3526 (32M)'),
+                },
+            ),
+            (
+                'x86-64-generic-squashfs-combined.img.gz',
+                {
+                    'label': 'Generic x86/64 (QEMU/KVM)',
+                    'boards': ('x86_64',),
+                },
+            ),
+            (
+                'x86-64-combined-squashfs.img.gz',
+                {
+                    'label': 'VMware, Inc. VMware Virtual Platform',
+                    'boards': ('VMware, Inc. VMware Virtual Platform',),
+                },
             ),
             (
                 'x86-generic-combined-squashfs.img.gz',

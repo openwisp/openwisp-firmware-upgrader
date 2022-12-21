@@ -6,6 +6,8 @@ import openwisp_users.mixins
 import uuid
 import swapper
 from ..swapper import get_model_name
+from swapper import dependency, split
+from django.conf import settings
 
 from ..hardware import FIRMWARE_IMAGE_TYPE_CHOICES
 
@@ -16,7 +18,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('config', '0015_default_groups_permissions'),
-        ('openwisp_users', '0004_default_groups'),
+        dependency(*split(settings.AUTH_USER_MODEL), version='0004_default_groups'),
         swapper.dependency('firmware_upgrader', 'Category'),
         swapper.dependency('firmware_upgrader', 'Build'),
         swapper.dependency('firmware_upgrader', 'FirmwareImage'),
@@ -363,16 +365,20 @@ class Migration(migrations.Migration):
             model_name='batchupgradeoperation',
             name='build',
             field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE, to=get_model_name('Build'),
+                on_delete=django.db.models.deletion.CASCADE,
+                to=get_model_name('Build'),
             ),
         ),
         migrations.AlterUniqueTogether(
-            name='firmwareimage', unique_together={('build', 'type')},
+            name='firmwareimage',
+            unique_together={('build', 'type')},
         ),
         migrations.AlterUniqueTogether(
-            name='category', unique_together={('name', 'organization')},
+            name='category',
+            unique_together={('name', 'organization')},
         ),
         migrations.AlterUniqueTogether(
-            name='build', unique_together={('category', 'version')},
+            name='build',
+            unique_together={('category', 'version')},
         ),
     ]
