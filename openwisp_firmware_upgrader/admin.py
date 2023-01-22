@@ -53,7 +53,6 @@ class CategoryAdmin(BaseVersionAdmin):
     list_display = ['name', 'organization', 'created', 'modified']
     list_filter = [MultitenantOrgFilter]
     list_select_related = ['organization']
-    autocomplete_fields = ['organization']
     search_fields = ['name']
     ordering = ['-name', '-created']
 
