@@ -444,7 +444,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'x86-64-generic-squashfs-combined.img.gz',
                 {
                     'label': 'Generic x86/64 (QEMU/KVM)',
-                    'boards': ('x86_64',),
+                    'boards': ('x86_64', 'PC Engines APU2'),
                 },
             ),
             (
@@ -457,8 +457,8 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'x86-generic-combined-squashfs.img.gz',
                 {
-                    'label': 'x86 32 bit (various models)',
-                    'boards': ('PC Engines APU2',),
+                    'label': 'Generic x86/32 bit',
+                    'boards': ('x86',),
                 },
             ),
             (
