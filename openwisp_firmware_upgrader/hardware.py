@@ -356,6 +356,14 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     'boards': ('Ubiquiti Picostation M',),
                 },
             ),
+            # Ubiquiti UniFi AC LR ATH79
+            (
+                'ath79-generic-ubnt_unifiac-lr-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti UniFi AC LR (OpenWRT 19.07 and later)',
+                    'boards': ('Ubiquiti UniFi AC LR',),
+                },
+            ),
             # Unifi AC Mesh AR71XX
             (
                 'ar71xx-generic-ubnt-unifiac-mesh-squashfs-sysupgrade.bin',
@@ -403,6 +411,22 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     'label': 'Ubiquiti UniFi AC Pro (OpenWRT 19.07 and later)',
                     'boards': ('Ubiquiti UniFi AC Pro', 'Ubiquiti UniFi-AC-PRO'),
+                },
+            ),
+            # Unifi AP Pro ATH79
+            (
+                'ath79-generic-ubnt_unifi-ap-pro-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti UniFi AP Pro (OpenWRT 19.07 and later)',
+                    'boards': ('Ubiquiti UniFi AP Pro',),
+                },
+            ),
+            # Unifi AP Pro AR71XX
+            (
+                'ar71xx-generic-ubnt-uap-pro-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti UniFi AP Pro (OpenWRT 19.07 and earlier)',
+                    'boards': ('Ubiquiti UAP Pro',),
                 },
             ),
             (
