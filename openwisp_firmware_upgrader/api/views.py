@@ -1,14 +1,12 @@
 from django.core.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics, pagination, serializers
-from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from openwisp_firmware_upgrader import private_storage
-from openwisp_users.api.authentication import BearerAuthentication
 from openwisp_users.api.mixins import FilterByOrganizationManaged
-from openwisp_users.api.permissions import DjangoModelPermissions, IsOrganizationManager
+from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 
 from ..swapper import load_model
 from .serializers import (
@@ -31,15 +29,7 @@ class ListViewPagination(pagination.PageNumberPagination):
     max_page_size = 100
 
 
-class ProtectedAPIMixin(FilterByOrganizationManaged):
-    authentication_classes = (
-        BearerAuthentication,
-        SessionAuthentication,
-    )
-    permission_classes = (
-        IsOrganizationManager,
-        DjangoModelPermissions,
-    )
+class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
     throttle_scope = 'firmware_upgrader'
     pagination_class = ListViewPagination
 
