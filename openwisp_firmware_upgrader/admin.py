@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import timedelta
 
@@ -7,9 +8,13 @@ from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+from django.core.serializers.json import DjangoJSONEncoder
+from django.http.response import JsonResponse
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
-from django.urls import resolve, reverse
+from django.templatetags.static import static
+from django.urls import path, resolve, reverse
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
 from django.utils.translation import get_language
@@ -28,6 +33,8 @@ from .filters import (
 )
 from .hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from .swapper import load_model
+from .upgraders.openwisp import OpenWrt
+from .widgets import FirmwareSchemaWidget
 
 logger = logging.getLogger(__name__)
 BatchUpgradeOperation = load_model('BatchUpgradeOperation')
@@ -184,7 +191,7 @@ class BuildAdmin(BaseAdmin):
 
 class UpgradeOperationForm(forms.ModelForm):
     class Meta:
-        fields = ['device', 'image', 'status', 'log', 'modified']
+        fields = ['device', 'image', 'status', 'log', 'modified', 'upgrade_options']
         labels = {'modified': _('last updated')}
 
 
@@ -259,6 +266,8 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
 
 
 class DeviceFirmwareForm(forms.ModelForm):
+    upgrade_options = forms.JSONField(widget=FirmwareSchemaWidget, required=False)
+
     class Meta:
         model = DeviceFirmware
         fields = '__all__'
@@ -287,6 +296,30 @@ class DeviceFirmwareForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['image'].queryset = self._get_image_queryset(device)
 
+    def save(self, commit=True):
+        """
+        Adapted from ModelForm.save()
+
+        Passes "upgrade_options to DeviceFirmware.save()
+        """
+        if self.errors:
+            raise ValueError(
+                "The %s could not be %s because the data didn't validate."
+                % (
+                    self.instance._meta.object_name,
+                    'created' if self.instance._state.adding else 'changed',
+                )
+            )
+        if commit:
+            # If committing, save the instance and the m2m data immediately.
+            self.instance.save(upgrade_options=self.cleaned_data['upgrade_options'])
+            self._save_m2m()
+        else:
+            # If not committing, add a method to the form to allow deferred
+            # saving of m2m data.
+            self.save_m2m = self._save_m2m
+        return self.instance
+
 
 class DeviceFormSet(forms.BaseInlineFormSet):
     def get_form_kwargs(self, index):
@@ -306,6 +339,7 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     verbose_name_plural = verbose_name
     extra = 0
     multitenant_shared_relations = ['device']
+    template = 'admin/firmware_upgrader/device_firmware_inline.html'
     # hack for openwisp-monitoring integartion
     # TODO: remove when this issue solved:
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
@@ -313,6 +347,27 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
 
     def _get_conditional_queryset(self, request, obj, select_related=False):
         return bool(obj)
+
+    def get_urls(self):
+        options = self.model._meta
+        url_prefix = f'{options.app_label}_{options.model_name}'
+        return [
+            path(
+                f'{options.app_label}/{options.model_name}/ui/schema.json',
+                self.admin_site.admin_view(self.schema_view),
+                name=f'{url_prefix}_schema',
+            ),
+        ]
+
+    def schema_view(self, request):
+        return JsonResponse(OpenWrt.SCHEMA)
+
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj=obj, **kwargs)
+        # TODO: The OpenWrt schema is hard coded here. We need to find
+        # a way to dynamically select schema of the appropriate upgrader.
+        formset.extra_context = json.dumps(OpenWrt.SCHEMA, cls=DjangoJSONEncoder)
+        return formset
 
 
 class DeviceUpgradeOperationForm(UpgradeOperationForm):
@@ -333,6 +388,15 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
     # TODO: remove when this issue solved:
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
     sortable_options = {'disabled': True}
+    fields = [
+        'device',
+        'image',
+        'status',
+        'log',
+        'readonly_upgrade_options',
+        'modified',
+    ]
+    readonly_fields = fields
 
     def get_queryset(self, request, select_related=True):
         """
@@ -354,6 +418,22 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
         if obj:
             return self.get_queryset(request, select_related=False).exists()
         return False
+
+    @admin.display(description=_('Upgrade options'))
+    def readonly_upgrade_options(self, obj):
+        # TODO: The OpenWrt schema is hard coded here. We need to find
+        # a way to dynamically select schema of the appropriate upgrader.
+        options = []
+        for key, value in OpenWrt.SCHEMA['properties'].items():
+            option_used = 'yes' if obj.upgrade_options.get(key, False) else 'no'
+            option_title = value['title']
+            icon_url = static(f'admin/img/icon-{option_used}.svg')
+            options.append(
+                f'<li><img src="{icon_url}" ' f'alt="{option_used}">{option_title}</li>'
+            )
+        return format_html(
+            mark_safe(f'<ul class="readonly-upgrade-options">{"".join(options)}</ul>')
+        )
 
 
 # DeviceAdmin.get_inlines = device_admin_get_inlines

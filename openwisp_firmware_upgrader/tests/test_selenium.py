@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import swapper
 from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
@@ -9,7 +11,7 @@ from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentE
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from openwisp_controller.tests.utils import SeleniumTestMixin
 from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
@@ -124,3 +126,100 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(Device.objects.count(), 1)
         self.assertEqual(DeviceConnection.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)
+
+    @capture_any_output()
+    @patch(
+        'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade',
+        return_value=True,
+    )
+    @patch(
+        'openwisp_controller.connection.models.DeviceConnection.connect',
+        return_value=True,
+    )
+    def test_device_firmware_upgrade_options(self, *args):
+        def save_device():
+            self.web_driver.find_element_by_xpath(
+                '//*[@id="device_form"]/div/div[1]/input[3]'
+            ).click()
+
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build1 = self._create_build(category=category, version='0.1', os=self.os)
+        build2 = self._create_build(
+            category=category, version='0.2', os='OpenWrt 21.03'
+        )
+        image = self._create_firmware_image(build=build1, type=self.image_type)
+        image = self._create_firmware_image(build=build2, type=self.image_type)
+        self._create_credentials(auto_add=True, organization=org)
+        device = self._create_device(
+            os=self.os, model=image.boards[0], organization=org
+        )
+        self._create_config(device=device)
+        self.login()
+        self.open(
+            '{}#devicefirmware-group'.format(
+                reverse(
+                    f'admin:{self.config_app_label}_device_change', args=[device.id]
+                )
+            )
+        )
+        # JSONSchema Editor should not be rendered without a change in the image field
+        WebDriverWait(self.web_driver, 1).until(
+            EC.invisibility_of_element_located(
+                (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
+            )
+        )
+        image_select = Select(
+            self.web_driver.find_element_by_id('id_devicefirmware-0-image')
+        )
+        image_select.select_by_index(1)
+        # JSONSchema configuration editor should not be rendered
+        WebDriverWait(self.web_driver, 1).until(
+            EC.invisibility_of_element_located(
+                (
+                    By.XPATH,
+                    '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]/div/h3/span[4]/input',
+                )
+            )
+        )
+        # Enable '-c' option
+        self.web_driver.find_element_by_xpath(
+            '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]'
+            '/div/div[2]/div/div/div[1]/div/div[1]/label/input'
+        ).click()
+        # Enable '-F' option
+        self.web_driver.find_element_by_xpath(
+            '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]'
+            '/div/div[2]/div/div/div[7]/div/div[1]/label/input'
+        ).click()
+        save_device()
+
+        # Delete DeviceFirmware
+        self.web_driver.find_element_by_id('id_devicefirmware-0-DELETE').click()
+        save_device()
+
+        # When adding firmware to the device for the first time,
+        # JSONSchema editor should be rendered only when the image
+        # is selected
+        self.web_driver.find_element_by_xpath(
+            '//*[@id="devicefirmware-group"]/fieldset/div[2]/a'
+        ).click()
+        # JSONSchema Editor should not be rendered without a change in the image field
+        WebDriverWait(self.web_driver, 1).until(
+            EC.invisibility_of_element_located(
+                (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
+            )
+        )
+        image_select = Select(
+            self.web_driver.find_element_by_id('id_devicefirmware-0-image')
+        )
+        image_select.select_by_index(1)
+        try:
+            WebDriverWait(self.web_driver, 1).until(
+                EC.visibility_of_element_located(
+                    (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
+                )
+            )
+        except TimeoutError:
+            self.fail('JSONSchema editor not shown after changing firmware image')
+        save_device()

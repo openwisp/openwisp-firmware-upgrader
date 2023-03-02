@@ -25,19 +25,73 @@ class OpenWrt(BaseOpenWrt):
     RECONNECT_RETRY_DELAY = OPENWRT_SETTINGS.get('reconnect_retry_delay', 20)
     RECONNECT_MAX_RETRIES = OPENWRT_SETTINGS.get('reconnect_max_retries', 35)
     UPGRADE_TIMEOUT = OPENWRT_SETTINGS.get('upgrade_timeout', 90)
-    UPGRADE_COMMAND = '{sysupgrade} -v -c {path}'
+    UPGRADE_COMMAND = '{sysupgrade} -v -c {path} {flags}'
     # path to sysupgrade command
     _SYSUPGRADE = '/sbin/sysupgrade'
+    SCHEMA = {
+        'type': 'object',
+        'properties': {
+            'c': {
+                'type': 'boolean',
+                'title': _('Attempt to preserve all changed files in /etc/ (-c)'),
+                'format': 'checkbox',
+            },
+            'o': {
+                'type': 'boolean',
+                'title': _(
+                    'Attempt to preserve all changed files in /, except those from '
+                    'packages but including changed confs. (-o)'
+                ),
+                'format': 'checkbox',
+            },
+            'u': {
+                'type': 'boolean',
+                'title': _(
+                    'Skip from backup files that are equal to those in /rom (-u)'
+                ),
+                'format': 'checkbox',
+            },
+            'n': {
+                'type': 'boolean',
+                'title': _('Do not save configuration over reflash (-n)'),
+                'format': 'checkbox',
+            },
+            'p': {
+                'type': 'boolean',
+                'title': _(
+                    'Do not attempt to restore the partition table after flash. (-p)'
+                ),
+                'format': 'checkbox',
+            },
+            'k': {
+                'type': 'boolean',
+                'title': _(
+                    'Include in backup a list of current installed packages at'
+                    ' /etc/backup/installed_packages.txt (-k)'
+                ),
+                'format': 'checkbox',
+            },
+            'F': {
+                'type': 'boolean',
+                'title': _(
+                    'Flash image even if image checks fail, this is dangerous! (-F)'
+                ),
+                'format': 'checkbox',
+            },
+        },
+        'additionalProperties': False,
+    }
 
     log_lines = None
 
-    def __init__(self, upgrade_operation, connection):
+    def __init__(self, upgrade_operation, connection, upgrade_options=None):
         super(OpenWrt, self).__init__(
             params=connection.get_params(), addresses=connection.get_addresses()
         )
         connection.set_connector(self)
         self.upgrade_operation = upgrade_operation
         self.connection = connection
+        self.upgrade_options = upgrade_options or {}
         self._non_critical_services_stopped = False
 
     def log(self, value, save=True):
@@ -193,7 +247,18 @@ class OpenWrt(BaseOpenWrt):
         return os.path.join(self.REMOTE_UPLOAD_DIR, filename)
 
     def get_upgrade_command(self, path):
-        return self.UPGRADE_COMMAND.format(sysupgrade=self._SYSUPGRADE, path=path)
+        if self.upgrade_options:
+            flags = ''
+        else:
+            # Build flags for the command
+            flags = []
+            for key, value in self.upgrade_options.items():
+                if value is True:
+                    flags.append(f'-{key}')
+            flags = ' '.join(flags)
+        return self.UPGRADE_COMMAND.format(
+            sysupgrade=self._SYSUPGRADE, flags=flags, path=path
+        )
 
     def _test_checksum(self, image):
         """

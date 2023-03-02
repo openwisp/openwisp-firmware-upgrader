@@ -2,6 +2,7 @@ import logging
 import os
 from decimal import Decimal
 
+import jsonschema
 import swapper
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
@@ -34,6 +35,7 @@ from ..tasks import (
     create_device_firmware,
     upgrade_firmware,
 )
+from ..upgraders.openwrt import OpenWrt
 
 logger = logging.getLogger(__name__)
 
@@ -284,13 +286,13 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def image_has_changed(self):
         return self._state.adding or self.image_id != self._old_image.id
 
-    def save(self, batch=None, upgrade=True, *args, **kwargs):
+    def save(self, batch=None, upgrade=True, upgrade_options=None, *args, **kwargs):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
         if upgrade and (self.image_has_changed or not self.installed):
             self.installed = False
             super().save(*args, **kwargs)
-            self.create_upgrade_operation(batch)
+            self.create_upgrade_operation(batch, upgrade_options=upgrade_options or {})
         else:
             super().save(*args, **kwargs)
         self._update_old_image()
@@ -299,9 +301,11 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if hasattr(self, 'image'):
             self._old_image = self.image
 
-    def create_upgrade_operation(self, batch):
+    def create_upgrade_operation(self, batch, upgrade_options=None):
         uo_model = load_model('UpgradeOperation')
-        operation = uo_model(device=self.device, image=self.image)
+        operation = uo_model(
+            device=self.device, image=self.image, upgrade_options=upgrade_options
+        )
         if batch:
             operation.batch = batch
         operation.full_clean()
@@ -377,6 +381,7 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
     )
+    upgrade_options = models.JSONField(default=dict, blank=True)
 
     class Meta:
         abstract = True
@@ -506,6 +511,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         blank=True,
         null=True,
     )
+    upgrade_options = models.JSONField(default=dict, blank=True)
 
     class Meta:
         abstract = True
@@ -581,7 +587,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         except (AttributeError, ImportError) as e:
             logger.exception(e)
             return
-        upgrader = upgrader_class(self, conn)
+        upgrader = upgrader_class(self, conn, self.upgrade_options)
         try:
             upgrader.upgrade(self.image.file)
         # this exception is raised when the checksum present in the device
@@ -625,6 +631,16 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         if installed:
             self.device.devicefirmware.installed = True
             self.device.devicefirmware.save(upgrade=False)
+
+    def clean(self):
+        super().clean()
+        # TODO: The OpenWrt upgrader schema is hard-coded here.
+        # We need to find a way to dynamically select schema
+        # of the correct upgrader class.
+        try:
+            jsonschema.Draft4Validator(OpenWrt.SCHEMA).validate(self.upgrade_options)
+        except jsonschema.SchemaError:
+            raise ValidationError('The upgrade options are invalid')
 
     def save(self, *args, **kwargs):
         result = super().save(*args, **kwargs)

@@ -15,7 +15,8 @@
         "owNotifyModelName": true,
         "owIsChangeForm": true,
         "getAbsoluteUrl": true,
-        "dateTimeStampToDateTimeLocaleString": true
+        "dateTimeStampToDateTimeLocaleString": true,
+        "firmwareUpgraderSchema": true
     },
     "browser": true
 }

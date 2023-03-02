@@ -68,6 +68,7 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ('details', models.CharField(blank=True, max_length=64, null=True)),
+                ('upgrade_options', models.JSONField(default=dict, blank=True)),
             ],
             options={
                 'verbose_name': 'Mass upgrade operation',
@@ -263,6 +264,7 @@ class Migration(migrations.Migration):
                         to=swapper.get_model_name('firmware_upgrader', 'FirmwareImage'),
                     ),
                 ),
+                ('upgrade_options', models.JSONField(default=dict, blank=True)),
             ],
             options={
                 'abstract': False,
