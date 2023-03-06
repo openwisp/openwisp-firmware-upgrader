@@ -148,7 +148,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         build2 = self._create_build(
             category=category, version='0.2', os='OpenWrt 21.03'
         )
-        image = self._create_firmware_image(build=build1, type=self.image_type)
+        self._create_firmware_image(build=build1, type=self.image_type)
         image = self._create_firmware_image(build=build2, type=self.image_type)
         self._create_credentials(auto_add=True, organization=org)
         device = self._create_device(

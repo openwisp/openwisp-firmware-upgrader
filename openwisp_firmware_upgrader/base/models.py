@@ -587,7 +587,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         except (AttributeError, ImportError) as e:
             logger.exception(e)
             return
-        upgrader = upgrader_class(self, conn, self.upgrade_options)
+        upgrader = upgrader_class(self, conn)
         try:
             upgrader.upgrade(self.image.file)
         # this exception is raised when the checksum present in the device
@@ -639,7 +639,7 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         # of the correct upgrader class.
         try:
             jsonschema.Draft4Validator(OpenWrt.SCHEMA).validate(self.upgrade_options)
-        except jsonschema.SchemaError:
+        except jsonschema.ValidationError:
             raise ValidationError('The upgrade options are invalid')
 
     def save(self, *args, **kwargs):

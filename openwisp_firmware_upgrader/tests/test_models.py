@@ -197,6 +197,19 @@ class TestModels(TestUpgraderMixin, TestCase):
         else:
             self.fail('ValidationError not raised')
 
+    def test_upgrade_operation_invalid_upgrade_options(self):
+        device_fw = self._create_device_firmware()
+        uo = UpgradeOperation(
+            device=device_fw.device,
+            image=device_fw.image,
+            upgrade_options={'invalid': True},
+        )
+        with self.assertRaises(ValidationError) as error:
+            uo.full_clean()
+        self.assertEqual(
+            error.exception.message_dict['__all__'], ['The upgrade options are invalid']
+        )
+
     def test_upgrade_operation_log_line(self):
         device_fw = self._create_device_firmware()
         uo = UpgradeOperation(device=device_fw.device, image=device_fw.image)

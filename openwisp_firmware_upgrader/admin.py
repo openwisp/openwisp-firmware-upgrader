@@ -9,11 +9,10 @@ from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core.serializers.json import DjangoJSONEncoder
-from django.http.response import JsonResponse
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.templatetags.static import static
-from django.urls import path, resolve, reverse
+from django.urls import resolve, reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
@@ -347,20 +346,6 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
 
     def _get_conditional_queryset(self, request, obj, select_related=False):
         return bool(obj)
-
-    def get_urls(self):
-        options = self.model._meta
-        url_prefix = f'{options.app_label}_{options.model_name}'
-        return [
-            path(
-                f'{options.app_label}/{options.model_name}/ui/schema.json',
-                self.admin_site.admin_view(self.schema_view),
-                name=f'{url_prefix}_schema',
-            ),
-        ]
-
-    def schema_view(self, request):
-        return JsonResponse(OpenWrt.SCHEMA)
 
     def get_formset(self, request, obj=None, **kwargs):
         formset = super().get_formset(request, obj=obj, **kwargs)

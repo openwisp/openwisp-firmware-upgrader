@@ -25,7 +25,7 @@ class OpenWrt(BaseOpenWrt):
     RECONNECT_RETRY_DELAY = OPENWRT_SETTINGS.get('reconnect_retry_delay', 20)
     RECONNECT_MAX_RETRIES = OPENWRT_SETTINGS.get('reconnect_max_retries', 35)
     UPGRADE_TIMEOUT = OPENWRT_SETTINGS.get('upgrade_timeout', 90)
-    UPGRADE_COMMAND = '{sysupgrade} -v -c {path} {flags}'
+    UPGRADE_COMMAND = '{sysupgrade} -v {path} {flags}'
     # path to sysupgrade command
     _SYSUPGRADE = '/sbin/sysupgrade'
     SCHEMA = {
@@ -84,14 +84,13 @@ class OpenWrt(BaseOpenWrt):
 
     log_lines = None
 
-    def __init__(self, upgrade_operation, connection, upgrade_options=None):
+    def __init__(self, upgrade_operation, connection):
         super(OpenWrt, self).__init__(
             params=connection.get_params(), addresses=connection.get_addresses()
         )
         connection.set_connector(self)
         self.upgrade_operation = upgrade_operation
         self.connection = connection
-        self.upgrade_options = upgrade_options or {}
         self._non_critical_services_stopped = False
 
     def log(self, value, save=True):
@@ -247,15 +246,12 @@ class OpenWrt(BaseOpenWrt):
         return os.path.join(self.REMOTE_UPLOAD_DIR, filename)
 
     def get_upgrade_command(self, path):
-        if self.upgrade_options:
-            flags = ''
-        else:
-            # Build flags for the command
-            flags = []
-            for key, value in self.upgrade_options.items():
-                if value is True:
-                    flags.append(f'-{key}')
-            flags = ' '.join(flags)
+        # Build flags for the command
+        flags = []
+        for key, value in self.upgrade_operation.upgrade_options.items():
+            if value is True:
+                flags.append(f'-{key}')
+        flags = ' '.join(flags)
         return self.UPGRADE_COMMAND.format(
             sysupgrade=self._SYSUPGRADE, flags=flags, path=path
         )

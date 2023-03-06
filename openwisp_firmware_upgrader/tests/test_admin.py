@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from unittest import mock
 
@@ -426,6 +427,75 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         uo.save()
         qs = inline.get_queryset(request)
         self.assertEqual(qs.count(), 0)
+
+    def test_device_firmware_upgrade_options(self, *args):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        device_params = self._device_params.copy()
+        build = self._create_build(version='0.2')
+        image = self._create_firmware_image(build=build)
+        upgrade_options = {
+            'c': True,
+            'o': False,
+            'u': False,
+            'n': False,
+            'p': False,
+            'k': False,
+            'F': True,
+        }
+        device_params.update(
+            {
+                'model': device.model,
+                'devicefirmware-0-image': str(image.id),
+                'devicefirmware-0-id': str(device_fw.id),
+                'devicefirmware-0-upgrade_options': json.dumps(upgrade_options),
+                'organization': str(device.organization.id),
+                'config-0-id': str(device.config.pk),
+                'config-0-device': str(device.id),
+                'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
+                'deviceconnection_set-0-id': str(device_conn.id),
+                'devicefirmware-TOTAL_FORMS': 1,
+                'devicefirmware-INITIAL_FORMS': 1,
+                'upgradeoperation_set-TOTAL_FORMS': 0,
+                'upgradeoperation_set-INITIAL_FORMS': 0,
+                'upgradeoperation_set-MIN_NUM_FORMS': 0,
+                'upgradeoperation_set-MAX_NUM_FORMS': 0,
+                '_continue': True,
+            }
+        )
+        response = self.client.post(
+            reverse('admin:config_device_change', args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(device.upgradeoperation_set.count(), 1)
+        upgrade_operation = device.upgradeoperation_set.first()
+        self.assertEqual(upgrade_operation.upgrade_options, upgrade_options)
+        self.assertContains(
+            response,
+            (
+                '<div class="readonly"><ul class="readonly-upgrade-options"><li>'
+                '<img src="/static/admin/img/icon-yes.svg" alt="yes">'
+                'Attempt to preserve all changed files in /etc/ (-c)</li>'
+                '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                'Attempt to preserve all changed files in /, except those from packages '
+                'but including changed confs. (-o)</li><li>'
+                '<img src="/static/admin/img/icon-no.svg" alt="no">Skip from backup files '
+                'that are equal to those in /rom (-u)</li><li><img src="/static/admin/img/icon-no.svg" '
+                'alt="no">Do not save configuration over reflash (-n)</li><li>'
+                '<img src="/static/admin/img/icon-no.svg" alt="no">'
+                'Do not attempt to restore the partition table after flash. (-p)</li>'
+                '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                'Include in backup a list of current installed packages at '
+                '/etc/backup/installed_packages.txt (-k)</li><li>'
+                '<img src="/static/admin/img/icon-yes.svg" alt="yes">'
+                'Flash image even if image checks fail, this is dangerous! (-F)</li></ul></div>'
+            ),
+            html=True,
+        )
 
 
 del TestConfigAdmin

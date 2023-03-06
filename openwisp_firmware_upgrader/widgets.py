@@ -9,7 +9,7 @@ DeviceFirmware = load_model('DeviceFirmware')
 
 
 class FirmwareSchemaWidget(BaseJsonSchemaWidget):
-    schema_view_name = f'admin:{DeviceFirmware._meta.app_label}_{DeviceFirmware._meta.model_name}_schema'
+    schema_view_name = None
     app_label_model = (
         f'{UpgradeOperation._meta.app_label}_{UpgradeOperation._meta.model_name}'
     )
