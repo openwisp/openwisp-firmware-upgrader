@@ -124,8 +124,11 @@ class AbstractBuild(TimeStampedEditableModel):
                 }
             )
 
-    def batch_upgrade(self, firmwareless):
-        batch = load_model('BatchUpgradeOperation')(build=self)
+    def batch_upgrade(self, firmwareless, upgrade_options=None):
+        upgrade_options = upgrade_options or {}
+        batch = load_model('BatchUpgradeOperation')(
+            build=self, upgrade_options=upgrade_options
+        )
         batch.full_clean()
         batch.save()
         transaction.on_commit(
@@ -431,7 +434,7 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
             if image:
                 device_fw.image = image
                 device_fw.full_clean()
-                device_fw.save(self)
+                device_fw.save(self, upgrade_options=self.upgrade_options)
 
     def upgrade_firmwareless_devices(self):
         """
@@ -447,7 +450,7 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
                 DeviceFirmware = load_model('DeviceFirmware')
                 device_fw = DeviceFirmware(device=device, image=image)
                 device_fw.full_clean()
-                device_fw.save(self)
+                device_fw.save(self, upgrade_options=self.upgrade_options)
 
     @cached_property
     def upgrade_operations(self):

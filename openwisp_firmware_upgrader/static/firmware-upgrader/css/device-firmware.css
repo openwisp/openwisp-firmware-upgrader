@@ -1,19 +1,13 @@
 #id_devicefirmware-0-upgrade_options_jsoneditor label {
   width: unset;
+  padding: 0px;
 }
 #id_devicefirmware-0-upgrade_options_jsoneditor input[type="checkbox"] {
   vertical-align: middle;
 }
+#main #id_devicefirmware-0-upgrade_options_jsoneditor .form-row {
+  padding: 0px;
+}
 #devicefirmware-group .form-row.field-upgrade_options {
   display: none;
-}
-#devicefirmware-group .controls {
-  display: none;
-}
-.field-readonly_upgrade_options .readonly-upgrade-options {
-  margin-left: 0px;
-  padding-left: 0px;
-}
-.readonly-upgrade-options li img {
-  margin-right: 5px;
 }

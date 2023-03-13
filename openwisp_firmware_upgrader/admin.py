@@ -92,6 +92,18 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
         return True
 
 
+class BatchUpgradeConfirmationForm(forms.Form):
+    upgrade_options = forms.JSONField(widget=FirmwareSchemaWidget(), required=False)
+
+    @property
+    def media(self):
+        media = super().media
+        js = list(media._js) + [
+            'firmware-upgrader/js/upgrade-selected-confirmation.js',
+        ]
+        return forms.Media(js=js, css=media._css)
+
+
 @admin.register(load_model('Build'))
 class BuildAdmin(BaseAdmin):
     list_display = ['__str__', 'organization', 'category', 'created', 'modified']
@@ -131,10 +143,19 @@ class BuildAdmin(BaseAdmin):
             return None
         upgrade_all = request.POST.get('upgrade_all')
         upgrade_related = request.POST.get('upgrade_related')
+        upgrade_options = request.POST.get('upgrade_options', {})
         build = queryset.first()
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
-            batch = build.batch_upgrade(firmwareless=upgrade_all)
+            if upgrade_options:
+                form = BatchUpgradeConfirmationForm(
+                    data={'upgrade_options': upgrade_options}
+                )
+                form.full_clean()
+                upgrade_options = form.cleaned_data['upgrade_options']
+            batch = build.batch_upgrade(
+                firmwareless=upgrade_all, upgrade_options=upgrade_options
+            )
             text = _(
                 'You can track the progress of this mass upgrade operation '
                 'in this page. Refresh the page from time to time to check '
@@ -158,6 +179,12 @@ class BuildAdmin(BaseAdmin):
                 'related_count': len(related_device_fw),
                 'firmwareless_devices': firmwareless_devices,
                 'firmwareless_count': len(firmwareless_devices),
+                'form': BatchUpgradeConfirmationForm(),
+                # TODO: The OpenWrt schema is hard coded here. We need to find
+                # a way to dynamically select schema of the appropriate upgrader.
+                'firmware_upgrader_schema': json.dumps(
+                    OpenWrt.SCHEMA, cls=DjangoJSONEncoder
+                ),
                 'build': build,
                 'opts': opts,
                 'action_checkbox_name': ACTION_CHECKBOX_NAME,
@@ -190,7 +217,7 @@ class BuildAdmin(BaseAdmin):
 
 class UpgradeOperationForm(forms.ModelForm):
     class Meta:
-        fields = ['device', 'image', 'status', 'log', 'modified', 'upgrade_options']
+        fields = ['device', 'image', 'status', 'log', 'modified']
         labels = {'modified': _('last updated')}
 
 
@@ -206,9 +233,32 @@ class UpgradeOperationInline(admin.StackedInline):
     def has_add_permission(self, request, obj):
         return False
 
+    class Media:
+        css = {
+            'all': ['firmware-upgrader/css/upgrade-options.css']
+        }
+
+
+class ReadonlyUpgradeOptionsMixin:
+    @admin.display(description=_('Upgrade options'))
+    def readonly_upgrade_options(self, obj):
+        # TODO: The OpenWrt schema is hard coded here. We need to find
+        # a way to dynamically select schema of the appropriate upgrader.
+        options = []
+        for key, value in OpenWrt.SCHEMA['properties'].items():
+            option_used = 'yes' if obj.upgrade_options.get(key, False) else 'no'
+            option_title = value['title']
+            icon_url = static(f'admin/img/icon-{option_used}.svg')
+            options.append(
+                f'<li><img src="{icon_url}" alt="{option_used}">{option_title}</li>'
+            )
+        return format_html(
+            mark_safe(f'<ul class="readonly-upgrade-options">{"".join(options)}</ul>')
+        )
+
 
 @admin.register(BatchUpgradeOperation)
-class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
+class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
     list_display = ['build', 'organization', 'status', 'created', 'modified']
     list_filter = [
         BuildCategoryOrganizationFilter,
@@ -226,11 +276,18 @@ class BatchUpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
         'success_rate',
         'failed_rate',
         'aborted_rate',
+        'readonly_upgrade_options',
         'created',
         'modified',
     ]
     autocomplete_fields = ['build']
-    readonly_fields = ['completed', 'success_rate', 'failed_rate', 'aborted_rate']
+    readonly_fields = [
+        'completed',
+        'success_rate',
+        'failed_rate',
+        'aborted_rate',
+        'readonly_upgrade_options',
+    ]
 
     def organization(self, obj):
         return obj.build.category.organization
@@ -270,6 +327,15 @@ class DeviceFirmwareForm(forms.ModelForm):
     class Meta:
         model = DeviceFirmware
         fields = '__all__'
+
+    class Media:
+        js = [
+            'admin/js/jquery.init.js',
+            'firmware-upgrader/js/device-firmware.js'
+        ]
+        css = {
+            'all': ['firmware-upgrader/css/device-firmware.css']
+        }
 
     def _get_image_queryset(self, device):
         # restrict firmware images to organization of the current device
@@ -364,7 +430,7 @@ class DeviceUpgradeOperationForm(UpgradeOperationForm):
         super().__init__(*args, **kwargs)
 
 
-class DeviceUpgradeOperationInline(UpgradeOperationInline):
+class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperationInline):
     verbose_name = _('Recent Firmware Upgrades')
     verbose_name_plural = verbose_name
     formset = DeviceFormSet
@@ -403,22 +469,6 @@ class DeviceUpgradeOperationInline(UpgradeOperationInline):
         if obj:
             return self.get_queryset(request, select_related=False).exists()
         return False
-
-    @admin.display(description=_('Upgrade options'))
-    def readonly_upgrade_options(self, obj):
-        # TODO: The OpenWrt schema is hard coded here. We need to find
-        # a way to dynamically select schema of the appropriate upgrader.
-        options = []
-        for key, value in OpenWrt.SCHEMA['properties'].items():
-            option_used = 'yes' if obj.upgrade_options.get(key, False) else 'no'
-            option_title = value['title']
-            icon_url = static(f'admin/img/icon-{option_used}.svg')
-            options.append(
-                f'<li><img src="{icon_url}" ' f'alt="{option_used}">{option_title}</li>'
-            )
-        return format_html(
-            mark_safe(f'<ul class="readonly-upgrade-options">{"".join(options)}</ul>')
-        )
 
 
 # DeviceAdmin.get_inlines = device_admin_get_inlines

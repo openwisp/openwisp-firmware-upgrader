@@ -16,7 +16,6 @@ class FirmwareSchemaWidget(BaseJsonSchemaWidget):
     netjsonconfig_hint = False
     advanced_mode = False
     extra_attrs = {
-        'data-schema-selector': '#devicefirmware-0-upgrade_options',
         'data-show-errors': 'never',
         'class': 'manual',
     }
@@ -24,10 +23,6 @@ class FirmwareSchemaWidget(BaseJsonSchemaWidget):
     @property
     def media(self):
         media = super().media
-        js = [
-            'admin/js/jquery.init.js',
-            'firmware-upgrader/js/device-firmware.js',
-        ] + list(media._js)
         css = media._css.copy()
-        css['all'] += ['firmware-upgrader/css/device-firmware.css']
-        return forms.Media(js=js, css=css)
+        css['all'] += ['firmware-upgrader/css/upgrade-options.css']
+        return forms.Media(js=media._js, css=css)
