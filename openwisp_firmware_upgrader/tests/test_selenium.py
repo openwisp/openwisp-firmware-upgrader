@@ -24,10 +24,12 @@ Device = swapper.load_model('config', 'Device')
 DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
 UpgradeOperation = load_model('UpgradeOperation')
 DeviceFirmware = load_model('DeviceFirmware')
+BatchUpgradeOperation = load_model('BatchUpgradeOperation')
 
 
 class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
     config_app_label = 'config'
+    firmware_app_label = 'firmware_upgrader'
     admin_username = 'admin'
     admin_password = 'password'
     os = 'OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d'
@@ -223,3 +225,94 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         except TimeoutError:
             self.fail('JSONSchema editor not shown after changing firmware image')
         save_device()
+
+    @capture_any_output()
+    @patch(
+        'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade',
+        return_value=True,
+    )
+    @patch(
+        'openwisp_controller.connection.models.DeviceConnection.connect',
+        return_value=True,
+    )
+    def test_batch_upgrade_upgrade_options(self, *args):
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build1 = self._create_build(category=category, version='0.1', os=self.os)
+        build2 = self._create_build(
+            category=category, version='0.2', os='OpenWrt 21.03'
+        )
+        self._create_firmware_image(build=build1, type=self.image_type)
+        image = self._create_firmware_image(build=build2, type=self.image_type)
+        self._create_credentials(auto_add=True, organization=org)
+        device = self._create_device(
+            os=self.os, model=image.boards[0], organization=org
+        )
+        self._create_config(device=device)
+        self.login()
+        self.open(
+            reverse(f'admin:{self.firmware_app_label}_build_change', args=[build2.id])
+        )
+        # Launch mass upgrade operation
+        self.web_driver.find_element_by_css_selector(
+            '.title-wrapper .object-tools form button[type="submit"]'
+        ).click()
+
+        # Ensure JSONSchema form is rendered
+        try:
+            WebDriverWait(self.web_driver, 1).until(
+                EC.visibility_of_element_located(
+                    (By.CSS_SELECTOR, '.jsoneditor-wrapper')
+                )
+            )
+        except TimeoutError:
+            self.fail('JSONSchema editor not shown after changing firmware image')
+        # JSONSchema configuration editor should not be rendered
+        WebDriverWait(self.web_driver, 1).until(
+            EC.invisibility_of_element_located(
+                (
+                    By.XPATH,
+                    '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]/div/h3/span[4]/input',
+                )
+            )
+        )
+        # Enable -o flag
+        self.web_driver.find_element_by_xpath(
+            '//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[2]/div/div[1]/label/input'
+        ).click()
+        # Enable -u flag
+        self.web_driver.find_element_by_xpath(
+            '//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[3]/div/div[1]/label/input'
+        ).click()
+        # Upgrade all devices
+        self.web_driver.find_element_by_css_selector(
+            'input[name="upgrade_all"]'
+        ).click()
+        self.assertEqual(
+            BatchUpgradeOperation.objects.filter(
+                upgrade_options={
+                    'c': False,
+                    'o': True,
+                    'u': True,
+                    'n': False,
+                    'p': False,
+                    'k': False,
+                    'F': False,
+                }
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            UpgradeOperation.objects.filter(
+                upgrade_options={
+                    'c': False,
+                    'o': True,
+                    'u': True,
+                    'n': False,
+                    'p': False,
+                    'k': False,
+                    'F': False,
+                }
+            ).count(),
+            1,
+        )

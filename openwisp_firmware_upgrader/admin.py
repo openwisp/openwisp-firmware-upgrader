@@ -143,29 +143,30 @@ class BuildAdmin(BaseAdmin):
             return None
         upgrade_all = request.POST.get('upgrade_all')
         upgrade_related = request.POST.get('upgrade_related')
-        upgrade_options = request.POST.get('upgrade_options', {})
+        upgrade_options = request.POST.get('upgrade_options')
+        form = BatchUpgradeConfirmationForm()
         build = queryset.first()
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
-            if upgrade_options:
-                form = BatchUpgradeConfirmationForm(
-                    data={'upgrade_options': upgrade_options}
-                )
-                form.full_clean()
+            form = BatchUpgradeConfirmationForm(
+                data={'upgrade_options': upgrade_options}
+            )
+            form.full_clean()
+            if not form.errors:
                 upgrade_options = form.cleaned_data['upgrade_options']
-            batch = build.batch_upgrade(
-                firmwareless=upgrade_all, upgrade_options=upgrade_options
-            )
-            text = _(
-                'You can track the progress of this mass upgrade operation '
-                'in this page. Refresh the page from time to time to check '
-                'its progress.'
-            )
-            self.message_user(request, mark_safe(text), messages.SUCCESS)
-            url = reverse(
-                f'admin:{app_label}_batchupgradeoperation_change', args=[batch.pk]
-            )
-            return redirect(url)
+                batch = build.batch_upgrade(
+                    firmwareless=upgrade_all, upgrade_options=upgrade_options
+                )
+                text = _(
+                    'You can track the progress of this mass upgrade operation '
+                    'in this page. Refresh the page from time to time to check '
+                    'its progress.'
+                )
+                self.message_user(request, mark_safe(text), messages.SUCCESS)
+                url = reverse(
+                    f'admin:{app_label}_batchupgradeoperation_change', args=[batch.pk]
+                )
+                return redirect(url)
         # upgrade needs to be confirmed
         result = BatchUpgradeOperation.dry_run(build=build)
         related_device_fw = result['device_firmwares']
@@ -179,7 +180,7 @@ class BuildAdmin(BaseAdmin):
                 'related_count': len(related_device_fw),
                 'firmwareless_devices': firmwareless_devices,
                 'firmwareless_count': len(firmwareless_devices),
-                'form': BatchUpgradeConfirmationForm(),
+                'form': form,
                 # TODO: The OpenWrt schema is hard coded here. We need to find
                 # a way to dynamically select schema of the appropriate upgrader.
                 'firmware_upgrader_schema': json.dumps(
@@ -234,9 +235,7 @@ class UpgradeOperationInline(admin.StackedInline):
         return False
 
     class Media:
-        css = {
-            'all': ['firmware-upgrader/css/upgrade-options.css']
-        }
+        css = {'all': ['firmware-upgrader/css/upgrade-options.css']}
 
 
 class ReadonlyUpgradeOptionsMixin:
@@ -329,13 +328,8 @@ class DeviceFirmwareForm(forms.ModelForm):
         fields = '__all__'
 
     class Media:
-        js = [
-            'admin/js/jquery.init.js',
-            'firmware-upgrader/js/device-firmware.js'
-        ]
-        css = {
-            'all': ['firmware-upgrader/css/device-firmware.css']
-        }
+        js = ['admin/js/jquery.init.js', 'firmware-upgrader/js/device-firmware.js']
+        css = {'all': ['firmware-upgrader/css/device-firmware.css']}
 
     def _get_image_queryset(self, device):
         # restrict firmware images to organization of the current device

@@ -336,19 +336,39 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         self.assertEqual(Device.objects.count(), 3)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         self.assertEqual(fw.count(), 0)
-        r = self.client.post(
-            self.build_list_url,
-            {
-                'action': 'upgrade_selected',
-                'upgrade_related': 'upgrade_related',
-                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
-            },
-            follow=True,
-        )
-        self.assertContains(r, '<li class="success">')
-        self.assertContains(r, 'track the progress')
-        self.assertEqual(UpgradeOperation.objects.count(), 2)
-        self.assertEqual(fw.count(), 2)
+
+        with self.subTest('Invalid upgrade_options'):
+            response = self.client.post(
+                self.build_list_url,
+                {
+                    'action': 'upgrade_selected',
+                    'upgrade_related': 'upgrade_related',
+                    'upgrade_options': 'invalid',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(
+                response, '<ul class="errorlist"><li>Enter a valid JSON.</li></ul>'
+            )
+
+        with self.subTest('Test with valid upgrade_options'):
+            r = self.client.post(
+                self.build_list_url,
+                {
+                    'action': 'upgrade_selected',
+                    'upgrade_related': 'upgrade_related',
+                    'upgrade_options': '{"c": true}',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(r, '<li class="success">')
+            self.assertContains(r, 'track the progress')
+            self.assertEqual(
+                UpgradeOperation.objects.filter(upgrade_options={'c': True}).count(), 2
+            )
+            self.assertEqual(fw.count(), 2)
 
     def test_upgrade_all(self, *args):
         self._login()
@@ -361,19 +381,63 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         self.assertEqual(Device.objects.count(), 3)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         self.assertEqual(fw.count(), 0)
-        r = self.client.post(
-            self.build_list_url,
-            {
-                'action': 'upgrade_selected',
-                'upgrade_all': 'upgrade_all',
-                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
-            },
-            follow=True,
-        )
-        self.assertContains(r, '<li class="success">')
-        self.assertContains(r, 'track the progress')
-        self.assertEqual(UpgradeOperation.objects.count(), 3)
-        self.assertEqual(fw.count(), 3)
+
+        with self.subTest('Invalid upgrade_options'):
+            response = self.client.post(
+                self.build_list_url,
+                {
+                    'action': 'upgrade_selected',
+                    'upgrade_all': 'upgrade_all',
+                    'upgrade_options': 'invalid',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(
+                response, '<ul class="errorlist"><li>Enter a valid JSON.</li></ul>'
+            )
+
+        with self.subTest('Test with valid upgrade_options'):
+            response = self.client.post(
+                self.build_list_url,
+                {
+                    'action': 'upgrade_selected',
+                    'upgrade_all': 'upgrade_all',
+                    'upgrade_options': '{"c": true}',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(response, '<li class="success">')
+            self.assertContains(response, 'track the progress')
+            self.assertEqual(
+                UpgradeOperation.objects.filter(upgrade_options={'c': True}).count(), 3
+            )
+            self.assertEqual(fw.count(), 3)
+            self.assertContains(
+                response,
+                (
+                    '<div class="readonly"><ul class="readonly-upgrade-options">'
+                    '<li><img src="/static/admin/img/icon-yes.svg" alt="yes">'
+                    'Attempt to preserve all changed files in /etc/ (-c)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Attempt to preserve all changed files in /, except those from '
+                    'packages but including changed confs. (-o)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Skip from backup files that are equal to those in /rom (-u)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Do not save configuration over reflash (-n)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Do not attempt to restore the partition table after flash. (-p)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Include in backup a list of current installed packages at '
+                    '/etc/backup/installed_packages.txt (-k)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Flash image even if image checks fail, this is dangerous! (-F)</li></ul></div>'
+                ),
+                html=True,
+            )
 
     def test_massive_upgrade_operation_page(self, *args):
         self.test_upgrade_all()
