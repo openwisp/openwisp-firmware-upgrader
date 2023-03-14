@@ -1,7 +1,7 @@
 'use strict';
 
 django.jQuery(function ($) {
-    django._loadUi(
+    django._loadJsonSchemaUi(
         $('textarea[name="upgrade_options"]').get(0),
         false,
         firmwareUpgraderSchema,

@@ -8,7 +8,7 @@ django.jQuery(function ($) {
     // behavior.
     $('#devicefirmware-group').on('change', '#id_devicefirmware-0-image', function () {
         if (firmwareImageChanged) {
-            django._loadUi(
+            django._loadJsonSchemaUi(
                 $('#id_devicefirmware-0-upgrade_options').get(0),
                 false,
                 firmwareUpgraderSchema,
