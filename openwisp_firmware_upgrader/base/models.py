@@ -35,7 +35,10 @@ from ..tasks import (
     create_device_firmware,
     upgrade_firmware,
 )
-from ..upgraders.openwrt import OpenWrt
+from ..utils import (
+    get_upgrader_class_for_device,
+    get_upgrader_class_from_device_connection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -584,11 +587,8 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
             self.status = 'aborted'
             self.save()
             return
-        try:
-            upgrader_class = app_settings.UPGRADERS_MAP[conn.update_strategy]
-            upgrader_class = import_string(upgrader_class)
-        except (AttributeError, ImportError) as e:
-            logger.exception(e)
+        upgrader_class = get_upgrader_class_from_device_connection(conn)
+        if not upgrader_class:
             return
         upgrader = upgrader_class(self, conn)
         try:
@@ -637,11 +637,11 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
 
     def clean(self):
         super().clean()
-        # TODO: The OpenWrt upgrader schema is hard-coded here.
-        # We need to find a way to dynamically select schema
-        # of the correct upgrader class.
+        upgrader_class = get_upgrader_class_for_device(self.device)
         try:
-            jsonschema.Draft4Validator(OpenWrt.SCHEMA).validate(self.upgrade_options)
+            jsonschema.Draft4Validator(upgrader_class.SCHEMA).validate(
+                self.upgrade_options
+            )
         except jsonschema.ValidationError:
             raise ValidationError('The upgrade options are invalid')
 

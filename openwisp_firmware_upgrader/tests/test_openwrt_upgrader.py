@@ -485,7 +485,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             upgrade_op.upgrate_options = {}
             upgrader = OpenWrt(upgrade_op, device_conn)
             upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
-            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v /tmp/test.bin ')
+            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v /tmp/test.bin -c')
 
         with self.subTest('Test upgrade command with upgrade options'):
             upgrade_op.upgrade_options = {
@@ -513,7 +513,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
 
         upgrader = OpenWrt(upgrade_op, device_conn)
         path = '/tmp/openwrt-image.bin'
-        command = f'/sbin/sysupgrade -v {path} '
+        command = f'/sbin/sysupgrade -v {path} -c'
 
         with self.subTest('success'):
             with patch.object(

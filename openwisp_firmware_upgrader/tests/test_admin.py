@@ -520,6 +520,10 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
                 'config-0-device': str(device.id),
                 'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
                 'deviceconnection_set-0-id': str(device_conn.id),
+                'deviceconnection_set-0-update_strategy': (
+                    'openwisp_controller.connection.connectors.openwrt.ssh.OpenWrt'
+                ),
+                'deviceconnection_set-0-enabled': True,
                 'devicefirmware-TOTAL_FORMS': 1,
                 'devicefirmware-INITIAL_FORMS': 1,
                 'upgradeoperation_set-TOTAL_FORMS': 0,

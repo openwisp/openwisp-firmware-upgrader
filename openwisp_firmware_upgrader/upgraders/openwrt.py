@@ -35,6 +35,7 @@ class OpenWrt(BaseOpenWrt):
                 'type': 'boolean',
                 'title': _('Attempt to preserve all changed files in /etc/ (-c)'),
                 'format': 'checkbox',
+                'default': True,
             },
             'o': {
                 'type': 'boolean',
@@ -250,6 +251,12 @@ class OpenWrt(BaseOpenWrt):
         flags = []
         for key, value in self.upgrade_operation.upgrade_options.items():
             if value is True:
+                flags.append(f'-{key}')
+        # Enforce defaults
+        for key, property in self.SCHEMA['properties'].items():
+            if self.upgrade_operation.upgrade_options.get(
+                key, None
+            ) is None and property.get('default'):
                 flags.append(f'-{key}')
         flags = ' '.join(flags)
         return self.UPGRADE_COMMAND.format(

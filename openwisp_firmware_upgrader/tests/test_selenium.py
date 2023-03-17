@@ -291,7 +291,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(
             BatchUpgradeOperation.objects.filter(
                 upgrade_options={
-                    'c': False,
+                    'c': True,
                     'o': True,
                     'u': True,
                     'n': False,
@@ -305,7 +305,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(
             UpgradeOperation.objects.filter(
                 upgrade_options={
-                    'c': False,
+                    'c': True,
                     'o': True,
                     'u': True,
                     'n': False,

@@ -33,6 +33,7 @@ from .filters import (
 from .hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from .swapper import load_model
 from .upgraders.openwisp import OpenWrt
+from .utils import get_upgrader_class_for_device
 from .widgets import FirmwareSchemaWidget
 
 logger = logging.getLogger(__name__)
@@ -241,10 +242,9 @@ class UpgradeOperationInline(admin.StackedInline):
 class ReadonlyUpgradeOptionsMixin:
     @admin.display(description=_('Upgrade options'))
     def readonly_upgrade_options(self, obj):
-        # TODO: The OpenWrt schema is hard coded here. We need to find
-        # a way to dynamically select schema of the appropriate upgrader.
+        upgrader_class = self._get_upgrader_class(obj)
         options = []
-        for key, value in OpenWrt.SCHEMA['properties'].items():
+        for key, value in upgrader_class.SCHEMA['properties'].items():
             option_used = 'yes' if obj.upgrade_options.get(key, False) else 'no'
             option_title = value['title']
             icon_url = static(f'admin/img/icon-{option_used}.svg')
@@ -313,6 +313,9 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         if value:
             return f'{value}%'
         return 'N/A'
+
+    def _get_upgrader_class(self, obj):
+        return get_upgrader_class_for_device(obj.upgradeoperation_set.first().device)
 
     completed.short_description = _('completed')
     success_rate.short_description = _('success rate')
@@ -409,9 +412,11 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
 
     def get_formset(self, request, obj=None, **kwargs):
         formset = super().get_formset(request, obj=obj, **kwargs)
-        # TODO: The OpenWrt schema is hard coded here. We need to find
-        # a way to dynamically select schema of the appropriate upgrader.
-        formset.extra_context = json.dumps(OpenWrt.SCHEMA, cls=DjangoJSONEncoder)
+        if obj:
+            upgrader_class = get_upgrader_class_for_device(obj)
+            formset.extra_context = json.dumps(
+                upgrader_class.SCHEMA, cls=DjangoJSONEncoder
+            )
         return formset
 
 
@@ -463,6 +468,9 @@ class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperation
         if obj:
             return self.get_queryset(request, select_related=False).exists()
         return False
+
+    def _get_upgrader_class(self, obj):
+        return get_upgrader_class_for_device(obj.device)
 
 
 # DeviceAdmin.get_inlines = device_admin_get_inlines
