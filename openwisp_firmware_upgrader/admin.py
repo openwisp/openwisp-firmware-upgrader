@@ -32,8 +32,7 @@ from .filters import (
 )
 from .hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from .swapper import load_model
-from .upgraders.openwisp import OpenWrt
-from .utils import get_upgrader_class_for_device
+from .utils import get_upgrader_schema_for_device
 from .widgets import FirmwareSchemaWidget
 
 logger = logging.getLogger(__name__)
@@ -174,6 +173,18 @@ class BuildAdmin(BaseAdmin):
         firmwareless_devices = result['devices']
         title = _('Confirm mass upgrade operation')
         context = self.admin_site.each_context(request)
+
+        # Get upgrader_schema from related_device_fw or firmwareless_devices
+        upgrader_schema = None
+        if related_device_fw:
+            upgrader_schema = get_upgrader_schema_for_device(
+                related_device_fw.first().device
+            )
+        if not upgrader_schema and firmwareless_devices:
+            upgrader_schema = get_upgrader_schema_for_device(
+                firmwareless_devices.first()
+            )
+
         context.update(
             {
                 'title': title,
@@ -185,7 +196,7 @@ class BuildAdmin(BaseAdmin):
                 # TODO: The OpenWrt schema is hard coded here. We need to find
                 # a way to dynamically select schema of the appropriate upgrader.
                 'firmware_upgrader_schema': json.dumps(
-                    OpenWrt.SCHEMA, cls=DjangoJSONEncoder
+                    upgrader_schema, cls=DjangoJSONEncoder
                 ),
                 'build': build,
                 'opts': opts,
@@ -242,9 +253,11 @@ class UpgradeOperationInline(admin.StackedInline):
 class ReadonlyUpgradeOptionsMixin:
     @admin.display(description=_('Upgrade options'))
     def readonly_upgrade_options(self, obj):
-        upgrader_class = self._get_upgrader_class(obj)
+        upgrader_schema = self._get_upgrader_schema(obj)
+        if not upgrader_schema:
+            return _('Upgrade options are not supported for this upgrader')
         options = []
-        for key, value in upgrader_class.SCHEMA['properties'].items():
+        for key, value in upgrader_schema['properties'].items():
             option_used = 'yes' if obj.upgrade_options.get(key, False) else 'no'
             option_title = value['title']
             icon_url = static(f'admin/img/icon-{option_used}.svg')
@@ -314,8 +327,11 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
             return f'{value}%'
         return 'N/A'
 
-    def _get_upgrader_class(self, obj):
-        return get_upgrader_class_for_device(obj.upgradeoperation_set.first().device)
+    def _get_upgrader_schema(self, obj):
+        upgrade_operation = obj.upgradeoperation_set.first()
+        if not upgrade_operation:
+            return
+        return get_upgrader_schema_for_device(upgrade_operation.device)
 
     completed.short_description = _('completed')
     success_rate.short_description = _('success rate')
@@ -413,10 +429,8 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     def get_formset(self, request, obj=None, **kwargs):
         formset = super().get_formset(request, obj=obj, **kwargs)
         if obj:
-            upgrader_class = get_upgrader_class_for_device(obj)
-            formset.extra_context = json.dumps(
-                upgrader_class.SCHEMA, cls=DjangoJSONEncoder
-            )
+            schema = get_upgrader_schema_for_device(obj)
+            formset.extra_context = json.dumps(schema, cls=DjangoJSONEncoder)
         return formset
 
 
@@ -469,8 +483,8 @@ class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperation
             return self.get_queryset(request, select_related=False).exists()
         return False
 
-    def _get_upgrader_class(self, obj):
-        return get_upgrader_class_for_device(obj.device)
+    def _get_upgrader_schema(self, obj):
+        return get_upgrader_schema_for_device(obj.device)
 
 
 # DeviceAdmin.get_inlines = device_admin_get_inlines

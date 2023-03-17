@@ -7,6 +7,11 @@ from . import settings as app_settings
 logger = logging.getLogger(__name__)
 
 
+def get_upgrader_schema_for_device(device):
+    upgrader_class = get_upgrader_class_for_device(device)
+    return getattr(upgrader_class, 'SCHEMA', None)
+
+
 def get_upgrader_class_for_device(device):
     """
     Returns firmware upgrader class for a device depending

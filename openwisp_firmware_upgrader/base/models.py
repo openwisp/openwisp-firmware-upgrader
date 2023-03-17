@@ -8,7 +8,6 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 from django.utils.functional import cached_property
-from django.utils.module_loading import import_string
 from django.utils.translation import gettext_lazy as _
 from private_storage.fields import PrivateFileField
 
@@ -36,8 +35,8 @@ from ..tasks import (
     upgrade_firmware,
 )
 from ..utils import (
-    get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
+    get_upgrader_schema_for_device,
 )
 
 logger = logging.getLogger(__name__)
@@ -637,11 +636,15 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
 
     def clean(self):
         super().clean()
-        upgrader_class = get_upgrader_class_for_device(self.device)
-        try:
-            jsonschema.Draft4Validator(upgrader_class.SCHEMA).validate(
-                self.upgrade_options
+        if not self.upgrade_options:
+            return
+        upgrader_schema = get_upgrader_schema_for_device(self.device)
+        if not upgrader_schema:
+            raise ValidationError(
+                _('Using upgrade options is not allowed with this upgrader.')
             )
+        try:
+            jsonschema.Draft4Validator(upgrader_schema).validate(self.upgrade_options)
         except jsonschema.ValidationError:
             raise ValidationError('The upgrade options are invalid')
 
