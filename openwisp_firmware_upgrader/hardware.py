@@ -56,6 +56,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {'label': 'GL.iNet GL-MT300N-V2', 'boards': ('GL-MT300N-V2',)},
             ),
             (
+                'hanyang_hyc-g920-squashfs-sysupgrade.bin',
+                {
+                    'label': 'CJ-Hello HYC-G920',
+                    'boards': ('CJ-Hello HYC-G920',),
+                },
+            ),
+            (
                 'mvebu-cortexa9-linksys_wrt1900acs-squashfs-sysupgrade.img',
                 {'label': 'Linksys WRT1900ACS', 'boards': ('Linksys WRT1900ACS',)},
             ),
