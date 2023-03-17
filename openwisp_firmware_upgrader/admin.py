@@ -374,6 +374,19 @@ class DeviceFirmwareForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['image'].queryset = self._get_image_queryset(device)
 
+    def full_clean(self):
+        super().full_clean()
+        if not self.errors and hasattr(self, 'cleaned_data'):
+            upgrade_op = UpgradeOperation(
+                device=self.cleaned_data['device'],
+                image=self.cleaned_data['image'],
+                upgrade_options=self.cleaned_data['upgrade_options'],
+            )
+            try:
+                upgrade_op.full_clean()
+            except forms.ValidationError as error:
+                self.add_error('__all__', error.messages[0])
+
     def save(self, commit=True):
         """
         Adapted from ModelForm.save()

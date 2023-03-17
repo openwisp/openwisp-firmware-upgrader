@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils.timezone import localtime
 
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
+from openwisp_controller.connection import settings as conn_settings
 from openwisp_firmware_upgrader.admin import (
     BuildAdmin,
     DeviceAdmin,
@@ -23,6 +24,7 @@ from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
+from ..upgraders.openwisp import OpenWisp1
 from .base import TestUpgraderMixin
 
 User = get_user_model()
@@ -520,9 +522,11 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
                 'config-0-device': str(device.id),
                 'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
                 'deviceconnection_set-0-id': str(device_conn.id),
-                'deviceconnection_set-0-update_strategy': (
-                    'openwisp_controller.connection.connectors.openwrt.ssh.OpenWrt'
-                ),
+                'deviceconnection_set-0-update_strategy': conn_settings.DEFAULT_UPDATE_STRATEGIES[
+                    0
+                ][
+                    0
+                ],
                 'deviceconnection_set-0-enabled': True,
                 'devicefirmware-TOTAL_FORMS': 1,
                 'devicefirmware-INITIAL_FORMS': 1,
@@ -564,6 +568,81 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
             ),
             html=True,
         )
+
+    @mock.patch.object(OpenWisp1, 'SCHEMA', None)
+    def test_using_upgrade_options_with_unsupported_upgrader(self, *args):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device.config.backend = 'netjsonconfig.OpenWisp'
+        device.config.save()
+        device_conn = device.deviceconnection_set.first()
+        device_conn.update_strategy = conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
+        device_conn.save()
+        device_params = self._device_params.copy()
+        build = self._create_build(version='0.2')
+        image = self._create_firmware_image(build=build)
+        upgrade_options = {
+            'c': True,
+            'o': False,
+            'u': False,
+            'n': False,
+            'p': False,
+            'k': False,
+            'F': True,
+        }
+        device_params.update(
+            {
+                'model': device.model,
+                'devicefirmware-0-image': str(image.id),
+                'devicefirmware-0-id': str(device_fw.id),
+                'devicefirmware-0-upgrade_options': json.dumps(upgrade_options),
+                'organization': str(device.organization.id),
+                'config-0-id': str(device.config.pk),
+                'config-0-device': str(device.id),
+                'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
+                'deviceconnection_set-0-id': str(device_conn.id),
+                'deviceconnection_set-0-update_strategy': (
+                    conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
+                ),
+                'deviceconnection_set-0-enabled': True,
+                'devicefirmware-TOTAL_FORMS': 1,
+                'devicefirmware-INITIAL_FORMS': 1,
+                'upgradeoperation_set-TOTAL_FORMS': 0,
+                'upgradeoperation_set-INITIAL_FORMS': 0,
+                'upgradeoperation_set-MIN_NUM_FORMS': 0,
+                'upgradeoperation_set-MAX_NUM_FORMS': 0,
+                '_continue': True,
+            }
+        )
+        with self.subTest('Test using upgrade options with unsupported upgrader'):
+            response = self.client.post(
+                reverse('admin:config_device_change', args=[device.id]),
+                data=device_params,
+                follow=True,
+            )
+            self.assertContains(
+                response,
+                (
+                    '<ul class="errorlist nonfield"><li>Using upgrade '
+                    'options is not allowed with this upgrader.</li></ul>'
+                ),
+            )
+
+        with self.subTest('Test upgrading without upgrade options'):
+            del device_params['devicefirmware-0-upgrade_options']
+            response = self.client.post(
+                reverse('admin:config_device_change', args=[device.id]),
+                data=device_params,
+                follow=True,
+            )
+            self.assertContains(
+                response,
+                (
+                    '<div class="readonly">Upgrade options are '
+                    'not supported for this upgrader</div>'
+                ),
+            )
 
 
 del TestConfigAdmin
