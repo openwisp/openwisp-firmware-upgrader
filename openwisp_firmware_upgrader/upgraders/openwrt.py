@@ -45,16 +45,16 @@ class OpenWrt(BaseOpenWrt):
                 ),
                 'format': 'checkbox',
             },
+            'n': {
+                'type': 'boolean',
+                'title': _('Do not save configuration over reflash (-n)'),
+                'format': 'checkbox',
+            },
             'u': {
                 'type': 'boolean',
                 'title': _(
                     'Skip from backup files that are equal to those in /rom (-u)'
                 ),
-                'format': 'checkbox',
-            },
-            'n': {
-                'type': 'boolean',
-                'title': _('Do not save configuration over reflash (-n)'),
                 'format': 'checkbox',
             },
             'p': {
