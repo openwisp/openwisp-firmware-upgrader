@@ -19,6 +19,7 @@ from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
 from openwisp_utils.tests import capture_any_output
 
 from ..swapper import load_model
+from ..upgraders.openwisp import OpenWrt
 
 Device = swapper.load_model('config', 'Device')
 DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
@@ -34,6 +35,22 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     admin_password = 'password'
     os = 'OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d'
     image_type = REVERSE_FIRMWARE_IMAGE_MAP['YunCore XD3200']
+
+    def _set_up_env(self):
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build1 = self._create_build(category=category, version='0.1', os=self.os)
+        build2 = self._create_build(
+            category=category, version='0.2', os='OpenWrt 21.03'
+        )
+        image1 = self._create_firmware_image(build=build1, type=self.image_type)
+        image2 = self._create_firmware_image(build=build2, type=self.image_type)
+        self._create_credentials(auto_add=True, organization=org)
+        device = self._create_device(
+            os=self.os, model=image2.boards[0], organization=org
+        )
+        self._create_config(device=device)
+        return org, category, build1, build2, image1, image2, device
 
     @classmethod
     def setUpClass(cls):
@@ -144,19 +161,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 '//*[@id="device_form"]/div/div[1]/input[3]'
             ).click()
 
-        org = self._get_org()
-        category = self._get_category(organization=org)
-        build1 = self._create_build(category=category, version='0.1', os=self.os)
-        build2 = self._create_build(
-            category=category, version='0.2', os='OpenWrt 21.03'
-        )
-        self._create_firmware_image(build=build1, type=self.image_type)
-        image = self._create_firmware_image(build=build2, type=self.image_type)
-        self._create_credentials(auto_add=True, organization=org)
-        device = self._create_device(
-            os=self.os, model=image.boards[0], organization=org
-        )
-        self._create_config(device=device)
+        _, _, _, _, _, image, device = self._set_up_env()
         self.login()
         self.open(
             '{}#devicefirmware-group'.format(
@@ -174,7 +179,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         image_select = Select(
             self.web_driver.find_element_by_id('id_devicefirmware-0-image')
         )
-        image_select.select_by_index(1)
+        image_select.select_by_value(str(image.pk))
         # JSONSchema configuration editor should not be rendered
         WebDriverWait(self.web_driver, 1).until(
             EC.invisibility_of_element_located(
@@ -184,6 +189,16 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 )
             )
         )
+        # Select "None" image should hide JSONSchema Editor
+        image_select.select_by_value('')
+        WebDriverWait(self.web_driver, 1).until(
+            EC.invisibility_of_element_located(
+                (By.CSS_SELECTOR, '#id_devicefirmware-0-upgrade_options_jsoneditor')
+            )
+        )
+
+        # Select "build2" image
+        image_select.select_by_value(str(image.pk))
         # Enable '-c' option
         self.web_driver.find_element_by_xpath(
             '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]'
@@ -236,19 +251,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         return_value=True,
     )
     def test_batch_upgrade_upgrade_options(self, *args):
-        org = self._get_org()
-        category = self._get_category(organization=org)
-        build1 = self._create_build(category=category, version='0.1', os=self.os)
-        build2 = self._create_build(
-            category=category, version='0.2', os='OpenWrt 21.03'
-        )
-        self._create_firmware_image(build=build1, type=self.image_type)
-        image = self._create_firmware_image(build=build2, type=self.image_type)
-        self._create_credentials(auto_add=True, organization=org)
-        device = self._create_device(
-            os=self.os, model=image.boards[0], organization=org
-        )
-        self._create_config(device=device)
+        _, _, _, build2, _, _, _ = self._set_up_env()
         self.login()
         self.open(
             reverse(f'admin:{self.firmware_app_label}_build_change', args=[build2.id])
@@ -280,7 +283,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.web_driver.find_element_by_xpath(
             '//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[2]/div/div[1]/label/input'
         ).click()
-        # Enable -u flag
+        # Enable -n flag
         self.web_driver.find_element_by_xpath(
             '//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[3]/div/div[1]/label/input'
         ).click()
@@ -288,7 +291,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.web_driver.find_element_by_css_selector(
             'input[name="upgrade_all"]'
         ).click()
-        print(BatchUpgradeOperation.objects.first().upgrade_options)
         self.assertEqual(
             BatchUpgradeOperation.objects.filter(
                 upgrade_options={
@@ -317,3 +319,70 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             ).count(),
             1,
         )
+
+    @capture_any_output()
+    @patch(
+        'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade',
+        return_value=True,
+    )
+    @patch(
+        'openwisp_controller.connection.models.DeviceConnection.connect',
+        return_value=True,
+    )
+    @patch.object(OpenWrt, 'SCHEMA', None)
+    def test_upgrader_with_unsupported_upgrade_options(self, *args):
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+        self.login()
+
+        with self.subTest('Test DeviceFirmware'):
+            self.open(
+                '{}#devicefirmware-group'.format(
+                    reverse(
+                        f'admin:{self.config_app_label}_device_change', args=[device.id]
+                    )
+                )
+            )
+            image_select = Select(
+                self.web_driver.find_element_by_id('id_devicefirmware-0-image')
+            )
+            image_select.select_by_value(str(image2.pk))
+            # Ensure JSONSchema editor is not rendered because
+            # the upgrader does not define a schema
+            WebDriverWait(self.web_driver, 1).until(
+                EC.invisibility_of_element_located(
+                    (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
+                )
+            )
+            self.web_driver.find_element_by_xpath(
+                '//*[@id="device_form"]/div/div[1]/input[3]'
+            ).click()
+            self.assertEqual(
+                UpgradeOperation.objects.filter(upgrade_options={}).count(), 1
+            )
+        DeviceFirmware.objects.all().delete()
+        UpgradeOperation.objects.all().delete()
+
+        with self.subTest('Test BatchUpgradeOperation'):
+            self.open(
+                reverse(
+                    f'admin:{self.firmware_app_label}_build_change', args=[build2.id]
+                )
+            )
+            # Launch mass upgrade operation
+            self.web_driver.find_element_by_css_selector(
+                '.title-wrapper .object-tools form button[type="submit"]'
+            ).click()
+            # Ensure JSONSchema editor is not rendered because
+            # the upgrader does not define a schema
+            WebDriverWait(self.web_driver, 1).until(
+                EC.invisibility_of_element_located(
+                    (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
+                )
+            )
+            # Upgrade all devices
+            self.web_driver.find_element_by_css_selector(
+                'input[name="upgrade_all"]'
+            ).click()
+            self.assertEqual(
+                UpgradeOperation.objects.filter(upgrade_options={}).count(), 1
+            )

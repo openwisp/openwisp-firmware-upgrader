@@ -1,4 +1,4 @@
-div[id*=upgrade_options_jsoneditor] .controls {
+#main div[id*=upgrade_options_jsoneditor] .controls {
   display: none;
 }
 .field-readonly_upgrade_options .readonly-upgrade-options {

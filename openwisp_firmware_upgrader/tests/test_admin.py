@@ -616,6 +616,15 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
                 '_continue': True,
             }
         )
+
+        with self.subTest('Test DeviceFirmwareInline does not have schema defined'):
+            response = self.client.get(
+                reverse('admin:config_device_change', args=[device.id])
+            )
+            self.assertContains(
+                response, '<script>\nvar firmwareUpgraderSchema = null\n</script>'
+            )
+
         with self.subTest('Test using upgrade options with unsupported upgrader'):
             response = self.client.post(
                 reverse('admin:config_device_change', args=[device.id]),
@@ -641,7 +650,7 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
                 response,
                 (
                     '<div class="readonly">Upgrade options are '
-                    'not supported for this upgrader</div>'
+                    'not supported for this upgrader.</div>'
                 ),
             )
 

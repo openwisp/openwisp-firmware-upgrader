@@ -255,7 +255,7 @@ class ReadonlyUpgradeOptionsMixin:
     def readonly_upgrade_options(self, obj):
         upgrader_schema = self._get_upgrader_schema(obj)
         if not upgrader_schema:
-            return _('Upgrade options are not supported for this upgrader')
+            return _('Upgrade options are not supported for this upgrader.')
         options = []
         for key, value in upgrader_schema['properties'].items():
             option_used = 'yes' if obj.upgrade_options.get(key, False) else 'no'
@@ -390,25 +390,11 @@ class DeviceFirmwareForm(forms.ModelForm):
     def save(self, commit=True):
         """
         Adapted from ModelForm.save()
-
         Passes "upgrade_options to DeviceFirmware.save()
         """
-        if self.errors:
-            raise ValueError(
-                "The %s could not be %s because the data didn't validate."
-                % (
-                    self.instance._meta.object_name,
-                    'created' if self.instance._state.adding else 'changed',
-                )
-            )
         if commit:
             # If committing, save the instance and the m2m data immediately.
             self.instance.save(upgrade_options=self.cleaned_data['upgrade_options'])
-            self._save_m2m()
-        else:
-            # If not committing, add a method to the form to allow deferred
-            # saving of m2m data.
-            self.save_m2m = self._save_m2m
         return self.instance
 
 

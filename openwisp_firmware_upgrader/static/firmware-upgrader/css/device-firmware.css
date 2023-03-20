@@ -1,3 +1,7 @@
+#id_devicefirmware-0-upgrade_options_jsoneditor {
+  padding: 15px;
+  border-bottom: 1px solid var(--hairline-color);
+}
 #id_devicefirmware-0-upgrade_options_jsoneditor label {
   width: unset;
   padding: 0px;
@@ -7,8 +11,6 @@
 }
 #main #id_devicefirmware-0-upgrade_options_jsoneditor .form-row {
   padding: 0px;
-}
-#devicefirmware-group .form-row:not(:last-of-type) {
   border-bottom: none;
 }
 #devicefirmware-group .form-row.field-upgrade_options {
