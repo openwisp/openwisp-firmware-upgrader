@@ -56,7 +56,7 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
     }
     if command.startswith(f'{_sysupgrade} --test /tmp/openwrt-'):
         return defaults
-    if command.startswith(f'{_sysupgrade} -v /tmp/openwrt-'):
+    if command.startswith(f'{_sysupgrade} -v -c /tmp/openwrt-'):
         return [
             (
                 'Image metadata not found\n'
@@ -485,7 +485,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             upgrade_op.upgrate_options = {}
             upgrader = OpenWrt(upgrade_op, device_conn)
             upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
-            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v /tmp/test.bin -c')
+            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -c /tmp/test.bin')
 
         with self.subTest('Test upgrade command with upgrade options'):
             upgrade_op.upgrade_options = {
@@ -499,7 +499,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             }
             upgrader = OpenWrt(upgrade_op, device_conn)
             upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
-            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v /tmp/test.bin -c -F')
+            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -c -F /tmp/test.bin')
 
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
@@ -513,7 +513,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
 
         upgrader = OpenWrt(upgrade_op, device_conn)
         path = '/tmp/openwrt-image.bin'
-        command = f'/sbin/sysupgrade -v {path} -c'
+        command = f'/sbin/sysupgrade -v -c {path}'
 
         with self.subTest('success'):
             with patch.object(

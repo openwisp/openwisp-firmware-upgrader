@@ -288,13 +288,14 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.web_driver.find_element_by_css_selector(
             'input[name="upgrade_all"]'
         ).click()
+        print(BatchUpgradeOperation.objects.first().upgrade_options)
         self.assertEqual(
             BatchUpgradeOperation.objects.filter(
                 upgrade_options={
                     'c': True,
                     'o': True,
-                    'u': True,
-                    'n': False,
+                    'n': True,
+                    'u': False,
                     'p': False,
                     'k': False,
                     'F': False,
@@ -307,8 +308,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 upgrade_options={
                     'c': True,
                     'o': True,
-                    'u': True,
-                    'n': False,
+                    'n': True,
+                    'u': False,
                     'p': False,
                     'k': False,
                     'F': False,
