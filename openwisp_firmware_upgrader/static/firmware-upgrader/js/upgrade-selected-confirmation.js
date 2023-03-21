@@ -3,12 +3,14 @@
 django.jQuery(function ($) {
     if(firmwareUpgraderSchema === null) {
         $('.form-row').hide();
-        return;
+
+    } else {
+        django._loadJsonSchemaUi(
+            $('textarea[name="upgrade_options"]').get(0),
+            false,
+            firmwareUpgraderSchema,
+            true
+        );
     }
-    django._loadJsonSchemaUi(
-        $('textarea[name="upgrade_options"]').get(0),
-        false,
-        firmwareUpgraderSchema,
-        true
-    );
+    $('#ow-loading').hide();
 });

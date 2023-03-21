@@ -101,7 +101,9 @@ class BatchUpgradeConfirmationForm(forms.Form):
         js = list(media._js) + [
             'firmware-upgrader/js/upgrade-selected-confirmation.js',
         ]
-        return forms.Media(js=js, css=media._css)
+        css = media._css.copy()
+        css['all'] += ['firmware-upgrader/css/upgrade-selected-confirmation.css']
+        return forms.Media(js=js, css=css)
 
 
 @admin.register(load_model('Build'))
@@ -193,8 +195,6 @@ class BuildAdmin(BaseAdmin):
                 'firmwareless_devices': firmwareless_devices,
                 'firmwareless_count': len(firmwareless_devices),
                 'form': form,
-                # TODO: The OpenWrt schema is hard coded here. We need to find
-                # a way to dynamically select schema of the appropriate upgrader.
                 'firmware_upgrader_schema': json.dumps(
                     upgrader_schema, cls=DjangoJSONEncoder
                 ),

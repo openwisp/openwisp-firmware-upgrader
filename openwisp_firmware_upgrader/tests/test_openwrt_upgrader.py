@@ -72,7 +72,7 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
 
 
 def mocked_sysupgrade_failure(command, exit_codes=None, timeout=None):
-    if command.startswith(f'{OpenWrt._SYSUPGRADE} -v '):
+    if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c'):
         raise CommandFailedException(
             "Invalid image type\nImage check 'platform_check_image' failed."
         )
