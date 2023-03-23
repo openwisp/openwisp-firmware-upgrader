@@ -202,13 +202,32 @@ class TestModels(TestUpgraderMixin, TestCase):
         uo = UpgradeOperation(
             device=device_fw.device,
             image=device_fw.image,
-            upgrade_options={'invalid': True},
         )
-        with self.assertRaises(ValidationError) as error:
-            uo.full_clean()
-        self.assertEqual(
-            error.exception.message_dict['__all__'], ['The upgrade options are invalid']
-        )
+        with self.subTest('Test using invalid options'):
+            uo.upgrade_options = {'invalid': True}
+            with self.assertRaises(ValidationError) as error:
+                uo.full_clean()
+            self.assertEqual(
+                error.exception.message_dict['__all__'],
+                ['The upgrade options are invalid'],
+            )
+
+        with self.subTest('Test using mutually exclusive options'):
+            uo.upgrade_options = {'c': True, 'n': True}
+            with self.assertRaises(ValidationError) as error:
+                uo.full_clean()
+            self.assertEqual(
+                error.exception.message_dict['upgrade_options'],
+                ['The "-n" and "-c" options cannot be used together'],
+            )
+
+            uo.upgrade_options = {'o': True, 'n': True}
+            with self.assertRaises(ValidationError) as error:
+                uo.full_clean()
+            self.assertEqual(
+                error.exception.message_dict['upgrade_options'],
+                ['The "-n" and "-o" options cannot be used together'],
+            )
 
     def test_upgrade_operation_log_line(self):
         device_fw = self._create_device_firmware()

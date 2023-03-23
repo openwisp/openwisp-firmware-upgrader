@@ -92,8 +92,15 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
         return True
 
 
-class BatchUpgradeConfirmationForm(forms.Form):
+class BatchUpgradeConfirmationForm(forms.ModelForm):
     upgrade_options = forms.JSONField(widget=FirmwareSchemaWidget(), required=False)
+    build = forms.ModelChoiceField(
+        widget=forms.HiddenInput(), required=False, queryset=Build.objects.all()
+    )
+
+    class Meta:
+        model = BatchUpgradeOperation
+        fields = ('build', 'upgrade_options')
 
     @property
     def media(self):
@@ -151,7 +158,7 @@ class BuildAdmin(BaseAdmin):
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
             form = BatchUpgradeConfirmationForm(
-                data={'upgrade_options': upgrade_options}
+                data={'upgrade_options': upgrade_options, 'build': build}
             )
             form.full_clean()
             if not form.errors:
@@ -175,17 +182,10 @@ class BuildAdmin(BaseAdmin):
         firmwareless_devices = result['devices']
         title = _('Confirm mass upgrade operation')
         context = self.admin_site.each_context(request)
-
-        # Get upgrader_schema from related_device_fw or firmwareless_devices
-        upgrader_schema = None
-        if related_device_fw:
-            upgrader_schema = get_upgrader_schema_for_device(
-                related_device_fw.first().device
-            )
-        if not upgrader_schema and firmwareless_devices:
-            upgrader_schema = get_upgrader_schema_for_device(
-                firmwareless_devices.first()
-            )
+        upgrader_schema = BatchUpgradeOperation(build=build)._get_upgrader_schema(
+            related_device_fw=related_device_fw,
+            firmwareless_devices=firmwareless_devices,
+        )
 
         context.update(
             {
@@ -253,7 +253,7 @@ class UpgradeOperationInline(admin.StackedInline):
 class ReadonlyUpgradeOptionsMixin:
     @admin.display(description=_('Upgrade options'))
     def readonly_upgrade_options(self, obj):
-        upgrader_schema = self._get_upgrader_schema(obj)
+        upgrader_schema = obj.upgrader_schema
         if not upgrader_schema:
             return _('Upgrade options are not supported for this upgrader.')
         options = []
@@ -326,12 +326,6 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         if value:
             return f'{value}%'
         return 'N/A'
-
-    def _get_upgrader_schema(self, obj):
-        upgrade_operation = obj.upgradeoperation_set.first()
-        if not upgrade_operation:
-            return
-        return get_upgrader_schema_for_device(upgrade_operation.device)
 
     completed.short_description = _('completed')
     success_rate.short_description = _('success rate')
@@ -481,9 +475,6 @@ class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperation
         if obj:
             return self.get_queryset(request, select_related=False).exists()
         return False
-
-    def _get_upgrader_schema(self, obj):
-        return get_upgrader_schema_for_device(obj.device)
 
 
 # DeviceAdmin.get_inlines = device_admin_get_inlines

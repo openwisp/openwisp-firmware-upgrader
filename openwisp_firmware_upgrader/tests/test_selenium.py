@@ -279,9 +279,9 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 )
             )
         )
-        # Enable -o flag
+        # Disable -c flag
         self.web_driver.find_element_by_xpath(
-            '//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[2]/div/div[1]/label/input'
+            '//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[1]/div/div[1]/label/input'
         ).click()
         # Enable -n flag
         self.web_driver.find_element_by_xpath(
@@ -294,8 +294,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(
             BatchUpgradeOperation.objects.filter(
                 upgrade_options={
-                    'c': True,
-                    'o': True,
+                    'c': False,
+                    'o': False,
                     'n': True,
                     'u': False,
                     'p': False,
@@ -308,8 +308,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(
             UpgradeOperation.objects.filter(
                 upgrade_options={
-                    'c': True,
-                    'o': True,
+                    'c': False,
+                    'o': False,
                     'n': True,
                     'u': False,
                     'p': False,

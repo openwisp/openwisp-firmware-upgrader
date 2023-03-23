@@ -3,6 +3,7 @@ import socket
 from hashlib import sha256
 from time import sleep
 
+import jsonschema
 from billiard import Process, Queue
 from django.utils.translation import gettext_lazy as _
 from paramiko.ssh_exception import NoValidConnectionsError, SSHException
@@ -10,6 +11,7 @@ from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
 
 from ..exceptions import (
+    FirmwareUpgradeOptionsException,
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
@@ -93,6 +95,27 @@ class OpenWrt(BaseOpenWrt):
         self.upgrade_operation = upgrade_operation
         self.connection = connection
         self._non_critical_services_stopped = False
+
+    @classmethod
+    def validate_upgrade_options(cls, upgrade_options):
+        jsonschema.Draft4Validator(cls.SCHEMA).validate(upgrade_options)
+        if upgrade_options.get('n', False):
+            if upgrade_options.get('o', False):
+                raise FirmwareUpgradeOptionsException(
+                    {
+                        'upgrade_options': _(
+                            'The "-n" and "-o" options cannot be used together'
+                        )
+                    }
+                )
+            if upgrade_options.get('c', False):
+                raise FirmwareUpgradeOptionsException(
+                    {
+                        'upgrade_options': _(
+                            'The "-n" and "-c" options cannot be used together'
+                        )
+                    }
+                )
 
     def log(self, value, save=True):
         self.upgrade_operation.log_line(value, save=save)

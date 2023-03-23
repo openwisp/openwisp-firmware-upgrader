@@ -17,6 +17,7 @@ from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
 from ..exceptions import (
+    FirmwareUpgradeOptionsException,
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
@@ -35,11 +36,37 @@ from ..tasks import (
     upgrade_firmware,
 )
 from ..utils import (
+    get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class UpgradeOptionsMixin(models.Model):
+    upgrade_options = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        abstract = True
+
+    def validate_upgrade_options(self):
+        if not self.upgrade_options:
+            return
+        if not getattr(self.upgrader_class, 'SCHEMA'):
+            raise ValidationError(
+                _('Using upgrade options is not allowed with this upgrader.')
+            )
+        try:
+            self.upgrader_class.validate_upgrade_options(self.upgrade_options)
+        except jsonschema.ValidationError:
+            raise ValidationError('The upgrade options are invalid')
+        except FirmwareUpgradeOptionsException as error:
+            raise ValidationError(*error.args)
+
+    def clean(self):
+        super().clean()
+        self.validate_upgrade_options()
 
 
 class AbstractCategory(OrgMixin, TimeStampedEditableModel):
@@ -375,7 +402,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             )
 
 
-class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
+class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     build = models.ForeignKey(get_model_name('Build'), on_delete=models.CASCADE)
     STATUS_CHOICES = (
         ('idle', _('idle')),
@@ -386,7 +413,6 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
     )
-    upgrade_options = models.JSONField(default=dict, blank=True)
 
     class Meta:
         abstract = True
@@ -488,12 +514,41 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
         aborted = self.upgrade_operations.filter(status='aborted').count()
         return self.__get_rate(aborted)
 
+    @property
+    def upgrader_class(self):
+        return self._get_upgrader_class()
+
+    @property
+    def upgrader_schema(self):
+        return self._get_upgrader_schema()
+
+    def _get_upgrader_class(self, related_device_fw=None, firmwareless_devices=None):
+        if self.upgrade_operations:
+            return get_upgrader_class_for_device(self.upgrade_operations[0].device)
+        related_device_fw = (
+            related_device_fw
+            or self.build._find_related_device_firmwares(select_devices=True)
+        )
+        if related_device_fw:
+            return get_upgrader_class_for_device(related_device_fw.first().device)
+        firmwareless_devices = (
+            firmwareless_devices or self.build._find_firmwareless_devices()
+        )
+        if firmwareless_devices:
+            return get_upgrader_class_for_device(firmwareless_devices.first())
+
+    def _get_upgrader_schema(self, related_device_fw=None, firmwareless_devices=None):
+        upgrader_class = self._get_upgrader_class(
+            related_device_fw, firmwareless_devices
+        )
+        return getattr(upgrader_class, 'SCHEMA', None)
+
     def __get_rate(self, number):
         result = Decimal(number) / Decimal(self.total_operations) * 100
         return round(result, 2)
 
 
-class AbstractUpgradeOperation(TimeStampedEditableModel):
+class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     STATUS_CHOICES = (
         ('in-progress', _('in progress')),
         ('success', _('success')),
@@ -516,7 +571,6 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         blank=True,
         null=True,
     )
-    upgrade_options = models.JSONField(default=dict, blank=True)
 
     class Meta:
         abstract = True
@@ -634,20 +688,6 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
             self.device.devicefirmware.installed = True
             self.device.devicefirmware.save(upgrade=False)
 
-    def clean(self):
-        super().clean()
-        if not self.upgrade_options:
-            return
-        upgrader_schema = get_upgrader_schema_for_device(self.device)
-        if not upgrader_schema:
-            raise ValidationError(
-                _('Using upgrade options is not allowed with this upgrader.')
-            )
-        try:
-            jsonschema.Draft4Validator(upgrader_schema).validate(self.upgrade_options)
-        except jsonschema.ValidationError:
-            raise ValidationError('The upgrade options are invalid')
-
     def save(self, *args, **kwargs):
         result = super().save(*args, **kwargs)
         # when an operation is completed
@@ -655,3 +695,11 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         if self.batch and self.status != 'in-progress':
             self.batch.update()
         return result
+
+    @property
+    def upgrader_schema(self):
+        return get_upgrader_schema_for_device(self.device)
+
+    @property
+    def upgrader_class(self):
+        return get_upgrader_class_for_device(self.device)

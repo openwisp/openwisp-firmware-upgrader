@@ -47,7 +47,8 @@
   <input type="hidden" name="{{ action_checkbox_name }}" value="{{ build.pk|unlocalize }}">
   <input type="hidden" name="action" value="upgrade_selected">
   {% if firmwareless_count or related_count %}
-  <div class="form-row{% if form.errors %} errors{% endif %}">
+  <div>{% if form.errors %}{{ form.errors }} {% endif %}</div>
+  <div class="form-row{% if form.errors.upgrade_options %} errors{% endif %}">
     {{ form }}
   </div>
   <input type="submit" name="upgrade_all" value="{% trans "Upgrade all devices" %}">
