@@ -51,17 +51,17 @@ urlpatterns = [
                     'device/<uuid:pk>/upgrade-operation/',
                     views.device_upgrade_operation_list,
                     name='api_deviceupgradeoperation_list',
-                ),        
+                ),
                 path(
                     'upgrade-operation/',
                     views.upgrade_operation_list,
                     name='api_upgradeoperation_list',
-                ),           
+                ),
                 path(
                     'upgrade-operation/<uuid:pk>/',
                     views.upgrade_operation_detail,
                     name='api_upgradeoperation_detail',
-                ),           
+                ),
             ]
         ),
     ),

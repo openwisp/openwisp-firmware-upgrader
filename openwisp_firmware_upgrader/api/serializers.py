@@ -56,10 +56,12 @@ class UpgradeOperationSerializer(BaseSerializer):
         model = UpgradeOperation
         exclude = ['batch']
 
+
 class DeviceUpgradeOperationSerializer(BaseSerializer):
     class Meta:
         model = UpgradeOperation
         fields = ['id']
+
 
 class BatchUpgradeOperationListSerializer(BaseSerializer):
     build = BuildSerializer(read_only=True)

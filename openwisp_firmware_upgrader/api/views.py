@@ -1,5 +1,4 @@
 from django.core.exceptions import ValidationError
-from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics, pagination, serializers
 from rest_framework.exceptions import NotFound
@@ -135,16 +134,15 @@ class BatchUpgradeOperationDetailView(ProtectedAPIMixin, generics.RetrieveAPIVie
     lookup_fields = ['pk']
     organization_field = 'build__category__organization'
 
+
 class DeviceUpgradeOperationListView(ProtectedAPIMixin, generics.ListCreateAPIView):
-    queryset = (
-        UpgradeOperation.objects.all().order_by('-created')
-    )
+    queryset = UpgradeOperation.objects.all().order_by('-created')
     serializer_class = DeviceUpgradeOperationSerializer
     lookup_url_kwarg = 'pk'
     lookup_field = 'device_id'
     organization_field = 'organization'
 
-  
+
 class UpgradeOperationListView(ProtectedAPIMixin, generics.ListCreateAPIView):
     queryset = UpgradeOperation.objects.all()
     serializer_class = UpgradeOperationSerializer
@@ -153,13 +151,13 @@ class UpgradeOperationListView(ProtectedAPIMixin, generics.ListCreateAPIView):
     ordering_fields = ['device_id', 'created', 'modified']
     ordering = ['-device_id', '-created']
 
+
 class UpgradeOperationDetailView(ProtectedAPIMixin, generics.RetrieveAPIView):
-    queryset = (
-        UpgradeOperation.objects.all().order_by('-created')
-    )
+    queryset = UpgradeOperation.objects.all().order_by('-created')
     serializer_class = UpgradeOperationSerializer
     lookup_fields = ['pk']
     organization_field = 'organization'
+
 
 class FirmwareImageMixin(ProtectedAPIMixin):
     queryset = FirmwareImage.objects.all()
@@ -224,4 +222,3 @@ firmware_image_download = FirmwareImageDownloadView.as_view()
 device_upgrade_operation_list = DeviceUpgradeOperationListView.as_view()
 upgrade_operation_list = UpgradeOperationListView.as_view()
 upgrade_operation_detail = UpgradeOperationDetailView.as_view()
-
