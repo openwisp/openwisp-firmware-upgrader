@@ -2,12 +2,12 @@ import logging
 import os
 from decimal import Decimal
 
+import jsonschema
 import swapper
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 from django.utils.functional import cached_property
-from django.utils.module_loading import import_string
 from django.utils.translation import gettext_lazy as _
 from private_storage.fields import PrivateFileField
 
@@ -17,6 +17,7 @@ from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
 from ..exceptions import (
+    FirmwareUpgradeOptionsException,
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
@@ -34,8 +35,38 @@ from ..tasks import (
     create_device_firmware,
     upgrade_firmware,
 )
+from ..utils import (
+    get_upgrader_class_for_device,
+    get_upgrader_class_from_device_connection,
+    get_upgrader_schema_for_device,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class UpgradeOptionsMixin(models.Model):
+    upgrade_options = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        abstract = True
+
+    def validate_upgrade_options(self):
+        if not self.upgrade_options:
+            return
+        if not getattr(self.upgrader_class, 'SCHEMA'):
+            raise ValidationError(
+                _('Using upgrade options is not allowed with this upgrader.')
+            )
+        try:
+            self.upgrader_class.validate_upgrade_options(self.upgrade_options)
+        except jsonschema.ValidationError:
+            raise ValidationError('The upgrade options are invalid')
+        except FirmwareUpgradeOptionsException as error:
+            raise ValidationError(*error.args)
+
+    def clean(self):
+        super().clean()
+        self.validate_upgrade_options()
 
 
 class AbstractCategory(OrgMixin, TimeStampedEditableModel):
@@ -122,8 +153,11 @@ class AbstractBuild(TimeStampedEditableModel):
                 }
             )
 
-    def batch_upgrade(self, firmwareless):
-        batch = load_model('BatchUpgradeOperation')(build=self)
+    def batch_upgrade(self, firmwareless, upgrade_options=None):
+        upgrade_options = upgrade_options or {}
+        batch = load_model('BatchUpgradeOperation')(
+            build=self, upgrade_options=upgrade_options
+        )
         batch.full_clean()
         batch.save()
         transaction.on_commit(
@@ -284,13 +318,13 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def image_has_changed(self):
         return self._state.adding or self.image_id != self._old_image.id
 
-    def save(self, batch=None, upgrade=True, *args, **kwargs):
+    def save(self, batch=None, upgrade=True, upgrade_options=None, *args, **kwargs):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
         if upgrade and (self.image_has_changed or not self.installed):
             self.installed = False
             super().save(*args, **kwargs)
-            self.create_upgrade_operation(batch)
+            self.create_upgrade_operation(batch, upgrade_options=upgrade_options or {})
         else:
             super().save(*args, **kwargs)
         self._update_old_image()
@@ -299,9 +333,11 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if hasattr(self, 'image'):
             self._old_image = self.image
 
-    def create_upgrade_operation(self, batch):
+    def create_upgrade_operation(self, batch, upgrade_options=None):
         uo_model = load_model('UpgradeOperation')
-        operation = uo_model(device=self.device, image=self.image)
+        operation = uo_model(
+            device=self.device, image=self.image, upgrade_options=upgrade_options
+        )
         if batch:
             operation.batch = batch
         operation.full_clean()
@@ -366,7 +402,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             )
 
 
-class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
+class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     build = models.ForeignKey(get_model_name('Build'), on_delete=models.CASCADE)
     STATUS_CHOICES = (
         ('idle', _('idle')),
@@ -426,7 +462,7 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
             if image:
                 device_fw.image = image
                 device_fw.full_clean()
-                device_fw.save(self)
+                device_fw.save(self, upgrade_options=self.upgrade_options)
 
     def upgrade_firmwareless_devices(self):
         """
@@ -442,7 +478,7 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
                 DeviceFirmware = load_model('DeviceFirmware')
                 device_fw = DeviceFirmware(device=device, image=image)
                 device_fw.full_clean()
-                device_fw.save(self)
+                device_fw.save(self, upgrade_options=self.upgrade_options)
 
     @cached_property
     def upgrade_operations(self):
@@ -478,12 +514,41 @@ class AbstractBatchUpgradeOperation(TimeStampedEditableModel):
         aborted = self.upgrade_operations.filter(status='aborted').count()
         return self.__get_rate(aborted)
 
+    @property
+    def upgrader_class(self):
+        return self._get_upgrader_class()
+
+    @property
+    def upgrader_schema(self):
+        return self._get_upgrader_schema()
+
+    def _get_upgrader_class(self, related_device_fw=None, firmwareless_devices=None):
+        if self.upgrade_operations:
+            return get_upgrader_class_for_device(self.upgrade_operations[0].device)
+        related_device_fw = (
+            related_device_fw
+            or self.build._find_related_device_firmwares(select_devices=True)
+        )
+        if related_device_fw:
+            return get_upgrader_class_for_device(related_device_fw.first().device)
+        firmwareless_devices = (
+            firmwareless_devices or self.build._find_firmwareless_devices()
+        )
+        if firmwareless_devices:
+            return get_upgrader_class_for_device(firmwareless_devices.first())
+
+    def _get_upgrader_schema(self, related_device_fw=None, firmwareless_devices=None):
+        upgrader_class = self._get_upgrader_class(
+            related_device_fw, firmwareless_devices
+        )
+        return getattr(upgrader_class, 'SCHEMA', None)
+
     def __get_rate(self, number):
         result = Decimal(number) / Decimal(self.total_operations) * 100
         return round(result, 2)
 
 
-class AbstractUpgradeOperation(TimeStampedEditableModel):
+class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     STATUS_CHOICES = (
         ('in-progress', _('in progress')),
         ('success', _('success')),
@@ -575,11 +640,8 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
             self.status = 'aborted'
             self.save()
             return
-        try:
-            upgrader_class = app_settings.UPGRADERS_MAP[conn.update_strategy]
-            upgrader_class = import_string(upgrader_class)
-        except (AttributeError, ImportError) as e:
-            logger.exception(e)
+        upgrader_class = get_upgrader_class_from_device_connection(conn)
+        if not upgrader_class:
             return
         upgrader = upgrader_class(self, conn)
         try:
@@ -633,3 +695,11 @@ class AbstractUpgradeOperation(TimeStampedEditableModel):
         if self.batch and self.status != 'in-progress':
             self.batch.update()
         return result
+
+    @property
+    def upgrader_schema(self):
+        return get_upgrader_schema_for_device(self.device)
+
+    @property
+    def upgrader_class(self):
+        return get_upgrader_class_for_device(self.device)

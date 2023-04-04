@@ -72,7 +72,7 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
 
 
 def mocked_sysupgrade_failure(command, exit_codes=None, timeout=None):
-    if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c '):
+    if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c'):
         raise CommandFailedException(
             "Invalid image type\nImage check 'platform_check_image' failed."
         )
@@ -480,9 +480,26 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
     def test_get_upgrade_command(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
-        upgrader = OpenWrt(upgrade_op, device_conn)
-        upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
-        self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -c /tmp/test.bin')
+
+        with self.subTest('Test upgrade command without upgrade options'):
+            upgrade_op.upgrate_options = {}
+            upgrader = OpenWrt(upgrade_op, device_conn)
+            upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
+            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -c /tmp/test.bin')
+
+        with self.subTest('Test upgrade command with upgrade options'):
+            upgrade_op.upgrade_options = {
+                'c': True,
+                'o': False,
+                'u': False,
+                'n': False,
+                'p': False,
+                'k': False,
+                'F': True,
+            }
+            upgrader = OpenWrt(upgrade_op, device_conn)
+            upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
+            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -c -F /tmp/test.bin')
 
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)

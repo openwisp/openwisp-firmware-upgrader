@@ -3,6 +3,7 @@ import socket
 from hashlib import sha256
 from time import sleep
 
+import jsonschema
 from billiard import Process, Queue
 from django.utils.translation import gettext_lazy as _
 from paramiko.ssh_exception import NoValidConnectionsError, SSHException
@@ -10,6 +11,7 @@ from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
 
 from ..exceptions import (
+    FirmwareUpgradeOptionsException,
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
@@ -25,9 +27,63 @@ class OpenWrt(BaseOpenWrt):
     RECONNECT_RETRY_DELAY = OPENWRT_SETTINGS.get('reconnect_retry_delay', 20)
     RECONNECT_MAX_RETRIES = OPENWRT_SETTINGS.get('reconnect_max_retries', 35)
     UPGRADE_TIMEOUT = OPENWRT_SETTINGS.get('upgrade_timeout', 90)
-    UPGRADE_COMMAND = '{sysupgrade} -v -c {path}'
+    UPGRADE_COMMAND = '{sysupgrade} -v {flags} {path}'
     # path to sysupgrade command
     _SYSUPGRADE = '/sbin/sysupgrade'
+    SCHEMA = {
+        'type': 'object',
+        'properties': {
+            'c': {
+                'type': 'boolean',
+                'title': _('Attempt to preserve all changed files in /etc/ (-c)'),
+                'format': 'checkbox',
+                'default': True,
+            },
+            'o': {
+                'type': 'boolean',
+                'title': _(
+                    'Attempt to preserve all changed files in /, except those from '
+                    'packages but including changed confs. (-o)'
+                ),
+                'format': 'checkbox',
+            },
+            'n': {
+                'type': 'boolean',
+                'title': _('Do not save configuration over reflash (-n)'),
+                'format': 'checkbox',
+            },
+            'u': {
+                'type': 'boolean',
+                'title': _(
+                    'Skip from backup files that are equal to those in /rom (-u)'
+                ),
+                'format': 'checkbox',
+            },
+            'p': {
+                'type': 'boolean',
+                'title': _(
+                    'Do not attempt to restore the partition table after flash. (-p)'
+                ),
+                'format': 'checkbox',
+            },
+            'k': {
+                'type': 'boolean',
+                'title': _(
+                    'Include in backup a list of current installed packages at'
+                    ' /etc/backup/installed_packages.txt (-k)'
+                ),
+                'format': 'checkbox',
+            },
+            'F': {
+                'type': 'boolean',
+                'title': _(
+                    'Flash image even if image checks fail, this is dangerous! (-F)'
+                ),
+                'format': 'checkbox',
+            },
+        },
+        'additionalProperties': False,
+    }
 
     log_lines = None
 
@@ -39,6 +95,27 @@ class OpenWrt(BaseOpenWrt):
         self.upgrade_operation = upgrade_operation
         self.connection = connection
         self._non_critical_services_stopped = False
+
+    @classmethod
+    def validate_upgrade_options(cls, upgrade_options):
+        jsonschema.Draft4Validator(cls.SCHEMA).validate(upgrade_options)
+        if upgrade_options.get('n', False):
+            if upgrade_options.get('o', False):
+                raise FirmwareUpgradeOptionsException(
+                    {
+                        'upgrade_options': _(
+                            'The "-n" and "-o" options cannot be used together'
+                        )
+                    }
+                )
+            if upgrade_options.get('c', False):
+                raise FirmwareUpgradeOptionsException(
+                    {
+                        'upgrade_options': _(
+                            'The "-n" and "-c" options cannot be used together'
+                        )
+                    }
+                )
 
     def log(self, value, save=True):
         self.upgrade_operation.log_line(value, save=save)
@@ -193,7 +270,21 @@ class OpenWrt(BaseOpenWrt):
         return os.path.join(self.REMOTE_UPLOAD_DIR, filename)
 
     def get_upgrade_command(self, path):
-        return self.UPGRADE_COMMAND.format(sysupgrade=self._SYSUPGRADE, path=path)
+        # Build flags for the command
+        flags = []
+        for key, value in self.upgrade_operation.upgrade_options.items():
+            if value is True:
+                flags.append(f'-{key}')
+        # Enforce defaults
+        for key, property in self.SCHEMA['properties'].items():
+            if self.upgrade_operation.upgrade_options.get(
+                key, None
+            ) is None and property.get('default'):
+                flags.append(f'-{key}')
+        flags = ' '.join(flags)
+        return self.UPGRADE_COMMAND.format(
+            sysupgrade=self._SYSUPGRADE, flags=flags, path=path
+        )
 
     def _test_checksum(self, image):
         """
