@@ -37,7 +37,6 @@ class CategoryRelationSerializer(BaseSerializer):
 class FirmwareImageSerializer(BaseSerializer):
     def validate(self, data):
         data['build'] = self.context['view'].get_parent_queryset().get()
-        return super().validate(data)
 
     class Meta(BaseMeta):
         model = FirmwareImage
@@ -88,15 +87,9 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
 
 
 class DeviceFirmwareSerializer(serializers.ModelSerializer):
-
-    image = FirmwareImageSerializer(read_only=True)
-
     class Meta:
         model = DeviceFirmware
         fields = ('image', 'installed')
-
-    def _validate(self, data):
-        return data
 
     def get_firmware_object(self, image_id):
         try:
@@ -107,16 +100,12 @@ class DeviceFirmwareSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.update({'device_id': self.context.get('device_id')})
-        validated_data['image'] = self.get_firmware_object(self.context.get('image'))
-        queryset = DeviceFirmware.objects.filter(
-            device__pk=self.context.get('device_id')
-        )
-
         validated_data['installed'] = True
+        validated_data['image'] = self.get_firmware_object(self.data['image'])
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        validated_data['image'] = self.get_firmware_object(self.context.get('image'))
         validated_data.update({'device_id': self.context.get('device_id')})
         validated_data['installed'] = True
+        validated_data['image'] = self.get_firmware_object(self.data['image'])
         return super().update(instance, validated_data)

@@ -156,9 +156,7 @@ class DeviceFirmwareView(ProtectedAPIMixin, generics.RetrieveUpdateAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context.update(
-            {'device_id': self.kwargs['pk'], 'image': self.request.data['image']}
-        )
+        context.update({'device_id': self.kwargs['pk']})
         return context
 
     def update(self, request, *args, **kwargs):
@@ -177,7 +175,7 @@ class DeviceFirmwareView(ProtectedAPIMixin, generics.RetrieveUpdateAPIView):
             )
         self.perform_update(serializer)
         instance.save()
-        return Response(serializer.data)
+        return Response({'DeviceFirmware': serializer.data})
 
     def perform_create(self, serializer):
         serializer.save()
