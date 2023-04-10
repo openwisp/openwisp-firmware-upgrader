@@ -62,6 +62,11 @@ urlpatterns = [
                     views.upgrade_operation_detail,
                     name='api_upgradeoperation_detail',
                 ),
+                path(
+                    'device/<uuid:pk>/firmware/',
+                    views.device_firmware,
+                    name='api_device_firmware',
+                ),
             ]
         ),
     ),
