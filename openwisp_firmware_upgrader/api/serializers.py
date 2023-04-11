@@ -37,6 +37,7 @@ class CategoryRelationSerializer(BaseSerializer):
 class FirmwareImageSerializer(BaseSerializer):
     def validate(self, data):
         data['build'] = self.context['view'].get_parent_queryset().get()
+        return super().validate(data)
 
     class Meta(BaseMeta):
         model = FirmwareImage
