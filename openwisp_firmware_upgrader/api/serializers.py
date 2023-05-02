@@ -1,4 +1,6 @@
-from django.core.exceptions import ObjectDoesNotExist
+import swapper
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from openwisp_users.api.mixins import FilterSerializerByOrgManaged
@@ -11,7 +13,8 @@ Build = load_model('Build')
 Category = load_model('Category')
 FirmwareImage = load_model('FirmwareImage')
 UpgradeOperation = load_model('UpgradeOperation')
-DeviceFirmware = load_model("DeviceFirmware")
+DeviceFirmware = load_model('DeviceFirmware')
+Device = swapper.load_model('config', 'Device')
 
 
 class BaseMeta:
@@ -56,7 +59,7 @@ class BuildSerializer(BaseSerializer):
 class UpgradeOperationSerializer(BaseSerializer):
     class Meta:
         model = UpgradeOperation
-        exclude = ['batch']
+        fields = ('id', 'device', 'image', 'status', 'log', 'modified', 'created')
 
 
 class DeviceUpgradeOperationSerializer(BaseSerializer):
@@ -87,26 +90,43 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
         fields = '__all__'
 
 
-class DeviceFirmwareSerializer(serializers.ModelSerializer):
+class DeviceUpgradeOperationSerializer(BaseSerializer):
     class Meta:
+        model = UpgradeOperation
+        fields = ('id', 'device', 'image', 'status', 'log', 'modified')
+
+
+class DeviceFirmwareSerializer(BaseSerializer):
+    class Meta(BaseMeta):
         model = DeviceFirmware
-        fields = ('image', 'installed')
+        fields = ('id', 'image', 'installed', 'modified')
+        read_only_fields = ('installed', 'modified')
 
-    def get_firmware_object(self, image_id):
+    def validate(self, data):
+        if not data.get('device'):
+            device_id = self.context.get('device_id')
+            device = self._get_device_object(device_id)
+            data.update({'device': device})
+        image = data.get('image')
+        device = data.get('device')
+        if (
+            image
+            and device
+            and image.build.category.organization != device.organization
+        ):
+            raise ValidationError(
+                {
+                    'image': _(
+                        'The organization of the image doesn\'t '
+                        'match the organization of the device'
+                    )
+                }
+            )
+        return super().validate(data)
+
+    def _get_device_object(self, device_id):
         try:
-            image = FirmwareImage.objects.get(id=image_id)
-            return image
-        except ObjectDoesNotExist:
+            device = Device.objects.get(id=device_id)
+            return device
+        except Device.DoesNotExist:
             return None
-
-    def create(self, validated_data):
-        validated_data.update({'device_id': self.context.get('device_id')})
-        validated_data['installed'] = True
-        validated_data['image'] = self.get_firmware_object(self.data['image'])
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        validated_data.update({'device_id': self.context.get('device_id')})
-        validated_data['installed'] = True
-        validated_data['image'] = self.get_firmware_object(self.data['image'])
-        return super().update(instance, validated_data)

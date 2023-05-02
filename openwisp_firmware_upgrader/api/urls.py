@@ -48,11 +48,6 @@ urlpatterns = [
                     name='api_batchupgradeoperation_detail',
                 ),
                 path(
-                    'device/<uuid:pk>/upgrade-operation/',
-                    views.device_upgrade_operation_list,
-                    name='api_deviceupgradeoperation_list',
-                ),
-                path(
                     'upgrade-operation/',
                     views.upgrade_operation_list,
                     name='api_upgradeoperation_list',
@@ -63,9 +58,14 @@ urlpatterns = [
                     name='api_upgradeoperation_detail',
                 ),
                 path(
+                    'device/<uuid:pk>/upgrade-operation/',
+                    views.device_upgrade_operation_list,
+                    name='api_deviceupgradeoperation_list',
+                ),
+                path(
                     'device/<uuid:pk>/firmware/',
-                    views.device_firmware,
-                    name='api_device_firmware',
+                    views.device_firmware_detail,
+                    name='api_devicefirmware_detail',
                 ),
             ]
         ),

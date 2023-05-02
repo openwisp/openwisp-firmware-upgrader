@@ -321,17 +321,17 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def save(self, batch=None, upgrade=True, upgrade_options=None, *args, **kwargs):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
-        uo = None
+        upgrade_operation = None
         if upgrade and (self.image_has_changed or not self.installed):
             self.installed = False
             super().save(*args, **kwargs)
-            uo = self.create_upgrade_operation(
+            upgrade_operation = self.create_upgrade_operation(
                 batch, upgrade_options=upgrade_options or {}
             )
         else:
             super().save(*args, **kwargs)
         self._update_old_image()
-        return uo
+        return upgrade_operation
 
     def _update_old_image(self):
         if hasattr(self, 'image'):
