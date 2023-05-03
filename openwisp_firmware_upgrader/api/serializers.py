@@ -56,7 +56,7 @@ class BuildSerializer(BaseSerializer):
         fields = '__all__'
 
 
-class UpgradeOperationSerializer(BaseSerializer):
+class UpgradeOperationSerializer(ValidatedModelSerializer):
     class Meta:
         model = UpgradeOperation
         fields = ('id', 'device', 'image', 'status', 'log', 'modified', 'created')
@@ -90,13 +90,13 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
         fields = '__all__'
 
 
-class DeviceUpgradeOperationSerializer(BaseSerializer):
+class DeviceUpgradeOperationSerializer(ValidatedModelSerializer):
     class Meta:
         model = UpgradeOperation
         fields = ('id', 'device', 'image', 'status', 'log', 'modified')
 
 
-class DeviceFirmwareSerializer(BaseSerializer):
+class DeviceFirmwareSerializer(ValidatedModelSerializer):
     class Meta(BaseMeta):
         model = DeviceFirmware
         fields = ('id', 'image', 'installed', 'modified')

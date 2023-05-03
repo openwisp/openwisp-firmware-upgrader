@@ -10,6 +10,7 @@ from openwisp_firmware_upgrader.api.serializers import (
     BatchUpgradeOperationSerializer,
     BuildSerializer,
     CategorySerializer,
+    DeviceFirmwareSerializer,
     FirmwareImageSerializer,
 )
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
@@ -823,6 +824,322 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         data = dict(type=self.TPLINK_4300_IL_IMAGE)
         r = self.client.patch(url, data, content_type='application/json')
         self.assertEqual(r.status_code, 405)
+
+
+class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
+    def _serialize_device_firmware(self, device_fw):
+        serializer = DeviceFirmwareSerializer()
+        return dict(serializer.to_representation(device_fw))
+
+    def test_device_firmware_detail_unauthorized(self):
+        device_fw = self._create_device_firmware()
+        client = Client()
+        org2 = self._create_org(name='org2', slug='org2')
+        OrganizationUser.objects.create(user=self.operator, organization=org2)
+        url = reverse('upgrader:api_devicefirmware_detail', args=[device_fw.device.pk])
+        with self.subTest(url=url):
+            with self.assertNumQueries(0):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
+
+    def test_device_firmware_detail_404(self):
+        device_pk = uuid.uuid4()
+        url = reverse('upgrader:api_devicefirmware_detail', args=[device_pk])
+        with self.assertNumQueries(4):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.json(), {'detail': 'Not found.'})
+
+    def test_device_firmware_detail_400(self):
+        env = self._create_upgrade_env()
+        device1 = env['d1']
+        device2 = env['d2']
+        image1a = env['image1a']
+        device1.model = 'test model'
+        device1.full_clean()
+        device1.save()
+
+        with self.subTest('Test device and image model validation'):
+            url = reverse('upgrader:api_devicefirmware_detail', args=[device1.pk])
+            with self.assertNumQueries(18):
+                # try to make a request when device
+                # model is different than image
+                data = {'image': image1a.pk}
+                r = self.client.put(url, data, content_type='application/json')
+            self.assertEqual(r.status_code, 400)
+            err = 'Device model and image model do not match'
+            self.assertIn(err, r.json()['__all__'][0])
+
+        with self.subTest('Test image pk validation'):
+            url = reverse('upgrader:api_devicefirmware_detail', args=[device2.pk])
+            with self.assertNumQueries(8):
+                # image with different type
+                data = {'image': image1a.pk}
+                r = self.client.put(url, data, content_type='application/json')
+            self.assertEqual(r.status_code, 400)
+            self.assertIn('Invalid pk', r.json()['image'][0])
+
+    def test_device_firmware_detail_get(self):
+        env = self._create_upgrade_env()
+        device1 = env['d1']
+        image1a = env['image1a']
+        image1b = env['image1b']
+        image2a = env['image2a']
+        image2b = env['image2b']
+        device_fw1 = env['device_fw1']
+        category2 = self._get_category(
+            organization=self._get_org(), cat_name='Test Category2'
+        )
+        build2 = self._create_build(category=category2, version='0.2')
+        image2 = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IMAGE)
+
+        with self.subTest('Test when device firmware exists'):
+            url = reverse(
+                'upgrader:api_devicefirmware_detail', args=[device_fw1.device.pk]
+            )
+            with self.assertNumQueries(9):
+                r = self.client.get(url, {'format': 'api'})
+            self.assertEqual(r.status_code, 200)
+            serializer_detail = self._serialize_device_firmware(device_fw1)
+            self.assertEqual(r.data, serializer_detail)
+            self.assertContains(r, f'{image1a}</option>')
+            self.assertContains(r, f'{image2a}</option>')
+            # Only images available to device are shown
+            # in the browsable API `image` select options.
+            # This behavior is similar to the admin device firmware inline
+            self.assertNotContains(r, f'{image1b}</option>')
+            self.assertNotContains(r, f'{image2b}</option>')
+            self.assertNotContains(r, f'{image2}</option>')
+
+        with self.subTest('Test when device firmware does not exist'):
+            DeviceFirmware.objects.all().delete()
+            url = reverse('upgrader:api_devicefirmware_detail', args=[device1.pk])
+            with self.assertNumQueries(8):
+                r = self.client.get(url, {'format': 'api'})
+            self.assertEqual(r.status_code, 404)
+            self.assertEqual(str(r.data['detail']), 'Not found.')
+            repsonse = r.content.decode()
+            self.assertIn(f'{image1a}</option>', repsonse)
+            self.assertIn(f'{image2a}</option>', repsonse)
+            self.assertIn(f'{image2}</option>', repsonse)
+            # Only images available to device are shown
+            # in the browsable API `image` select options.
+            # This behavior is similar to the admin device firmware inline
+            self.assertNotIn(f'{image1b}</option>', repsonse)
+            self.assertNotIn(f'{image2b}</option>', repsonse)
+
+    def test_device_firmware_detail_create(self):
+        env = self._create_upgrade_env(device_firmware=False)
+        device1 = env['d1']
+        image1a = env['image1a']
+        image1b = env['image1b']
+        image2a = env['image2a']
+        image2b = env['image2b']
+        category2 = self._get_category(
+            organization=self._get_org(), cat_name='Test Category2'
+        )
+        build2 = self._create_build(category=category2, version='0.2')
+        image2 = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IMAGE)
+        url = reverse('upgrader:api_devicefirmware_detail', args=[device1.pk])
+        self.assertEqual(DeviceFirmware.objects.count(), 0)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+        with self.assertNumQueries(26):
+            data = {'image': image1a.pk}
+            # The device firmware api view is
+            # customized to allow creation of new
+            # device firmware objects with PUT request
+            # when device firmware object doesnt exist
+            r = self.client.put(
+                f'{url}?format=api', data, content_type='application/json'
+            )
+
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(DeviceFirmware.objects.count(), 1)
+        self.assertEqual(UpgradeOperation.objects.count(), 1)
+        device_fw1 = DeviceFirmware.objects.first()
+        uo1 = UpgradeOperation.objects.first()
+        serializer_detail = self._serialize_device_firmware(device_fw1)
+        serializer_detail.update({'upgrade_operation': {'id': uo1.id}})
+        self.assertEqual(r.data, serializer_detail)
+        repsonse = r.content.decode()
+        self.assertIn(f'{image1a}</option>', repsonse)
+        self.assertIn(f'{image2a}</option>', repsonse)
+        self.assertNotIn(f'{image1b}</option>', repsonse)
+        self.assertNotIn(f'{image2b}</option>', repsonse)
+        self.assertNotIn(f'{image2}</option>', repsonse)
+
+    def test_device_firmware_detail_update(self):
+        env = self._create_upgrade_env()
+        image1a = env['image1a']
+        image1b = env['image1b']
+        image2a = env['image2a']
+        image2b = env['image2b']
+        device_fw1 = env['device_fw1']
+        category2 = self._get_category(
+            organization=self._get_org(), cat_name='Test Category2'
+        )
+        build2 = self._create_build(category=category2, version='0.2')
+        image2 = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IMAGE)
+        url = reverse('upgrader:api_devicefirmware_detail', args=[device_fw1.device.pk])
+        self.assertEqual(device_fw1.image.pk, image1a.pk)
+        self.assertEqual(DeviceFirmware.objects.count(), 2)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+        with self.assertNumQueries(27):
+            data = {'image': image2a.pk}
+            r = self.client.put(
+                f'{url}?format=api', data, content_type='application/json'
+            )
+
+        device_fw1.refresh_from_db()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(device_fw1.image.pk, image2a.pk)
+        self.assertEqual(DeviceFirmware.objects.count(), 2)
+        self.assertEqual(UpgradeOperation.objects.count(), 1)
+        uo1 = UpgradeOperation.objects.first()
+        serializer_detail = self._serialize_device_firmware(device_fw1)
+        serializer_detail.update({'upgrade_operation': {'id': uo1.id}})
+        self.assertEqual(r.data, serializer_detail)
+        repsonse = r.content.decode()
+        self.assertIn(f'{image1a}</option>', repsonse)
+        self.assertIn(f'{image2a}</option>', repsonse)
+        self.assertNotIn(f'{image1b}</option>', repsonse)
+        self.assertNotIn(f'{image2b}</option>', repsonse)
+        self.assertNotIn(f'{image2}</option>', repsonse)
+
+    def test_device_firmware_detail_partial_update(self):
+        env = self._create_upgrade_env()
+        image1a = env['image1a']
+        image1b = env['image1b']
+        image2a = env['image2a']
+        image2b = env['image2b']
+        device_fw1 = env['device_fw1']
+        category2 = self._get_category(
+            organization=self._get_org(), cat_name='Test Category2'
+        )
+        build2 = self._create_build(category=category2, version='0.2')
+        image2 = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IMAGE)
+        url = reverse('upgrader:api_devicefirmware_detail', args=[device_fw1.device.pk])
+        self.assertEqual(device_fw1.image.pk, image1a.pk)
+        self.assertEqual(DeviceFirmware.objects.count(), 2)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+        with self.assertNumQueries(27):
+            data = {'image': image2a.pk}
+            r = self.client.patch(
+                f'{url}?format=api', data, content_type='application/json'
+            )
+
+        device_fw1.refresh_from_db()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(device_fw1.image.pk, image2a.pk)
+        self.assertEqual(DeviceFirmware.objects.count(), 2)
+        self.assertEqual(UpgradeOperation.objects.count(), 1)
+        uo1 = UpgradeOperation.objects.first()
+        serializer_detail = self._serialize_device_firmware(device_fw1)
+        serializer_detail.update({'upgrade_operation': {'id': uo1.id}})
+        self.assertEqual(r.data, serializer_detail)
+        repsonse = r.content.decode()
+        self.assertIn(f'{image1a}</option>', repsonse)
+        self.assertIn(f'{image2a}</option>', repsonse)
+        self.assertNotIn(f'{image1b}</option>', repsonse)
+        self.assertNotIn(f'{image2b}</option>', repsonse)
+        self.assertNotIn(f'{image2}</option>', repsonse)
+
+    def test_device_firmware_detail_multitenancy(self):
+        org1 = self._get_org()
+        org2 = self._create_org(name='New org', slug='new-org')
+        cat2 = self._create_category(name='New category2', organization=org2)
+        build1 = self._get_build()
+        build2 = self._create_build(version='0.2', category=cat2)
+        image1 = self._create_firmware_image(build=build1)
+        image2 = self._create_firmware_image(build=build2)
+        d1 = self._create_device(
+            name='device1',
+            organization=org1,
+            mac_address='00:22:bb:33:cc:44',
+            model=image1.boards[0],
+        )
+        d2 = self._create_device(
+            name='device2',
+            organization=org2,
+            mac_address='00:11:bb:22:cc:33',
+            model=image2.boards[0],
+        )
+        ssh_credentials1 = self._get_credentials(organization=org1)
+        ssh_credentials2 = self._get_credentials(organization=org2)
+        self._create_config(device=d1)
+        self._create_config(device=d2)
+        self._create_device_connection(device=d1, credentials=ssh_credentials1)
+        self._create_device_connection(device=d2, credentials=ssh_credentials2)
+        device_fw1 = self._create_device_firmware(
+            device=d1, image=image1, device_connection=False
+        )
+        device_fw2 = self._create_device_firmware(
+            device=d2, image=image2, device_connection=False
+        )
+        self._create_operator(
+            organizations=[org1],
+            username='org1_manager',
+            email='orgmanager@test.com',
+        )
+        self._create_operator(username='org1_member', email='orgmember@test.com')
+        self._create_operator(
+            username='org_admin', email='org_admin@test.com', is_superuser=True
+        )
+
+        with self.subTest('Test device firmware detail org manager'):
+            self._login('org1_manager', 'tester')
+            url = reverse('upgrader:api_devicefirmware_detail', args=[d1.pk])
+            with self.assertNumQueries(7):
+                r = self.client.get(url, {'format': 'api'})
+            self.assertEqual(r.status_code, 200)
+            serializer_detail = self._serialize_device_firmware(device_fw1)
+            self.assertEqual(r.data, serializer_detail)
+            # org1_manager only has permission to read firmware objects
+            self.assertNotContains(r, f'{image1}</option>')
+            self.assertNotContains(r, f'{image2}</option>')
+            # org1_manager can only access device firmware
+            # objects belongs to its organization
+            url = reverse('upgrader:api_devicefirmware_detail', args=[d2.pk])
+            with self.assertNumQueries(4):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 404)
+            self.assertEqual(r.json(), {'detail': 'Not found.'})
+
+        with self.subTest('Test device firmware detail org member (403 forbidden)'):
+            self._login('org1_member', 'tester')
+            url = reverse('upgrader:api_devicefirmware_detail', args=[d1.pk])
+            err = 'User is not a manager of the organization'
+            with self.assertNumQueries(1):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 403)
+            self.assertIn(err, r.json()['detail'])
+            url = reverse('upgrader:api_devicefirmware_detail', args=[d2.pk])
+            with self.assertNumQueries(1):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 403)
+            self.assertIn(err, r.json()['detail'])
+
+        with self.subTest('Test device firmware detail org admin'):
+            self._login('org_admin', 'tester')
+            url = reverse('upgrader:api_devicefirmware_detail', args=[d1.pk])
+            with self.assertNumQueries(6):
+                r = self.client.get(url, {'format': 'api'})
+            self.assertEqual(r.status_code, 200)
+            serializer_detail = self._serialize_device_firmware(device_fw1)
+            self.assertEqual(r.data, serializer_detail)
+            self.assertContains(r, f'{image1}</option>')
+            self.assertNotContains(r, f'{image2}</option>')
+            url = reverse('upgrader:api_devicefirmware_detail', args=[d2.pk])
+            with self.assertNumQueries(6):
+                r = self.client.get(url, {'format': 'api'})
+            self.assertEqual(r.status_code, 200)
+            serializer_detail = self._serialize_device_firmware(device_fw2)
+            self.assertEqual(r.data, serializer_detail)
+            self.assertContains(r, f'{image2}</option>')
+            self.assertNotContains(r, f'{image1}</option>')
 
 
 class TestOrgAPIMixin(TestAPIUpgraderMixin, TestCase):

@@ -136,14 +136,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         self._create_config(device=d2)
         self._create_device_connection(device=d1, credentials=ssh_credentials)
         self._create_device_connection(device=d2, credentials=ssh_credentials)
-        # force create device firmware (optional)
-        if device_firmware:
-            self._create_device_firmware(
-                device=d1, image=image1a, device_connection=False
-            )
-            self._create_device_firmware(
-                device=d2, image=image1b, device_connection=False
-            )
+
         # create a new firmware build
         build2 = self._create_build(category=category, version='0.2')
         image2a = self._create_firmware_image(build=build2, type=self.TPLINK_4300_IMAGE)
@@ -160,6 +153,20 @@ class TestUpgraderMixin(CreateConnectionsMixin):
             'image2a': image2a,
             'image2b': image2b,
         }
+        # force create device firmware (optional)
+        if device_firmware:
+            device_fw1 = self._create_device_firmware(
+                device=d1, image=image1a, device_connection=False
+            )
+            device_fw2 = self._create_device_firmware(
+                device=d2, image=image1b, device_connection=False
+            )
+            data.update(
+                {
+                    'device_fw1': device_fw1,
+                    'device_fw2': device_fw2,
+                }
+            )
         return data
 
     def _create_firmwareless_device(self, organization):

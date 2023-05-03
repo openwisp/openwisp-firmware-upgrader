@@ -274,7 +274,7 @@ class DeviceFirmwareDetailView(
             )
         return image_qs
 
-    def _get_response_data(self, serializer, upgrade_operation):
+    def _get_response_data(self, serializer, upgrade_operation=None):
         data = {**serializer.data}
         if upgrade_operation:
             data.update({'upgrade_operation': {'id': upgrade_operation.id}})
@@ -289,16 +289,16 @@ class DeviceFirmwareDetailView(
         if instance is None:
             self.perform_create(serializer)
             instance = self.get_object_or_none()
-            upgrade_operation = instance.save()
-            data = self._get_response_data(serializer, upgrade_operation)
-            image_qs = self._get_image_queryset(upgrade_operation, instance.device)
+            uo = instance.device.upgradeoperation_set.latest('created')
+            data = self._get_response_data(serializer, uo)
+            image_qs = self._get_image_queryset(uo, instance.device)
             serializer.fields['image'].queryset = image_qs
             return Response(data, status=status.HTTP_201_CREATED)
 
         self.perform_update(serializer)
-        upgrade_operation = instance.save()
-        data = self._get_response_data(serializer, upgrade_operation)
-        image_qs = self._get_image_queryset(upgrade_operation, instance.device)
+        uo = instance.device.upgradeoperation_set.latest('created')
+        data = self._get_response_data(serializer, uo)
+        image_qs = self._get_image_queryset(uo, instance.device)
         serializer.fields['image'].queryset = image_qs
         return Response(data, status=status.HTTP_200_OK)
 
