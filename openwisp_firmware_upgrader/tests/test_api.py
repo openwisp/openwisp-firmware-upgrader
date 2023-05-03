@@ -11,6 +11,7 @@ from openwisp_firmware_upgrader.api.serializers import (
     BuildSerializer,
     CategorySerializer,
     DeviceFirmwareSerializer,
+    DeviceUpgradeOperationSerializer,
     FirmwareImageSerializer,
 )
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
@@ -1140,6 +1141,143 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.data, serializer_detail)
             self.assertContains(r, f'{image2}</option>')
             self.assertNotContains(r, f'{image1}</option>')
+
+
+class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
+    def _serialize_device_upgrade_operation(self, device_uo):
+        serializer = DeviceUpgradeOperationSerializer()
+        return dict(serializer.to_representation(device_uo))
+
+    def test_device_uo_list_unauthorized(self):
+        device_fw = self._create_device_firmware()
+        client = Client()
+        org2 = self._create_org(name='org2', slug='org2')
+        OrganizationUser.objects.create(user=self.operator, organization=org2)
+        url = reverse(
+            'upgrader:api_deviceupgradeoperation_list', args=[device_fw.device.pk]
+        )
+        with self.subTest(url=url):
+            with self.assertNumQueries(1):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
+
+    def test_device_uo_list_404(self):
+        device_pk = uuid.uuid4()
+        url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device_pk])
+        with self.assertNumQueries(1):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.json(), {'detail': 'device not found'})
+
+    def test_device_uo_list_get(self):
+        env = self._create_upgrade_env(upgrade_operation=True)
+        device1 = env['d1']
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        device_uo1 = UpgradeOperation.objects.get(device=device1)
+
+        with self.subTest('Test when device upgrade operations exist'):
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device1.pk])
+            with self.assertNumQueries(6):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_device_upgrade_operation(device_uo1)
+            self.assertEqual(r.data['results'], [serializer_list])
+
+        with self.subTest('Test when device upgrade operations does not exist'):
+            UpgradeOperation.objects.all().delete()
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device1.pk])
+            with self.assertNumQueries(5):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data['results'], [])
+
+    def test_device_uo_list_multitenancy(self):
+        org1 = self._get_org()
+        org2 = self._create_org(name='New org', slug='new-org')
+        cat2 = self._create_category(name='New category2', organization=org2)
+        build1 = self._get_build()
+        build2 = self._create_build(version='0.2', category=cat2)
+        image1 = self._create_firmware_image(build=build1)
+        image2 = self._create_firmware_image(build=build2)
+        d1 = self._create_device(
+            name='device1',
+            organization=org1,
+            mac_address='00:22:bb:33:cc:44',
+            model=image1.boards[0],
+        )
+        d2 = self._create_device(
+            name='device2',
+            organization=org2,
+            mac_address='00:11:bb:22:cc:33',
+            model=image2.boards[0],
+        )
+        ssh_credentials1 = self._get_credentials(organization=org1)
+        ssh_credentials2 = self._get_credentials(organization=org2)
+        self._create_config(device=d1)
+        self._create_config(device=d2)
+        self._create_device_connection(device=d1, credentials=ssh_credentials1)
+        self._create_device_connection(device=d2, credentials=ssh_credentials2)
+        self._create_device_firmware(
+            device=d1, image=image1, upgrade=True, device_connection=False
+        )
+        self._create_device_firmware(
+            device=d2, image=image2, upgrade=True, device_connection=False
+        )
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        device_uo1 = UpgradeOperation.objects.get(device=d1)
+        device_uo2 = UpgradeOperation.objects.get(device=d2)
+        self._create_operator(
+            organizations=[org1],
+            username='org1_manager',
+            email='orgmanager@test.com',
+        )
+        self._create_operator(username='org1_member', email='orgmember@test.com')
+        self._create_operator(
+            username='org_admin', email='org_admin@test.com', is_superuser=True
+        )
+
+        with self.subTest('Test device firmware detail org manager'):
+            self._login('org1_manager', 'tester')
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[d1.pk])
+            with self.assertNumQueries(6):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_device_upgrade_operation(device_uo1)
+            self.assertEqual(r.data['results'], [serializer_list])
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[d2.pk])
+            with self.assertNumQueries(5):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data['results'], [])
+
+        with self.subTest('Test device firmware detail org member (403 forbidden)'):
+            self._login('org1_member', 'tester')
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[d1.pk])
+            err = 'User is not a manager of the organization'
+            with self.assertNumQueries(2):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 403)
+            self.assertIn(err, r.json()['detail'])
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[d2.pk])
+            with self.assertNumQueries(2):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 403)
+            self.assertIn(err, r.json()['detail'])
+
+        with self.subTest('Test device firmware detail org admin'):
+            self._login('org_admin', 'tester')
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[d1.pk])
+            with self.assertNumQueries(4):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_device_upgrade_operation(device_uo1)
+            self.assertEqual(r.data['results'], [serializer_list])
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[d2.pk])
+            with self.assertNumQueries(4):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_device_upgrade_operation(device_uo2)
+            self.assertEqual(r.data['results'], [serializer_list])
 
 
 class TestOrgAPIMixin(TestAPIUpgraderMixin, TestCase):

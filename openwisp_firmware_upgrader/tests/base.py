@@ -110,7 +110,9 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         device_fw.save(upgrade=upgrade)
         return device_fw
 
-    def _create_upgrade_env(self, device_firmware=True, **kwargs):
+    def _create_upgrade_env(
+        self, device_firmware=True, upgrade_operation=False, **kwargs
+    ):
         org = kwargs.pop('organization', self._get_org())
         category = kwargs.pop('category', self._get_category(organization=org))
         build1 = self._create_build(category=category, version='0.1')
@@ -156,10 +158,16 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         # force create device firmware (optional)
         if device_firmware:
             device_fw1 = self._create_device_firmware(
-                device=d1, image=image1a, device_connection=False
+                device=d1,
+                image=image1a,
+                upgrade=upgrade_operation,
+                device_connection=False,
             )
             device_fw2 = self._create_device_firmware(
-                device=d2, image=image1b, device_connection=False
+                device=d2,
+                image=image1b,
+                upgrade=upgrade_operation,
+                device_connection=False,
             )
             data.update(
                 {

@@ -192,6 +192,27 @@ class FirmwareImageDownloadView(FirmwareImageMixin, generics.RetrieveAPIView):
         )
 
 
+class DeviceUpgradeOperationMixin(ProtectedAPIMixin):
+    queryset = UpgradeOperation.objects.all()
+    parent = None
+
+    def get_parent_queryset(self):
+        return Device.objects.filter(pk=self.kwargs['pk'])
+
+    def assert_parent_exists(self):
+        try:
+            assert self.get_parent_queryset().exists()
+        except (AssertionError, ValidationError):
+            raise NotFound(detail='device not found')
+
+    def get_queryset(self):
+        return super().get_queryset().filter(device=self.kwargs['pk'])
+
+    def initial(self, *args, **kwargs):
+        self.assert_parent_exists()
+        super().initial(*args, **kwargs)
+
+
 class UpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     queryset = UpgradeOperation.objects.select_related('device', 'image')
     serializer_class = UpgradeOperationSerializer
@@ -210,7 +231,7 @@ class UpgradeOperationDetailView(ProtectedAPIMixin, generics.RetrieveAPIView):
     organization_field = 'device__organization'
 
 
-class DeviceUpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
+class DeviceUpgradeOperationListView(DeviceUpgradeOperationMixin, generics.ListAPIView):
     queryset = UpgradeOperation.objects.select_related('device', 'image').order_by(
         '-created'
     )
