@@ -219,7 +219,7 @@ class UpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     organization_field = 'device__organization'
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['device_id', 'created', 'modified']
-    ordering = ['-device_id', '-created']
+    ordering = ['-created']
 
 
 class UpgradeOperationDetailView(ProtectedAPIMixin, generics.RetrieveAPIView):

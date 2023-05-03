@@ -13,6 +13,7 @@ from openwisp_firmware_upgrader.api.serializers import (
     DeviceFirmwareSerializer,
     DeviceUpgradeOperationSerializer,
     FirmwareImageSerializer,
+    UpgradeOperationSerializer,
 )
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
@@ -1149,7 +1150,7 @@ class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         return dict(serializer.to_representation(device_uo))
 
     def test_device_uo_list_unauthorized(self):
-        device_fw = self._create_device_firmware()
+        device_fw = self._create_device_firmware(upgrade=True)
         client = Client()
         org2 = self._create_org(name='org2', slug='org2')
         OrganizationUser.objects.create(user=self.operator, organization=org2)
@@ -1236,7 +1237,7 @@ class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             username='org_admin', email='org_admin@test.com', is_superuser=True
         )
 
-        with self.subTest('Test device firmware detail org manager'):
+        with self.subTest('Test device upgrade operation detail org manager'):
             self._login('org1_manager', 'tester')
             url = reverse('upgrader:api_deviceupgradeoperation_list', args=[d1.pk])
             with self.assertNumQueries(6):
@@ -1250,7 +1251,7 @@ class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 200)
             self.assertEqual(r.data['results'], [])
 
-        with self.subTest('Test device firmware detail org member (403 forbidden)'):
+        with self.subTest('Test device upgrade operation org member (403 forbidden)'):
             self._login('org1_member', 'tester')
             url = reverse('upgrader:api_deviceupgradeoperation_list', args=[d1.pk])
             err = 'User is not a manager of the organization'
@@ -1264,7 +1265,7 @@ class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 403)
             self.assertIn(err, r.json()['detail'])
 
-        with self.subTest('Test device firmware detail org admin'):
+        with self.subTest('Test device upgrade operation org admin'):
             self._login('org_admin', 'tester')
             url = reverse('upgrader:api_deviceupgradeoperation_list', args=[d1.pk])
             with self.assertNumQueries(4):
@@ -1278,6 +1279,190 @@ class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 200)
             serializer_list = self._serialize_device_upgrade_operation(device_uo2)
             self.assertEqual(r.data['results'], [serializer_list])
+
+
+class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
+    def _serialize_upgrade_operation(self, uo, many=False):
+        if many:
+            serializer = UpgradeOperationSerializer(uo, many=many)
+            return serializer.data
+        serializer = UpgradeOperationSerializer()
+        return dict(serializer.to_representation(uo))
+
+    def test_uo_list_unauthorized(self):
+        self._create_device_firmware(upgrade=True)
+        client = Client()
+        org2 = self._create_org(name='org2', slug='org2')
+        OrganizationUser.objects.create(user=self.operator, organization=org2)
+        url = reverse('upgrader:api_upgradeoperation_list')
+        with self.subTest(url=url):
+            with self.assertNumQueries(0):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
+
+    def test_uo_detail_unauthorized(self):
+        device_fw = self._create_device_firmware(upgrade=True)
+        client = Client()
+        org2 = self._create_org(name='org2', slug='org2')
+        OrganizationUser.objects.create(user=self.operator, organization=org2)
+        url = reverse(
+            'upgrader:api_upgradeoperation_detail', args=[device_fw.device.pk]
+        )
+        with self.subTest(url=url):
+            with self.assertNumQueries(0):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
+
+    def test_uo_detail_404(self):
+        device_pk = uuid.uuid4()
+        url = reverse('upgrader:api_upgradeoperation_detail', args=[device_pk])
+        with self.assertNumQueries(4):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.json(), {'detail': 'Not found.'})
+
+    def test_uo_list_get(self):
+        self._create_upgrade_env(upgrade_operation=True)
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        uo_qs = UpgradeOperation.objects.order_by('-created')
+
+        with self.subTest('Test when upgrade operations exist'):
+            url = reverse('upgrader:api_upgradeoperation_list')
+            with self.assertNumQueries(5):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_upgrade_operation(uo_qs, many=True)
+            self.assertEqual(r.data['results'], serializer_list)
+
+        with self.subTest('Test when upgrade operations does not exist'):
+            UpgradeOperation.objects.all().delete()
+            url = reverse('upgrader:api_upgradeoperation_list')
+            with self.assertNumQueries(4):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data['results'], [])
+
+    def test_uo_detail_get(self):
+        self._create_upgrade_env(upgrade_operation=True)
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        uo1 = UpgradeOperation.objects.first()
+
+        with self.subTest('Test when upgrade operations exist'):
+            url = reverse('upgrader:api_upgradeoperation_detail', args=[uo1.pk])
+            with self.assertNumQueries(5):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_upgrade_operation(uo1)
+            self.assertEqual(r.data, serializer_list)
+
+    def test_uo_list_detail_multitenancy(self):
+        org1 = self._get_org()
+        org2 = self._create_org(name='New org', slug='new-org')
+        cat2 = self._create_category(name='New category2', organization=org2)
+        build1 = self._get_build()
+        build2 = self._create_build(version='0.2', category=cat2)
+        image1 = self._create_firmware_image(build=build1)
+        image2 = self._create_firmware_image(build=build2)
+        d1 = self._create_device(
+            name='device1',
+            organization=org1,
+            mac_address='00:22:bb:33:cc:44',
+            model=image1.boards[0],
+        )
+        d2 = self._create_device(
+            name='device2',
+            organization=org2,
+            mac_address='00:11:bb:22:cc:33',
+            model=image2.boards[0],
+        )
+        ssh_credentials1 = self._get_credentials(organization=org1)
+        ssh_credentials2 = self._get_credentials(organization=org2)
+        self._create_config(device=d1)
+        self._create_config(device=d2)
+        self._create_device_connection(device=d1, credentials=ssh_credentials1)
+        self._create_device_connection(device=d2, credentials=ssh_credentials2)
+        self._create_device_firmware(
+            device=d1, image=image1, upgrade=True, device_connection=False
+        )
+        self._create_device_firmware(
+            device=d2, image=image2, upgrade=True, device_connection=False
+        )
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        uo1 = UpgradeOperation.objects.get(device=d1)
+        uo2 = UpgradeOperation.objects.get(device=d2)
+        self._create_operator(
+            organizations=[org1],
+            username='org1_manager',
+            email='orgmanager@test.com',
+        )
+        self._create_operator(username='org1_member', email='orgmember@test.com')
+        self._create_operator(
+            username='org_admin', email='org_admin@test.com', is_superuser=True
+        )
+
+        with self.subTest('Test upgrade operation list org manager'):
+            self._login('org1_manager', 'tester')
+            url = reverse('upgrader:api_upgradeoperation_list')
+            with self.assertNumQueries(5):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_upgrade_operation(uo1)
+            self.assertEqual(r.data['results'], [serializer_list])
+
+        with self.subTest('Test upgrade operation detail org manager'):
+            self._login('org1_manager', 'tester')
+            url = reverse('upgrader:api_upgradeoperation_detail', args=[uo1.pk])
+            with self.assertNumQueries(5):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_detail = self._serialize_upgrade_operation(uo1)
+            self.assertEqual(r.data, serializer_detail)
+            url = reverse('upgrader:api_upgradeoperation_detail', args=[uo2.pk])
+            with self.assertNumQueries(4):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 404)
+            self.assertEqual(r.data['detail'], 'Not found.')
+
+        with self.subTest('Test upgrade operation list org member (403 forbidden)'):
+            self._login('org1_member', 'tester')
+            url = reverse('upgrader:api_upgradeoperation_list')
+            err = 'User is not a manager of the organization'
+            with self.assertNumQueries(1):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 403)
+            self.assertIn(err, r.json()['detail'])
+
+        with self.subTest('Test upgrade operation detail org member (403 forbidden)'):
+            self._login('org1_member', 'tester')
+            url = reverse('upgrader:api_upgradeoperation_detail', args=[uo1.pk])
+            err = 'User is not a manager of the organization'
+            with self.assertNumQueries(1):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 403)
+            self.assertIn(err, r.json()['detail'])
+            url = reverse('upgrader:api_upgradeoperation_detail', args=[uo2.pk])
+            with self.assertNumQueries(1):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 403)
+            self.assertIn(err, r.json()['detail'])
+
+        with self.subTest('Test upgrade operation list org admin'):
+            # since org admin can see upgrade
+            # operations of both organizations
+            uo_qs = UpgradeOperation.objects.order_by('-created')
+            self._login('org_admin', 'tester')
+            url = reverse('upgrader:api_upgradeoperation_list')
+            with self.assertNumQueries(3):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_upgrade_operation(uo_qs, many=True)
+            self.assertEqual(r.data['results'], serializer_list)
+            url = reverse('upgrader:api_upgradeoperation_list')
+            with self.assertNumQueries(3):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_upgrade_operation(uo_qs, many=True)
+            self.assertEqual(r.data['results'], serializer_list)
 
 
 class TestOrgAPIMixin(TestAPIUpgraderMixin, TestCase):
