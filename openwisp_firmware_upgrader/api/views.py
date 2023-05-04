@@ -142,6 +142,7 @@ class BatchUpgradeOperationDetailView(ProtectedAPIMixin, generics.RetrieveAPIVie
     lookup_fields = ['pk']
     organization_field = 'build__category__organization'
 
+
 class FirmwareImageMixin(ProtectedAPIMixin):
     queryset = FirmwareImage.objects.all()
     parent = None
