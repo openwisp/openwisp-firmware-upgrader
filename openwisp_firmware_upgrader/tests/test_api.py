@@ -864,8 +864,8 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest('Test device and image model validation'):
             url = reverse('upgrader:api_devicefirmware_detail', args=[device1.pk])
             with self.assertNumQueries(18):
-                # try to make a request when device
-                # model is different than image
+                # Try to make a request when the
+                # device model does not match the image model
                 data = {'image': image1a.pk}
                 r = self.client.put(url, data, content_type='application/json')
             self.assertEqual(r.status_code, 400)
@@ -875,11 +875,19 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest('Test image pk validation'):
             url = reverse('upgrader:api_devicefirmware_detail', args=[device2.pk])
             with self.assertNumQueries(8):
-                # image with different type
+                # image with different "type"
                 data = {'image': image1a.pk}
                 r = self.client.put(url, data, content_type='application/json')
             self.assertEqual(r.status_code, 400)
             self.assertIn('Invalid pk', r.json()['image'][0])
+
+    def test_device_firmware_detail_delete(self):
+        device_fw = self._create_device_firmware()
+        self.assertEqual(DeviceFirmware.objects.count(), 1)
+        url = reverse('upgrader:api_devicefirmware_detail', args=[device_fw.device.pk])
+        r = self.client.delete(url)
+        self.assertEqual(r.status_code, 204)
+        self.assertEqual(DeviceFirmware.objects.count(), 0)
 
     def test_device_firmware_detail_get(self):
         env = self._create_upgrade_env()
@@ -906,9 +914,10 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.data, serializer_detail)
             self.assertContains(r, f'{image1a}</option>')
             self.assertContains(r, f'{image2a}</option>')
-            # Only images available to device are shown
-            # in the browsable API `image` select options.
-            # This behavior is similar to the admin device firmware inline
+            # The "image" field in the browsable API only
+            # shows images that are available to the device.
+            # This behavior is similar to the "device firmware"
+            # inline in the admin interface.
             self.assertNotContains(r, f'{image1b}</option>')
             self.assertNotContains(r, f'{image2b}</option>')
             self.assertNotContains(r, f'{image2}</option>')
@@ -924,9 +933,10 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertIn(f'{image1a}</option>', repsonse)
             self.assertIn(f'{image2a}</option>', repsonse)
             self.assertIn(f'{image2}</option>', repsonse)
-            # Only images available to device are shown
-            # in the browsable API `image` select options.
-            # This behavior is similar to the admin device firmware inline
+            # The "image" field in the browsable API only
+            # shows images that are available to the device.
+            # This behavior is similar to the "device firmware"
+            # inline in the admin interface.
             self.assertNotIn(f'{image1b}</option>', repsonse)
             self.assertNotIn(f'{image2b}</option>', repsonse)
 
@@ -948,10 +958,10 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         with self.assertNumQueries(26):
             data = {'image': image1a.pk}
-            # The device firmware api view is
-            # customized to allow creation of new
-            # device firmware objects with PUT request
-            # when device firmware object doesnt exist
+            # This API view allows the creation
+            # of new devicefirmware objects with
+            # a PUT request when the object
+            # doesn't already exist.
             r = self.client.put(
                 f'{url}?format=api', data, content_type='application/json'
             )
@@ -1099,11 +1109,12 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw1)
             self.assertEqual(r.data, serializer_detail)
-            # org1_manager only has permission to read firmware objects
+            # The 'org1_manager' user is only
+            # authorized to view firmware objects
             self.assertNotContains(r, f'{image1}</option>')
             self.assertNotContains(r, f'{image2}</option>')
-            # org1_manager can only access device firmware
-            # objects belongs to its organization
+            # Only device firmware objects belonging to the
+            # same organization as org1_manager can be accessed
             url = reverse('upgrader:api_devicefirmware_detail', args=[d2.pk])
             with self.assertNumQueries(4):
                 r = self.client.get(url)
@@ -1447,8 +1458,8 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self.assertIn(err, r.json()['detail'])
 
         with self.subTest('Test upgrade operation list org admin'):
-            # since org admin can see upgrade
-            # operations of both organizations
+            # The org admin can view upgrade
+            # operations for both organizations.
             uo_qs = UpgradeOperation.objects.order_by('-created')
             self._login('org_admin', 'tester')
             url = reverse('upgrader:api_upgradeoperation_list')

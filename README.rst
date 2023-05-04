@@ -619,6 +619,65 @@ Delete a firmware category
 
     DELETE /api/v1/firmware-upgrader/category/{id}/
 
+List upgrade operations
+#######################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/
+
+Get upgrade operation details
+#############################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/{id}
+
+List device upgrade operations
+##############################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/device/{device_pk}/upgrade-operation/
+
+Create device firmware
+######################
+
+Sending a PUT request to the endpoint below will
+create a new device firmware if it does not already exist.
+
+.. code-block:: text
+
+    PUT /api/v1/firmware-upgrader/device/{device_pk}/firmware/
+
+Get device firmware details
+###########################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/device/{device_pk}/firmware/
+
+Change details of device firmware
+#################################
+
+.. code-block:: text
+
+    PUT /api/v1/firmware-upgrader/device/{device_pk}/firmware/
+
+Patch details of device firmware
+#################################
+
+.. code-block:: text
+
+    PATCH /api/v1/firmware-upgrader/device/{device_pk}/firmware/
+
+Delete device firmware
+######################
+
+.. code-block:: text
+
+    DELETE /api/v1/firmware-upgrader/device/{device_pk}/firmware/
+
 Settings
 --------
 
