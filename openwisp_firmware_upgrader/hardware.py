@@ -438,6 +438,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ramips-mt7621-yuncore_ax820-squashfs-sysupgrade.bin',
+                {
+                    'label': 'YunCore AX820',
+                    'boards': ('YunCore AX820',),
+                },
+            ),
+            (
                 'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
                 {
                     'label': 'YunCore XD3200 (OpenWRT 19.07 and earlier)',
