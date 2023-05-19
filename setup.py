@@ -36,7 +36,7 @@ setup(
     zip_safe=False,
     install_requires=[
         'openwisp-controller @ https://github.com/openwisp/openwisp-controller/tarball/master',
-        'openwisp-utils[rest,selenium] @ https://github.com/openwisp/openwisp-utils/tarball/master',
+        'openwisp-utils[rest] @ https://github.com/openwisp/openwisp-utils/tarball/master',
         'django-private-storage~=3.0.0',
     ],
     classifiers=[
