@@ -471,6 +471,23 @@ List mass upgrade operations
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/
 
+**Available filters**
+
+You can filter a list of batch upgrade operations
+based on their build using the ``build_id``.
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?build={build_id}
+
+You can filter a list of batch upgrade
+operations based on their status using the
+``status`` (e.g. idle, in-progress, success, failed).
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status={status}
+
 Get mass upgrade operation detail
 #################################
 
@@ -484,6 +501,29 @@ List firmware builds
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/build/
+
+**Available filters**
+
+You can filter a list of firmware builds based
+on their category using the ``category_id``.
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/?category={category_id}
+
+You can filter a list of firmware builds based
+on their version using the ``version`` (e.g. 1.2.x).
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/?version={version}
+
+You can filter a list of firmware builds based
+on their os identifier using the ``os``.
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/?os={os}
 
 Create firmware build
 #####################
@@ -527,6 +567,16 @@ Get list of images of a firmware build
 
     GET /api/v1/firmware-upgrader/build/{id}/image/
 
+**Available filters**
+
+You can filter a list of images of a
+firmware build based on their type using the
+``type`` (e.g. ar71xx-generic-cf-e320n-v2-squashfs-sysupgrade.bin)
+
+.. code-block:: text
+
+     GET /api/v1/firmware-upgrader/build/{id}/image/?type={type}
+
 Upload new firmware image to the build
 ######################################
 
@@ -539,21 +589,21 @@ Get firmware image details
 
 .. code-block:: text
 
-    GET /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/
+    GET /api/v1/firmware-upgrader/build/{build_id}/image/{id}/
 
 Delete firmware image
 #####################
 
 .. code-block:: text
 
-    DELETE /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/
+    DELETE /api/v1/firmware-upgrader/build/{build_id}/image/{id}/
 
 Download firmware image
 #######################
 
 .. code-block:: text
 
-    GET /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/download/
+    GET /api/v1/firmware-upgrader/build/{build_id}/image/{id}/download/
 
 Perform batch upgrade
 #####################
@@ -626,6 +676,30 @@ List upgrade operations
 
     GET /api/v1/firmware-upgrader/upgrade-operation/
 
+**Available filters**
+
+You can filter a list of upgrade operations
+based on their device using the ``device_id``.
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/?device={device_id}
+
+You can filter a list of upgrade operations
+based on their image using the ``image_id``.
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/?image={image_id}
+
+You can filter a list of upgrade
+operations based on their status using the
+``status`` (e.g. in-progress, success, failed, aborted).
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/?status={status}
+
 Get upgrade operation details
 #############################
 
@@ -638,7 +712,17 @@ List device upgrade operations
 
 .. code-block:: text
 
-    GET /api/v1/firmware-upgrader/device/{device_pk}/upgrade-operation/
+    GET /api/v1/firmware-upgrader/device/{device_id}/upgrade-operation/
+
+**Available filters**
+
+You can filter a list of device upgrade
+operations based on their status using the
+``status`` (e.g. in-progress, success, failed, aborted).
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/device/{device_id}/upgrade-operation/?status={status}
 
 Create device firmware
 ######################
@@ -648,28 +732,28 @@ create a new device firmware if it does not already exist.
 
 .. code-block:: text
 
-    PUT /api/v1/firmware-upgrader/device/{device_pk}/firmware/
+    PUT /api/v1/firmware-upgrader/device/{device_id}/firmware/
 
 Get device firmware details
 ###########################
 
 .. code-block:: text
 
-    GET /api/v1/firmware-upgrader/device/{device_pk}/firmware/
+    GET /api/v1/firmware-upgrader/device/{device_id}/firmware/
 
 Change details of device firmware
 #################################
 
 .. code-block:: text
 
-    PUT /api/v1/firmware-upgrader/device/{device_pk}/firmware/
+    PUT /api/v1/firmware-upgrader/device/{device_id}/firmware/
 
 Patch details of device firmware
 #################################
 
 .. code-block:: text
 
-    PATCH /api/v1/firmware-upgrader/device/{device_pk}/firmware/
+    PATCH /api/v1/firmware-upgrader/device/{device_id}/firmware/
 
 Delete device firmware
 ######################
