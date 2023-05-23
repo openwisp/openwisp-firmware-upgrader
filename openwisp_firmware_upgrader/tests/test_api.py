@@ -833,6 +833,49 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         serializer = DeviceFirmwareSerializer()
         return dict(serializer.to_representation(device_fw))
 
+    def _create_device_firmware_multi_env(self):
+        org1 = self._get_org()
+        org2 = self._create_org(name='New org', slug='new-org')
+        cat2 = self._create_category(name='New category2', organization=org2)
+        build1 = self._get_build()
+        build2 = self._create_build(version='0.2', category=cat2)
+        image1 = self._create_firmware_image(build=build1)
+        image2 = self._create_firmware_image(build=build2)
+        d1 = self._create_device(
+            name='device1',
+            organization=org1,
+            mac_address='00:22:bb:33:cc:44',
+            model=image1.boards[0],
+        )
+        d2 = self._create_device(
+            name='device2',
+            organization=org2,
+            mac_address='00:11:bb:22:cc:33',
+            model=image2.boards[0],
+        )
+        ssh_credentials1 = self._get_credentials(organization=org1)
+        ssh_credentials2 = self._get_credentials(organization=org2)
+        self._create_config(device=d1)
+        self._create_config(device=d2)
+        self._create_device_connection(device=d1, credentials=ssh_credentials1)
+        self._create_device_connection(device=d2, credentials=ssh_credentials2)
+        device_fw1 = self._create_device_firmware(
+            device=d1, image=image1, device_connection=False
+        )
+        device_fw2 = self._create_device_firmware(
+            device=d2, image=image2, device_connection=False
+        )
+        self._create_operator(
+            organizations=[org1],
+            username='org1_manager',
+            email='orgmanager@test.com',
+        )
+        self._create_operator(username='org1_member', email='orgmember@test.com')
+        self._create_operator(
+            username='org_admin', email='org_admin@test.com', is_superuser=True
+        )
+        return d1, d2, image1, image2, device_fw1, device_fw2
+
     def test_device_firmware_detail_unauthorized(self):
         device_fw = self._create_device_firmware()
         client = Client()
@@ -1060,46 +1103,14 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertNotIn(f'{image2}</option>', repsonse)
 
     def test_device_firmware_detail_multitenancy(self):
-        org1 = self._get_org()
-        org2 = self._create_org(name='New org', slug='new-org')
-        cat2 = self._create_category(name='New category2', organization=org2)
-        build1 = self._get_build()
-        build2 = self._create_build(version='0.2', category=cat2)
-        image1 = self._create_firmware_image(build=build1)
-        image2 = self._create_firmware_image(build=build2)
-        d1 = self._create_device(
-            name='device1',
-            organization=org1,
-            mac_address='00:22:bb:33:cc:44',
-            model=image1.boards[0],
-        )
-        d2 = self._create_device(
-            name='device2',
-            organization=org2,
-            mac_address='00:11:bb:22:cc:33',
-            model=image2.boards[0],
-        )
-        ssh_credentials1 = self._get_credentials(organization=org1)
-        ssh_credentials2 = self._get_credentials(organization=org2)
-        self._create_config(device=d1)
-        self._create_config(device=d2)
-        self._create_device_connection(device=d1, credentials=ssh_credentials1)
-        self._create_device_connection(device=d2, credentials=ssh_credentials2)
-        device_fw1 = self._create_device_firmware(
-            device=d1, image=image1, device_connection=False
-        )
-        device_fw2 = self._create_device_firmware(
-            device=d2, image=image2, device_connection=False
-        )
-        self._create_operator(
-            organizations=[org1],
-            username='org1_manager',
-            email='orgmanager@test.com',
-        )
-        self._create_operator(username='org1_member', email='orgmember@test.com')
-        self._create_operator(
-            username='org_admin', email='org_admin@test.com', is_superuser=True
-        )
+        (
+            d1,
+            d2,
+            image1,
+            image2,
+            device_fw1,
+            device_fw2,
+        ) = self._create_device_firmware_multi_env()
 
         with self.subTest('Test device firmware detail org manager'):
             self._login('org1_manager', 'tester')
@@ -1160,50 +1171,7 @@ class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         serializer = DeviceUpgradeOperationSerializer()
         return dict(serializer.to_representation(device_uo))
 
-    def test_device_uo_list_unauthorized(self):
-        device_fw = self._create_device_firmware(upgrade=True)
-        client = Client()
-        org2 = self._create_org(name='org2', slug='org2')
-        OrganizationUser.objects.create(user=self.operator, organization=org2)
-        url = reverse(
-            'upgrader:api_deviceupgradeoperation_list', args=[device_fw.device.pk]
-        )
-        with self.subTest(url=url):
-            with self.assertNumQueries(1):
-                r = client.get(url)
-            self.assertEqual(r.status_code, 401)
-
-    def test_device_uo_list_404(self):
-        device_pk = uuid.uuid4()
-        url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device_pk])
-        with self.assertNumQueries(1):
-            r = self.client.get(url)
-        self.assertEqual(r.status_code, 404)
-        self.assertEqual(r.json(), {'detail': 'device not found'})
-
-    def test_device_uo_list_get(self):
-        env = self._create_upgrade_env(upgrade_operation=True)
-        device1 = env['d1']
-        self.assertEqual(UpgradeOperation.objects.count(), 2)
-        device_uo1 = UpgradeOperation.objects.get(device=device1)
-
-        with self.subTest('Test when device upgrade operations exist'):
-            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device1.pk])
-            with self.assertNumQueries(6):
-                r = self.client.get(url)
-            self.assertEqual(r.status_code, 200)
-            serializer_list = self._serialize_device_upgrade_operation(device_uo1)
-            self.assertEqual(r.data['results'], [serializer_list])
-
-        with self.subTest('Test when device upgrade operations does not exist'):
-            UpgradeOperation.objects.all().delete()
-            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device1.pk])
-            with self.assertNumQueries(5):
-                r = self.client.get(url)
-            self.assertEqual(r.status_code, 200)
-            self.assertEqual(r.data['results'], [])
-
-    def test_device_uo_list_multitenancy(self):
+    def _create_device_uo_multi_env(self):
         org1 = self._get_org()
         org2 = self._create_org(name='New org', slug='new-org')
         cat2 = self._create_category(name='New category2', organization=org2)
@@ -1247,6 +1215,71 @@ class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self._create_operator(
             username='org_admin', email='org_admin@test.com', is_superuser=True
         )
+        return d1, d2, device_uo1, device_uo2
+
+    def test_device_uo_list_unauthorized(self):
+        device_fw = self._create_device_firmware(upgrade=True)
+        client = Client()
+        org2 = self._create_org(name='org2', slug='org2')
+        OrganizationUser.objects.create(user=self.operator, organization=org2)
+        url = reverse(
+            'upgrader:api_deviceupgradeoperation_list', args=[device_fw.device.pk]
+        )
+        with self.subTest(url=url):
+            with self.assertNumQueries(1):
+                r = client.get(url)
+            self.assertEqual(r.status_code, 401)
+
+    def test_device_uo_list_404(self):
+        device_pk = uuid.uuid4()
+        url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device_pk])
+        with self.assertNumQueries(1):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.json(), {'detail': 'device not found'})
+
+    def test_device_uo_list_get(self):
+        env = self._create_upgrade_env(upgrade_operation=True)
+        device1 = env['d1']
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        device_uo1 = UpgradeOperation.objects.get(device=device1)
+
+        with self.subTest('Test when device upgrade operations exist'):
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device1.pk])
+            with self.assertNumQueries(6):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_device_upgrade_operation(device_uo1)
+            self.assertEqual(r.data['results'], [serializer_list])
+
+        with self.subTest('Test when device upgrade operations does not exist'):
+            UpgradeOperation.objects.all().delete()
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device1.pk])
+            with self.assertNumQueries(5):
+                r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data['results'], [])
+
+    def test_device_uo_list_django_filters(self):
+        env = self._create_upgrade_env(upgrade_operation=True)
+        device1 = env['d1']
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        device_uo1 = UpgradeOperation.objects.get(device=device1)
+
+        with self.subTest('Test filtering using status'):
+            url = reverse('upgrader:api_deviceupgradeoperation_list', args=[device1.pk])
+            with self.assertNumQueries(6):
+                r = self.client.get(url, {'status': 'in-progress'})
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_device_upgrade_operation(device_uo1)
+            self.assertEqual(r.data['results'], [serializer_list])
+            with self.assertNumQueries(5):
+                r = self.client.get(url, {'status': 'failed'})
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data['results'], [])
+
+    def test_device_uo_list_multitenancy(self):
+        d1, d2, device_uo1, device_uo2 = self._create_device_uo_multi_env()
 
         with self.subTest('Test device upgrade operation detail org manager'):
             self._login('org1_manager', 'tester')
@@ -1299,6 +1332,60 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             return serializer.data
         serializer = UpgradeOperationSerializer()
         return dict(serializer.to_representation(uo))
+
+    def _create_upgrade_operation_multi_env(self):
+        org1 = self._get_org()
+        org2 = self._create_org(name='New org', slug='new-org')
+        cat2 = self._create_category(name='New category2', organization=org2)
+        build1 = self._get_build()
+        build2 = self._create_build(version='0.2', category=cat2)
+        image1 = self._create_firmware_image(build=build1)
+        image2 = self._create_firmware_image(build=build2)
+        d1 = self._create_device(
+            name='device1',
+            organization=org1,
+            mac_address='00:22:bb:33:cc:44',
+            model=image1.boards[0],
+        )
+        d2 = self._create_device(
+            name='device2',
+            organization=org2,
+            mac_address='00:11:bb:22:cc:33',
+            model=image2.boards[0],
+        )
+        ssh_credentials1 = self._get_credentials(organization=org1)
+        ssh_credentials2 = self._get_credentials(organization=org2)
+        self._create_config(device=d1)
+        self._create_config(device=d2)
+        self._create_device_connection(device=d1, credentials=ssh_credentials1)
+        self._create_device_connection(device=d2, credentials=ssh_credentials2)
+        self._create_device_firmware(
+            device=d1, image=image1, upgrade=True, device_connection=False
+        )
+        self._create_device_firmware(
+            device=d2, image=image2, upgrade=True, device_connection=False
+        )
+        self.assertEqual(UpgradeOperation.objects.count(), 2)
+        uo1 = UpgradeOperation.objects.get(device=d1)
+        uo2 = UpgradeOperation.objects.get(device=d2)
+        self._create_operator(
+            organizations=[org1],
+            username='org1_manager',
+            email='orgmanager@test.com',
+        )
+        self._create_operator(username='org1_member', email='orgmember@test.com')
+        self._create_operator(
+            username='org_admin', email='org_admin@test.com', is_superuser=True
+        )
+        return d1, d2, image1, image2, uo1, uo2
+
+    def _assert_uo_list_django_filters(self, uo, filter_params={}):
+        url = reverse('upgrader:api_upgradeoperation_list')
+        with self.assertNumQueries(3):
+            r = self.client.get(url, filter_params)
+            self.assertEqual(r.status_code, 200)
+            serializer_list = self._serialize_upgrade_operation(uo)
+            self.assertEqual(r.data['results'], [serializer_list])
 
     def test_uo_list_unauthorized(self):
         self._create_device_firmware(upgrade=True)
@@ -1366,50 +1453,28 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             serializer_list = self._serialize_upgrade_operation(uo1)
             self.assertEqual(r.data, serializer_list)
 
-    def test_uo_list_detail_multitenancy(self):
-        org1 = self._get_org()
-        org2 = self._create_org(name='New org', slug='new-org')
-        cat2 = self._create_category(name='New category2', organization=org2)
-        build1 = self._get_build()
-        build2 = self._create_build(version='0.2', category=cat2)
-        image1 = self._create_firmware_image(build=build1)
-        image2 = self._create_firmware_image(build=build2)
-        d1 = self._create_device(
-            name='device1',
-            organization=org1,
-            mac_address='00:22:bb:33:cc:44',
-            model=image1.boards[0],
-        )
-        d2 = self._create_device(
-            name='device2',
-            organization=org2,
-            mac_address='00:11:bb:22:cc:33',
-            model=image2.boards[0],
-        )
-        ssh_credentials1 = self._get_credentials(organization=org1)
-        ssh_credentials2 = self._get_credentials(organization=org2)
-        self._create_config(device=d1)
-        self._create_config(device=d2)
-        self._create_device_connection(device=d1, credentials=ssh_credentials1)
-        self._create_device_connection(device=d2, credentials=ssh_credentials2)
-        self._create_device_firmware(
-            device=d1, image=image1, upgrade=True, device_connection=False
-        )
-        self._create_device_firmware(
-            device=d2, image=image2, upgrade=True, device_connection=False
-        )
+    def test_uo_list_django_filters(self):
+        d1, d2, image1, image2, uo1, uo2 = self._create_upgrade_operation_multi_env()
         self.assertEqual(UpgradeOperation.objects.count(), 2)
-        uo1 = UpgradeOperation.objects.get(device=d1)
-        uo2 = UpgradeOperation.objects.get(device=d2)
-        self._create_operator(
-            organizations=[org1],
-            username='org1_manager',
-            email='orgmanager@test.com',
-        )
-        self._create_operator(username='org1_member', email='orgmember@test.com')
-        self._create_operator(
-            username='org_admin', email='org_admin@test.com', is_superuser=True
-        )
+        self._login('org_admin', 'tester')
+
+        with self.subTest('Test filtering using device id'):
+            self._assert_uo_list_django_filters(uo1, {'device': d1.pk})
+            self._assert_uo_list_django_filters(uo2, {'device': d2.pk})
+
+        with self.subTest('Test filtering using image id'):
+            self._assert_uo_list_django_filters(uo1, {'image': image1.pk})
+            self._assert_uo_list_django_filters(uo2, {'image': image2.pk})
+
+        with self.subTest('Test filtering using status'):
+            uo2.status = 'failed'
+            uo2.full_clean()
+            uo2.save()
+            self._assert_uo_list_django_filters(uo1, {'status': 'in-progress'})
+            self._assert_uo_list_django_filters(uo2, {'status': 'failed'})
+
+    def test_uo_list_detail_multitenancy(self):
+        _, _, _, _, uo1, uo2 = self._create_upgrade_operation_multi_env()
 
         with self.subTest('Test upgrade operation list org manager'):
             self._login('org1_manager', 'tester')

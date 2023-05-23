@@ -14,6 +14,7 @@ from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
+from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
     BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
@@ -218,9 +219,10 @@ class UpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     queryset = UpgradeOperation.objects.select_related('device', 'image')
     serializer_class = UpgradeOperationSerializer
     organization_field = 'device__organization'
-    filter_backends = [filters.OrderingFilter]
+    filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
     ordering_fields = ['device_id', 'created', 'modified']
     ordering = ['-created']
+    filterset_class = UpgradeOperationFilter
 
 
 class UpgradeOperationDetailView(ProtectedAPIMixin, generics.RetrieveAPIView):
@@ -238,6 +240,8 @@ class DeviceUpgradeOperationListView(DeviceUpgradeOperationMixin, generics.ListA
     )
     serializer_class = DeviceUpgradeOperationSerializer
     organization_field = 'device__organization'
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = DeviceUpgradeOperationFilter
 
     def get_queryset(self):
         qs = super().get_queryset()
