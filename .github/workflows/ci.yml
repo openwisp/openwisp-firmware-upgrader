@@ -60,9 +60,7 @@ jobs:
           pip install ${{ matrix.django-version }}
 
       - name: Install openwisp-firmware-upgrader
-        run: |
-          pip install -e .
-          pip install --no-cache-dir --force-reinstall --no-deps "openwisp-utils @ https://github.com/openwisp/openwisp-utils/tarball/selenium-test-mixin"
+        run: pip install -e .
 
       - name: QA checks
         run: |

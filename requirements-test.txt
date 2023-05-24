@@ -1,4 +1,4 @@
-openwisp-utils[qa,selenium] @ https://github.com/openwisp/openwisp-utils/tarball/selenium-test-mixin
+openwisp-utils[qa,selenium] @ https://github.com/openwisp/openwisp-utils/tarball/master
 redis~=4.2.2
 django-redis~=5.2.0
 mock-ssh-server~=0.8.0
