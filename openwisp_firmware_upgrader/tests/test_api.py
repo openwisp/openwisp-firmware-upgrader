@@ -1379,9 +1379,9 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         )
         return d1, d2, image1, image2, uo1, uo2
 
-    def _assert_uo_list_django_filters(self, uo, filter_params={}):
+    def _assert_uo_list_django_filters(self, query_num, uo, filter_params={}):
         url = reverse('upgrader:api_upgradeoperation_list')
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(query_num):
             r = self.client.get(url, filter_params)
             self.assertEqual(r.status_code, 200)
             serializer_list = self._serialize_upgrade_operation(uo)
@@ -1458,20 +1458,36 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(UpgradeOperation.objects.count(), 2)
         self._login('org_admin', 'tester')
 
+        with self.subTest('Test filtering using organization id'):
+            self._assert_uo_list_django_filters(
+                4, uo1, {'device__organization': d1.organization_id}
+            )
+            self._assert_uo_list_django_filters(
+                4, uo2, {'device__organization': d2.organization_id}
+            )
+
+        with self.subTest('Test filtering using organization slug'):
+            self._assert_uo_list_django_filters(
+                3, uo1, {'device__organization__slug': d1.organization.slug}
+            )
+            self._assert_uo_list_django_filters(
+                3, uo2, {'device__organization__slug': d2.organization.slug}
+            )
+
         with self.subTest('Test filtering using device id'):
-            self._assert_uo_list_django_filters(uo1, {'device': d1.pk})
-            self._assert_uo_list_django_filters(uo2, {'device': d2.pk})
+            self._assert_uo_list_django_filters(3, uo1, {'device': d1.pk})
+            self._assert_uo_list_django_filters(3, uo2, {'device': d2.pk})
 
         with self.subTest('Test filtering using image id'):
-            self._assert_uo_list_django_filters(uo1, {'image': image1.pk})
-            self._assert_uo_list_django_filters(uo2, {'image': image2.pk})
+            self._assert_uo_list_django_filters(3, uo1, {'image': image1.pk})
+            self._assert_uo_list_django_filters(3, uo2, {'image': image2.pk})
 
         with self.subTest('Test filtering using status'):
             uo2.status = 'failed'
             uo2.full_clean()
             uo2.save()
-            self._assert_uo_list_django_filters(uo1, {'status': 'in-progress'})
-            self._assert_uo_list_django_filters(uo2, {'status': 'failed'})
+            self._assert_uo_list_django_filters(3, uo1, {'status': 'in-progress'})
+            self._assert_uo_list_django_filters(3, uo2, {'status': 'failed'})
 
     def test_uo_list_detail_multitenancy(self):
         _, _, _, _, uo1, uo2 = self._create_upgrade_operation_multi_env()

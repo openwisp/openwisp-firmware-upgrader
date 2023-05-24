@@ -678,6 +678,20 @@ List upgrade operations
 
 **Available filters**
 
+You can filter a list of upgrade operations based 
+on their device organization using the ``organization_id``.
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/?device__organization={organization_id}
+
+You can filter a list of upgrade operations based 
+on their device organization slug using the ``organization_slug``.
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/?device__organization__slug={organization_slug}
+
 You can filter a list of upgrade operations
 based on their device using the ``device_id``.
 

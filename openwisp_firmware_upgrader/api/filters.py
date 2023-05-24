@@ -1,4 +1,4 @@
-import swapper
+from django.utils.translation import gettext_lazy as _
 from django_filters import rest_framework as filters
 
 from openwisp_users.api.mixins import FilterDjangoByOrgManaged
@@ -6,7 +6,6 @@ from openwisp_users.api.mixins import FilterDjangoByOrgManaged
 from ..swapper import load_model
 
 UpgradeOperation = load_model('UpgradeOperation')
-Organization = swapper.load_model('openwisp_users', 'Organization')
 
 
 class UpgradeOperationFilter(FilterDjangoByOrgManaged):
@@ -17,9 +16,23 @@ class UpgradeOperationFilter(FilterDjangoByOrgManaged):
         field_name='image',
     )
 
+    def _set_valid_filterform_lables(self):
+        self.filters['device__organization'].label = _('Organization')
+        self.filters['device__organization__slug'].label = _('Organization slug')
+
+    def __init__(self, *args, **kwargs):
+        super(UpgradeOperationFilter, self).__init__(*args, **kwargs)
+        self._set_valid_filterform_lables()
+
     class Meta:
         model = UpgradeOperation
-        fields = ['device', 'image', 'status']
+        fields = [
+            'device__organization',
+            'device__organization__slug',
+            'device',
+            'image',
+            'status',
+        ]
 
 
 class DeviceUpgradeOperationFilter(FilterDjangoByOrgManaged):
