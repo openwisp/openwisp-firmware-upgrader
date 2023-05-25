@@ -473,19 +473,16 @@ List mass upgrade operations
 
 **Available filters**
 
-You can filter a list of batch upgrade operations
-based on their build using the ``build_id``.
+The list of batch upgrade operations provides the following filters:
+
+- ``build`` (Firmware build ID)
+- ``status`` (One of: idle, in-progress, success, failed)
+
+Here's a few examples:
 
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?build={build_id}
-
-You can filter a list of batch upgrade
-operations based on their status using the
-``status`` (e.g. idle, in-progress, success, failed).
-
-.. code-block:: text
-
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status={status}
 
 Get mass upgrade operation detail
@@ -504,25 +501,18 @@ List firmware builds
 
 **Available filters**
 
-You can filter a list of firmware builds based
-on their category using the ``category_id``.
+The list of firmware builds provides the following filters:
+
+- ``category`` (Firmware category ID)
+- ``version``  (Firmware build version)
+- ``os`` (Firmware build os identifier)
+
+Here's a few examples:
 
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/build/?category={category_id}
-
-You can filter a list of firmware builds based
-on their version using the ``version`` (e.g. 1.2.x).
-
-.. code-block:: text
-
     GET /api/v1/firmware-upgrader/build/?version={version}
-
-You can filter a list of firmware builds based
-on their os identifier using the ``os``.
-
-.. code-block:: text
-
     GET /api/v1/firmware-upgrader/build/?os={os}
 
 Create firmware build
@@ -569,13 +559,12 @@ Get list of images of a firmware build
 
 **Available filters**
 
-You can filter a list of images of a
-firmware build based on their type using the
-``type`` (e.g. ar71xx-generic-cf-e320n-v2-squashfs-sysupgrade.bin)
+The list of images of a firmware build can be filtered by using
+``type`` (any one of the available firmware image types).
 
 .. code-block:: text
 
-     GET /api/v1/firmware-upgrader/build/{id}/image/?type={type}
+    GET /api/v1/firmware-upgrader/build/{id}/image/?type={type}
 
 Upload new firmware image to the build
 ######################################
@@ -678,40 +667,23 @@ List upgrade operations
 
 **Available filters**
 
-You can filter a list of upgrade operations based 
-on their device organization using the ``organization_id``.
+The list of upgrade operations provides the following filters:
+
+- ``device__organization`` (Organization ID of the device)
+- ``device__organization_slug``  (Organization slug of the device)
+- ``device`` (Device ID)
+- ``image`` (Firmware image ID)
+- ``status`` (One of: in-progress, success, failed, aborted)
+
+
+Here's a few examples:
 
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/upgrade-operation/?device__organization={organization_id}
-
-You can filter a list of upgrade operations based 
-on their device organization slug using the ``organization_slug``.
-
-.. code-block:: text
-
     GET /api/v1/firmware-upgrader/upgrade-operation/?device__organization__slug={organization_slug}
-
-You can filter a list of upgrade operations
-based on their device using the ``device_id``.
-
-.. code-block:: text
-
     GET /api/v1/firmware-upgrader/upgrade-operation/?device={device_id}
-
-You can filter a list of upgrade operations
-based on their image using the ``image_id``.
-
-.. code-block:: text
-
     GET /api/v1/firmware-upgrader/upgrade-operation/?image={image_id}
-
-You can filter a list of upgrade
-operations based on their status using the
-``status`` (e.g. in-progress, success, failed, aborted).
-
-.. code-block:: text
-
     GET /api/v1/firmware-upgrader/upgrade-operation/?status={status}
 
 Get upgrade operation details
@@ -730,9 +702,8 @@ List device upgrade operations
 
 **Available filters**
 
-You can filter a list of device upgrade
-operations based on their status using the
-``status`` (e.g. in-progress, success, failed, aborted).
+The list of device upgrade operations can be filtered by
+``status`` (one of: in-progress, success, failed, aborted).
 
 .. code-block:: text
 
