@@ -387,7 +387,7 @@ class OpenWrt(BaseOpenWrt):
     @classmethod
     def _call_reflash_command(cls, upgrader, path, timeout, failure_queue):
         try:
-            upgrader.connect()
+            upgrader.connection.connect()
             command = upgrader.get_upgrade_command(path)
             # remove persistent checksum if present (introduced in openwisp-config 0.6.0)
             # otherwise the device will not download the configuration again after reflash
@@ -409,7 +409,10 @@ class OpenWrt(BaseOpenWrt):
         """
         self.connection.device.refresh_from_db()
         self.connection.refresh_from_db()
+        del self.connection.connector_instance
         self.addresses = self.connection.get_addresses()
+        self._params = self.connection.connector_instance._params
+        self.shell = self.connection.connector_instance.shell
 
     def _write_checksum(self, checksum):
         for attempt in range(1, self.RECONNECT_MAX_RETRIES + 1):
@@ -424,7 +427,7 @@ class OpenWrt(BaseOpenWrt):
                 save=False,
             )
             try:
-                self.connect()
+                self.connection.connect()
             except (NoValidConnectionsError, socket.timeout, SSHException) as error:
                 self.log(
                     _(
