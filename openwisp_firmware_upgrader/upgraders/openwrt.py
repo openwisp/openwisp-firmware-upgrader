@@ -9,6 +9,7 @@ from django.utils.translation import gettext_lazy as _
 from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 
 from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
+from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
@@ -408,27 +409,28 @@ class OpenWrt(BaseOpenWrt):
         handle cases in which the IP has changed
         """
         self.connection.device.refresh_from_db()
-        self.connection.refresh_from_db()
-        del self.connection.connector_instance
+        self.connection = self.connection.get_working_connection(self.connection.device)
         self.addresses = self.connection.get_addresses()
         self._params = self.connection.connector_instance._params
         self.shell = self.connection.connector_instance.shell
 
     def _write_checksum(self, checksum):
         for attempt in range(1, self.RECONNECT_MAX_RETRIES + 1):
-            self._refresh_addresses()
-            addresses = ', '.join(self.addresses)
-            self.log(
-                _(
-                    'Trying to reconnect to device at {addresses} (attempt n.{attempt})...'.format(
-                        addresses=addresses, attempt=attempt
-                    )
-                ),
-                save=False,
-            )
             try:
+                self._refresh_addresses()
+                addresses = ', '.join(self.addresses)
+                self.log(
+                    _(
+                        'Trying to reconnect to device at {addresses} (attempt n.{attempt})...'.format(
+                            addresses=addresses, attempt=attempt
+                        )
+                    ),
+                    save=False,
+                )
                 self.connection.connect()
-            except (NoValidConnectionsError, socket.timeout, SSHException) as error:
+            except (NoWorkingDeviceConnectionError, NoValidConnectionsError, socket.timeout, SSHException) as error:
+                if not str(error):
+                    error = _('connection failed')
                 self.log(
                     _(
                         'Device not reachable yet, ({0}).\n'
@@ -441,9 +443,11 @@ class OpenWrt(BaseOpenWrt):
                 continue
             self.log(_('Connected! Writing checksum ' f'file to {self.CHECKSUM_FILE}'))
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
-            self.exec_command(f'mkdir -p {checksum_dir}')
-            self.exec_command(f'echo {checksum} > {self.CHECKSUM_FILE}')
-            self.disconnect()
+            self.connection.connector_instance.exec_command(f'mkdir -p {checksum_dir}')
+            self.connection.connector_instance.exec_command(
+                f'echo {checksum} > {self.CHECKSUM_FILE}'
+            )
+            self.connection.disconnect()
             self.log(_('Upgrade completed successfully.'))
             return
         # if all previous attempts failed
