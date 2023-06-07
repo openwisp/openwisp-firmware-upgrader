@@ -445,6 +445,25 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         for line in lines:
             self.assertIn(line, upgrade_op.log)
 
+    @patch.object(OpenWrt, '_call_reflash_command')
+    @patch('scp.SCPClient.putfo')
+    @patch('paramiko.SSHClient.connect')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch.object(
+        DeviceConnection,
+        'get_addresses',
+        side_effect=[['127.0.0.1'], ['127.0.0.1'], []],
+    )
+    @patch.object(OpenWrtSshConnector, 'upload')
+    def test_device_does_not_have_ip_after_reflash(self, *args):
+        _, _, upgrade_op, _, _ = self._trigger_upgrade()
+        self.assertNotIn(
+            'No valid IP addresses to initiate connections found', upgrade_op.log
+        )
+
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
     @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)

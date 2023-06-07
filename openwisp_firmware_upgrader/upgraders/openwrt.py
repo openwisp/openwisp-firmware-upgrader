@@ -92,7 +92,6 @@ class OpenWrt(BaseOpenWrt):
         super(OpenWrt, self).__init__(
             params=connection.get_params(), addresses=connection.get_addresses()
         )
-        connection.set_connector(self)
         self.upgrade_operation = upgrade_operation
         self.connection = connection
         self._non_critical_services_stopped = False
@@ -121,6 +120,15 @@ class OpenWrt(BaseOpenWrt):
     def log(self, value, save=True):
         self.upgrade_operation.log_line(value, save=save)
 
+    def connect(self):
+        return self.connection.connect()
+
+    def disconnect(self):
+        return self.connection.disconnect()
+
+    def exec_command(self, *args, **kwargs):
+        return self.connection.connector_instance.exec_command(*args, **kwargs)
+
     def upgrade(self, image):
         self._test_connection()
         checksum = self._test_checksum(image)
@@ -131,7 +139,7 @@ class OpenWrt(BaseOpenWrt):
         self._write_checksum(checksum)
 
     def _test_connection(self):
-        result = self.connection.connect()
+        result = self.connect()
         if not result:
             raise RecoverableFailure('Connection failed')
         self.log(_('Connection successful, starting upgrade...'))
@@ -139,7 +147,7 @@ class OpenWrt(BaseOpenWrt):
     def upload(self, image_file, remote_path):
         self.check_memory(image_file)
         try:
-            super().upload(image_file, remote_path)
+            self.connection.connector_instance.upload(image_file, remote_path)
         except Exception as e:
             raise RecoverableFailure(str(e))
 
@@ -388,7 +396,7 @@ class OpenWrt(BaseOpenWrt):
     @classmethod
     def _call_reflash_command(cls, upgrader, path, timeout, failure_queue):
         try:
-            upgrader.connection.connect()
+            upgrader.connect()
             command = upgrader.get_upgrade_command(path)
             # remove persistent checksum if present (introduced in openwisp-config 0.6.0)
             # otherwise the device will not download the configuration again after reflash
@@ -411,8 +419,6 @@ class OpenWrt(BaseOpenWrt):
         self.connection.device.refresh_from_db()
         self.connection = self.connection.get_working_connection(self.connection.device)
         self.addresses = self.connection.get_addresses()
-        self._params = self.connection.connector_instance._params
-        self.shell = self.connection.connector_instance.shell
 
     def _write_checksum(self, checksum):
         for attempt in range(1, self.RECONNECT_MAX_RETRIES + 1):
@@ -427,8 +433,13 @@ class OpenWrt(BaseOpenWrt):
                     ),
                     save=False,
                 )
-                self.connection.connect()
-            except (NoWorkingDeviceConnectionError, NoValidConnectionsError, socket.timeout, SSHException) as error:
+                self.connect()
+            except (
+                NoWorkingDeviceConnectionError,
+                NoValidConnectionsError,
+                socket.timeout,
+                SSHException,
+            ) as error:
                 if not str(error):
                     error = _('connection failed')
                 self.log(
@@ -443,11 +454,9 @@ class OpenWrt(BaseOpenWrt):
                 continue
             self.log(_('Connected! Writing checksum ' f'file to {self.CHECKSUM_FILE}'))
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
-            self.connection.connector_instance.exec_command(f'mkdir -p {checksum_dir}')
-            self.connection.connector_instance.exec_command(
-                f'echo {checksum} > {self.CHECKSUM_FILE}'
-            )
-            self.connection.disconnect()
+            self.exec_command(f'mkdir -p {checksum_dir}')
+            self.exec_command(f'echo {checksum} > {self.CHECKSUM_FILE}')
+            self.disconnect()
             self.log(_('Upgrade completed successfully.'))
             return
         # if all previous attempts failed
