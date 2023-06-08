@@ -1,12 +1,10 @@
 import os
-import socket
 from hashlib import sha256
 from time import sleep
 
 import jsonschema
 from billiard import Process, Queue
 from django.utils.translation import gettext_lazy as _
-from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 
 from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
@@ -420,26 +418,25 @@ class OpenWrt(BaseOpenWrt):
         self.connection = self.connection.get_working_connection(self.connection.device)
         self.addresses = self.connection.get_addresses()
 
+    def _log_reconnecting_error(self, attempt):
+        addresses = ', '.join(self.addresses)
+        self.log(
+            _(
+                'Trying to reconnect to device at {addresses} (attempt n.{attempt})...'.format(
+                    addresses=addresses, attempt=attempt
+                )
+            ),
+            save=False,
+        )
+
     def _write_checksum(self, checksum):
         for attempt in range(1, self.RECONNECT_MAX_RETRIES + 1):
             try:
                 self._refresh_addresses()
-                addresses = ', '.join(self.addresses)
-                self.log(
-                    _(
-                        'Trying to reconnect to device at {addresses} (attempt n.{attempt})...'.format(
-                            addresses=addresses, attempt=attempt
-                        )
-                    ),
-                    save=False,
-                )
-                self.connect()
-            except (
-                NoWorkingDeviceConnectionError,
-                NoValidConnectionsError,
-                socket.timeout,
-                SSHException,
-            ) as error:
+            except NoWorkingDeviceConnectionError as error:
+                if error.connection:
+                    self.addresses = error.connection.get_addresses()
+                self._log_reconnecting_error(attempt)
                 if not str(error):
                     error = _('connection failed')
                 self.log(
@@ -452,6 +449,7 @@ class OpenWrt(BaseOpenWrt):
                 )
                 sleep(self.RECONNECT_RETRY_DELAY)
                 continue
+            self._log_reconnecting_error(attempt)
             self.log(_('Connected! Writing checksum ' f'file to {self.CHECKSUM_FILE}'))
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
             self.exec_command(f'mkdir -p {checksum_dir}')
