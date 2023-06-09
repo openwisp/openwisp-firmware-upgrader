@@ -3,6 +3,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from time import sleep
 from unittest.mock import patch
 
+import swapper
 from billiard import Queue
 from celery.exceptions import Retry
 from django.test import TransactionTestCase
@@ -21,6 +22,7 @@ from ..upgraders.openwrt import OpenWrt
 from .base import TestUpgraderMixin, spy_mock
 
 DeviceFirmware = load_model('DeviceFirmware')
+DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
 
 TEST_CHECKSUM = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 
@@ -270,6 +272,26 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertFalse(device_conn.is_working)
         self.assertIn('Giving up', device_conn.failure_reason)
         self.assertTrue(device_conn.last_attempt > start_time)
+
+    @patch.object(OpenWrt, '_call_reflash_command')
+    @patch('scp.SCPClient.putfo')
+    @patch('paramiko.SSHClient.connect')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch.object(OpenWrtSshConnector, 'upload')
+    @patch.object(
+        DeviceConnection,
+        'get_addresses',
+        side_effect=[['127.0.0.1'], [], ['127.0.0.1']],
+    )
+    def test_device_does_not_have_ip_after_reflash(self, *args):
+        _, _, upgrade_op, _, _ = self._trigger_upgrade()
+        self.assertIn(
+            'No valid IP addresses to initiate connections found', upgrade_op.log
+        )
+        self.assertEqual(upgrade_op.status, 'success')
 
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)

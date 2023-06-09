@@ -334,7 +334,12 @@ class OpenWrt(BaseOpenWrt):
             )
             try:
                 self.connect()
-            except (NoValidConnectionsError, socket.timeout, SSHException) as error:
+            except (
+                NoValidConnectionsError,
+                socket.timeout,
+                SSHException,
+                ValueError,
+            ) as error:
                 self.log(
                     _(
                         'Device not reachable yet, ({0}).\n'
