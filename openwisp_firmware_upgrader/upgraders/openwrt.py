@@ -6,7 +6,6 @@ import jsonschema
 from billiard import Process, Queue
 from django.utils.translation import gettext_lazy as _
 
-from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 
 from ..exceptions import (
@@ -19,7 +18,7 @@ from ..exceptions import (
 from ..settings import OPENWRT_SETTINGS
 
 
-class OpenWrt(BaseOpenWrt):
+class OpenWrt(object):
     CHECKSUM_FILE = '/etc/openwisp/firmware_checksum'
     REMOTE_UPLOAD_DIR = '/tmp'
     RECONNECT_DELAY = OPENWRT_SETTINGS.get('reconnect_delay', 180)
@@ -87,9 +86,6 @@ class OpenWrt(BaseOpenWrt):
     log_lines = None
 
     def __init__(self, upgrade_operation, connection):
-        super(OpenWrt, self).__init__(
-            params=connection.get_params(), addresses=connection.get_addresses()
-        )
         self.upgrade_operation = upgrade_operation
         self.connection = connection
         self._non_critical_services_stopped = False
@@ -119,13 +115,32 @@ class OpenWrt(BaseOpenWrt):
         self.upgrade_operation.log_line(value, save=save)
 
     def connect(self):
+        """
+        Wrapper method to call "connect" method of the connection object
+        """
         return self.connection.connect()
 
     def disconnect(self):
+        """
+        Wrapper method to call "disconnect" method of the connection object
+        """
         return self.connection.disconnect()
 
     def exec_command(self, *args, **kwargs):
+        """
+        Wrapper method to call "exec_command" method of the connection object
+        """
         return self.connection.connector_instance.exec_command(*args, **kwargs)
+
+    def upload(self, image_file, remote_path):
+        """
+        Wrapper method to call "upload" method of the connection object
+        """
+        self.check_memory(image_file)
+        try:
+            self.connection.connector_instance.upload(image_file, remote_path)
+        except Exception as e:
+            raise RecoverableFailure(str(e))
 
     def upgrade(self, image):
         self._test_connection()
@@ -141,13 +156,6 @@ class OpenWrt(BaseOpenWrt):
         if not result:
             raise RecoverableFailure('Connection failed')
         self.log(_('Connection successful, starting upgrade...'))
-
-    def upload(self, image_file, remote_path):
-        self.check_memory(image_file)
-        try:
-            self.connection.connector_instance.upload(image_file, remote_path)
-        except Exception as e:
-            raise RecoverableFailure(str(e))
 
     _non_critical_services = [
         'uhttpd',
