@@ -1,14 +1,12 @@
 import os
-import socket
 from hashlib import sha256
 from time import sleep
 
 import jsonschema
 from billiard import Process, Queue
 from django.utils.translation import gettext_lazy as _
-from paramiko.ssh_exception import NoValidConnectionsError, SSHException
 
-from openwisp_controller.connection.connectors.openwrt.ssh import OpenWrt as BaseOpenWrt
+from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
@@ -20,7 +18,7 @@ from ..exceptions import (
 from ..settings import OPENWRT_SETTINGS
 
 
-class OpenWrt(BaseOpenWrt):
+class OpenWrt(object):
     CHECKSUM_FILE = '/etc/openwisp/firmware_checksum'
     REMOTE_UPLOAD_DIR = '/tmp'
     RECONNECT_DELAY = OPENWRT_SETTINGS.get('reconnect_delay', 180)
@@ -88,10 +86,6 @@ class OpenWrt(BaseOpenWrt):
     log_lines = None
 
     def __init__(self, upgrade_operation, connection):
-        super(OpenWrt, self).__init__(
-            params=connection.get_params(), addresses=connection.get_addresses()
-        )
-        connection.set_connector(self)
         self.upgrade_operation = upgrade_operation
         self.connection = connection
         self._non_critical_services_stopped = False
@@ -120,6 +114,34 @@ class OpenWrt(BaseOpenWrt):
     def log(self, value, save=True):
         self.upgrade_operation.log_line(value, save=save)
 
+    def connect(self):
+        """
+        Wrapper method to call "connect" method of the connection object
+        """
+        return self.connection.connect()
+
+    def disconnect(self):
+        """
+        Wrapper method to call "disconnect" method of the connection object
+        """
+        return self.connection.disconnect()
+
+    def exec_command(self, *args, **kwargs):
+        """
+        Wrapper method to call "exec_command" method of the connection object
+        """
+        return self.connection.connector_instance.exec_command(*args, **kwargs)
+
+    def upload(self, image_file, remote_path):
+        """
+        Wrapper method to call "upload" method of the connection object
+        """
+        self.check_memory(image_file)
+        try:
+            self.connection.connector_instance.upload(image_file, remote_path)
+        except Exception as e:
+            raise RecoverableFailure(str(e))
+
     def upgrade(self, image):
         self._test_connection()
         checksum = self._test_checksum(image)
@@ -130,17 +152,10 @@ class OpenWrt(BaseOpenWrt):
         self._write_checksum(checksum)
 
     def _test_connection(self):
-        result = self.connection.connect()
+        result = self.connect()
         if not result:
             raise RecoverableFailure('Connection failed')
         self.log(_('Connection successful, starting upgrade...'))
-
-    def upload(self, image_file, remote_path):
-        self.check_memory(image_file)
-        try:
-            super().upload(image_file, remote_path)
-        except Exception as e:
-            raise RecoverableFailure(str(e))
 
     _non_critical_services = [
         'uhttpd',
@@ -408,24 +423,30 @@ class OpenWrt(BaseOpenWrt):
         handle cases in which the IP has changed
         """
         self.connection.device.refresh_from_db()
-        self.connection.refresh_from_db()
+        self.connection = self.connection.get_working_connection(self.connection.device)
         self.addresses = self.connection.get_addresses()
+
+    def _log_reconnecting_error(self, attempt):
+        addresses = ', '.join(self.addresses)
+        self.log(
+            _(
+                'Trying to reconnect to device at {addresses} (attempt n.{attempt})...'.format(
+                    addresses=addresses, attempt=attempt
+                )
+            ),
+            save=False,
+        )
 
     def _write_checksum(self, checksum):
         for attempt in range(1, self.RECONNECT_MAX_RETRIES + 1):
-            self._refresh_addresses()
-            addresses = ', '.join(self.addresses)
-            self.log(
-                _(
-                    'Trying to reconnect to device at {addresses} (attempt n.{attempt})...'.format(
-                        addresses=addresses, attempt=attempt
-                    )
-                ),
-                save=False,
-            )
             try:
-                self.connect()
-            except (NoValidConnectionsError, socket.timeout, SSHException) as error:
+                self._refresh_addresses()
+            except NoWorkingDeviceConnectionError as error:
+                if error.connection:
+                    self.addresses = error.connection.get_addresses()
+                self._log_reconnecting_error(attempt)
+                if not str(error):
+                    error = _('connection failed')
                 self.log(
                     _(
                         'Device not reachable yet, ({0}).\n'
@@ -436,6 +457,7 @@ class OpenWrt(BaseOpenWrt):
                 )
                 sleep(self.RECONNECT_RETRY_DELAY)
                 continue
+            self._log_reconnecting_error(attempt)
             self.log(_('Connected! Writing checksum ' f'file to {self.CHECKSUM_FILE}'))
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
             self.exec_command(f'mkdir -p {checksum_dir}')

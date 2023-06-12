@@ -23,6 +23,7 @@ from .base import TestUpgraderMixin, spy_mock
 
 DeviceFirmware = load_model('DeviceFirmware')
 DeviceConnection = swapper_load_model('connection', 'DeviceConnection')
+Device = swapper_load_model('config', 'Device')
 
 
 TEST_CHECKSUM = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
@@ -134,13 +135,13 @@ def mocked_exec_upgrade_memory_aborted(
 
 
 def connect_fail_on_write_checksum_pre_action(*args, **kwargs):
-    if connect_fail_on_write_checksum.mock.call_count >= 2:
+    if connect_fail_on_write_checksum.mock.call_count >= 3:
         raise NoValidConnectionsError(errors={'127.0.0.1': 'mocked error'})
 
 
 _mock_memory_success_called = False
 connect_fail_on_write_checksum = spy_mock(
-    OpenWrt.connect, connect_fail_on_write_checksum_pre_action
+    OpenWrtSshConnector.connect, connect_fail_on_write_checksum_pre_action
 )
 
 
@@ -251,14 +252,14 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
     @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
     @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
-    @patch.object(OpenWrt, 'connect', connect_fail_on_write_checksum)
+    @patch.object(OpenWrtSshConnector, 'connect', connect_fail_on_write_checksum)
     def test_cant_reconnect_on_write_checksum(self, exec_command, putfo, *args):
         start_time = timezone.now()
         with redirect_stderr(io.StringIO()):
             device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertEqual(exec_command.call_count, 6)
         self.assertEqual(putfo.call_count, 1)
-        self.assertEqual(connect_fail_on_write_checksum.mock.call_count, 11)
+        self.assertEqual(connect_fail_on_write_checksum.mock.call_count, 12)
         self.assertEqual(upgrade_op.status, 'failed')
         lines = [
             'Checksum different, proceeding',
@@ -408,24 +409,19 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     def test_device_ip_changed_after_reflash(self, exec_command, alive, putfo, *args):
         device_fw, device_conn, output = self._trigger_upgrade(upgrade=False)
 
-        def connect_pre_action(upgrader):
+        def connect_pre_action(connector):
             if connect_mocked.mock.call_count == 1:
                 return
             # simulate case in which IP address of the device
             # has changed after a few attempts
-            if connect_mocked.mock.call_count == 3:
-                device_model = upgrader.connection.device.__class__
-                # instantiate a new object to avoid influencing
-                # the correct replication of the bug case
-                device = device_model.objects.get(pk=upgrader.connection.device.pk)
-                device.management_ip = '192.168.99.254'
-                device.save()
-            if connect_mocked.mock.call_count > 1:
+            if connect_mocked.mock.call_count == 4:
+                Device.objects.update(management_ip='192.168.99.254')
+            if connect_mocked.mock.call_count > 2:
                 raise NoValidConnectionsError(errors={'127.0.0.1': 'mocked error'})
 
-        connect_mocked = spy_mock(OpenWrt.connect, connect_pre_action)
+        connect_mocked = spy_mock(OpenWrtSshConnector.connect, connect_pre_action)
 
-        with patch.object(OpenWrt, 'connect', connect_mocked):
+        with patch.object(OpenWrtSshConnector, 'connect', connect_mocked):
             with redirect_stderr(io.StringIO()):
                 device_fw.save()
 
@@ -444,6 +440,25 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
+
+    @patch.object(OpenWrt, '_call_reflash_command')
+    @patch('scp.SCPClient.putfo')
+    @patch('paramiko.SSHClient.connect')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch.object(
+        DeviceConnection,
+        'get_addresses',
+        side_effect=[['127.0.0.1'], ['127.0.0.1'], []],
+    )
+    @patch.object(OpenWrtSshConnector, 'upload')
+    def test_device_does_not_have_ip_after_reflash(self, *args):
+        _, _, upgrade_op, _, _ = self._trigger_upgrade()
+        self.assertNotIn(
+            'No valid IP addresses to initiate connections found', upgrade_op.log
+        )
 
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
