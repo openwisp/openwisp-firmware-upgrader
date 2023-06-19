@@ -35,7 +35,7 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        'openwisp-controller @ https://github.com/openwisp/openwisp-controller/tarball/django-4.2-support',
+        'openwisp-controller @ https://github.com/openwisp/openwisp-controller/tarball/master',
         'django-private-storage~=3.1.0',
     ],
     classifiers=[
