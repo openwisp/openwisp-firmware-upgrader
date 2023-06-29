@@ -1,0 +1,10 @@
+#main div[id*=upgrade_options_jsoneditor] .controls {
+  display: none;
+}
+.field-readonly_upgrade_options .readonly-upgrade-options {
+  margin-left: 0px;
+  padding-left: 0px;
+}
+.readonly-upgrade-options li img {
+  margin-right: 5px;
+}

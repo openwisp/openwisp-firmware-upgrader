@@ -74,7 +74,7 @@ Installation instructions
 Requirements
 ~~~~~~~~~~~~
 
-- Python >= 3.7
+- Python >= 3.8
 - openwisp-controller (and its dependencies) >= 1.0.0
 
 Install Dependencies
@@ -471,6 +471,20 @@ List mass upgrade operations
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/
 
+**Available filters**
+
+The list of batch upgrade operations provides the following filters:
+
+- ``build`` (Firmware build ID)
+- ``status`` (One of: idle, in-progress, success, failed)
+
+Here's a few examples:
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?build={build_id}
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status={status}
+
 Get mass upgrade operation detail
 #################################
 
@@ -484,6 +498,22 @@ List firmware builds
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/build/
+
+**Available filters**
+
+The list of firmware builds provides the following filters:
+
+- ``category`` (Firmware category ID)
+- ``version``  (Firmware build version)
+- ``os`` (Firmware build os identifier)
+
+Here's a few examples:
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/?category={category_id}
+    GET /api/v1/firmware-upgrader/build/?version={version}
+    GET /api/v1/firmware-upgrader/build/?os={os}
 
 Create firmware build
 #####################
@@ -527,6 +557,15 @@ Get list of images of a firmware build
 
     GET /api/v1/firmware-upgrader/build/{id}/image/
 
+**Available filters**
+
+The list of images of a firmware build can be filtered by using
+``type`` (any one of the available firmware image types).
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/{id}/image/?type={type}
+
 Upload new firmware image to the build
 ######################################
 
@@ -539,21 +578,21 @@ Get firmware image details
 
 .. code-block:: text
 
-    GET /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/
+    GET /api/v1/firmware-upgrader/build/{build_id}/image/{id}/
 
 Delete firmware image
 #####################
 
 .. code-block:: text
 
-    DELETE /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/
+    DELETE /api/v1/firmware-upgrader/build/{build_id}/image/{id}/
 
 Download firmware image
 #######################
 
 .. code-block:: text
 
-    GET /api/v1/firmware-upgrader/build/{build_pk}/image/{id}/download/
+    GET /api/v1/firmware-upgrader/build/{build_id}/image/{id}/download/
 
 Perform batch upgrade
 #####################
@@ -618,6 +657,95 @@ Delete a firmware category
 .. code-block:: text
 
     DELETE /api/v1/firmware-upgrader/category/{id}/
+
+List upgrade operations
+#######################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/
+
+**Available filters**
+
+The list of upgrade operations provides the following filters:
+
+- ``device__organization`` (Organization ID of the device)
+- ``device__organization_slug``  (Organization slug of the device)
+- ``device`` (Device ID)
+- ``image`` (Firmware image ID)
+- ``status`` (One of: in-progress, success, failed, aborted)
+
+
+Here's a few examples:
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/?device__organization={organization_id}
+    GET /api/v1/firmware-upgrader/upgrade-operation/?device__organization__slug={organization_slug}
+    GET /api/v1/firmware-upgrader/upgrade-operation/?device={device_id}
+    GET /api/v1/firmware-upgrader/upgrade-operation/?image={image_id}
+    GET /api/v1/firmware-upgrader/upgrade-operation/?status={status}
+
+Get upgrade operation details
+#############################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/upgrade-operation/{id}
+
+List device upgrade operations
+##############################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/device/{device_id}/upgrade-operation/
+
+**Available filters**
+
+The list of device upgrade operations can be filtered by
+``status`` (one of: in-progress, success, failed, aborted).
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/device/{device_id}/upgrade-operation/?status={status}
+
+Create device firmware
+######################
+
+Sending a PUT request to the endpoint below will
+create a new device firmware if it does not already exist.
+
+.. code-block:: text
+
+    PUT /api/v1/firmware-upgrader/device/{device_id}/firmware/
+
+Get device firmware details
+###########################
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/device/{device_id}/firmware/
+
+Change details of device firmware
+#################################
+
+.. code-block:: text
+
+    PUT /api/v1/firmware-upgrader/device/{device_id}/firmware/
+
+Patch details of device firmware
+#################################
+
+.. code-block:: text
+
+    PATCH /api/v1/firmware-upgrader/device/{device_id}/firmware/
+
+Delete device firmware
+######################
+
+.. code-block:: text
+
+    DELETE /api/v1/firmware-upgrader/device/{device_pk}/firmware/
 
 Settings
 --------

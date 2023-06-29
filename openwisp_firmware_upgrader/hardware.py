@@ -356,6 +356,14 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     'boards': ('Ubiquiti Picostation M',),
                 },
             ),
+            # Ubiquiti Unifi
+            (
+                'ath79-generic-ubnt_unifi-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti UniFi (OpenWRT 19.07 and later)',
+                    'boards': ('Ubiquiti UniFi',),
+                },
+            ),
             # Ubiquiti UniFi AC LR ATH79
             (
                 'ath79-generic-ubnt_unifiac-lr-squashfs-sysupgrade.bin',
@@ -427,6 +435,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     'label': 'Ubiquiti UniFi AP Pro (OpenWRT 19.07 and earlier)',
                     'boards': ('Ubiquiti UAP Pro',),
+                },
+            ),
+            (
+                'ramips-mt7621-yuncore_ax820-squashfs-sysupgrade.bin',
+                {
+                    'label': 'YunCore AX820',
+                    'boards': ('YunCore AX820',),
                 },
             ),
             (

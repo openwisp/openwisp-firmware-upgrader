@@ -2,6 +2,10 @@ class FirmwareUpgraderException(Exception):
     pass
 
 
+class FirmwareUpgradeOptionsException(Exception):
+    pass
+
+
 class UpgradeNotNeeded(FirmwareUpgraderException):
     """
     Raised when the upgrade is not needed

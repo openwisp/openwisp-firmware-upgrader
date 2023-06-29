@@ -1,4 +1,4 @@
-VERSION = (1, 0, 1, 'final')
+VERSION = (1, 1, 0, 'alpha')
 __version__ = VERSION  # alias
 
 
@@ -16,6 +16,3 @@ def get_version():
                 rev = 0
             version = '%s%s%s' % (version, VERSION[3][0:1], rev)
     return version
-
-
-default_app_config = 'openwisp_firmware_upgrader.apps.FirmwareUpdaterConfig'

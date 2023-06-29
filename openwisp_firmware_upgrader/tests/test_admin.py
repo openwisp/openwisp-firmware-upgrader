@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from unittest import mock
 
@@ -9,6 +10,7 @@ from django.urls import reverse
 from django.utils.timezone import localtime
 
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
+from openwisp_controller.connection import settings as conn_settings
 from openwisp_firmware_upgrader.admin import (
     BuildAdmin,
     DeviceAdmin,
@@ -22,6 +24,7 @@ from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
+from ..upgraders.openwisp import OpenWisp1
 from .base import TestUpgraderMixin
 
 User = get_user_model()
@@ -109,7 +112,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(11):
+        with self.assertNumQueries(13):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -125,7 +128,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(9):
+        with self.assertNumQueries(12):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -335,19 +338,39 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         self.assertEqual(Device.objects.count(), 3)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         self.assertEqual(fw.count(), 0)
-        r = self.client.post(
-            self.build_list_url,
-            {
-                'action': 'upgrade_selected',
-                'upgrade_related': 'upgrade_related',
-                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
-            },
-            follow=True,
-        )
-        self.assertContains(r, '<li class="success">')
-        self.assertContains(r, 'track the progress')
-        self.assertEqual(UpgradeOperation.objects.count(), 2)
-        self.assertEqual(fw.count(), 2)
+
+        with self.subTest('Invalid upgrade_options'):
+            response = self.client.post(
+                self.build_list_url,
+                {
+                    'action': 'upgrade_selected',
+                    'upgrade_related': 'upgrade_related',
+                    'upgrade_options': 'invalid',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(
+                response, '<ul class="errorlist"><li>Enter a valid JSON.</li></ul>'
+            )
+
+        with self.subTest('Test with valid upgrade_options'):
+            r = self.client.post(
+                self.build_list_url,
+                {
+                    'action': 'upgrade_selected',
+                    'upgrade_related': 'upgrade_related',
+                    'upgrade_options': '{"c": true}',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(r, '<li class="success">')
+            self.assertContains(r, 'track the progress')
+            self.assertEqual(
+                UpgradeOperation.objects.filter(upgrade_options={'c': True}).count(), 2
+            )
+            self.assertEqual(fw.count(), 2)
 
     def test_upgrade_all(self, *args):
         self._login()
@@ -360,19 +383,63 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         self.assertEqual(Device.objects.count(), 3)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         self.assertEqual(fw.count(), 0)
-        r = self.client.post(
-            self.build_list_url,
-            {
-                'action': 'upgrade_selected',
-                'upgrade_all': 'upgrade_all',
-                ACTION_CHECKBOX_NAME: (env['build2'].pk,),
-            },
-            follow=True,
-        )
-        self.assertContains(r, '<li class="success">')
-        self.assertContains(r, 'track the progress')
-        self.assertEqual(UpgradeOperation.objects.count(), 3)
-        self.assertEqual(fw.count(), 3)
+
+        with self.subTest('Invalid upgrade_options'):
+            response = self.client.post(
+                self.build_list_url,
+                {
+                    'action': 'upgrade_selected',
+                    'upgrade_all': 'upgrade_all',
+                    'upgrade_options': 'invalid',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(
+                response, '<ul class="errorlist"><li>Enter a valid JSON.</li></ul>'
+            )
+
+        with self.subTest('Test with valid upgrade_options'):
+            response = self.client.post(
+                self.build_list_url,
+                {
+                    'action': 'upgrade_selected',
+                    'upgrade_all': 'upgrade_all',
+                    'upgrade_options': '{"c": true}',
+                    ACTION_CHECKBOX_NAME: (env['build2'].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(response, '<li class="success">')
+            self.assertContains(response, 'track the progress')
+            self.assertEqual(
+                UpgradeOperation.objects.filter(upgrade_options={'c': True}).count(), 3
+            )
+            self.assertEqual(fw.count(), 3)
+            self.assertContains(
+                response,
+                (
+                    '<div class="readonly"><ul class="readonly-upgrade-options">'
+                    '<li><img src="/static/admin/img/icon-yes.svg" alt="yes">'
+                    'Attempt to preserve all changed files in /etc/ (-c)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Attempt to preserve all changed files in /, except those from '
+                    'packages but including changed confs. (-o)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Do not save configuration over reflash (-n)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Skip from backup files that are equal to those in /rom (-u)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Do not attempt to restore the partition table after flash. (-p)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Include in backup a list of current installed packages at '
+                    '/etc/backup/installed_packages.txt (-k)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    'Flash image even if image checks fail, this is dangerous! (-F)</li></ul></div>'
+                ),
+                html=True,
+            )
 
     def test_massive_upgrade_operation_page(self, *args):
         self.test_upgrade_all()
@@ -426,6 +493,166 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
         uo.save()
         qs = inline.get_queryset(request)
         self.assertEqual(qs.count(), 0)
+
+    def test_device_firmware_upgrade_options(self, *args):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        device_params = self._device_params.copy()
+        build = self._create_build(version='0.2')
+        image = self._create_firmware_image(build=build)
+        upgrade_options = {
+            'c': True,
+            'o': False,
+            'u': False,
+            'n': False,
+            'p': False,
+            'k': False,
+            'F': True,
+        }
+        device_params.update(
+            {
+                'model': device.model,
+                'devicefirmware-0-image': str(image.id),
+                'devicefirmware-0-id': str(device_fw.id),
+                'devicefirmware-0-upgrade_options': json.dumps(upgrade_options),
+                'organization': str(device.organization.id),
+                'config-0-id': str(device.config.pk),
+                'config-0-device': str(device.id),
+                'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
+                'deviceconnection_set-0-id': str(device_conn.id),
+                'deviceconnection_set-0-update_strategy': conn_settings.DEFAULT_UPDATE_STRATEGIES[
+                    0
+                ][
+                    0
+                ],
+                'deviceconnection_set-0-enabled': True,
+                'devicefirmware-TOTAL_FORMS': 1,
+                'devicefirmware-INITIAL_FORMS': 1,
+                'upgradeoperation_set-TOTAL_FORMS': 0,
+                'upgradeoperation_set-INITIAL_FORMS': 0,
+                'upgradeoperation_set-MIN_NUM_FORMS': 0,
+                'upgradeoperation_set-MAX_NUM_FORMS': 0,
+                '_continue': True,
+            }
+        )
+        response = self.client.post(
+            reverse('admin:config_device_change', args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(device.upgradeoperation_set.count(), 1)
+        upgrade_operation = device.upgradeoperation_set.first()
+        self.assertEqual(upgrade_operation.upgrade_options, upgrade_options)
+        self.assertContains(
+            response,
+            (
+                '<div class="readonly"><ul class="readonly-upgrade-options"><li>'
+                '<img src="/static/admin/img/icon-yes.svg" alt="yes">'
+                'Attempt to preserve all changed files in /etc/ (-c)</li>'
+                '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                'Attempt to preserve all changed files in /, except those from packages '
+                'but including changed confs. (-o)</li>'
+                '<li><img src="/static/admin/img/icon-no.svg" '
+                'alt="no">Do not save configuration over reflash (-n)</li>'
+                '<li><img src="/static/admin/img/icon-no.svg" alt="no">Skip from backup files '
+                'that are equal to those in /rom (-u)</li>'
+                '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                'Do not attempt to restore the partition table after flash. (-p)</li>'
+                '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                'Include in backup a list of current installed packages at '
+                '/etc/backup/installed_packages.txt (-k)</li>'
+                '<li><img src="/static/admin/img/icon-yes.svg" alt="yes">'
+                'Flash image even if image checks fail, this is dangerous! (-F)</li></ul></div>'
+            ),
+            html=True,
+        )
+
+    @mock.patch.object(OpenWisp1, 'SCHEMA', None)
+    def test_using_upgrade_options_with_unsupported_upgrader(self, *args):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device.config.backend = 'netjsonconfig.OpenWisp'
+        device.config.save()
+        device_conn = device.deviceconnection_set.first()
+        device_conn.update_strategy = conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
+        device_conn.save()
+        device_params = self._device_params.copy()
+        build = self._create_build(version='0.2')
+        image = self._create_firmware_image(build=build)
+        upgrade_options = {
+            'c': True,
+            'o': False,
+            'u': False,
+            'n': False,
+            'p': False,
+            'k': False,
+            'F': True,
+        }
+        device_params.update(
+            {
+                'model': device.model,
+                'devicefirmware-0-image': str(image.id),
+                'devicefirmware-0-id': str(device_fw.id),
+                'devicefirmware-0-upgrade_options': json.dumps(upgrade_options),
+                'organization': str(device.organization.id),
+                'config-0-id': str(device.config.pk),
+                'config-0-device': str(device.id),
+                'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
+                'deviceconnection_set-0-id': str(device_conn.id),
+                'deviceconnection_set-0-update_strategy': (
+                    conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
+                ),
+                'deviceconnection_set-0-enabled': True,
+                'devicefirmware-TOTAL_FORMS': 1,
+                'devicefirmware-INITIAL_FORMS': 1,
+                'upgradeoperation_set-TOTAL_FORMS': 0,
+                'upgradeoperation_set-INITIAL_FORMS': 0,
+                'upgradeoperation_set-MIN_NUM_FORMS': 0,
+                'upgradeoperation_set-MAX_NUM_FORMS': 0,
+                '_continue': True,
+            }
+        )
+
+        with self.subTest('Test DeviceFirmwareInline does not have schema defined'):
+            response = self.client.get(
+                reverse('admin:config_device_change', args=[device.id])
+            )
+            self.assertContains(
+                response, '<script>\nvar firmwareUpgraderSchema = null\n</script>'
+            )
+
+        with self.subTest('Test using upgrade options with unsupported upgrader'):
+            response = self.client.post(
+                reverse('admin:config_device_change', args=[device.id]),
+                data=device_params,
+                follow=True,
+            )
+            self.assertContains(
+                response,
+                (
+                    '<ul class="errorlist nonfield"><li>Using upgrade '
+                    'options is not allowed with this upgrader.</li></ul>'
+                ),
+            )
+
+        with self.subTest('Test upgrading without upgrade options'):
+            del device_params['devicefirmware-0-upgrade_options']
+            response = self.client.post(
+                reverse('admin:config_device_change', args=[device.id]),
+                data=device_params,
+                follow=True,
+            )
+            self.assertContains(
+                response,
+                (
+                    '<div class="readonly">Upgrade options are '
+                    'not supported for this upgrader.</div>'
+                ),
+            )
 
 
 del TestConfigAdmin

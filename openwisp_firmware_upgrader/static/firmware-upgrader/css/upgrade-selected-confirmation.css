@@ -1,0 +1,15 @@
+form > div > div.form-row {
+  display: none;
+}
+form .errorlist {
+  margin-top: -10px;
+}
+.errorlist > li {
+  visibility: hidden;
+}
+.errorlist ul li{
+  visibility: visible;
+}
+#ow-loading {
+  display: flex;
+}
