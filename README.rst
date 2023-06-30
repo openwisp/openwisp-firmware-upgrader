@@ -74,7 +74,7 @@ Installation instructions
 Requirements
 ~~~~~~~~~~~~
 
-- Python >= 3.7
+- Python >= 3.8
 - openwisp-controller (and its dependencies) >= 1.0.0
 
 Install Dependencies

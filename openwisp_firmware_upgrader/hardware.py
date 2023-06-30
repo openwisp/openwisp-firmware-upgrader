@@ -64,6 +64,10 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {'label': 'Linksys WRT3200ACM', 'boards': ('Linksys WRT3200ACM',)},
             ),
             (
+                'ipq40xx-mikrotik-mikrotik_wap-ac-squashfs-sysupgrade.bin',
+                {'label': 'MikroTik wAP ac', 'boards': ('MikroTik wAP ac',)},
+            ),
+            (
                 'brcm2708-bcm2709-rpi-2-ext4-sysupgrade.img.gz',
                 {
                     'label': 'Raspberry Pi 2 Model B',
@@ -490,7 +494,12 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 'x86-64-generic-squashfs-combined.img.gz',
                 {
                     'label': 'Generic x86/64 (QEMU/KVM)',
-                    'boards': ('x86_64', 'PC Engines APU2'),
+                    'boards': (
+                        'x86_64',
+                        'PC Engines APU2',
+                        'PC Engines apu2',
+                        'PC Engines apu6',
+                    ),
                 },
             ),
             (

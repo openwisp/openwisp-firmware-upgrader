@@ -6,3 +6,6 @@ class SampleFirmwareUpgraderConfig(FirmwareUpdaterConfig):
     label = 'sample_firmware_upgrader'
     verbose_name = 'Firmware Upgrader (custom)'
     default_auto_field = 'django.db.models.AutoField'
+
+
+del FirmwareUpdaterConfig

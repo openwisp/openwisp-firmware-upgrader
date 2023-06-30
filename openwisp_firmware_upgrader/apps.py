@@ -70,3 +70,6 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             sender=FirmwareImage,
             dispatch_uid='firmware_image.auto_add_device_firmwares',
         )
+
+
+del ApiAppConfig
