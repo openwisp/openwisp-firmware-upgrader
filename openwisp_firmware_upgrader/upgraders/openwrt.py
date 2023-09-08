@@ -414,7 +414,18 @@ class OpenWrt(object):
             )
             upgrader.log(output)
         except Exception as e:
-            failure_queue.put(e)
+            # In some cases, for some unknown reason, the sysupgrade command
+            # returns a non zero exit code, but it is carried out anyway.
+            # This is a workaround to recognize this false positive and ignore it.
+            if str(e) != (
+                'Command failed: ubus call system sysupgrade '
+                '{ "prefix": "\/tmp\/root", '
+                f'"path": "\/tmp\/{path.split("/")[-1]}", '
+                '"command": "\/lib\/upgrade\/do_stage2", '
+                '"options": { "save_partitions": 1 } } '
+                '(Connection failed)'
+            ):
+                failure_queue.put(e)
         upgrader.disconnect()
 
     def _refresh_addresses(self):
