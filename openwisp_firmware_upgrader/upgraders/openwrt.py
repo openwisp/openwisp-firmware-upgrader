@@ -1,4 +1,5 @@
 import os
+import re
 from hashlib import sha256
 from time import sleep
 
@@ -84,6 +85,15 @@ class OpenWrt(object):
     }
 
     log_lines = None
+
+    _false_positives = [
+        '^Command failed: ubus call system sysupgrade '
+        '\\{ "prefix": "\\\/tmp\\\/root", '
+        '"path": "[^"]*", '
+        '"backup": "\\\/tmp\\\/sysupgrade.tgz", '
+        '"command": "\\\/lib\\\/upgrade\\\/do_stage2", '
+        '"options": \\{ "save_partitions": 1 \\} \\}'
+    ]
 
     def __init__(self, upgrade_operation, connection):
         self.upgrade_operation = upgrade_operation
@@ -417,14 +427,12 @@ class OpenWrt(object):
             # In some cases, for some unknown reason, the sysupgrade command
             # returns a non zero exit code, but it is carried out anyway.
             # This is a workaround to recognize this false positive and ignore it.
-            if str(e) != (
-                'Command failed: ubus call system sysupgrade '
-                '{ "prefix": "\/tmp\/root", '
-                f'"path": "\/tmp\/{path.split("/")[-1]}", '
-                '"command": "\/lib\/upgrade\/do_stage2", '
-                '"options": { "save_partitions": 1 } } '
-                '(Connection failed)'
-            ):
+            error = str(e)
+            is_false_positive = False
+            for pattern in cls._false_positives:
+                if re.match(pattern, error):
+                    is_false_positive = True
+            if not is_false_positive:
                 failure_queue.put(e)
         upgrader.disconnect()
 

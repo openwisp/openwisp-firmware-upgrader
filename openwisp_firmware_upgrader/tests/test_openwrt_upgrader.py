@@ -143,6 +143,7 @@ def mocked_exec_upgrade_success_non_zero_exit_code(
             'Command failed: ubus call system sysupgrade '
             '{ "prefix": "\/tmp\/root", '
             f'"path": "\/tmp\/{filename}", '
+            '"backup": "\/tmp\/sysupgrade.tgz", '
             '"command": "\/lib\/upgrade\/do_stage2", '
             '"options": { "save_partitions": 1 } } '
             '(Connection failed)'
