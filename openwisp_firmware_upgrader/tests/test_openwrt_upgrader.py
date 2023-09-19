@@ -134,6 +134,23 @@ def mocked_exec_upgrade_memory_aborted(
     return mocked_exec_upgrade_memory_success(command, exit_codes=None, timeout=None)
 
 
+def mocked_exec_upgrade_success_false_positives(
+    command, exit_codes=None, timeout=None, raised_unexpected_exit=None
+):
+    if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c /tmp/openwrt-'):
+        filename = command.split()[-1].split('/')[-1]
+        raise CommandFailedException(
+            'Command failed: ubus call system sysupgrade '
+            '{ "prefix": "\/tmp\/root", '
+            f'"path": "\/tmp\/{filename}", '
+            '"backup": "\/tmp\/sysupgrade.tgz", '
+            '"command": "\/lib\/upgrade\/do_stage2", '
+            '"options": { "save_partitions": 1 } } '
+            '(Connection failed)'
+        )
+    return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
+
+
 def connect_fail_on_write_checksum_pre_action(*args, **kwargs):
     if connect_fail_on_write_checksum.mock.call_count >= 3:
         raise NoValidConnectionsError(errors={'127.0.0.1': 'mocked error'})
@@ -735,3 +752,33 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(
+        OpenWrt,
+        'exec_command',
+        side_effect=mocked_exec_upgrade_success_false_positives,
+    )
+    def test_upgrade_success_false_positives(self, exec_command, is_alive, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        # should be called 6 times but 1 time is
+        # executed in a subprocess and not caught by mock
+        self.assertEqual(upgrade_op.status, 'success')
+        self.assertEqual(exec_command.call_count, 8)
+        self.assertEqual(putfo.call_count, 1)
+        self.assertEqual(is_alive.call_count, 1)
+        lines = [
+            'Image checksum file found',
+            'Checksum different, proceeding',
+            'Upgrade operation in progress',
+            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
+            'Connected! Writing checksum',
+            'Upgrade completed successfully',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertTrue(device_fw.installed)
