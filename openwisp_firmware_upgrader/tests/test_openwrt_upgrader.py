@@ -134,7 +134,7 @@ def mocked_exec_upgrade_memory_aborted(
     return mocked_exec_upgrade_memory_success(command, exit_codes=None, timeout=None)
 
 
-def mocked_exec_upgrade_success_non_zero_exit_code(
+def mocked_exec_upgrade_success_false_positives(
     command, exit_codes=None, timeout=None, raised_unexpected_exit=None
 ):
     if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c /tmp/openwrt-'):
@@ -760,9 +760,9 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch.object(
         OpenWrt,
         'exec_command',
-        side_effect=mocked_exec_upgrade_success_non_zero_exit_code,
+        side_effect=mocked_exec_upgrade_success_false_positives,
     )
-    def test_upgrade_success_non_zero_exit_code(self, exec_command, is_alive, putfo):
+    def test_upgrade_success_false_positives(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         # should be called 6 times but 1 time is

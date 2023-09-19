@@ -91,7 +91,11 @@ class OpenWrt(object):
         '\{ "prefix": "\\\/tmp\\\/root", "path": "[^"]*", '
         '"backup": "\\\/tmp\\\/sysupgrade.tgz", '
         '"command": "\\\/lib\\\/upgrade\\\/do_stage2", '
-        '"options": \{ "save_partitions": 1 \} \}'
+        '"options": \{ "save_partitions": 1 \} \}',
+        'Command failed: ubus call system sysupgrade '
+        '\{ "prefix": "\\\/tmp\\\/root", "path": "[^"]*", '
+        '"command": "\\\/lib\\\/upgrade\\\/do_stage2", '
+        '"options": \{ "save_partitions": 1 \} \}',
     ]
 
     def __init__(self, upgrade_operation, connection):
