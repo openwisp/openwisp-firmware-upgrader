@@ -3,7 +3,7 @@ OpenWISP Firmware Upgrader
 
 .. warning::
 
-  This is the latest version
+  This is the stable version
 
 
 Firmware upgrade module of OpenWISP.
