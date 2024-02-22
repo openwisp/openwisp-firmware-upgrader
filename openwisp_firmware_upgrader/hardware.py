@@ -38,6 +38,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ipq807x-generic-edgecore_eap102-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Edgecore EAP102',
+                    'boards': ('Edgecore EAP102',),
+                },
+            ),
+            (
                 'ipq40xx-generic-engenius_eap1300-squashfs-sysupgrade.bin',
                 {
                     'label': 'EnGenius EAP1300',
