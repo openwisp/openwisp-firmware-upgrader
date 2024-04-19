@@ -456,6 +456,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ramips-mt7621-yuncore_g720-squashfs-sysupgrade.bin',
+                {
+                    'label': 'YunCore G720',
+                    'boards': ('YunCore G720',),
+                },
+            ),
+            (
                 'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
                 {
                     'label': 'YunCore XD3200 (OpenWRT 19.07 and earlier)',
