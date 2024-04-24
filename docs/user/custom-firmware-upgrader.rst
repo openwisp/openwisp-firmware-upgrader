@@ -25,5 +25,5 @@ Here is an example custom OpenWrt firmware upgrader class:
             return self.UPGRADE_COMMAND
 
 You will need to place your custom upgrader class on the python path
-of your application and then add this path to the `OPENWISP_FIRMWARE_UPGRADERS_MAP
+of your application and then add this path to the :ref:`OPENWISP_FIRMWARE_UPGRADERS_MAP
 <#openwisp_firmware_upgraders_map>`_ setting.

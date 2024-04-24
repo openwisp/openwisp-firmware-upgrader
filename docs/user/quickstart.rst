@@ -69,7 +69,7 @@ Alternatively the `REST API <#rest-api>`__ can be used to automate this step.
 
 If you use a hardware model which is not listed in the image types, if the
 hardware model is officially supported by OpenWRT, you can send us a pull-request to add it,
-otherwise you can use `the setting OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`__
+otherwise you can use :ref:`the setting OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`__
 to add it.
 
 4. Perform a firmware upgrade to a specific device
