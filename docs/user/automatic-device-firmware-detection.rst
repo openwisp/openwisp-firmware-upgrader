@@ -27,5 +27,5 @@ This value is then saved in the ``Device.model`` field.
 *OpenWISP Firmware Upgrader* uses this field to automatically detect
 the correct firmware image for the device.
 
-Use the `OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`_
+Use the :ref:`OPENWISP_CUSTOM_OPENWRT_IMAGES <#openwisp_custom_openwrt_images>`_
 setting to add additional firmware image in your project.

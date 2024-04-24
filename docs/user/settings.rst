@@ -52,6 +52,8 @@ bug causes a specific task to hang, which will quickly fill all the available
 slots in a background queue and prevent other tasks from being executed, which
 will end up affecting negatively the rest of the application.
 
+.. _openwisp_custom_openwrt_images:
+
 ``OPENWISP_CUSTOM_OPENWRT_IMAGES``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -163,6 +165,8 @@ If you have a seperate instance of openwisp-firmware-upgrader API on a
 different domain, you can use this option to change the base of the image
 download url, this will enable you to point to your API server's domain,
 example value: ``https://myfirmware.myapp.com``.
+
+.. _openwisp_firmware_upgraders_map:
 
 ``OPENWISP_FIRMWARE_UPGRADERS_MAP``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
