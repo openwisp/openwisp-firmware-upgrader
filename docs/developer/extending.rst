@@ -1,6 +1,8 @@
 Extending openwisp-firmware-upgrader
 ------------------------------------
 
+.. include:: /partials/developers-docs-warning.rst
+
 One of the core values of the OpenWISP project is `Software Reusability <http://openwisp.io/docs/general/values.html#software-reusability-means-long-term-sustainability>`_,
 for this reason *OpenWISP Firmware Upgrader* provides a set of base classes
 which can be imported, extended and reused to create derivative apps.
