@@ -28,6 +28,8 @@ def get_upgrader_class_for_device(device):
         update_strategy__icontains='ssh',
         enabled=True,
     ).first()
+    if not device_conn:
+        raise device.deviceconnection_set.model.DoesNotExist
     return get_upgrader_class_from_device_connection(device_conn)
 
 

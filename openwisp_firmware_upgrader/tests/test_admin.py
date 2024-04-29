@@ -21,6 +21,7 @@ from openwisp_firmware_upgrader.admin import (
     admin,
 )
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
+from openwisp_utils.tests import capture_stderr
 
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
@@ -316,6 +317,23 @@ class TestAdmin(BaseTestAdmin, TestCase):
             reverse('admin:config_device_change', args=[device.id]),
             data=device_params,
             follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+
+    @capture_stderr()
+    def test_device_firmware_upgrade_without_device_connection(
+        self, captured_stderr, *args
+    ):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device.deviceconnection_set.all().delete()
+        response = self.client.get(
+            reverse('admin:config_device_change', args=[device.id])
+        )
+        self.assertNotIn(
+            '\'NoneType\' object has no attribute \'update_strategy\'',
+            captured_stderr.getvalue(),
         )
         self.assertEqual(response.status_code, 200)
 
