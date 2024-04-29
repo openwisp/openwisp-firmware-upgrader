@@ -368,30 +368,6 @@ class DeviceFirmwareForm(forms.ModelForm):
     def __init__(self, device, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['image'].queryset = self._get_image_queryset(device)
-        self.validate_has_device_connection()
-
-    def validate_has_device_connection(self):
-        """
-        Validate that the device being upgraded has at least one
-        DeviceConnection object. If the device does not have any
-        DeviceConnections, an error message is shown in the admin
-        form to guide the user to create a DeviceConnection for the
-        device before attempting an upgrade.
-        """
-        opts = self._meta
-        # The form is initialized with the error_message kwarg if the device being
-        # upgraded does not have any DeviceConnection objects.We don't need
-        # to perform any queries to the database to verify this, we just check
-        # if the error_message kwarg was passed to the form. If it was, we add
-        # the error message to the form errors so it is shown in the admin UI.
-        if hasattr(opts, 'error_messages'):
-            self._errors = forms.utils.ErrorDict()
-            error_messages = opts.error_messages or {}
-            for field, errors in error_messages.items():
-                self._errors[field] = self.error_class(
-                    error_class="nonfield", renderer=self.renderer
-                )
-                self._errors[field].extend(errors)
 
     def full_clean(self):
         super().full_clean()
@@ -445,24 +421,15 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
         return bool(obj)
 
     def get_formset(self, request, obj=None, **kwargs):
-        schema = None
+        formset = super().get_formset(request, obj=obj, **kwargs)
         if obj:
             try:
                 schema = get_upgrader_schema_for_device(obj)
+                formset.extra_context = json.dumps(schema, cls=DjangoJSONEncoder)
             except DeviceConnection.DoesNotExist:
-                kwargs['error_messages'] = {
-                    '__all__': [
-                        _(
-                            'This device does not have a "Credential", therefore'
-                            ' it cannot be upgraded yet. Please add a credential'
-                            ' to this device from the "Credentials" section before'
-                            ' upgrading the device.'
-                        )
-                    ]
-                }
-        formset = super().get_formset(request, obj=obj, **kwargs)
-        if schema:
-            formset.extra_context = schema
+                # We cannot retrieve the schema for upgrade options because this
+                # device does not have any related DeviceConnection object.
+                pass
         return formset
 
 
