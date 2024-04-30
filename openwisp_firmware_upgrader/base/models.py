@@ -308,7 +308,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                 _(
                     'This device does not have a related connection object defined '
                     'yet and therefore it would not be possible to upgrade it, '
-                    'please add one in the section named "DEVICE CONNECTIONS"'
+                    'please add one in the section named "Credentials"'
                 )
             )
         if self.device.model not in self.image.boards:
