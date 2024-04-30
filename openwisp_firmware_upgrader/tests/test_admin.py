@@ -321,8 +321,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
 
     @capture_stderr()
+    @mock.patch(
+        'openwisp_firmware_upgrader.utils.get_upgrader_class_from_device_connection'
+    )
     def test_device_firmware_upgrade_without_device_connection(
-        self, captured_stderr, *args
+        self, captured_stderr, mocked_func, *args
     ):
         self._login()
         device_fw = self._create_device_firmware()
@@ -335,6 +338,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             '\'NoneType\' object has no attribute \'update_strategy\'',
             captured_stderr.getvalue(),
         )
+        mocked_func.assert_not_called()
         self.assertEqual(response.status_code, 200)
 
 
