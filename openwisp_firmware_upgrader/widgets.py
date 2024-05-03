@@ -22,7 +22,6 @@ class FirmwareSchemaWidget(BaseJsonSchemaWidget):
 
     @property
     def media(self):
-        media = super().media
-        css = media._css.copy()
-        css['all'] += ['firmware-upgrader/css/upgrade-options.css']
-        return forms.Media(js=media._js, css=css)
+        return super().media + forms.Media(
+            css={'all': ['firmware-upgrader/css/upgrade-options.css']}
+        )

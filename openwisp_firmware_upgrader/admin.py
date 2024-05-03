@@ -105,13 +105,11 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
     @property
     def media(self):
-        media = super().media
-        js = list(media._js) + [
+        js = [
             'firmware-upgrader/js/upgrade-selected-confirmation.js',
         ]
-        css = media._css.copy()
-        css['all'] += ['firmware-upgrader/css/upgrade-selected-confirmation.css']
-        return forms.Media(js=js, css=css)
+        css = {'all': ['firmware-upgrader/css/upgrade-selected-confirmation.css']}
+        return super().media + forms.Media(js=js, css=css)
 
 
 @admin.register(load_model('Build'))
