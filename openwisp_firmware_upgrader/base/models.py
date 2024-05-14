@@ -211,6 +211,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         upload_to=get_build_directory,
         max_file_size=app_settings.MAX_FILE_SIZE,
         storage=app_settings.PRIVATE_STORAGE_INSTANCE,
+        max_length=255,
     )
     type = models.CharField(
         blank=True,
