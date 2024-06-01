@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 from decimal import Decimal
@@ -594,6 +595,47 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         self.status = 'failed'
         self.log_line(f'Max retries exceeded. Upgrade failed: {cause}.', save=False)
 
+    def update_status_and_log(self, message):
+        logger.warning(message)
+        self.log_line(message, save=False)
+        self.status = 'aborted'
+        self.save()
+
+    def get_current_upgrade_operations(self, op_status, max_age):
+        return (
+            load_model('UpgradeOperation')
+            .objects.filter(device=self.device, status=op_status, created__lte=max_age)
+            .exclude(pk=self.pk)
+        )
+
+    def get_expired_upgrade_operations(self, op_status, max_age):
+        return (
+            load_model('UpgradeOperation')
+            .objects.filter(device=self.device, status=op_status, created__gte=max_age)
+            .exclude(pk=self.pk)
+        )
+
+    def handle_upgrade_operation_in_progress(self, op_timeout, op_status):
+        max_age = timezone.now() - datetime.timedelta(seconds=op_timeout)
+
+        expired_upgrade_operations = self.get_expired_upgrade_operations(
+            op_status, max_age
+        )
+        if expired_upgrade_operations.count() > 0:
+            message = 'Upgrade operation is older than the timeout and in-progress, clearing it...'
+            for operation in expired_upgrade_operations:
+                operation.update_status_and_log(message)
+
+        current_upgrade_operations = self.get_current_upgrade_operations(
+            op_status, max_age
+        )
+        if current_upgrade_operations.count() > 0:
+            message = 'Another upgrade operation is in progress, aborting...'
+            self.update_status_and_log(message)
+            return True
+
+        return False
+
     def upgrade(self, recoverable=True):
         DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
         try:
@@ -629,18 +671,11 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         installed = False
         # prevent multiple upgrade operations for
         # the same device running at the same time
-        qs = (
-            load_model('UpgradeOperation')
-            .objects.filter(device=self.device, status='in-progress')
-            .exclude(pk=self.pk)
-        )
-        if qs.count() > 0:
-            message = 'Another upgrade operation is in progress, aborting...'
-            logger.warning(message)
-            self.log_line(message, save=False)
-            self.status = 'aborted'
-            self.save()
+        if self.handle_upgrade_operation_in_progress(
+            app_settings.TASK_TIMEOUT, 'in-progress'
+        ):
             return
+
         upgrader_class = get_upgrader_class_from_device_connection(conn)
         if not upgrader_class:
             return
