@@ -1,6 +1,8 @@
 Settings
 ========
 
+.. include:: /partials/settings-note.rst
+
 ``OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS``
 --------------------------------------------
 
