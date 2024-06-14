@@ -1,7 +1,7 @@
 Extending OpenWISP Firmware Upgrader
 ====================================
 
-.. include:: /partials/developers-docs-warning.rst
+.. include:: ../partials/developer-docs.rst
 
 One of the core values of the OpenWISP project is `Software Reusability
 <http://openwisp.io/docs/general/values.html#software-reusability-means-long-term-sustainability>`_,
