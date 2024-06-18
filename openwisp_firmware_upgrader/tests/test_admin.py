@@ -5,6 +5,7 @@ from unittest import mock
 import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils.timezone import localtime
@@ -21,7 +22,7 @@ from openwisp_firmware_upgrader.admin import (
     admin,
 )
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
-from openwisp_utils.tests import capture_stderr
+from openwisp_utils.tests import AdminActionPermTestMixin, capture_stderr
 
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
@@ -35,6 +36,7 @@ Category = load_model('Category')
 DeviceFirmware = load_model('DeviceFirmware')
 FirmwareImage = load_model('FirmwareImage')
 UpgradeOperation = load_model('UpgradeOperation')
+BatchUpgradeOperation = load_model('BatchUpgradeOperation')
 Device = swapper.load_model('config', 'Device')
 
 
@@ -348,7 +350,39 @@ _mock_connect = 'openwisp_controller.connection.models.DeviceConnection.connect'
 
 @mock.patch(_mock_updrade, return_value=True)
 @mock.patch(_mock_connect, return_value=True)
-class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
+class TestAdminTransaction(
+    BaseTestAdmin, AdminActionPermTestMixin, TransactionTestCase
+):
+    def test_upgrade_selected_action_perms(self, *args):
+        env = self._create_upgrade_env()
+        org = env['d1'].organization
+        self._create_firmwareless_device(organization=org)
+        user = self._create_user(is_staff=True)
+        self._create_org_user(user=user, organization=org, is_admin=True)
+        # The user is redirected to the BatchUpgradeOperation page after success operation.
+        # Thus, we need to add the permission to the user.
+        user.user_permissions.add(
+            Permission.objects.get(
+                codename=f'change_{BatchUpgradeOperation._meta.model_name}'
+            )
+        )
+        self._test_action_permission(
+            path=self.build_list_url,
+            action='upgrade_selected',
+            user=user,
+            obj=env['build1'],
+            message=(
+                'You can track the progress of this mass upgrade operation '
+                'in this page. Refresh the page from time to time to check '
+                'its progress.'
+            ),
+            required_perms=['change'],
+            extra_payload={
+                'upgrade_all': 'upgrade_all',
+                'upgrade_options': '{"c": true}',
+            },
+        )
+
     def test_upgrade_related(self, *args):
         self._login()
         env = self._create_upgrade_env()
