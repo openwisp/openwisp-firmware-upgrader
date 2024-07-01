@@ -132,6 +132,10 @@ class BuildAdmin(BaseAdmin):
 
     organization.short_description = _('organization')
 
+    @admin.action(
+        description=_('Mass-upgrade devices related to the selected build'),
+        permissions=['change'],
+    )
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
         app_label = opts.app_label
