@@ -1,6 +1,9 @@
 Firmware Upgrader
 =================
 
+**Source code**: `github.com/openwisp/openwisp-firmware-upgrader
+<https://github.com/openwisp/openwisp-firmware-upgrader>`_.
+
 A firmware upgrade solution designed specifically for OpenWRT devices,
 with the potential to support other embedded operating systems in the
 future. It offers a robust and automated upgrade process, featuring
