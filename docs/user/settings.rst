@@ -128,7 +128,7 @@ Indicates whether the API for Firmware Upgrader is enabled or not.
 **default**: ``{}``
 ============ ========
 
-Allows changing the default OpenWRT upgrader settings, eg:
+Allows changing the default OpenWrt upgrader settings, eg:
 
 .. code-block:: python
 
@@ -149,7 +149,7 @@ Allows changing the default OpenWRT upgrader settings, eg:
   ``15`` attempts
 - ``upgrade_timeout``: amount of seconds before the shell session is
   closed after the upgrade command is launched on the device, useful in
-  case the upgrade command hangs (it happens on older OpenWRT versions);
+  case the upgrade command hangs (it happens on older OpenWrt versions);
   defaults to ``90`` seconds
 
 ``OPENWISP_FIRMWARE_API_BASEURL``

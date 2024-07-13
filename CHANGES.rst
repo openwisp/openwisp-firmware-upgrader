@@ -38,52 +38,52 @@ Features
 - Added following firmwares to the default firmware image map:
 
   - Custom WAP-1200
-  - COMFAST CF-E320N v2 (OpenWRT 19.07 and earlier)
+  - COMFAST CF-E320N v2 (OpenWrt 19.07 and earlier)
   - EnGenius EAP1300
   - Linksys WRT1900ACS
   - Linksys WRT3200ACM
   - Raspberry Pi 2 Model B
   - Raspberry Pi 3 Model B
-  - TP-Link Archer C7 v1 (OpenWRT 19.07 and earlier)
-  - TP-Link Archer C7 v1 (OpenWRT 19.07 and later)
-  - TP-Link Archer C7 v2 (OpenWRT 19.07 and earlier)
-  - TP-Link Archer C7 v2 (OpenWRT 19.07 and later)
-  - TP-Link Archer C7 v4 (OpenWRT 19.07 and earlier)
-  - TP-Link Archer C7 v4 (OpenWRT 19.07 and later)
-  - TP-Link Archer C7 v5 (OpenWRT 19.07 and earlier)
-  - TP-Link Archer C7 v5 (OpenWRT 19.07 and later)
+  - TP-Link Archer C7 v1 (OpenWrt 19.07 and earlier)
+  - TP-Link Archer C7 v1 (OpenWrt 19.07 and later)
+  - TP-Link Archer C7 v2 (OpenWrt 19.07 and earlier)
+  - TP-Link Archer C7 v2 (OpenWrt 19.07 and later)
+  - TP-Link Archer C7 v4 (OpenWrt 19.07 and earlier)
+  - TP-Link Archer C7 v4 (OpenWrt 19.07 and later)
+  - TP-Link Archer C7 v5 (OpenWrt 19.07 and earlier)
+  - TP-Link Archer C7 v5 (OpenWrt 19.07 and later)
   - TP-Link Archer C50 v4
-  - TP-LINK CPE210 v3 (OpenWRT 19.07 and earlier)
-  - TP-LINK CPE210 v2 (OpenWRT 19.07 and later)
-  - TP-LINK CPE210 v3 (OpenWRT 19.07 and later)
-  - TP-LINK CPE510 v3 (OpenWRT 19.07 and later)
-  - TP-Link WDR3600 v1 (OpenWRT 19.07 and earlier)
-  - TP-Link WDR3600 v1 (OpenWRT 19.07 and later)
-  - TP-Link WDR4300 v1 (OpenWRT 19.07 and earlier)
-  - TP-Link WDR4300 v1 (OpenWRT 19.07 and later)
-  - TP-Link WDR4300 v1 Israel Version (OpenWRT 19.07 and earlier)
-  - TP-Link WDR4300 v1 Israel Version (OpenWRT 19.07 and later)
-  - TP-Link WR2543N/ND (OpenWRT 19.07 and earlier)
-  - TP-Link WR2543N/ND (OpenWRT 19.07 and later)
+  - TP-LINK CPE210 v3 (OpenWrt 19.07 and earlier)
+  - TP-LINK CPE210 v2 (OpenWrt 19.07 and later)
+  - TP-LINK CPE210 v3 (OpenWrt 19.07 and later)
+  - TP-LINK CPE510 v3 (OpenWrt 19.07 and later)
+  - TP-Link WDR3600 v1 (OpenWrt 19.07 and earlier)
+  - TP-Link WDR3600 v1 (OpenWrt 19.07 and later)
+  - TP-Link WDR4300 v1 (OpenWrt 19.07 and earlier)
+  - TP-Link WDR4300 v1 (OpenWrt 19.07 and later)
+  - TP-Link WDR4300 v1 Israel Version (OpenWrt 19.07 and earlier)
+  - TP-Link WDR4300 v1 Israel Version (OpenWrt 19.07 and later)
+  - TP-Link WR2543N/ND (OpenWrt 19.07 and earlier)
+  - TP-Link WR2543N/ND (OpenWrt 19.07 and later)
   - TP-Link TL-WR902AC v3
-  - Ubiquiti AirRouter (OpenWRT 19.07 and earlier)
-  - Ubiquiti AirRouter (OpenWRT 19.07 and later)
+  - Ubiquiti AirRouter (OpenWrt 19.07 and earlier)
+  - Ubiquiti AirRouter (OpenWrt 19.07 and later)
   - Ubiquiti EdgeRouter Lite
-  - Ubiquiti Nanostation Loco M2 - XW (OpenWRT 19.07 and earlier)
-  - Ubiquiti Nanostation Loco M (OpenWRT 19.07 and later)
-  - Ubiquiti Nanostation Loco M - XW (OpenWRT 19.07 and later)
-  - Ubiquiti Nanostation M - XW (OpenWRT 19.07 and earlier)
-  - Ubiquiti Nanostation M (OpenWRT 19.07 and earlier)
-  - Ubiquiti Nanostation M - XW (OpenWRT 19.07 and later)
-  - Ubiquiti Nanostation M (OpenWRT 19.07 and later)
-  - Ubiquiti Picostation Bullet XW (OpenWRT 19.07 and earlier)
-  - Ubiquiti Picostation M2HP & Bullet (OpenWRT 19.07 and earlier)
-  - Ubiquiti Picostation M (OpenWRT 19.07 and later)
-  - Ubiquiti Unifi AC Mesh (OpenWRT 19.07 and earlier)
-  - Ubiquiti Unifi AC Mesh (OpenWRT 19.07 and later)
-  - Ubiquiti Unifi AC Mesh-Pro (OpenWRT 19.07 and earlier)
-  - Ubiquiti Unifi AC Mesh-Pro (OpenWRT 19.07 and later)
-  - Ubiquiti UniFi AC Pro (OpenWRT 19.07 and later)
+  - Ubiquiti Nanostation Loco M2 - XW (OpenWrt 19.07 and earlier)
+  - Ubiquiti Nanostation Loco M (OpenWrt 19.07 and later)
+  - Ubiquiti Nanostation Loco M - XW (OpenWrt 19.07 and later)
+  - Ubiquiti Nanostation M - XW (OpenWrt 19.07 and earlier)
+  - Ubiquiti Nanostation M (OpenWrt 19.07 and earlier)
+  - Ubiquiti Nanostation M - XW (OpenWrt 19.07 and later)
+  - Ubiquiti Nanostation M (OpenWrt 19.07 and later)
+  - Ubiquiti Picostation Bullet XW (OpenWrt 19.07 and earlier)
+  - Ubiquiti Picostation M2HP & Bullet (OpenWrt 19.07 and earlier)
+  - Ubiquiti Picostation M (OpenWrt 19.07 and later)
+  - Ubiquiti Unifi AC Mesh (OpenWrt 19.07 and earlier)
+  - Ubiquiti Unifi AC Mesh (OpenWrt 19.07 and later)
+  - Ubiquiti Unifi AC Mesh-Pro (OpenWrt 19.07 and earlier)
+  - Ubiquiti Unifi AC Mesh-Pro (OpenWrt 19.07 and later)
+  - Ubiquiti UniFi AC Pro (OpenWrt 19.07 and later)
   - VMware, Inc. VMware Virtual Platform
   - ZBT-WG3526 (16M)
   - x86 32 bit (various models)
@@ -114,7 +114,7 @@ Other changes
 
 - Avoid deletion of ``UpgradeOperation`` when related
   ``Firmware Image`` is deleted
-- Increased default retries in OpenWRT upgrader from
+- Increased default retries in OpenWrt upgrader from
   ``15`` to ``40``
 - Made firmware upgrade logs translatable
 - Changed the default API throttle rate from ``400/hour`` to ``1000/minute``

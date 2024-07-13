@@ -4,8 +4,8 @@ Quickstart Guide
 Requirements
 ------------
 
-- Devices running at least OpenWRT 12.09 Attitude Adjustment, older
-  versions of OpenWRT have not worked at all in our tests
+- Devices running at least OpenWrt 12.09 Attitude Adjustment, older
+  versions of OpenWrt have not worked at all in our tests
 - Devices must have enough free RAM to be able to upload the new image to
   ``/tmp``
 
@@ -76,7 +76,7 @@ this step.
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-firmwareimage.gif
 
 If you use a hardware model which is not listed in the image types, if the
-hardware model is officially supported by OpenWRT, you can send us a
+hardware model is officially supported by OpenWrt, you can send us a
 pull-request to add it, otherwise you can use :ref:`the setting
 OPENWISP_CUSTOM_OPENWRT_IMAGES <openwisp_custom_openwrt_images>` to add
 it.

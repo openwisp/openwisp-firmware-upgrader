@@ -1,6 +1,6 @@
 """
 Mapping between hardware models and firwmare image
-This if focused on OpenWRT only for now, but it should
+This if focused on OpenWrt only for now, but it should
 be possible to add support for different embedded
 systems in the future.
 """
@@ -19,7 +19,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-cf-e320n-v2-squashfs-sysupgrade.bin',
                 {
-                    'label': 'COMFAST CF-E320N v2 (OpenWRT 19.07 and earlier)',
+                    'label': 'COMFAST CF-E320N v2 (OpenWrt 19.07 and earlier)',
                     'boards': ('COMFAST CF-E320N v2',),
                 },
             ),
@@ -95,56 +95,56 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-archer-c7-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link Archer C7 v1 (OpenWRT 19.07 and earlier)',
+                    'label': 'TP-Link Archer C7 v1 (OpenWrt 19.07 and earlier)',
                     'boards': ('tplink,archer-c7-v1',),
                 },
             ),
             (
                 'ath79-generic-tplink_archer-c7-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link Archer C7 v1 (OpenWRT 19.07 and later)',
+                    'label': 'TP-Link Archer C7 v1 (OpenWrt 19.07 and later)',
                     'boards': ('tplink,archer-c7-v1',),
                 },
             ),
             (
                 'ar71xx-generic-archer-c7-v2-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link Archer C7 v2 (OpenWRT 19.07 and earlier)',
+                    'label': 'TP-Link Archer C7 v2 (OpenWrt 19.07 and earlier)',
                     'boards': ('TP-Link Archer C7 v2', 'TP-Link Archer C7 v3'),
                 },
             ),
             (
                 'ath79-generic-tplink_archer-c7-v2-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link Archer C7 v2 (OpenWRT 19.07 and later)',
+                    'label': 'TP-Link Archer C7 v2 (OpenWrt 19.07 and later)',
                     'boards': ('TP-Link Archer C7 v2', 'TP-Link Archer C7 v3'),
                 },
             ),
             (
                 'ar71xx-generic-archer-c7-v4-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link Archer C7 v4 (OpenWRT 19.07 and earlier)',
+                    'label': 'TP-Link Archer C7 v4 (OpenWrt 19.07 and earlier)',
                     'boards': ('TP-Link Archer C7 v4',),
                 },
             ),
             (
                 'ath79-generic-tplink_archer-c7-v4-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link Archer C7 v4 (OpenWRT 19.07 and later)',
+                    'label': 'TP-Link Archer C7 v4 (OpenWrt 19.07 and later)',
                     'boards': ('TP-Link Archer C7 v4',),
                 },
             ),
             (
                 'ar71xx-generic-archer-c7-v5-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link Archer C7 v5 (OpenWRT 19.07 and earlier)',
+                    'label': 'TP-Link Archer C7 v5 (OpenWrt 19.07 and earlier)',
                     'boards': ('TP-Link Archer C7 v5',),
                 },
             ),
             (
                 'ath79-generic-tplink_archer-c7-v5-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link Archer C7 v5 (OpenWRT 19.07 and later)',
+                    'label': 'TP-Link Archer C7 v5 (OpenWrt 19.07 and later)',
                     'boards': ('TP-Link Archer C7 v5',),
                 },
             ),
@@ -158,28 +158,28 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-cpe210-220-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-LINK CPE210 v3 (OpenWRT 19.07 and earlier)',
+                    'label': 'TP-LINK CPE210 v3 (OpenWrt 19.07 and earlier)',
                     'boards': ('TP-LINK CPE210 v1', 'TP-LINK CPE220 v1'),
                 },
             ),
             (
                 'ath79-generic-tplink_cpe210-v2-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-LINK CPE210 v2 (OpenWRT 19.07 and later)',
+                    'label': 'TP-LINK CPE210 v2 (OpenWrt 19.07 and later)',
                     'boards': ('TP-LINK CPE210 v2',),
                 },
             ),
             (
                 'ath79-generic-tplink_cpe210-v3-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-LINK CPE210 v3 (OpenWRT 19.07 and later)',
+                    'label': 'TP-LINK CPE210 v3 (OpenWrt 19.07 and later)',
                     'boards': ('TP-LINK CPE210 v3',),
                 },
             ),
             (
                 'ath79-generic-tplink_cpe510-v3-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-LINK CPE510 v3 (OpenWRT 19.07 and later)',
+                    'label': 'TP-LINK CPE510 v3 (OpenWrt 19.07 and later)',
                     'boards': ('TP-LINK CPE510 v3',),
                 },
             ),
@@ -193,56 +193,56 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link WDR3600 v1 (OpenWRT 19.07 and earlier)',
+                    'label': 'TP-Link WDR3600 v1 (OpenWrt 19.07 and earlier)',
                     'boards': ('TP-Link TL-WDR3600 v1',),
                 },
             ),
             (
                 'ath79-generic-tplink_tl-wdr3600-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link WDR3600 v1 (OpenWRT 19.07 and later)',
+                    'label': 'TP-Link WDR3600 v1 (OpenWrt 19.07 and later)',
                     'boards': ('TP-Link TL-WDR3600 v1',),
                 },
             ),
             (
                 'ar71xx-generic-tl-wdr4300-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link WDR4300 v1 (OpenWRT 19.07 and earlier)',
+                    'label': 'TP-Link WDR4300 v1 (OpenWrt 19.07 and earlier)',
                     'boards': ('TP-Link TL-WDR4300 v1',),
                 },
             ),
             (
                 'ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link WDR4300 v1 (OpenWRT 19.07 and later)',
+                    'label': 'TP-Link WDR4300 v1 (OpenWrt 19.07 and later)',
                     'boards': ('TP-Link TL-WDR4300 v1',),
                 },
             ),
             (
                 'ar71xx-generic-tl-wdr4300-v1-il-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link WDR4300 v1 Israel Version (OpenWRT 19.07 and earlier)',
+                    'label': 'TP-Link WDR4300 v1 Israel Version (OpenWrt 19.07 and earlier)',
                     'boards': ('TP-LINK TL-WDR4300 v1 (IL)',),
                 },
             ),
             (
                 'ath79-generic-tplink_tl-wdr4300-v1-il-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link WDR4300 v1 Israel Version (OpenWRT 19.07 and later)',
+                    'label': 'TP-Link WDR4300 v1 Israel Version (OpenWrt 19.07 and later)',
                     'boards': ('TP-LINK TL-WDR4300 v1 (IL)',),
                 },
             ),
             (
                 'ar71xx-generic-tl-wr2543-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link WR2543N/ND (OpenWRT 19.07 and earlier)',
+                    'label': 'TP-Link WR2543N/ND (OpenWrt 19.07 and earlier)',
                     'boards': ('TP-Link TL-WR2543N/ND',),
                 },
             ),
             (
                 'ath79-generic-tplink_tl-wr2543-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-Link WR2543N/ND (OpenWRT 19.07 and later)',
+                    'label': 'TP-Link WR2543N/ND (OpenWrt 19.07 and later)',
                     'boards': ('TP-Link TL-WR2543N/ND',),
                 },
             ),
@@ -256,14 +256,14 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-airrouter-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti AirRouter (OpenWRT 19.07 and earlier)',
+                    'label': 'Ubiquiti AirRouter (OpenWrt 19.07 and earlier)',
                     'boards': ('Ubiquiti AirRouter',),
                 },
             ),
             (
                 'ath79-generic-ubnt_airrouter-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti AirRouter (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti AirRouter (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti AirRouter',),
                 },
             ),
@@ -278,7 +278,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-loco-m-xw-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Nanostation Loco M2 - XW (OpenWRT 19.07 and earlier)',
+                    'label': 'Ubiquiti Nanostation Loco M2 - XW (OpenWrt 19.07 and earlier)',
                     'boards': ('Ubiquiti Loco XW',),
                 },
             ),
@@ -286,7 +286,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_nanostation-loco-m-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Nanostation Loco M (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti Nanostation Loco M (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti Nanostation Loco M',),
                 },
             ),
@@ -294,7 +294,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_nanostation-loco-m-xw-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Nanostation Loco M - XW (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti Nanostation Loco M - XW (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti Nanostation Loco M (XW)',),
                 },
             ),
@@ -302,7 +302,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-nano-m-xw-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Nanostation M - XW (OpenWRT 19.07 and earlier)',
+                    'label': 'Ubiquiti Nanostation M - XW (OpenWrt 19.07 and earlier)',
                     'boards': ('Ubiquiti Nano M XW',),
                 },
             ),
@@ -310,7 +310,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-nano-m-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Nanostation M (OpenWRT 19.07 and earlier)',
+                    'label': 'Ubiquiti Nanostation M (OpenWrt 19.07 and earlier)',
                     'boards': (
                         'Ubiquiti Nano-M',
                         'Ubiquiti NanoStation M2',
@@ -324,7 +324,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_nanostation-m-xw-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Nanostation M - XW (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti Nanostation M - XW (OpenWrt 19.07 and later)',
                     'boards': (
                         'Ubiquiti Nanostation M (XW)',
                         'Ubiquiti Nanostation M XW',
@@ -335,7 +335,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_nanostation-m-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Nanostation M (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti Nanostation M (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti Nanostation M',),
                 },
             ),
@@ -343,7 +343,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-bullet-m-xw-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Picostation Bullet XW (OpenWRT 19.07 and earlier)',
+                    'label': 'Ubiquiti Picostation Bullet XW (OpenWrt 19.07 and earlier)',
                     'boards': ('Ubiquiti Bullet-M XW',),
                 },
             ),
@@ -351,7 +351,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-bullet-m-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Picostation M2HP & Bullet (OpenWRT 19.07 and earlier)',
+                    'label': 'Ubiquiti Picostation M2HP & Bullet (OpenWrt 19.07 and earlier)',
                     'boards': (
                         'Ubiquiti Bullet-M',
                         'Ubiquiti PicoStation M2',
@@ -363,7 +363,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_picostation-m-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Picostation M (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti Picostation M (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti Picostation M',),
                 },
             ),
@@ -371,7 +371,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_unifi-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti UniFi (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti UniFi (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti UniFi',),
                 },
             ),
@@ -379,7 +379,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_unifiac-lr-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti UniFi AC LR (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti UniFi AC LR (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti UniFi AC LR',),
                 },
             ),
@@ -387,7 +387,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-unifiac-mesh-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Unifi AC Mesh (OpenWRT 19.07 and earlier)',
+                    'label': 'Ubiquiti Unifi AC Mesh (OpenWrt 19.07 and earlier)',
                     'boards': (
                         'Ubiquiti UniFi AC-Mesh',
                         'Ubiquiti UniFi-AC-MESH',
@@ -399,7 +399,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_unifiac-mesh-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Unifi AC Mesh (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti Unifi AC Mesh (OpenWrt 19.07 and later)',
                     'boards': (
                         'Ubiquiti UniFi AC Mesh',
                         'Ubiquiti UniFi AC-Mesh',
@@ -412,7 +412,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-unifiac-mesh-pro-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Unifi AC Mesh-Pro (OpenWRT 19.07 and earlier)',
+                    'label': 'Ubiquiti Unifi AC Mesh-Pro (OpenWrt 19.07 and earlier)',
                     'boards': ('Ubiquiti UniFi AC-Mesh-Pro',),
                 },
             ),
@@ -420,7 +420,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_unifiac-mesh-pro-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti Unifi AC Mesh-Pro (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti Unifi AC Mesh-Pro (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti UniFi AC-Mesh Pro',),
                 },
             ),
@@ -428,7 +428,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_unifiac-pro-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti UniFi AC Pro (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti UniFi AC Pro (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti UniFi AC Pro', 'Ubiquiti UniFi-AC-PRO'),
                 },
             ),
@@ -436,7 +436,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_unifi-ap-pro-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti UniFi AP Pro (OpenWRT 19.07 and later)',
+                    'label': 'Ubiquiti UniFi AP Pro (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti UniFi AP Pro',),
                 },
             ),
@@ -444,7 +444,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-ubnt-uap-pro-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti UniFi AP Pro (OpenWRT 19.07 and earlier)',
+                    'label': 'Ubiquiti UniFi AP Pro (OpenWrt 19.07 and earlier)',
                     'boards': ('Ubiquiti UAP Pro',),
                 },
             ),
@@ -458,7 +458,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-xd3200-squashfs-sysupgrade.bin',
                 {
-                    'label': 'YunCore XD3200 (OpenWRT 19.07 and earlier)',
+                    'label': 'YunCore XD3200 (OpenWrt 19.07 and earlier)',
                     'boards': ('YunCore XD3200',),
                 },
             ),
@@ -534,7 +534,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
     )
 )
 
-# OpenWRT only for now, in the future we'll merge
+# OpenWrt only for now, in the future we'll merge
 # different dictionaries representing different firmwares
 # eg: AirOS, Raspbian
 FIRMWARE_IMAGE_MAP = OPENWRT_FIRMWARE_IMAGE_MAP

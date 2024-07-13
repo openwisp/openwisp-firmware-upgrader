@@ -13,7 +13,7 @@ Here is an example firmware image item from ``OPENWRT_FIRMWARE_IMAGE_MAP``
         "ar71xx-generic-cf-e320n-v2-squashfs-sysupgrade.bin": {
             # Human readable name of the model which is displayed on
             # the UI
-            "label": "COMFAST CF-E320N v2 (OpenWRT 19.07 and earlier)",
+            "label": "COMFAST CF-E320N v2 (OpenWrt 19.07 and earlier)",
             # Tupe of board names with which the different versions
             # of the hardware are identified on OpenWrt
             "boards": ("COMFAST CF-E320N v2",),

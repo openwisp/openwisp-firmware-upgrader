@@ -14,5 +14,5 @@ Firmware Upgrader: Features
 - :doc:`REST API <rest-api>`
 - :doc:`Possibility of writing custom upgraders
   <custom-firmware-upgrader>` for other firmware OSes or for custom
-  OpenWRT based firmwares
+  OpenWrt based firmwares
 - Configurable timeouts
