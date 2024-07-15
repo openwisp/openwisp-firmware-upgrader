@@ -43,9 +43,9 @@ Documentation
 -------------
 
 - `Developer documentation
-  <https://openwisp.io/docs/__new__/dev/firmware-upgrader/developer/>`_
+  <https://openwisp.io/docs/dev/firmware-upgrader/developer/>`_
 - `User documentation
-  <https://openwisp.io/docs/__new__/dev/firmware-upgrader/>`_
+  <https://openwisp.io/docs/dev/firmware-upgrader/>`_
 
 Contributing
 ------------
