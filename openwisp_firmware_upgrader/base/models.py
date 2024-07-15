@@ -211,6 +211,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         upload_to=get_build_directory,
         max_file_size=app_settings.MAX_FILE_SIZE,
         storage=app_settings.PRIVATE_STORAGE_INSTANCE,
+        max_length=255,
     )
     type = models.CharField(
         blank=True,
@@ -308,7 +309,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                 _(
                     'This device does not have a related connection object defined '
                     'yet and therefore it would not be possible to upgrade it, '
-                    'please add one in the section named "DEVICE CONNECTIONS"'
+                    'please add one in the section named "Credentials"'
                 )
             )
         if self.device.model not in self.image.boards:

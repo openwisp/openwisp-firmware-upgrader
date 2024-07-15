@@ -43,6 +43,7 @@ FirmwareImage = load_model('FirmwareImage')
 Category = load_model('Category')
 Build = load_model('Build')
 Device = swapper.load_model('config', 'Device')
+DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -104,13 +105,11 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
     @property
     def media(self):
-        media = super().media
-        js = list(media._js) + [
+        js = [
             'firmware-upgrader/js/upgrade-selected-confirmation.js',
         ]
-        css = media._css.copy()
-        css['all'] += ['firmware-upgrader/css/upgrade-selected-confirmation.css']
-        return forms.Media(js=js, css=css)
+        css = {'all': ['firmware-upgrader/css/upgrade-selected-confirmation.css']}
+        return super().media + forms.Media(js=js, css=css)
 
 
 @admin.register(load_model('Build'))
@@ -133,6 +132,10 @@ class BuildAdmin(BaseAdmin):
 
     organization.short_description = _('organization')
 
+    @admin.action(
+        description=_('Mass-upgrade devices related to the selected build'),
+        permissions=['change'],
+    )
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
         app_label = opts.app_label
@@ -422,8 +425,13 @@ class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
     def get_formset(self, request, obj=None, **kwargs):
         formset = super().get_formset(request, obj=obj, **kwargs)
         if obj:
-            schema = get_upgrader_schema_for_device(obj)
-            formset.extra_context = json.dumps(schema, cls=DjangoJSONEncoder)
+            try:
+                schema = get_upgrader_schema_for_device(obj)
+                formset.extra_context = json.dumps(schema, cls=DjangoJSONEncoder)
+            except DeviceConnection.DoesNotExist:
+                # We cannot retrieve the schema for upgrade options because this
+                # device does not have any related DeviceConnection object.
+                pass
         return formset
 
 

@@ -371,8 +371,8 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ath79-generic-ubnt_unifi-squashfs-sysupgrade.bin',
                 {
-                    'label': 'Ubiquiti UniFi (OpenWrt 19.07 and later)',
-                    'boards': ('Ubiquiti UniFi',),
+                    'label': 'Ubiquiti UniFi (OpenWRT 19.07 and later)',
+                    'boards': ('Ubiquiti UniFi', 'Ubiquiti UniFi AP'),
                 },
             ),
             # Ubiquiti UniFi AC LR ATH79
@@ -453,6 +453,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     'label': 'YunCore AX820',
                     'boards': ('YunCore AX820',),
+                },
+            ),
+            (
+                'ramips-mt7621-yuncore_g720-squashfs-sysupgrade.bin',
+                {
+                    'label': 'YunCore G720',
+                    'boards': ('YunCore G720',),
                 },
             ),
             (
