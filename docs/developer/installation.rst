@@ -3,6 +3,10 @@ Developer Installation Instructions
 
 .. include:: ../partials/developer-docs.rst
 
+.. contents:: **Table of contents**:
+    :depth: 2
+    :local:
+
 Requirements
 ------------
 
@@ -88,7 +92,7 @@ Launch development server:
 
     ./manage.py runserver 0.0.0.0:8000
 
-You can access the admin interface at http://127.0.0.1:8000/admin/.
+You can access the admin interface at ``http://127.0.0.1:8000/admin/``.
 
 Run celery and celery-beat with the following commands (separate terminal
 windows are needed):

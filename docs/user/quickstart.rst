@@ -1,6 +1,10 @@
 Quickstart Guide
 ================
 
+.. contents:: **Table of contents**:
+    :depth: 2
+    :local:
+
 Requirements
 ------------
 

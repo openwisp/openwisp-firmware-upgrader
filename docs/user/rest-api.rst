@@ -1,10 +1,9 @@
 REST API Reference
 ==================
 
-.. note::
-
-    To enable the API, the setting :ref:`OPENWISP_FIRMWARE_UPGRADER_API
-    <openwisp_firmware_upgrader_api>` must be set to ``True``.
+.. contents:: **Table of contents**:
+    :depth: 1
+    :local:
 
 .. _firmware_upgrader_live_documentation:
 
