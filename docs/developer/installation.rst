@@ -52,7 +52,7 @@ Install test requirements:
     pip install -r requirements-test.txt
 
 Setup and activate a virtual-environment (we'll be using `virtualenv
-<https://pypi.org/project/virtualenv/>`):
+<https://pypi.org/project/virtualenv/>`_):
 
 .. code-block:: shell
 
