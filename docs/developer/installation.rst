@@ -125,7 +125,7 @@ read :doc:`extending`.
 
 .. important::
 
-    If you want to add ``openwisp-firmware-upgrader`` in an existing
+    If you want to add ``openwisp-firmware-upgrader`` to an existing
     Django project, then you can take reference from the `test project in
     openwisp-firmware-upgrader repository
     <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2>`_
