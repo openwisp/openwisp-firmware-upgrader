@@ -48,16 +48,11 @@ jobs:
           spatialite-bin \
           libsqlite3-mod-spatialite
 
-      - name: Install npm dependencies
-        run: sudo npm install -g jshint stylelint
-
-      - name: Install python dependencies
+      - name: Install Dependencies
         run: |
           pip install -U pip wheel setuptools
           pip install -U -r requirements-test.txt
-
-      - name: Install openwisp-firmware-upgrader
-        run: |
+          sudo npm install -g jshint stylelint
           pip install -U -e .
           pip install ${{ matrix.django-version }}
 
@@ -66,12 +61,14 @@ jobs:
           ./run-qa-checks
 
       - name: Tests
+        if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
         run: |
           coverage run -a --source=openwisp_firmware_upgrader runtests.py
           # SAMPLE_APP tests do not affect coverage so can be run in parallel to speed up
           SAMPLE_APP=1 ./runtests.py --parallel
 
       - name: Upload Coverage
+        if: ${{ success() }}
         run: coveralls --service=github
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
