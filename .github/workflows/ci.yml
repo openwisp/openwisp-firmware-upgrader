@@ -49,6 +49,7 @@ jobs:
           libsqlite3-mod-spatialite
 
       - name: Install Dependencies
+        id: deps
         run: |
           pip install -U pip wheel setuptools
           pip install -U -r requirements-test.txt
