@@ -17,7 +17,6 @@ from urllib.parse import urljoin
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [

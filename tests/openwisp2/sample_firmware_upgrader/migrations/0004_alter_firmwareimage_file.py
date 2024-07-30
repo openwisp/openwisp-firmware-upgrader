@@ -9,7 +9,6 @@ import private_storage.storage.files
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("sample_firmware_upgrader", "0003_create_device_firmware"),
     ]

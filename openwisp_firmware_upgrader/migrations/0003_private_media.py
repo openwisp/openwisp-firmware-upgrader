@@ -7,7 +7,6 @@ import private_storage.storage.files
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('firmware_upgrader', '0002_default_permissions'),
     ]

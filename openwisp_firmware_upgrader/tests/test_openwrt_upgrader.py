@@ -710,8 +710,6 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
-    test_upgrade_free_memory_aborted = None
-
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
     @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)

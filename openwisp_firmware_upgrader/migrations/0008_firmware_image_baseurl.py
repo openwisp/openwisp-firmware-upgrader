@@ -9,7 +9,6 @@ from urllib.parse import urljoin
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('firmware_upgrader', '0007_nullable_upgrade_operation_image'),
     ]

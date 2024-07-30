@@ -13,7 +13,6 @@ from ..hardware import FIRMWARE_IMAGE_TYPE_CHOICES
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [

@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('firmware_upgrader', '0004_batch_upgrade_operation_idle_status'),
     ]

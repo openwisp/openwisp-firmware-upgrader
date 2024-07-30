@@ -6,7 +6,6 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('firmware_upgrader', '0006_create_device_firmware'),
     ]
