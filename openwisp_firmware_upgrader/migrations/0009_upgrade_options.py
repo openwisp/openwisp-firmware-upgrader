@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('firmware_upgrader', '0008_firmware_image_baseurl'),
     ]

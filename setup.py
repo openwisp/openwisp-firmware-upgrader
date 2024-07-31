@@ -23,7 +23,7 @@ setup(
     name='openwisp-firmware-upgrader',
     version=get_version(),
     license='GPL3',
-    author='Federico Capoano',
+    author='OpenWISP',
     author_email='support@openwisp.io',
     description='Firmware upgrader module of OpenWISP',
     long_description=open('README.rst').read(),
@@ -39,7 +39,7 @@ setup(
         'django-private-storage~=3.1.0',
     ],
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 5 - Production/Stable ',
         'Environment :: Web Environment',
         'Topic :: Internet :: WWW/HTTP',
         'Topic :: System :: Networking',

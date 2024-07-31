@@ -1,19 +1,20 @@
-from django.db import migrations, models
+import uuid
+
 import django.db.models.deletion
 import django.utils.timezone
 import model_utils.fields
-import openwisp_users.mixins
-import uuid
 import swapper
-from ..swapper import get_model_name
-from swapper import dependency, split
 from django.conf import settings
+from django.db import migrations, models
+from swapper import dependency, split
+
+import openwisp_users.mixins
 
 from ..hardware import FIRMWARE_IMAGE_TYPE_CHOICES
+from ..swapper import get_model_name
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
