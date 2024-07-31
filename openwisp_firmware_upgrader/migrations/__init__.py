@@ -1,9 +1,6 @@
-from django.contrib.auth.models import Permission
-
 from django.contrib.auth.management import create_permissions
-
+from django.contrib.auth.models import Permission
 from swapper import load_model
-
 
 DeviceConnection = load_model('connection', 'DeviceConnection')
 DeviceFirmware = load_model('firmware_upgrader', 'DeviceFirmware')
