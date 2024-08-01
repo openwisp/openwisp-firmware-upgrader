@@ -343,6 +343,35 @@ class TestAdmin(BaseTestAdmin, TestCase):
         mocked_func.assert_not_called()
         self.assertEqual(response.status_code, 200)
 
+    def test_deactivated_firmware_image_inline(self):
+        self._login()
+        device = self._create_config(organization=self._get_org()).device
+        device.deactivate()
+        response = self.client.get(
+            reverse('admin:config_device_change', args=[device.id])
+        )
+        # Check that it is not possible to add a DeviceFirmwareImage to a
+        # deactivated device in the admin interface.
+        self.assertContains(
+            response,
+            '<input type="hidden" name="devicefirmware-MAX_NUM_FORMS"'
+            ' value="0" id="id_devicefirmware-MAX_NUM_FORMS">',
+        )
+        self._create_device_firmware(device=device)
+        response = self.client.get(
+            reverse('admin:config_device_change', args=[device.id])
+        )
+        # Ensure that a deactivated device's existing DeviceFirmwareImage
+        # is displayed as readonly in the admin interface.
+        self.assertContains(
+            response,
+            'div class="readonly">Test Category v0.1: TP-Link WDR4300 v1 (OpenWRT 19.07 and later)</div>',
+        )
+        self.assertNotContains(
+            response,
+            '<select name="devicefirmware-0-image" id="id_devicefirmware-0-image">',
+        )
+
 
 _mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
 _mock_connect = 'openwisp_controller.connection.models.DeviceConnection.connect'
