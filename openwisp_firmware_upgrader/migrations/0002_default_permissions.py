@@ -9,7 +9,6 @@ def create_permissions_for_default_groups_helper(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('firmware_upgrader', '0001_initial'),
     ]

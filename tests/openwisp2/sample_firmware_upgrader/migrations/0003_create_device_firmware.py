@@ -11,7 +11,6 @@ def create_device_firmware_for_connections_helper(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('sample_firmware_upgrader', '0002_default_permissions'),
     ]
