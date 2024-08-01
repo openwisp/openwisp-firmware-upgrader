@@ -68,12 +68,12 @@ jobs:
 
       - name: Upload Coverage
         if: ${{ success() }}
-        run: coveralls --service=github
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COVERALLS_FLAG_NAME: |
-           python-${{ matrix.python-version }}-${{ matrix.django-version }}
-          COVERALLS_PARALLEL: true
+        uses: coverallsapp/github-action@v2
+        with:
+          parallel: true
+          format: cobertura
+          flag-name: python-${{ matrix.env.env }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   coveralls:
     needs: build
