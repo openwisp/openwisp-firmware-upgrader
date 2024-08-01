@@ -38,10 +38,10 @@ becomes available.
 2. Create the Build Object
 --------------------------
 
-Create a build object by going to *Firmware management > Firmware
-builds > Add firmware build*, the build object is related to a firmware
-category and is the collection of the different firmware images which have
-been compiled for the different hardware models supported by the system.
+Create a build object by going to *Firmware management > Firmware builds >
+Add firmware build*, the build object is related to a firmware category
+and is the collection of the different firmware images which have been
+compiled for the different hardware models supported by the system.
 
 The version field indicates the firmware version, the change log field is
 optional but we recommend filling it to help operators know the
