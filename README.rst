@@ -42,7 +42,7 @@ Firmware upgrader module of OpenWISP.
 Documentation
 -------------
 
-- `User documentation <https://openwisp.io/docs/dev/firmware-upgrader/>`_
+- `Usage documentation <https://openwisp.io/docs/dev/firmware-upgrader/>`_
 - `Developer documentation
   <https://openwisp.io/docs/dev/firmware-upgrader/developer/>`_
 
