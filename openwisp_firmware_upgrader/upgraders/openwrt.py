@@ -378,7 +378,7 @@ class OpenWrt(object):
         this method will execute the reflashing operation in another process
         because the SSH connection may hang indefinitely while reflashing
         and would block the program; setting a timeout to `exec_command`
-        doesn't seem to take effect on some OpenWRT versions
+        doesn't seem to take effect on some OpenWrt versions
         so at least we can stop the process using
         `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
         """

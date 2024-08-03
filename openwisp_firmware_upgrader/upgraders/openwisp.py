@@ -34,7 +34,7 @@ class OpenWisp1(OpenWrt):
     def _reflash_legacy(self, path, timeout):  # pragma: no cover
         self.log(
             _(
-                'The version used is OpenWRT Backfire, '
+                'The version used is OpenWrt Backfire, '
                 'using legacy reflash instructions.'
             )
         )
