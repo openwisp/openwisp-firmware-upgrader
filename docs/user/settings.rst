@@ -25,7 +25,7 @@ Settings
 Retry settings for recoverable failures during firmware upgrades.
 
 By default if an upgrade operation fails before the firmware is flashed
-(eg: because of a network issue during the upload of the image), the
+(e.g.: because of a network issue during the upload of the image), the
 upgrade operation will be retried 4 more times with an exponential random
 backoff and a maximum delay of 10 minutes.
 
@@ -98,7 +98,7 @@ in upgrades.
 ============ ============================
 
 This setting can be used to set the maximum size limit for firmware
-images, eg:
+images, e.g.:
 
 .. code-block:: python
 
@@ -128,7 +128,7 @@ Indicates whether the API for Firmware Upgrader is enabled or not.
 **default**: ``{}``
 ============ ========
 
-Allows changing the default OpenWrt upgrader settings, eg:
+Allows changing the default OpenWrt upgrader settings, e.g.:
 
 .. code-block:: python
 
@@ -160,10 +160,10 @@ Allows changing the default OpenWrt upgrader settings, eg:
 **default**: ``/`` (points to same server)
 ============ =============================
 
-If you have a seperate instance of openwisp-firmware-upgrader API on a
+If you have a separate instance of OpenWISP Firmware Upgrader API on a
 different domain, you can use this option to change the base of the image
-download url, this will enable you to point to your API server's domain,
-example value: ``https://myfirmware.myapp.com``.
+download URL, this will enable you to point to your API server's domain,
+e.g.: ``https://api.myservice.com``.
 
 .. _openwisp_firmware_upgraders_map:
 

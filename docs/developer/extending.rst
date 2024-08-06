@@ -273,8 +273,8 @@ For more information about URL configuration in django, please refer to
 the `"URL dispatcher" section in the django documentation
 <https://docs.djangoproject.com/en/4.2/topics/http/urls/>`_.
 
-12. Create Celery.py
---------------------
+12. Create ``celery.py``
+------------------------
 
 Please refer to the `celery.py
 <https://github.com/openwisp/openwisp-firmware-upgrader/tree/master/tests/openwisp2/celery.py>`_

@@ -3,7 +3,7 @@ Firmware Upgrader: Features
 
 - Stores information of each upgrade operation which can be seen from the
   device page
-- Automatic retries for recoverable failures (eg: firmware image upload
+- Automatic retries for recoverable failures (e.g.: firmware image upload
   issues because of intermittent internet connection)
 - Performs a final check to find out if the upgrade completed successfully
   or not

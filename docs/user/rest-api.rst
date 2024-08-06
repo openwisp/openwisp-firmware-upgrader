@@ -54,7 +54,7 @@ paginating the results in conjunction with the ``page`` parameter.
 Filtering by Organization Slug
 ------------------------------
 
-Most endpoints allow to filter by organization slug, eg:
+Most endpoints allow to filter by organization slug, e.g.:
 
 .. code-block:: text
 
