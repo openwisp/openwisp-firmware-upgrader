@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.http import Http404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics, pagination, serializers, status
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.request import clone_request
 from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
@@ -256,6 +256,12 @@ class DeviceFirmwareDetailView(
     lookup_field = 'device'
     lookup_url_kwarg = 'pk'
     organization_field = 'device__organization'
+
+    def get_object(self):
+        obj = super().get_object()
+        if self.request.method not in ('GET', 'HEAD') and obj.device.is_deactivated():
+            raise PermissionDenied
+        return obj
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
