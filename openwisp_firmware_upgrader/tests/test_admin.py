@@ -365,7 +365,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
         # is displayed as readonly in the admin interface.
         self.assertContains(
             response,
-            'div class="readonly">Test Category v0.1: TP-Link WDR4300 v1 (OpenWRT 19.07 and later)</div>',
+            '<div class="readonly">Test Category v0.1:'
+            ' TP-Link WDR4300 v1 (OpenWrt 19.07 and later)</div>',
         )
         self.assertNotContains(
             response,
