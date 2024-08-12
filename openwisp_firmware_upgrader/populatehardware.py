@@ -556,15 +556,15 @@ for key, value in dic.items():
     #load existing json if it exists
     if os.path.isfile("targets/"+arr[0]+"/"+arr[1]+"/devices.json"):
         print("reading in existing json "+"targets/"+arr[0]+"/"+arr[1]+"/devices.json")
-        with open('targets/'+arr[0]+"/"+arr[1]+"/devices.json", "r") as file:
+        with open('targets/'+arr[0]+"/"+arr[1]+"/devices.json", "r", encoding="utf-8") as file:
             #todo: add error handling
-            importedjsonobj = json.loads(file.read())
+            importedjsonobj = json.load(file)
             print("merging")
             devobj.update(importedjsonobj)
             
     #write out
     print("writing json")
-    with open('targets/'+arr[0]+"/"+arr[1]+"/devices.json", "w") as file:
+    with open('targets/'+arr[0]+"/"+arr[1]+"/devices.json", "w", encoding="utf-8") as file:
         file.write(json.dumps(devobj, indent=4))
             
         
