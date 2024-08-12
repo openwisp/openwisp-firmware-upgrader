@@ -1,5 +1,6 @@
 from collections import OrderedDict
 import os
+import json
 
 dic = OrderedDict(
     (
@@ -533,13 +534,40 @@ if not os.path.isdir('targets'):
 
 #targets/subdirectories
 for key, value in dic.items():
+
+    #break down key
     print("starting on "+key)
     arr = key.split("-")
-    print('doing targets/'+arr[0])
+    
+    #create platform dir
+    print("doing targets/"+arr[0])
     if not os.path.isdir('targets/'+arr[0]):
         os.makedirs('targets/'+arr[0])
-    print('doing targets/'+arr[0]+"/"+arr[1])
+    
+    #create platform subdir
+    print("doing targets/"+arr[0]+"/"+arr[1])
     if not os.path.isdir('targets/'+arr[0]+"/"+arr[1]):
         os.makedirs('targets/'+arr[0]+"/"+arr[1])
+        
+    #create object that holds data for this
+    devobj = {}
+    devobj[key] = value
+    
+    #load existing json if it exists
+    if os.path.isfile("targets/"+arr[0]+"/"+arr[1]+"/devices.json"):
+        print("reading in existing json "+"targets/"+arr[0]+"/"+arr[1]+"/devices.json")
+        with open('targets/'+arr[0]+"/"+arr[1]+"/devices.json", "r") as file:
+            #todo: add error handling
+            importedjsonobj = json.loads(file.read())
+            print("merging")
+            devobj.update(importedjsonobj)
+            
+    #write out
+    print("writing json")
+    with open('targets/'+arr[0]+"/"+arr[1]+"/devices.json", "w") as file:
+        file.write(json.dumps(devobj, indent=4))
+            
+        
+    
     
     
