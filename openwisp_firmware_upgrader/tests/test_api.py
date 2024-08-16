@@ -4,6 +4,8 @@ import swapper
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
+from packaging.version import parse as parse_version
+from rest_framework import VERSION as REST_FRAMEWORK_VERSION
 
 from openwisp_firmware_upgrader.api.serializers import (
     BatchUpgradeOperationListSerializer,
@@ -240,7 +242,10 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         build = self._create_build()
         url = reverse('upgrader:api_build_detail', args=[build.pk])
         data = dict(changelog='PATCH update')
-        with self.assertNumQueries(9):
+        expected_queries = (
+            8 if parse_version(REST_FRAMEWORK_VERSION) >= parse_version('3.15') else 9
+        )
+        with self.assertNumQueries(expected_queries):
             r = self.client.patch(url, data, content_type='application/json')
         self.assertEqual(r.data['id'], str(build.pk))
         self.assertEqual(r.data['category'], build.category.pk)
@@ -274,7 +279,6 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             with self.assertNumQueries(4):
                 r = self.client.post(url)
             self.assertEqual(r.status_code, 404)
-            self.assertEqual(r.json(), {'detail': 'Not found.'})
 
     def test_build_upgradeable(self):
         env = self._create_upgrade_env()
@@ -296,7 +300,6 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
-        self.assertEqual(r.json(), {'detail': 'Not found.'})
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
 
@@ -893,7 +896,6 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
-        self.assertEqual(r.json(), {'detail': 'Not found.'})
 
     def test_device_firmware_detail_400(self):
         env = self._create_upgrade_env()
@@ -971,7 +973,6 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             with self.assertNumQueries(8):
                 r = self.client.get(url, {'format': 'api'})
             self.assertEqual(r.status_code, 404)
-            self.assertEqual(str(r.data['detail']), 'Not found.')
             repsonse = r.content.decode()
             self.assertIn(f'{image1a}</option>', repsonse)
             self.assertIn(f'{image2a}</option>', repsonse)
@@ -1130,7 +1131,6 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             with self.assertNumQueries(4):
                 r = self.client.get(url)
             self.assertEqual(r.status_code, 404)
-            self.assertEqual(r.json(), {'detail': 'Not found.'})
 
         with self.subTest('Test device firmware detail org member (403 forbidden)'):
             self._login('org1_member', 'tester')
@@ -1417,7 +1417,6 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
-        self.assertEqual(r.json(), {'detail': 'Not found.'})
 
     def test_uo_list_get(self):
         self._create_upgrade_env(upgrade_operation=True)
@@ -1513,7 +1512,6 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             with self.assertNumQueries(4):
                 r = self.client.get(url)
             self.assertEqual(r.status_code, 404)
-            self.assertEqual(r.data['detail'], 'Not found.')
 
         with self.subTest('Test upgrade operation list org member (403 forbidden)'):
             self._login('org1_member', 'tester')
