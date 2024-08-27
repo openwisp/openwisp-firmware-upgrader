@@ -5,7 +5,7 @@ be possible to add support for different embedded
 systems in the future.
 """
 from collections import OrderedDict
-import json
+from pydoc import importfile
 from os import listdir
 
 from . import settings as app_settings
@@ -23,13 +23,11 @@ for platform in systems:
     for subplatform in listdir("targets/"+platform):
         print("targets/"+platform+"/"+subplatform)
         try:
-        #read each devices.json
-            with open("targets/"+platform+"/"+subplatform+"/devices.json", "r", encoding="utf-8") as file:
-                #json.load(file) is equivalent to json.loads(file.read()) 
-                devobj = json.load(file)
-                OPENWRT_FIRMWARE_IMAGE_MAP.update(devobj)
+            moduleFromFile = importfile("targets/"+platform+"/"+subplatform+"/devices.py")
+            devobj = moduleFromFile.returnData()
+            OPENWRT_FIRMWARE_IMAGE_MAP.update(devobj)
         except:
-            print("failed to load "+"targets/"+platform+"/"+subplatform+"/devices.json")
+            print("failed to load "+"targets/"+platform+"/"+subplatform+"/devices.py")
 
 # OpenWrt only for now, in the future we'll merge
 # different dictionaries representing different firmwares

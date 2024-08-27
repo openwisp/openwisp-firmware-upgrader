@@ -1,6 +1,6 @@
 from collections import OrderedDict
 import os
-import json
+from pydoc import importfile
 
 dic = OrderedDict(
     (
@@ -554,18 +554,16 @@ for key, value in dic.items():
     devobj[key] = value
     
     #load existing json if it exists
-    if os.path.isfile("targets/"+arr[0]+"/"+arr[1]+"/devices.json"):
-        print("reading in existing json "+"targets/"+arr[0]+"/"+arr[1]+"/devices.json")
-        with open('targets/'+arr[0]+"/"+arr[1]+"/devices.json", "r", encoding="utf-8") as file:
-            #todo: add error handling
-            importedjsonobj = json.load(file)
-            print("merging")
-            devobj.update(importedjsonobj)
+    if os.path.isfile("targets/"+arr[0]+"/"+arr[1]+"/devices.py"):
+        print("reading in existing "+"targets/"+arr[0]+"/"+arr[1]+"/devices.py")
+        moduleFromFile = importfile("targets/"+arr[0]+"/"+arr[1]+"/devices.py")
+        print("merging")
+        devobj.update(moduleFromFile.returnData())
             
     #write out
-    print("writing json")
-    with open('targets/'+arr[0]+"/"+arr[1]+"/devices.json", "w", encoding="utf-8") as file:
-        file.write(json.dumps(devobj, indent=4))
+    print("writing py")
+    with open('targets/'+arr[0]+"/"+arr[1]+"/devices.py", "w", encoding="utf-8") as file:
+        file.write(f'def returnData():\n  return {str(devobj)}\n')
             
         
     
