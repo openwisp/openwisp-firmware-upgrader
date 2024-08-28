@@ -80,7 +80,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         device = self._create_device(
             os=self.os, model=image.boards[0], organization=org
         )
-        self._create_config(device=device)
+        config = self._create_config(device=device)
         self.assertEqual(Device.objects.count(), 1)
         self.assertEqual(DeviceConnection.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)
@@ -88,6 +88,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         call_command('createinitialrevisions')
 
         self.login()
+        device.deactivate()
+        config.set_status_deactivated()
         # Delete the device
         self.open(
             reverse(f'admin:{self.config_app_label}_device_delete', args=[device.id])
