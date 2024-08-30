@@ -4,7 +4,7 @@ Extending OpenWISP Firmware Upgrader
 .. include:: ../partials/developer-docs.rst
 
 One of the core values of the OpenWISP project is :ref:`Software
-Reusability <values_software_reusability>`,, for this reason *OpenWISP
+Reusability <values_software_reusability>`, for this reason *OpenWISP
 Firmware Upgrader* provides a set of base classes which can be imported,
 extended and reused to create derivative apps.
 
@@ -149,9 +149,11 @@ to the `models of the sample app in the test project
 
 You can add fields in a similar way in your ``models.py`` file.
 
-**Note**: for doubts regarding how to use, extend or develop models please
-refer to the `"Models" section in the django documentation
-<https://docs.djangoproject.com/en/4.2/topics/db/models/>`_.
+.. note::
+
+    If you have questions about using, extending, or developing models,
+    refer to the `"Models" section of the Django documentation 
+    <https://docs.djangoproject.com/en/4.2/topics/db/models/>`_.
 
 8. Add Swapper Configurations
 -----------------------------
