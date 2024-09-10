@@ -456,10 +456,24 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ramips-mt76x8-yuncore_cpe200-squashfs-sysupgrade.bin',
+                {
+                    'label': 'YunCore CPE200',
+                    'boards': ('Yuncore CPE200',),
+                },
+            ),
+            (
                 'ramips-mt7621-yuncore_g720-squashfs-sysupgrade.bin',
                 {
                     'label': 'YunCore G720',
                     'boards': ('YunCore G720',),
+                },
+            ),
+            (
+                'ramips-mt76x8-yuncore_m300-squashfs-sysupgrade.bin',
+                {
+                    'label': 'YunCore M300',
+                    'boards': ('Yuncore M300',),
                 },
             ),
             (
