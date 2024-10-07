@@ -18,16 +18,17 @@ else:  # pragma: no cover
 #load devices from target
 
 #get array composed of platforms and than iterate down
-systems = listdir("targets")
+TARGETSDIR="openwisp_firmware_upgrader/targets/"
+systems = listdir(TARGETSDIR)
 for platform in systems:
-    for subplatform in listdir("targets/"+platform):
-        print("targets/"+platform+"/"+subplatform)
+    for subplatform in listdir(TARGETSDIR+platform):
+        print(TARGETSDIR+platform+"/"+subplatform)
         try:
-            moduleFromFile = importfile("targets/"+platform+"/"+subplatform+"/devices.py")
+            moduleFromFile = importfile(TARGETSDIR+platform+"/"+subplatform+"/devices.py")
             devobj = moduleFromFile.returnData()
             OPENWRT_FIRMWARE_IMAGE_MAP.update(devobj)
         except:
-            print("failed to load "+"targets/"+platform+"/"+subplatform+"/devices.py")
+            print("failed to load "+TARGETSDIR+platform+"/"+subplatform+"/devices.py")
 
 # OpenWrt only for now, in the future we'll merge
 # different dictionaries representing different firmwares
