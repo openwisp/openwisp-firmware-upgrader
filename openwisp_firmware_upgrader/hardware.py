@@ -6,7 +6,7 @@ systems in the future.
 """
 from collections import OrderedDict
 from pydoc import importfile
-from os import listdir
+from os import listdir, path
 
 from . import settings as app_settings
 
@@ -18,17 +18,20 @@ else:  # pragma: no cover
 #load devices from target
 
 #get array composed of platforms and than iterate down
-TARGETSDIR="openwisp_firmware_upgrader/targets/"
+TARGETSDIR="openwisp_firmware_upgrader/hardware/openwrt"
 systems = listdir(TARGETSDIR)
 for platform in systems:
-    for subplatform in listdir(TARGETSDIR+platform):
-        print(TARGETSDIR+platform+"/"+subplatform)
+    name = TARGETSDIR+"/"+platform
+    if (path.isfile(name) and name[len(name)-3:len(name)] == ".py"):
+        print(name)
         try:
-            moduleFromFile = importfile(TARGETSDIR+platform+"/"+subplatform+"/devices.py")
+            moduleFromFile = importfile(name)
             devobj = moduleFromFile.returnData()
+            print(devobj)
             OPENWRT_FIRMWARE_IMAGE_MAP.update(devobj)
         except:
-            print("failed to load "+TARGETSDIR+platform+"/"+subplatform+"/devices.py")
+            print("failed to load "+name)
+
 
 # OpenWrt only for now, in the future we'll merge
 # different dictionaries representing different firmwares

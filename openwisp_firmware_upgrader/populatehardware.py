@@ -543,40 +543,41 @@ dic = OrderedDict(
 )
 
 #targets
-if not os.path.isdir('targets'):
-    os.makedirs("targets")
+if not os.path.isdir('hardware'):
+    os.makedirs("hardware")
+
+#openwrt
+if not os.path.isdir('hardware/openwrt'):
+    os.makedirs("hardware/openwrt")
 
 #targets/subdirectories
 for key, value in dic.items():
-
-    #break down key
-    print("starting on "+key)
-    arr = key.split("-")
-    
-    #create platform dir
-    print("doing targets/"+arr[0])
-    if not os.path.isdir('targets/'+arr[0]):
-        os.makedirs('targets/'+arr[0])
-    
-    #create platform subdir
-    print("doing targets/"+arr[0]+"/"+arr[1])
-    if not os.path.isdir('targets/'+arr[0]+"/"+arr[1]):
-        os.makedirs('targets/'+arr[0]+"/"+arr[1])
         
     #create object that holds data for this
     devobj = {}
     devobj[key] = value
     
+    name = ""
+    for e in key.split("-"):
+        print("\t "+e)
+        if not ("squashfs" in e or "ext4" in e):
+            name+=e+"-"
+        else:
+            break
+    name = name[0:len(name)-1] #remove last -
+
+    print("starting "+ name)
+
     #load existing json if it exists
-    if os.path.isfile("targets/"+arr[0]+"/"+arr[1]+"/devices.py"):
-        print("reading in existing "+"targets/"+arr[0]+"/"+arr[1]+"/devices.py")
-        moduleFromFile = importfile("targets/"+arr[0]+"/"+arr[1]+"/devices.py")
+    if os.path.isfile("hardware/openwrt/"+name+".py"):
+        print("reading in existing "+"hardware/openwrt/"+name+".py")
+        moduleFromFile = importfile("hardware/openwrt/"+name+".py")
         print("merging")
         devobj.update(moduleFromFile.returnData())
             
     #write out
     print("writing py")
-    with open('targets/'+arr[0]+"/"+arr[1]+"/devices.py", "w", encoding="utf-8") as file:
+    with open('hardware/openwrt/'+name+".py", "w", encoding="utf-8") as file:
         file.write(f'def returnData():\n  return {str(devobj)}\n')
             
         
