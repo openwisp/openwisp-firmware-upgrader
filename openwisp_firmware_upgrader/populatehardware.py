@@ -45,7 +45,7 @@ dic = OrderedDict(
                 'label': 'GL.iNet GL-AR300M (NAND)',
                 'boards': ('GL.iNet GL-AR300M (NAND)',),
             },
-        ),
+           ),
         (
             'ramips-mt76x8-gl-mt300n-v2-squashfs-sysupgrade.bin',
             {'label': 'GL.iNet GL-MT300N-V2', 'boards': ('GL-MT300N-V2',)},
@@ -176,7 +176,7 @@ dic = OrderedDict(
             {
                 'label': 'TP-Link EAP225-Outdoor v3',
                 'boards': ('TP-Link EAP225-Outdoor v3',),
-             },
+            },
         ),
         (
             'ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin',
@@ -296,7 +296,7 @@ dic = OrderedDict(
         ),
         # Nanostation M XM AR71XX
         (
-             'ar71xx-generic-ubnt-nano-m-squashfs-sysupgrade.bin',
+            'ar71xx-generic-ubnt-nano-m-squashfs-sysupgrade.bin',
             {
                 'label': 'Ubiquiti Nanostation M (OpenWrt 19.07 and earlier)',
                 'boards': (
@@ -305,7 +305,7 @@ dic = OrderedDict(
                     'Ubiquiti NanoStation M5',
                     'Ubiquiti NanoStation loco M2',
                     'Ubiquiti NanoStation loco M5',
-               ),
+                ),
             },
         ),
         # Nanostation M XW ATH79
@@ -350,10 +350,10 @@ dic = OrderedDict(
         # Picostation M ATH79
         (
             'ath79-generic-ubnt_picostation-m-squashfs-sysupgrade.bin',
-                {
-                    'label': 'Ubiquiti Picostation M (OpenWrt 19.07 and later)',
-                    'boards': ('Ubiquiti Picostation M',),
-                },
+            {
+                'label': 'Ubiquiti Picostation M (OpenWrt 19.07 and later)',
+                'boards': ('Ubiquiti Picostation M',),
+            },
         ),
         # Ubiquiti Unifi
         (
@@ -373,9 +373,9 @@ dic = OrderedDict(
         ),
         # Unifi AC Mesh AR71XX
         (
-             'ar71xx-generic-ubnt-unifiac-mesh-squashfs-sysupgrade.bin',
+            'ar71xx-generic-ubnt-unifiac-mesh-squashfs-sysupgrade.bin',
             {
-            'label': 'Ubiquiti Unifi AC Mesh (OpenWrt 19.07 and earlier)',
+                'label': 'Ubiquiti Unifi AC Mesh (OpenWrt 19.07 and earlier)',
                 'boards': (
                     'Ubiquiti UniFi AC-Mesh',
                     'Ubiquiti UniFi-AC-MESH',
@@ -444,10 +444,24 @@ dic = OrderedDict(
             },
         ),
         (
+            'ramips-mt76x8-yuncore_cpe200-squashfs-sysupgrade.bin',
+            {
+                'label': 'YunCore CPE200',
+                'boards': ('Yuncore CPE200',),
+            },
+        ),
+        (
             'ramips-mt7621-yuncore_g720-squashfs-sysupgrade.bin',
             {
                 'label': 'YunCore G720',
                 'boards': ('YunCore G720',),
+            },
+        ),
+        (
+            'ramips-mt76x8-yuncore_m300-squashfs-sysupgrade.bin',
+            {
+                'label': 'YunCore M300',
+                'boards': ('Yuncore M300',),
             },
         ),
         (
@@ -493,7 +507,7 @@ dic = OrderedDict(
             },
         ),
         (
-           'x86-64-generic-squashfs-combined.img.gz',
+            'x86-64-generic-squashfs-combined.img.gz',
             {
                 'label': 'Generic x86/64 (QEMU/KVM)',
                 'boards': (
@@ -523,8 +537,8 @@ dic = OrderedDict(
             {
                 'label': 'x86 Geode(TM) Integrated Processor by AMD',
                 'boards': ('Geode(TM) Integrated Processor by AMD PCS', 'Alix 2D2'),
-            }
-         )
+            },
+        ),
     )
 )
 
