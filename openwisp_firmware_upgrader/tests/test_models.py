@@ -432,7 +432,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(DeviceConnection.objects.count(), 1)
             self.assertEqual(Device.objects.count(), 1)
             self.assertEqual(DeviceFirmware.objects.count(), 0)
-            d1.delete()
+            d1.delete(check_deactivated=False)
             Credentials.objects.all().delete()
 
         with self.subTest("Device doesn't define model"):
@@ -440,7 +440,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(DeviceConnection.objects.count(), 1)
             self.assertEqual(Device.objects.count(), 1)
             self.assertEqual(DeviceFirmware.objects.count(), 0)
-            d1.delete()
+            d1.delete(check_deactivated=False)
             Credentials.objects.all().delete()
 
         build1.os = None

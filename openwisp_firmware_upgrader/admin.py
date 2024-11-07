@@ -20,7 +20,7 @@ from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
 
-from openwisp_controller.config.admin import DeviceAdmin
+from openwisp_controller.config.admin import DeactivatedDeviceReadOnlyMixin, DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
 from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 
@@ -402,7 +402,9 @@ class DeviceFormSet(forms.BaseInlineFormSet):
         return kwargs
 
 
-class DeviceFirmwareInline(MultitenantAdminMixin, admin.StackedInline):
+class DeviceFirmwareInline(
+    MultitenantAdminMixin, DeactivatedDeviceReadOnlyMixin, admin.StackedInline
+):
     model = DeviceFirmware
     formset = DeviceFormSet
     form = DeviceFirmwareForm
