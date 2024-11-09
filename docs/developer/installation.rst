@@ -27,6 +27,20 @@ Install spatialite and sqlite:
 Installing for Development
 --------------------------
 
+Create project directory:
+
+.. code-block:: shell
+
+    mkdir openwisp && cd openwisp
+
+The directory structure will look like this:
+
+.. code-block:: text
+
+    openwisp/                         # Main project folder
+    ├── env/                          # Virtual environment 
+    └── openwisp-firmware-upgrader/   # Cloned repository
+
 Fork and clone the forked repository:
 
 .. code-block:: shell
@@ -39,25 +53,13 @@ Navigate into the cloned repository:
 
     cd openwisp-firmware-upgrader/
 
-Launch Redis:
-
-.. code-block:: shell
-
-    docker-compose up -d redis
-
-Install test requirements:
-
-.. code-block:: shell
-
-    pip install -r requirements-test.txt
-
 Setup and activate a virtual-environment (we'll be using `virtualenv
 <https://pypi.org/project/virtualenv/>`_):
 
 .. code-block:: shell
 
-    python -m virtualenv env
-    source env/bin/activate
+    python -m virtualenv ../env
+    source ../env/bin/activate
 
 Make sure that your base python packages are up to date before moving to
 the next step:
@@ -65,6 +67,18 @@ the next step:
 .. code-block:: shell
 
     pip install -U pip wheel setuptools
+
+Install test requirements:
+
+.. code-block:: shell
+
+    pip install -r requirements-test.txt
+
+Launch Redis:
+
+.. code-block:: shell
+
+    docker-compose up -d redis
 
 Install development dependencies:
 
