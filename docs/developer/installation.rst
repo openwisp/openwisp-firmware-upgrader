@@ -38,7 +38,7 @@ The directory structure will look like this:
 .. code-block:: text
 
     openwisp/                         # Main project folder
-    ├── env/                          # Virtual environment 
+    ├── env/                          # Virtual environment
     └── openwisp-firmware-upgrader/   # Cloned repository
 
 Fork and clone the forked repository:
