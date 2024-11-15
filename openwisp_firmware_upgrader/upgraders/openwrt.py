@@ -174,6 +174,8 @@ class OpenWrt(object):
         'uhttpd',
         'dnsmasq',
         'openwisp_config',
+        'openwisp-config',
+        'openwisp-monitoring',
         'cron',
         'rpcd',
         'rssileds',
