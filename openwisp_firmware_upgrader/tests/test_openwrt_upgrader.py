@@ -603,17 +603,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upgrade_op.status, 'success')
-        self.assertEqual(exec_command.call_count, 20)
+        self.assertEqual(exec_command.call_count, 22)
         self.assertEqual(
             exec_command.call_args_list[5][0][0],
             'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd stop',
         )
         self.assertEqual(
-            exec_command.call_args_list[12][0][0],
+            exec_command.call_args_list[14][0][0],
             'test -f /etc/init.d/log && /etc/init.d/log stop',
         )
         self.assertEqual(
-            exec_command.call_args_list[13][0][0],
+            exec_command.call_args_list[15][0][0],
             'test -f /sbin/wifi && /sbin/wifi down',
         )
         self.assertEqual(putfo.call_count, 1)
@@ -646,7 +646,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upgrade_op.status, 'success')
-        self.assertEqual(exec_command.call_count, 22)
+        self.assertEqual(exec_command.call_count, 24)
         self.assertEqual(
             exec_command.call_args_list[4][0][0],
             'cat /proc/meminfo | grep MemAvailable',
@@ -682,17 +682,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upgrade_op.status, 'aborted')
-        self.assertEqual(exec_command.call_count, 26)
+        self.assertEqual(exec_command.call_count, 30)
         self.assertEqual(
-            exec_command.call_args_list[17][0][0],
+            exec_command.call_args_list[19][0][0],
             'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start',
         )
         self.assertEqual(
-            exec_command.call_args_list[24][0][0],
+            exec_command.call_args_list[28][0][0],
             'test -f /etc/init.d/log && /etc/init.d/log start',
         )
         self.assertEqual(
-            exec_command.call_args_list[25][0][0],
+            exec_command.call_args_list[29][0][0],
             'test -f /sbin/wifi && /sbin/wifi up',
         )
         self.assertEqual(putfo.call_count, 0)
@@ -723,17 +723,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upgrade_op.status, 'aborted')
-        self.assertEqual(exec_command.call_count, 27)
+        self.assertEqual(exec_command.call_count, 31)
         self.assertEqual(
-            exec_command.call_args_list[18][0][0],
+            exec_command.call_args_list[20][0][0],
             'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start',
         )
         self.assertEqual(
-            exec_command.call_args_list[25][0][0],
+            exec_command.call_args_list[29][0][0],
             'test -f /etc/init.d/log && /etc/init.d/log start',
         )
         self.assertEqual(
-            exec_command.call_args_list[26][0][0],
+            exec_command.call_args_list[30][0][0],
             'test -f /sbin/wifi && /sbin/wifi up',
         )
         self.assertEqual(putfo.call_count, 1)
