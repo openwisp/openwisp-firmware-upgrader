@@ -45,12 +45,6 @@ Launch Redis:
 
     docker-compose up -d redis
 
-Install test requirements:
-
-.. code-block:: shell
-
-    pip install -r requirements-test.txt
-
 Setup and activate a virtual-environment (we'll be using `virtualenv
 <https://pypi.org/project/virtualenv/>`_):
 
@@ -71,8 +65,13 @@ Install development dependencies:
 .. code-block:: shell
 
     pip install -e .
-    pip install -r requirements-test.txt
     sudo npm install -g jshint stylelint
+
+Install test requirements:
+
+.. code-block:: shell
+
+    pip install -r requirements-test.txt
 
 Install WebDriver for Chromium for your browser version from
 https://chromedriver.chromium.org/home and Extract ``chromedriver`` to one
