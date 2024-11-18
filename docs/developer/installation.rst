@@ -65,13 +65,8 @@ Install development dependencies:
 .. code-block:: shell
 
     pip install -e .
-    sudo npm install -g jshint stylelint
-
-Install test requirements:
-
-.. code-block:: shell
-
     pip install -r requirements-test.txt
+    sudo npm install -g jshint stylelint
 
 Install WebDriver for Chromium for your browser version from
 https://chromedriver.chromium.org/home and Extract ``chromedriver`` to one
