@@ -45,12 +45,6 @@ Launch Redis:
 
     docker-compose up -d redis
 
-Install test requirements:
-
-.. code-block:: shell
-
-    pip install -r requirements-test.txt
-
 Setup and activate a virtual-environment (we'll be using `virtualenv
 <https://pypi.org/project/virtualenv/>`_):
 
