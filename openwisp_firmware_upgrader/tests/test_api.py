@@ -926,6 +926,27 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 400)
             self.assertIn('Invalid pk', r.json()['image'][0])
 
+    def test_deactivated_device(self):
+        device_fw = self._create_device_firmware()
+        device_fw.device.deactivate()
+        url = reverse('upgrader:api_devicefirmware_detail', args=[device_fw.device.pk])
+
+        with self.subTest('Test retrieving DeviceFirmwareImage'):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+
+        with self.subTest('Test updating DeviceFirmwareImage'):
+            response = self.client.put(
+                url,
+                data={'image': device_fw.image.pk},
+                content_type='application/json',
+            )
+            self.assertEqual(response.status_code, 403)
+
+        with self.subTest('Test deleting DeviceFirmwareImage'):
+            response = self.client.delete(url)
+            self.assertEqual(response.status_code, 403)
+
     def test_device_firmware_detail_delete(self):
         device_fw = self._create_device_firmware()
         self.assertEqual(DeviceFirmware.objects.count(), 1)
