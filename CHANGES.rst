@@ -1,16 +1,77 @@
 Changelog
 =========
 
-Version 1.1.0 [Unreleased]
+Version 1.1.0 [2024-11-22]
 --------------------------
 
-Unreleased
+Features
+~~~~~~~~
+
+- `Allowed specifying options for upgrade operations
+  <https://github.com/openwisp/openwisp-firmware-upgrader/pull/226>`_.
+- Added REST API endpoints for ``DeviceFirmware`` and
+  ``UpgradeOperation``.
+- Added autocomplete support for filters in the admin interface.
+- Added support for device deactivation: prevent changing
+  DeviceFirmwareImage of deactivated device.
+- Added following firmwares to the default firmware image map:
+
+  - COMFAST CF-E375AC
+  - Dongwon T&I DW02-412H (128M) / KT GiGA WiFi home (128M)
+  - Edgecore EAP102
+  - GL.iNet GL-AR300M (NAND)
+  - Generic x86/32 bit
+  - Generic x86/64 (QEMU/KVM)
+  - MikroTik wAP ac
+  - TP-Link EAP225-Outdoor v3
+  - Ubiquiti UniFi (OpenWrt 19.07 and later)
+  - Ubiquiti UniFi AC LR (OpenWrt 19.07 and later)
+  - Ubiquiti UniFi AP Pro (OpenWrt 19.07 and earlier)
+  - Ubiquiti UniFi AP Pro (OpenWrt 19.07 and later)
+  - VMware, Inc. VMware Virtual Platform
+  - YunCore AX820
+  - YunCore G720
+  - Zbtlink ZBT-WE1026-5G (16M)
+  - Zbtlink ZBT-WE826 (16M)
+  - Zbtlink ZBT-WE826 (32M)
+  - Zbtlink ZBT-WG3526 (16M)
+  - Zbtlink ZBT-WG3526 (32M)
+
+Changes
+~~~~~~~
+
+- Try all available DeviceConnection for performing upgrades.
+- Allow longer firmware filenames upto 255 characters.
+
+Dependencies
+++++++++++++
+
+- Bumped ``openwisp-controller~=1.1.0``.
+- Bumped ``django-private-storage~=3.1.0``.
+- Added support for Django ``4.1.x`` and ``4.2.x``.
+- Added support for Python ``3.10``.
+- Dropped support for Python ``3.7``.
+- Dropped support for Django ``3.0.x`` and ``3.1.x``.
+
+Bugfixes
+~~~~~~~~
+
+- Fixed `issues in reconnecting to device after firmware upgrade
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/235>`_.
+- `Use storage backend method for deleting FirmwareImage.file
+  <https://github.com/openwisp/openwisp-firmware-upgrader/pull/203>`_.
+- Fixed `false positive errors on OpenWrt upgrader
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/246>`_.
+- Avoid `logging error for Device without DeviceConnection
+  <https://github.com/openwisp/openwisp-firmware-upgrader/pull/249>`_.
+- `User need to have required model permissions to perform admin actions
+  <https://github.com/openwisp/openwisp-firmware-upgrader/pull/257>`_.
 
 Version 1.0.1 [2022-06-10]
 --------------------------
 
 Bugfixes
---------
+~~~~~~~~
 
 - Fixed `hardcoded storage backend of the "FirmwareImage.file" field
   <https://github.com/openwisp/openwisp-firmware-upgrader/issues/195>`_.
@@ -31,7 +92,7 @@ Version 1.0.0 [2022-05-05]
 --------------------------
 
 Features
---------
+~~~~~~~~
 
 - Added ``version`` and ``os`` filters to the ``build`` endpoint
 - Added OpenWISP 1.x firmware upgrader (legacy)
@@ -93,10 +154,10 @@ Features
   - x86 Geode(TM) Integrated Processor by AMD
 
 Changes
--------
+~~~~~~~
 
 Backward incompatible changes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++++++++++++++++++++++++++++++
 
 - REST APIs are enabled by default. You can disable them by setting
   ``OPENWISP_FIRMWARE_UPGRADER_API`` to ``False``.
@@ -104,7 +165,7 @@ Backward incompatible changes
   This makes it consistent with REST API endpoints of other modules
 
 Dependencies
-~~~~~~~~~~~~
+++++++++++++
 
 - Dropped support for Python 3.6
 - Dropped support for Django 2.2
@@ -113,7 +174,7 @@ Dependencies
 - Upgraded openwisp-controller to 1.0.x
 
 Other changes
-~~~~~~~~~~~~~
++++++++++++++
 
 - Avoid deletion of ``UpgradeOperation`` when related ``Firmware Image``
   is deleted
@@ -127,7 +188,7 @@ Other changes
   tasks
 
 Bugfixes
---------
+~~~~~~~~
 
 - Fixed firmware checksum check
 - Improved error handling for upgrade operations
