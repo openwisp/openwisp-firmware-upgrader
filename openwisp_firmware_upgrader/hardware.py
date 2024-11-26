@@ -290,6 +290,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     'boards': ('Ubiquiti Nanostation Loco M',),
                 },
             ),
+            (
+                'ath79-tiny-ubnt_nanostation-loco-m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti Nanostation Loco M (OpenWrt, ath79-tiny)',
+                    'boards': ('Ubiquiti Nanostation Loco M (XM)',),
+                },
+            ),
             # Nanostation Loco M XW ATH79
             (
                 'ath79-generic-ubnt_nanostation-loco-m-xw-squashfs-sysupgrade.bin',
@@ -339,6 +346,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     'boards': ('Ubiquiti Nanostation M',),
                 },
             ),
+            (
+                'ath79-tiny-ubnt_nanostation-m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti Nanostation M (OpenWrt ath79-tiny)',
+                    'boards': ('Ubiquiti Nanostation M (XM)',),
+                },
+            ),
             # Bullet XW AR71XX
             (
                 'ar71xx-generic-ubnt-bullet-m-xw-squashfs-sysupgrade.bin',
@@ -365,6 +379,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     'label': 'Ubiquiti Picostation M (OpenWrt 19.07 and later)',
                     'boards': ('Ubiquiti Picostation M',),
+                },
+            ),
+            (
+                'ath79-tiny-ubnt_picostation-m-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Ubiquiti Picostation M (OpenWrt, ath79-tiny)',
+                    'boards': ('Picostation M (XM)',),
                 },
             ),
             # Ubiquiti Unifi
