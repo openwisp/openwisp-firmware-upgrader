@@ -75,6 +75,10 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {'label': 'MikroTik wAP ac', 'boards': ('MikroTik wAP ac',)},
             ),
             (
+                'ramips-mt7621-mikrotik_routerboard-m33g-squashfs-sysupgrade.bin',
+                {'label': 'MikroTik RouterBOARD M33G', 'boards': ('RouterBOARD M33G',)},
+            ),
+            (
                 'brcm2708-bcm2709-rpi-2-ext4-sysupgrade.img.gz',
                 {
                     'label': 'Raspberry Pi 2 Model B',
