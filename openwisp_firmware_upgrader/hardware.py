@@ -272,7 +272,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                'octeon-erlite-squashfs-sysupgrade.tar',
+                'octeon-generic-ubnt_edgerouter-lite-squashfs-sysupgrade.tar',
                 {
                     'label': 'Ubiquiti EdgeRouter Lite',
                     'boards': ('Ubiquiti EdgeRouter Lite',),
@@ -394,7 +394,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             ),
             # Ubiquiti Unifi
             (
-                'ath79-generic-ubnt_unifi-squashfs-sysupgrade.bin',
+                'ath79-generic-ubnt_unifi-ap-squashfs-sysupgrade.bin',
                 {
                     'label': 'Ubiquiti UniFi (OpenWRT 19.07 and later)',
                     'boards': ('Ubiquiti UniFi', 'Ubiquiti UniFi AP'),
@@ -563,14 +563,14 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                'x86-generic-combined-squashfs.img.gz',
+                'x86-generic-generic-squashfs-combined.img.gz',
                 {
                     'label': 'Generic x86/32 bit',
                     'boards': ('x86',),
                 },
             ),
             (
-                'x86-geode-combined-squashfs.img.gz',
+                'x86-geode-generic-squashfs-combined.img.gz',
                 {
                     'label': 'x86 Geode(TM) Integrated Processor by AMD',
                     'boards': ('Geode(TM) Integrated Processor by AMD PCS', 'Alix 2D2'),
