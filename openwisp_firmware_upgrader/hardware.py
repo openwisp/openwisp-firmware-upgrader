@@ -76,7 +76,10 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             ),
             (
                 'ramips-mt7621-mikrotik_routerboard-m33g-squashfs-sysupgrade.bin',
-                {'label': 'MikroTik RouterBOARD M33G', 'boards': ('RouterBOARD M33G',)},
+                {
+                    'label': 'MikroTik RouterBOARD M33G',
+                    'boards': ('MikroTik RouterBOARD M33G',),
+                },
             ),
             (
                 'brcm2708-bcm2709-rpi-2-ext4-sysupgrade.img.gz',
