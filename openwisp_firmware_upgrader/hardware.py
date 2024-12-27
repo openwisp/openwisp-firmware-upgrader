@@ -165,29 +165,29 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 'ar71xx-generic-cpe210-220-v1-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-LINK CPE210 v3 (OpenWrt 19.07 and earlier)',
-                    'boards': ('TP-LINK CPE210 v1', 'TP-LINK CPE220 v1'),
+                    'label': 'TP-Link CPE210 v1 (OpenWrt 19.07 and earlier)',
+                    'boards': ('TP-Link CPE210 v1', 'TP-LINK CPE220 v1'),
                 },
             ),
             (
                 'ath79-generic-tplink_cpe210-v2-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-LINK CPE210 v2 (OpenWrt 19.07 and later)',
-                    'boards': ('TP-LINK CPE210 v2',),
+                    'label': 'TP-Link CPE210 v2',
+                    'boards': ('TP-Link CPE210 v2',),
                 },
             ),
             (
                 'ath79-generic-tplink_cpe210-v3-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-LINK CPE210 v3 (OpenWrt 19.07 and later)',
-                    'boards': ('TP-LINK CPE210 v3',),
+                    'label': 'TP-Link CPE210 v3',
+                    'boards': ('TP-Link CPE210 v3',),
                 },
             ),
             (
                 'ath79-generic-tplink_cpe510-v3-squashfs-sysupgrade.bin',
                 {
-                    'label': 'TP-LINK CPE510 v3 (OpenWrt 19.07 and later)',
-                    'boards': ('TP-LINK CPE510 v3',),
+                    'label': 'TP-Link CPE510 v3',
+                    'boards': ('TP-Link CPE510 v3',),
                 },
             ),
             (
