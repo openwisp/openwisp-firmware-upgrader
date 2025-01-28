@@ -7,7 +7,7 @@ form .errorlist {
 .errorlist > li {
   visibility: hidden;
 }
-.errorlist ul li{
+.errorlist ul li {
   visibility: visible;
 }
 #ow-loading {
