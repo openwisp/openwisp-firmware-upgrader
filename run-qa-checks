@@ -2,10 +2,9 @@
 set -e
 openwisp-qa-check \
     --migration-path ./openwisp_firmware_upgrader/migrations \
-    --migration-module firmware_upgrader
-
-# JShint checks
-jshint openwisp_firmware_upgrader/static/firmware-upgrader/js/*.js
+    --migration-module firmware_upgrader \
+    --csslinter \
+    --jslinter
 
 echo ''
 echo 'Running checks for SAMPLE_APP'
