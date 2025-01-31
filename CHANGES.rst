@@ -6,6 +6,16 @@ Version 1.2.0 [Unreleased]
 
 Work in progress.
 
+Version 1.1.1 [2025-01-31]
+--------------------------
+
+Bugfixes
+~~~~~~~~
+
+- Fixed `"test_restoring_deleted_device" test
+  <https://github.com/openwisp/openwisp-firmware-upgrader/pull/287>`_
+  which was failing due to changes in ``openwisp-controller~=1.1.1``.
+
 Version 1.1.0 [2024-11-22]
 --------------------------
 
