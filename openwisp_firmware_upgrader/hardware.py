@@ -82,6 +82,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                'ath79-generic-netgear_wndap360-squashfs-sysupgrade.bin',
+                {
+                    'label': 'Netgear WNDAP360',
+                    'boards': ('Netgear WNDAP360',),
+                },
+            ),
+            (
                 'brcm2708-bcm2709-rpi-2-ext4-sysupgrade.img.gz',
                 {
                     'label': 'Raspberry Pi 2 Model B',
