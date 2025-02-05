@@ -533,6 +533,12 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
             self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -c -F /tmp/test.bin')
 
+        with self.subTest('Test upgrade command with -F and -n'):
+            upgrade_op.upgrade_options = {'F': True, 'n': True, 'c': False}
+            upgrader = OpenWrt(upgrade_op, device_conn)
+            upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
+            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -F -n /tmp/test.bin')
+
     @patch('scp.SCPClient.putfo')
     @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
     @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
