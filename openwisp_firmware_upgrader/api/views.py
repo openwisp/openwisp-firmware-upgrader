@@ -12,7 +12,6 @@ from openwisp_firmware_upgrader import private_storage
 from openwisp_users.api.mixins import FilterByOrganizationManaged
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 
-from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
@@ -291,20 +290,7 @@ class DeviceFirmwareDetailView(
     def _get_image_queryset(self, device_firmware=None, device=None):
         if not device_firmware and not device:
             return
-        image_qs = (
-            FirmwareImage.objects.filter(
-                build__category__organization_id=device.organization_id
-            )
-            .order_by('-created')
-            .select_related('build', 'build__category')
-        )
-        if device.model and device.model in REVERSE_FIRMWARE_IMAGE_MAP:
-            image_qs = image_qs.filter(type=REVERSE_FIRMWARE_IMAGE_MAP[device.model])
-        if device_firmware:
-            image_qs = image_qs.filter(
-                build__category_id=device_firmware.image.build.category_id
-            )
-        return image_qs
+        return DeviceFirmware.get_image_queryset_for_device(device, device_firmware)
 
     def _get_response_data(self, serializer, upgrade_operation=None):
         data = {**serializer.data}

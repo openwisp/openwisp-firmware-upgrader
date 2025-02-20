@@ -71,11 +71,13 @@ class TestUpgraderMixin(CreateConnectionsMixin):
     def _create_firmware_image(self, **kwargs):
         opts = dict(type=self.TPLINK_4300_IMAGE)
         opts.update(kwargs)
-        build_opts = {}
+        category_opts = {}
         if 'organization' in opts:
-            build_opts['organization'] = opts.pop('organization')
+            category_opts['organization'] = opts.pop('organization')
         if 'build' not in opts:
-            opts['build'] = self._get_build(**build_opts)
+            opts['build'] = self._get_build(
+                category=self._get_category(**category_opts)
+            )
         if 'file' not in opts:
             opts['file'] = self._get_simpleuploadedfile()
         fw = FirmwareImage(**opts)

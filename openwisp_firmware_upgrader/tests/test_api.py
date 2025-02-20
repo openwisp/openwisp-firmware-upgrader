@@ -332,6 +332,62 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
             r = client.get(url)
         self.assertEqual(r.status_code, 401)
 
+    def test_shared_category(self):
+        self._create_admin(username='admin', password='tester')
+        list_view_path = reverse('upgrader:api_category_list')
+
+        with self.subTest('Test superuser can create shared category'):
+            self._login(username='admin', password='tester')
+            response = self.client.post(
+                list_view_path, {'name': 'Shared', 'organization': ''}
+            )
+            self.assertEqual(response.status_code, 201)
+            self.assertEqual(Category.objects.count(), 1)
+            category = Category.objects.first()
+            self.assertEqual(category.organization, None)
+
+        category_details_path = reverse(
+            'upgrader:api_category_detail', args=[category.pk]
+        )
+
+        with self.subTest('Test superuser can view shared category'):
+            response = self.client.get(list_view_path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.data['results'], [self._serialize_category(category)]
+            )
+
+        with self.subTest('Test superuser can update shared object'):
+            response = self.client.patch(
+                category_details_path,
+                {'description': 'Shared category'},
+                content_type='application/json',
+            )
+            self.assertEqual(response.status_code, 200)
+            category.refresh_from_db()
+            self.assertEqual(category.description, 'Shared category')
+
+        self._logout()
+        self._login()
+        with self.subTest('Test org admin cannot create shared category'):
+            response = self.client.post(
+                list_view_path, {'name': 'Shared 2', 'organization': ''}
+            )
+            self.assertEqual(response.status_code, 400)
+
+        with self.subTest('Test org admin can view shared categories'):
+            response = self.client.get(list_view_path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.data['results'], [self._serialize_category(category)]
+            )
+
+        with self.subTest('Test org admin cannot update shared category'):
+            response = self.client.patch(
+                category_details_path, {'description': 'Changed by org admin'}
+            )
+            self.assertEqual(response.status_code, 403)
+
     def test_category_list(self):
         self._create_category()
         self._create_category(name='New category')
@@ -1045,6 +1101,28 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertNotIn(f'{image1b}</option>', repsonse)
         self.assertNotIn(f'{image2b}</option>', repsonse)
         self.assertNotIn(f'{image2}</option>', repsonse)
+
+    def test_device_firmware_detail_create_shared_image(self):
+        env = self._create_upgrade_env(device_firmware=False)
+        shared_image = self._create_firmware_image(
+            type=self.TPLINK_4300_IMAGE, organization=None
+        )
+        path = reverse('upgrader:api_devicefirmware_detail', args=[env['d1'].pk])
+        self.assertEqual(DeviceFirmware.objects.count(), 0)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+        with self.assertNumQueries(25):
+            data = {'image': shared_image.pk}
+            r = self.client.put(
+                f'{path}?format=api', data, content_type='application/json'
+            )
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(DeviceFirmware.objects.count(), 1)
+        self.assertEqual(UpgradeOperation.objects.count(), 1)
+        device_fw = DeviceFirmware.objects.first()
+        self.assertEqual(device_fw.image, shared_image)
+        repsonse = r.content.decode()
+        self.assertIn(f'{shared_image}</option>', repsonse)
 
     def test_device_firmware_detail_update(self):
         env = self._create_upgrade_env()

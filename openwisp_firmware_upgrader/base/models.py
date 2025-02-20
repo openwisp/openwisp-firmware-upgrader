@@ -6,13 +6,14 @@ import jsonschema
 import swapper
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from private_storage.fields import PrivateFileField
 
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
-from openwisp_users.mixins import OrgMixin
+from openwisp_users.mixins import ShareableOrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
@@ -69,7 +70,7 @@ class UpgradeOptionsMixin(models.Model):
         self.validate_upgrade_options()
 
 
-class AbstractCategory(OrgMixin, TimeStampedEditableModel):
+class AbstractCategory(ShareableOrgMixin, TimeStampedEditableModel):
     name = models.CharField(max_length=64, db_index=True)
     description = models.TextField(blank=True)
 
@@ -295,7 +296,10 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def clean(self):
         if not hasattr(self, 'image') or not hasattr(self, 'device'):
             return
-        if self.image.build.category.organization != self.device.organization:
+        if (
+            self.image.build.category.organization is not None
+            and self.image.build.category.organization != self.device.organization
+        ):
             raise ValidationError(
                 {
                     'image': _(
@@ -401,6 +405,27 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             transaction.on_commit(
                 lambda: create_all_device_firmwares.delay(instance.pk)
             )
+
+    @classmethod
+    def get_image_queryset_for_device(cls, device, device_firmware=None):
+        FirmwareImage = cls.image.field.related_model
+        qs = (
+            FirmwareImage.objects.filter(
+                Q(build__category__organization_id=device.organization_id)
+                | Q(build__category__organization__isnull=True)
+            )
+            .order_by('-created')
+            .select_related('build', 'build__category')
+        )
+        # if device model is defined
+        # restrict the images to the ones compatible with it
+        if device.model and device.model in REVERSE_FIRMWARE_IMAGE_MAP:
+            qs = qs.filter(type=REVERSE_FIRMWARE_IMAGE_MAP[device.model])
+        # if DeviceFirmware instance already exists
+        # restrict images to the ones of the same category
+        if device_firmware and hasattr(device_firmware, 'image'):
+            qs = qs.filter(build__category_id=device_firmware.image.build.category_id)
+        return qs
 
 
 class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):

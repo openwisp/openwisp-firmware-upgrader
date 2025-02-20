@@ -278,6 +278,24 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertIn(yuncore, form.fields['image'].queryset)
         self.assertNotIn(img_org2, form.fields['image'].queryset)
 
+    def test_image_queryset_shared_firmware(self):
+        (
+            device,
+            device_fw,
+            _,
+            _,
+            _,
+        ) = self._prepare_image_qs_test_env()
+        shared_image = self._create_firmware_image(
+            build=self._create_build(
+                category=self._create_category(organization=None, name='Shared')
+            )
+        )
+        form = DeviceFirmwareForm(device=device)
+        self.assertEqual(form.fields['image'].queryset.count(), 3)
+        self.assertIn(device_fw.image, form.fields['image'].queryset)
+        self.assertIn(shared_image, form.fields['image'].queryset)
+
     def test_admin_menu_groups(self):
         # Test menu group (openwisp-utils menu group) for Build, Category,
         # BatchUpgradeOperation models

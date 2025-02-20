@@ -30,7 +30,6 @@ from .filters import (
     CategoryFilter,
     CategoryOrganizationFilter,
 )
-from .hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from .swapper import load_model
 from .utils import get_upgrader_schema_for_device
 from .widgets import FirmwareSchemaWidget
@@ -347,29 +346,11 @@ class DeviceFirmwareForm(forms.ModelForm):
         js = ['admin/js/jquery.init.js', 'firmware-upgrader/js/device-firmware.js']
         css = {'all': ['firmware-upgrader/css/device-firmware.css']}
 
-    def _get_image_queryset(self, device):
-        # restrict firmware images to organization of the current device
-        qs = (
-            FirmwareImage.objects.filter(
-                build__category__organization_id=device.organization_id
-            )
-            .order_by('-created')
-            .select_related('build', 'build__category')
-        )
-        # if device model is defined
-        # restrict the images to the ones compatible with it
-        if device.model and device.model in REVERSE_FIRMWARE_IMAGE_MAP:
-            qs = qs.filter(type=REVERSE_FIRMWARE_IMAGE_MAP[device.model])
-        # if DeviceFirmware instance already exists
-        # restrict images to the ones of the same category
-        if not self.instance._state.adding:
-            self.instance.refresh_from_db()
-            qs = qs.filter(build__category_id=self.instance.image.build.category_id)
-        return qs
-
     def __init__(self, device, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['image'].queryset = self._get_image_queryset(device)
+        self.fields['image'].queryset = DeviceFirmware.get_image_queryset_for_device(
+            device, device_firmware=self.instance
+        )
 
     def full_clean(self):
         super().full_clean()

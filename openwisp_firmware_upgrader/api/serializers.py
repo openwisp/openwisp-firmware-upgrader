@@ -106,6 +106,7 @@ class DeviceFirmwareSerializer(ValidatedModelSerializer):
         if (
             image
             and device
+            and image.build.category.organization is not None
             and image.build.category.organization != device.organization
         ):
             raise ValidationError(

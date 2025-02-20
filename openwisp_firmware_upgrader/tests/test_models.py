@@ -91,19 +91,28 @@ class TestModels(TestUpgraderMixin, TestCase):
         fw = self._create_firmware_image(type='')
         self.assertEqual(fw.type, self.TPLINK_4300_IMAGE)
 
-    def test_device_firmware_image_invalid_org(self):
+    def test_device_firmware_multitenancy(self):
         device_fw = self._create_device_firmware()
         org2 = self._create_org(name='org2')
-        build2 = self._create_build(organization=org2)
-        img2 = self._create_firmware_image(build=build2)
+        shared_image = self._create_firmware_image(organization=None)
+        org2_image = self._create_firmware_image(organization=org2)
 
-        device_fw.image = img2
-        try:
-            device_fw.full_clean()
-        except ValidationError as e:
-            self.assertIn('image', e.message_dict)
-        else:
-            self.fail('ValidationError not raised')
+        with self.subTest('Test with firmware from another organization'):
+            device_fw.image = org2_image
+            with self.assertRaises(ValidationError) as context:
+                device_fw.full_clean()
+            self.assertEqual(
+                context.exception.message_dict['image'][0],
+                "The organization of the image doesn't match the organization of the device",
+            )
+
+        with self.subTest('Test with shared firmware'):
+            device_fw.image = shared_image
+            try:
+                device_fw.full_clean()
+                device_fw.save()
+            except Exception as error:
+                self.fail('Test failed with error: {}'.format(error))
 
     def test_device_fw_image_changed(self, *args):
         with mock.patch(
