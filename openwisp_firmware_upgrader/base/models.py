@@ -193,11 +193,13 @@ class AbstractBuild(TimeStampedEditableModel):
             for image in self.firmwareimage_set.all():
                 boards += image.boards
         Device = swapper.load_model('config', 'Device')
-        return Device.objects.filter(
+        qs = Device.objects.filter(
             devicefirmware__isnull=True,
-            organization_id=self.category.organization_id,
             model__in=boards,
-        ).order_by('-created')
+        )
+        if self.category.organization_id:
+            qs = qs.filter(organization_id=self.category.organization_id)
+        return qs.order_by('-created')
 
 
 def get_build_directory(instance, filename):
