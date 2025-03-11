@@ -260,6 +260,58 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.status_code, 204)
         self.assertEqual(Build.objects.count(), 0)
 
+    def test_shared_build(self):
+        self._create_admin(username='admin', password='tester')
+        category = self._get_category(organization=None)
+        list_view_path = reverse('upgrader:api_build_list')
+
+        with self.subTest('Test superuser can create shared build'):
+            self._login(username='admin', password='tester')
+            response = self.client.post(
+                list_view_path, {'version': '1.0', 'category': category.pk}
+            )
+            self.assertEqual(response.status_code, 201)
+            self.assertEqual(Build.objects.count(), 1)
+            build = Build.objects.first()
+            self.assertEqual(build.category, category)
+
+        build_details_path = reverse('upgrader:api_build_detail', args=[build.pk])
+
+        with self.subTest('Test superuser can view shared build'):
+            response = self.client.get(list_view_path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data['results'], [self._serialize_build(build)])
+
+        with self.subTest('Test superuser can update shared build'):
+            response = self.client.patch(
+                build_details_path,
+                {'changelog': 'Shared build'},
+                content_type='application/json',
+            )
+            self.assertEqual(response.status_code, 200)
+            build.refresh_from_db()
+            self.assertEqual(build.changelog, 'Shared build')
+
+        self._logout()
+        self._login()
+        with self.subTest('Test org admin cannot create shared build'):
+            response = self.client.post(
+                list_view_path, {'version': '2.0', 'category': category.pk}
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(str(response.data['category'][0].code), 'does_not_exist')
+
+        with self.subTest('Test org admin can view shared builds'):
+            response = self.client.get(list_view_path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data['results'], [self._serialize_build(build)])
+
+        with self.subTest('Test org admin cannot update shared build'):
+            response = self.client.patch(
+                build_details_path, {'changelog': 'Changed by org admin'}
+            )
+            self.assertEqual(response.status_code, 403)
+
     def test_api_batch_upgrade(self):
         build = self._create_build()
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
@@ -294,6 +346,65 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         ]
         self.assertEqual(r.data, {'device_firmwares': device_fw_list, 'devices': []})
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+    def test_api_shared_build_batch_upgrade(self):
+        shared_image = self._create_firmware_image(organization=None)
+        org1_device = self._create_device_with_connection(
+            organization=self._create_org(name='org1'),
+            model=shared_image.boards[0],
+        )
+        org2_device = self._create_device_with_connection(
+            organization=self._create_org(name='org2'),
+            model=shared_image.boards[0],
+        )
+        shared_build = shared_image.build
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+        path = reverse('upgrader:api_build_batch_upgrade', args=[shared_build.pk])
+
+        self._login(username=self.administrator.username)
+        with self.subTest('Test org admin check upgradeable devices for shared build'):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.data,
+                {
+                    'device_firmwares': [],
+                    'devices': [
+                        str(org2_device.pk),
+                        str(org1_device.pk),
+                    ],
+                },
+            )
+
+        with self.subTest('Test org admin cannot mass upgrade shared build'):
+            response = self.client.post(path)
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+        self._logout()
+        admin = self._create_admin()
+        self._login(username=admin.username)
+        with self.subTest('Test org admin check upgradeable devices for shared build'):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.data,
+                {
+                    'device_firmwares': [],
+                    'devices': [
+                        str(org2_device.pk),
+                        str(org1_device.pk),
+                    ],
+                },
+            )
+
+        with self.subTest('Test superuser can mass upgrade shared build'):
+            with self.assertNumQueries(5):
+                response = self.client.post(path)
+            self.assertEqual(response.status_code, 201)
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertEqual(response.data, {'batch': str(batch.pk)})
 
     def test_build_upgradeable_404(self):
         url = reverse('upgrader:api_build_batch_upgrade', args=[uuid.uuid4()])
@@ -331,6 +442,62 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(0):
             r = client.get(url)
         self.assertEqual(r.status_code, 401)
+
+    def test_shared_category(self):
+        self._create_admin(username='admin', password='tester')
+        list_view_path = reverse('upgrader:api_category_list')
+
+        with self.subTest('Test superuser can create shared category'):
+            self._login(username='admin', password='tester')
+            response = self.client.post(
+                list_view_path, {'name': 'Shared', 'organization': ''}
+            )
+            self.assertEqual(response.status_code, 201)
+            self.assertEqual(Category.objects.count(), 1)
+            category = Category.objects.first()
+            self.assertEqual(category.organization, None)
+
+        category_details_path = reverse(
+            'upgrader:api_category_detail', args=[category.pk]
+        )
+
+        with self.subTest('Test superuser can view shared category'):
+            response = self.client.get(list_view_path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.data['results'], [self._serialize_category(category)]
+            )
+
+        with self.subTest('Test superuser can update shared object'):
+            response = self.client.patch(
+                category_details_path,
+                {'description': 'Shared category'},
+                content_type='application/json',
+            )
+            self.assertEqual(response.status_code, 200)
+            category.refresh_from_db()
+            self.assertEqual(category.description, 'Shared category')
+
+        self._logout()
+        self._login()
+        with self.subTest('Test org admin cannot create shared category'):
+            response = self.client.post(
+                list_view_path, {'name': 'Shared 2', 'organization': ''}
+            )
+            self.assertEqual(response.status_code, 400)
+
+        with self.subTest('Test org admin can view shared categories'):
+            response = self.client.get(list_view_path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.data['results'], [self._serialize_category(category)]
+            )
+
+        with self.subTest('Test org admin cannot update shared category'):
+            response = self.client.patch(
+                category_details_path, {'description': 'Changed by org admin'}
+            )
+            self.assertEqual(response.status_code, 403)
 
     def test_category_list(self):
         self._create_category()
@@ -1045,6 +1212,32 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertNotIn(f'{image1b}</option>', repsonse)
         self.assertNotIn(f'{image2b}</option>', repsonse)
         self.assertNotIn(f'{image2}</option>', repsonse)
+
+    def test_device_firmware_detail_create_shared_image(self):
+        """
+        Tests administrator can upgrade the device with shared image
+        """
+        env = self._create_upgrade_env(device_firmware=False)
+        shared_image = self._create_firmware_image(
+            type=self.TPLINK_4300_IMAGE, organization=None
+        )
+        path = reverse('upgrader:api_devicefirmware_detail', args=[env['d1'].pk])
+        self.assertEqual(DeviceFirmware.objects.count(), 0)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+        self.client.force_login(self.administrator)
+        with self.assertNumQueries(25):
+            data = {'image': shared_image.pk}
+            r = self.client.put(
+                f'{path}?format=api', data, content_type='application/json'
+            )
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(DeviceFirmware.objects.count(), 1)
+        self.assertEqual(UpgradeOperation.objects.count(), 1)
+        device_fw = DeviceFirmware.objects.first()
+        self.assertEqual(device_fw.image, shared_image)
+        repsonse = r.content.decode()
+        self.assertIn(f'{shared_image}</option>', repsonse)
 
     def test_device_firmware_detail_update(self):
         env = self._create_upgrade_env()

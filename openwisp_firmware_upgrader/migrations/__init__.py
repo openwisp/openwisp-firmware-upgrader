@@ -33,7 +33,7 @@ def create_permissions_for_default_groups(apps, schema_editor, app_label):
         'upgradeoperation',
     ]
     admins_can_manage = ['category']
-    manage_operations = ['add', 'change', 'delete']
+    manage_operations = ['add', 'change', 'delete', 'view']
 
     for action in manage_operations:
         for model_name in admins_can_manage:

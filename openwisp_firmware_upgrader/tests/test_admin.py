@@ -65,6 +65,41 @@ class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
         }
     )
 
+    def _get_device_params(
+        self, device, device_conn, fw_image, device_fw=None, upgrade_options=''
+    ):
+        device_params = self._device_params.copy()
+        device_params.update(
+            {
+                'model': device.model,
+                'organization': str(device.organization.id),
+                'config-0-id': str(device.config.pk),
+                'config-0-device': str(device.id),
+                'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
+                'deviceconnection_set-0-id': str(device_conn.id),
+                'deviceconnection_set-0-update_strategy': device_conn.update_strategy,
+                'devicefirmware-0-image': str(fw_image.id),
+                'devicefirmware-0-upgrade_options': upgrade_options,
+                'deviceconnection_set-0-enabled': True,
+                'devicefirmware-TOTAL_FORMS': 1,
+                'devicefirmware-INITIAL_FORMS': 0,
+                'upgradeoperation_set-TOTAL_FORMS': 0,
+                'upgradeoperation_set-INITIAL_FORMS': 0,
+                'upgradeoperation_set-MIN_NUM_FORMS': 0,
+                'upgradeoperation_set-MAX_NUM_FORMS': 0,
+                '_continue': True,
+            }
+        )
+        if device_fw:
+            device_params.update(
+                {
+                    'devicefirmware-0-id': str(device_fw.id),
+                    'devicefirmware-TOTAL_FORMS': 1,
+                    'devicefirmware-INITIAL_FORMS': 1,
+                }
+            )
+        return device_params
+
     def setUp(self, *args, **kwargs):
         super().setUp(*args, **kwargs)
         self.factory = RequestFactory()
@@ -278,6 +313,24 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertIn(yuncore, form.fields['image'].queryset)
         self.assertNotIn(img_org2, form.fields['image'].queryset)
 
+    def test_image_queryset_shared_firmware(self):
+        (
+            device,
+            device_fw,
+            _,
+            _,
+            _,
+        ) = self._prepare_image_qs_test_env()
+        shared_image = self._create_firmware_image(
+            build=self._create_build(
+                category=self._create_category(organization=None, name='Shared')
+            )
+        )
+        form = DeviceFirmwareForm(device=device)
+        self.assertEqual(form.fields['image'].queryset.count(), 3)
+        self.assertIn(device_fw.image, form.fields['image'].queryset)
+        self.assertIn(shared_image, form.fields['image'].queryset)
+
     def test_admin_menu_groups(self):
         # Test menu group (openwisp-utils menu group) for Build, Category,
         # BatchUpgradeOperation models
@@ -300,19 +353,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
         device_fw = self._create_device_firmware()
         device = device_fw.device
         device_conn = device.deviceconnection_set.first()
-        device_params = self._device_params.copy()
-        device_params.update(
-            {
-                'devicefirmware-0-image': str(device_fw.image_id),
-                'devicefirmware-0-id': str(device_fw.id),
-                'organization': str(device.organization.id),
-                'config-0-id': str(device.config.pk),
-                'config-0-device': str(device.id),
-                'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
-                'deviceconnection_set-0-id': str(device_conn.id),
-                'devicefirmware-TOTAL_FORMS': 1,
-                'devicefirmware-INITIAL_FORMS': 1,
-            }
+        device_params = self._get_device_params(
+            device, device_conn, device_fw.image, device_fw
         )
         FirmwareImage.objects.all().delete()
         response = self.client.post(
@@ -373,12 +415,105 @@ class TestAdmin(BaseTestAdmin, TestCase):
             '<select name="devicefirmware-0-image" id="id_devicefirmware-0-image">',
         )
 
+    def test_device_upgrade_shared_firmware(self, *args):
+        org = self._get_org()
+        administrator = self._create_administrator(organizations=[org])
+        shared_image = self._create_firmware_image(organization=None)
+        device = self._create_device_with_connection()
+        device_conn = device.deviceconnection_set.first()
+        device_params = self._get_device_params(device, device_conn, shared_image)
+        path = reverse('admin:config_device_change', args=[device.id])
 
-_mock_updrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
+        with self.subTest('Test with administrator account'):
+            self.client.force_login(administrator)
+            response = self.client.post(
+                path,
+                data=device_params,
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(device.upgradeoperation_set.count(), 1)
+            self.assertEqual(
+                DeviceFirmware.objects.filter(
+                    image=shared_image, device=device
+                ).count(),
+                1,
+            )
+
+        DeviceFirmware.objects.all().delete()
+        self.client.logout()
+        with self.subTest('Test with superuser account'):
+            self._login()
+            response = self.client.post(
+                path,
+                data=device_params,
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(device.upgradeoperation_set.count(), 2)
+            self.assertEqual(
+                DeviceFirmware.objects.filter(
+                    image=shared_image, device=device
+                ).count(),
+                1,
+            )
+
+    def test_admin_multitenancy(self):
+        shared_category = self._get_category(name='Shared', organization=None)
+        shared_build = self._create_build(category=shared_category, version='0.1')
+        org = self._get_org()
+        org_category = self._get_category(name='Org', organization=org)
+        org_build = self._create_build(category=org_category, version='0.2')
+        self._create_administrator(organizations=[org])
+        self._test_multitenant_admin(
+            reverse(f'admin:{self.app_label}_category_changelist'),
+            visible=[
+                '<a href="{}">{}</a>'.format(
+                    reverse(
+                        f'admin:{self.app_label}_category_change',
+                        args=[org_category.pk],
+                    ),
+                    org_category.name,
+                )
+            ],
+            hidden=[
+                '<a href="{}">{}</a>'.format(
+                    reverse(
+                        f'admin:{self.app_label}_category_change',
+                        args=[shared_category.pk],
+                    ),
+                    shared_category.name,
+                )
+            ],
+            administrator=True,
+        )
+        self._test_multitenant_admin(
+            self.build_list_url,
+            visible=[
+                '<a href="{}">{}</a>'.format(
+                    reverse(
+                        f'admin:{self.app_label}_build_change', args=[org_build.pk]
+                    ),
+                    str(org_build),
+                )
+            ],
+            hidden=[
+                '<a href="{}">{}</a>'.format(
+                    reverse(
+                        f'admin:{self.app_label}_build_change', args=[shared_build.pk]
+                    ),
+                    str(shared_build),
+                )
+            ],
+            administrator=True,
+        )
+
+
+_mock_upgrade = 'openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade'
 _mock_connect = 'openwisp_controller.connection.models.DeviceConnection.connect'
 
 
-@mock.patch(_mock_updrade, return_value=True)
+@mock.patch(_mock_upgrade, return_value=True)
 @mock.patch(_mock_connect, return_value=True)
 class TestAdminTransaction(
     BaseTestAdmin, AdminActionPermTestMixin, TransactionTestCase
@@ -527,6 +662,42 @@ class TestAdminTransaction(
                 html=True,
             )
 
+    def test_mass_upgrade_shared_image(self, *args):
+        self._login()
+        shared_image = self._create_firmware_image(organization=None)
+        shared_build = shared_image.build
+        self._create_device_with_connection(
+            organization=self._create_org(name='org1'),
+            model=shared_image.boards[0],
+        )
+        self._create_device_with_connection(
+            organization=self._create_org(name='org2'),
+            model=shared_image.boards[0],
+        )
+        fw = DeviceFirmware.objects.filter(
+            image__build_id=shared_build.pk
+        ).select_related('image')
+        self.assertEqual(Device.objects.count(), 2)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        self.assertEqual(fw.count(), 0)
+
+        response = self.client.post(
+            self.build_list_url,
+            {
+                'action': 'upgrade_selected',
+                'upgrade_all': 'upgrade_all',
+                'upgrade_options': '{"c": true}',
+                ACTION_CHECKBOX_NAME: (shared_build.pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(response, '<li class="success">')
+        self.assertContains(response, 'track the progress')
+        self.assertEqual(
+            UpgradeOperation.objects.filter(upgrade_options={'c': True}).count(), 2
+        )
+        self.assertEqual(fw.count(), 2)
+
     def test_massive_upgrade_operation_page(self, *args):
         self.test_upgrade_all()
         uo = UpgradeOperation.objects.first()
@@ -585,7 +756,6 @@ class TestAdminTransaction(
         device_fw = self._create_device_firmware()
         device = device_fw.device
         device_conn = device.deviceconnection_set.first()
-        device_params = self._device_params.copy()
         build = self._create_build(version='0.2')
         image = self._create_firmware_image(build=build)
         upgrade_options = {
@@ -597,31 +767,8 @@ class TestAdminTransaction(
             'k': False,
             'F': True,
         }
-        device_params.update(
-            {
-                'model': device.model,
-                'devicefirmware-0-image': str(image.id),
-                'devicefirmware-0-id': str(device_fw.id),
-                'devicefirmware-0-upgrade_options': json.dumps(upgrade_options),
-                'organization': str(device.organization.id),
-                'config-0-id': str(device.config.pk),
-                'config-0-device': str(device.id),
-                'deviceconnection_set-0-credentials': str(device_conn.credentials_id),
-                'deviceconnection_set-0-id': str(device_conn.id),
-                'deviceconnection_set-0-update_strategy': conn_settings.DEFAULT_UPDATE_STRATEGIES[
-                    0
-                ][
-                    0
-                ],
-                'deviceconnection_set-0-enabled': True,
-                'devicefirmware-TOTAL_FORMS': 1,
-                'devicefirmware-INITIAL_FORMS': 1,
-                'upgradeoperation_set-TOTAL_FORMS': 0,
-                'upgradeoperation_set-INITIAL_FORMS': 0,
-                'upgradeoperation_set-MIN_NUM_FORMS': 0,
-                'upgradeoperation_set-MAX_NUM_FORMS': 0,
-                '_continue': True,
-            }
+        device_params = self._get_device_params(
+            device, device_conn, image, device_fw, json.dumps(upgrade_options)
         )
         response = self.client.post(
             reverse('admin:config_device_change', args=[device.id]),
@@ -666,7 +813,6 @@ class TestAdminTransaction(
         device_conn = device.deviceconnection_set.first()
         device_conn.update_strategy = conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
         device_conn.save()
-        device_params = self._device_params.copy()
         build = self._create_build(version='0.2')
         image = self._create_firmware_image(build=build)
         upgrade_options = {
@@ -678,6 +824,10 @@ class TestAdminTransaction(
             'k': False,
             'F': True,
         }
+
+        device_params = self._get_device_params(
+            device, device_conn, image, device_fw, json.dumps(upgrade_options)
+        )
         device_params.update(
             {
                 'model': device.model,

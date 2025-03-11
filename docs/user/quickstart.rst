@@ -35,6 +35,16 @@ This is necessary in order to perform mass upgrades only on specific
 firmware categories when, for example, a new *LoRa Gateway* firmware
 becomes available.
 
+.. note::
+
+    A category can be either organization-specific or shared (not linked
+    to any organization). Firmwares assigned to an organization-specific
+    category can only be accessed and used within that organization.
+
+    If no organization is specified when creating a category, it becomes a
+    shared category. Firmwares in a shared category are available to all
+    organizations in the system.
+
 2. Create the Build Object
 --------------------------
 
