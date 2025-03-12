@@ -53,6 +53,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         )
 
     def tearDown(self):
+        super().tearDown()
         # Accept unsaved changes alert to allow other tests to run
         try:
             self.web_driver.refresh()
@@ -146,6 +147,9 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                     f'admin:{self.config_app_label}_device_change', args=[device.id]
                 )
             )
+        )
+        WebDriverWait(self.web_driver, 1).until(
+            EC.invisibility_of_element_located((By.CSS_SELECTOR, '#loading-overlay'))
         )
         # JSONSchema Editor should not be rendered without a change in the image field
         WebDriverWait(self.web_driver, 1).until(
@@ -275,6 +279,12 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.web_driver.find_element(
             by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
         ).click()
+        try:
+            WebDriverWait(self.web_driver, 5).until(
+                EC.url_contains('batchupgradeoperation')
+            )
+        except TimeoutException:
+            self.fail('User was not redirected to Mass upgrade operations page')
         self.assertEqual(
             BatchUpgradeOperation.objects.filter(
                 upgrade_options={
@@ -325,6 +335,9 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                         f'admin:{self.config_app_label}_device_change', args=[device.id]
                     )
                 )
+            )
+            WebDriverWait(self.web_driver, 5).until(
+                EC.visibility_of_element_located((By.ID, 'id_devicefirmware-0-image'))
             )
             image_select = Select(
                 self.web_driver.find_element(

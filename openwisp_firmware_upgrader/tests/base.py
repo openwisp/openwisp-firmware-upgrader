@@ -26,6 +26,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
     )
 
     def tearDown(self):
+        super().tearDown()
         for fw in FirmwareImage.objects.all():
             fw.delete()
 
