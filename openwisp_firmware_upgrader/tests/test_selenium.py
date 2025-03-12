@@ -97,6 +97,17 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             EC.visibility_of_element_located((By.XPATH, '//*[@id="site-name"]'))
         )
 
+    def _get_device_firmware_dropdown_select(self):
+        select_element = WebDriverWait(self.web_driver, 5).until(
+            EC.element_to_be_clickable((By.ID, 'id_devicefirmware-0-image'))
+        )
+        return Select(select_element)
+
+    def _assert_loading_overlay_hidden(self):
+        WebDriverWait(self.web_driver, 2).until(
+            EC.invisibility_of_element((By.CSS_SELECTOR, '#loading-overlay'))
+        )
+
     @capture_any_output()
     def test_restoring_deleted_device(self):
         org = self._get_org()
@@ -136,8 +147,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 f'admin:{self.config_app_label}_device_recover', args=[version_obj.id]
             )
         )
-        self.web_driver.find_element(
-            by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[1]'
+        WebDriverWait(self.web_driver, 5).until(
+            EC.element_to_be_clickable(
+                (By.XPATH, '//*[@id="device_form"]/div/div[1]/input[1]')
+            )
         ).click()
         try:
             WebDriverWait(self.web_driver, 5).until(
@@ -174,18 +187,14 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 )
             )
         )
-        WebDriverWait(self.web_driver, 1).until(
-            EC.invisibility_of_element_located((By.CSS_SELECTOR, '#loading-overlay'))
-        )
         # JSONSchema Editor should not be rendered without a change in the image field
         WebDriverWait(self.web_driver, 1).until(
             EC.invisibility_of_element_located(
                 (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
             )
         )
-        image_select = Select(
-            self.web_driver.find_element(by=By.ID, value='id_devicefirmware-0-image')
-        )
+        image_select = self._get_device_firmware_dropdown_select()
+        self._assert_loading_overlay_hidden()
         image_select.select_by_value(str(image.pk))
         # JSONSchema configuration editor should not be rendered
         WebDriverWait(self.web_driver, 1).until(
@@ -221,14 +230,15 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         save_device()
 
         # Delete DeviceFirmware
-        self.web_driver.find_element(
-            by=By.ID, value='id_devicefirmware-0-DELETE'
+        WebDriverWait(self.web_driver, 2).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, '#id_devicefirmware-0-DELETE'))
         ).click()
         save_device()
 
         # When adding firmware to the device for the first time,
         # JSONSchema editor should be rendered only when the image
         # is selected
+        self._assert_loading_overlay_hidden()
         self.web_driver.find_element(
             by=By.XPATH, value='//*[@id="devicefirmware-group"]/fieldset/div[2]/a'
         ).click()
@@ -238,9 +248,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
             )
         )
-        image_select = Select(
-            self.web_driver.find_element(by=By.ID, value='id_devicefirmware-0-image')
-        )
+        image_select = self._get_device_firmware_dropdown_select()
         image_select.select_by_index(1)
         try:
             WebDriverWait(self.web_driver, 1).until(
@@ -362,14 +370,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                     )
                 )
             )
-            WebDriverWait(self.web_driver, 5).until(
-                EC.visibility_of_element_located((By.ID, 'id_devicefirmware-0-image'))
-            )
-            image_select = Select(
-                self.web_driver.find_element(
-                    by=By.ID, value='id_devicefirmware-0-image'
-                )
-            )
+            image_select = self._get_device_firmware_dropdown_select()
+            self._assert_loading_overlay_hidden()
             image_select.select_by_value(str(image2.pk))
             # Ensure JSONSchema editor is not rendered because
             # the upgrader does not define a schema
