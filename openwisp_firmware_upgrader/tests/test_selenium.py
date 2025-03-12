@@ -1,12 +1,16 @@
+import os
 from unittest.mock import patch
 
 import swapper
+from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.management import call_command
 from django.urls.base import reverse
 from reversion.models import Version
+from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
@@ -30,6 +34,28 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     firmware_app_label = 'firmware_upgrader'
     os = 'OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d'
     image_type = REVERSE_FIRMWARE_IMAGE_MAP['YunCore XD3200']
+
+    @classmethod
+    def setUpClass(cls):
+        StaticLiveServerTestCase.setUpClass()
+
+        firefox_options = FirefoxOptions()
+        firefox_options.page_load_strategy = 'eager'
+        if getattr(settings, 'SELENIUM_HEADLESS', True):
+            firefox_options.add_argument('--headless')
+
+        FIREFOX_BIN = os.environ.get('FIREFOX_BIN', None)
+        if FIREFOX_BIN:
+            firefox_options.binary_location = FIREFOX_BIN
+
+        # Set window size
+        firefox_options.add_argument('--width=1366')
+        firefox_options.add_argument('--height=768')
+
+        # Ignore certificate errors
+        firefox_options.accept_insecure_certs = True
+
+        cls.web_driver = webdriver.Firefox(options=firefox_options)
 
     def _set_up_env(self):
         org = self._get_org()
