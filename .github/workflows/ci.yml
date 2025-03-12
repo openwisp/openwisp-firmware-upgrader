@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - master
-      - debug-ci
   pull_request:
     branches:
       - master
@@ -66,17 +65,12 @@ jobs:
           ./run-qa-checks
 
       - name: Tests
-        id: tests
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
         run: |
           coverage run runtests.py --parallel
           SAMPLE_APP=1 coverage run ./runtests.py --parallel
           coverage combine
           coverage xml
-
-      - name: Debug via tmate on failure
-        if: ${{ failure() }}
-        uses: mxschmitt/action-tmate@v3
 
       - name: Upload Coverage
         if: ${{ success() }}
