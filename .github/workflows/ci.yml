@@ -43,6 +43,9 @@ jobs:
       - name: Install Dependencies
         id: deps
         run: |
+          echo 'set man-db/auto-update false' | sudo debconf-communicate >/dev/null
+          sudo dpkg-reconfigure man-db
+
           sudo apt update
           sudo apt -qq install \
                        sqlite3 \
