@@ -1,17 +1,13 @@
-import os
 from unittest.mock import patch
 
 import swapper
-from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.management import call_command
 from django.test import tag
 from django.urls.base import reverse
 from reversion.models import Version
-from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentException
 from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
@@ -36,28 +32,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     firmware_app_label = 'firmware_upgrader'
     os = 'OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d'
     image_type = REVERSE_FIRMWARE_IMAGE_MAP['YunCore XD3200']
-
-    @classmethod
-    def setUpClass(cls):
-        StaticLiveServerTestCase.setUpClass()
-
-        firefox_options = FirefoxOptions()
-        firefox_options.page_load_strategy = 'eager'
-        if getattr(settings, 'SELENIUM_HEADLESS', True):
-            firefox_options.add_argument('--headless')
-
-        FIREFOX_BIN = os.environ.get('FIREFOX_BIN', None)
-        if FIREFOX_BIN:
-            firefox_options.binary_location = FIREFOX_BIN
-
-        # Set window size
-        firefox_options.add_argument('--width=1366')
-        firefox_options.add_argument('--height=768')
-
-        # Ignore certificate errors
-        firefox_options.accept_insecure_certs = True
-
-        cls.web_driver = webdriver.Firefox(options=firefox_options)
 
     def _set_up_env(self):
         org = self._get_org()
@@ -95,27 +69,18 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             else:
                 self.web_driver.switch_to_alert.accept()
         self.web_driver.refresh()
-        WebDriverWait(self.web_driver, 2).until(
-            EC.visibility_of_element_located((By.XPATH, '//*[@id="site-name"]'))
-        )
+        self.wait_for_visibility(By.XPATH, '//*[@id="site-name"]')
 
     def _get_device_firmware_dropdown_select(self):
-        select_element = WebDriverWait(self.web_driver, 5).until(
-            EC.element_to_be_clickable((By.ID, 'id_devicefirmware-0-image'))
-        )
+        select_element = self.find_element(By.ID, 'id_devicefirmware-0-image')
         return Select(select_element)
 
     def _assert_loading_overlay_hidden(self):
-        WebDriverWait(self.web_driver, 2).until(
-            EC.invisibility_of_element((By.CSS_SELECTOR, '#loading-overlay'))
-        )
+        self.wait_for_invisibility(By.CSS_SELECTOR, '#loading-overlay')
 
     def open(self, url, driver=None):
         super().open(url, driver)
         driver = driver or self.web_driver
-        WebDriverWait(driver, 5).until(
-            lambda d: d.execute_script('return document.readyState') == 'complete'
-        )
         self._assert_loading_overlay_hidden()
 
     @capture_any_output()
@@ -142,9 +107,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.open(
             reverse(f'admin:{self.config_app_label}_device_delete', args=[device.id])
         )
-        self.web_driver.find_element(
-            by=By.CSS_SELECTOR, value='#content form input[type="submit"]'
-        ).click()
+        self.find_element(By.CSS_SELECTOR, '#content form input[type="submit"]').click()
         self.assertEqual(Device.objects.count(), 0)
         self.assertEqual(DeviceConnection.objects.count(), 0)
         self.assertEqual(DeviceFirmware.objects.count(), 0)
@@ -157,13 +120,9 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 f'admin:{self.config_app_label}_device_recover', args=[version_obj.id]
             )
         )
-        WebDriverWait(self.web_driver, 5).until(
-            EC.invisibility_of_element((By.ID, "command_set-group"))
-        )
-        WebDriverWait(self.web_driver, 5).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, '//*[@id="device_form"]/div/div[1]/input[1]')
-            )
+        self.wait_for_invisibility(By.ID, "command_set-group")
+        self.wait_for_visibility(
+            By.XPATH, '//*[@id="device_form"]/div/div[1]/input[1]'
         ).click()
         try:
             WebDriverWait(self.web_driver, 5).until(
@@ -187,14 +146,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     )
     def test_device_firmware_upgrade_options(self, *args):
         def save_device():
-            self.web_driver.find_element(
+            self.find_element(
                 by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
             ).click()
-            WebDriverWait(self.web_driver, 2).until(
-                EC.visibility_of_all_elements_located(
-                    (By.CSS_SELECTOR, '#devicefirmware-group')
-                )
-            )
+            self.wait_for_visibility(By.CSS_SELECTOR, '#devicefirmware-group')
             self._assert_loading_overlay_hidden()
 
         _, _, _, _, _, image, device = self._set_up_env()
@@ -207,40 +162,32 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
         )
         # JSONSchema Editor should not be rendered without a change in the image field
-        WebDriverWait(self.web_driver, 1).until(
-            EC.invisibility_of_element_located(
-                (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
-            )
+        self.wait_for_invisibility(
+            By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
         )
         image_select = self._get_device_firmware_dropdown_select()
         image_select.select_by_value(str(image.pk))
         # JSONSchema configuration editor should not be rendered
-        WebDriverWait(self.web_driver, 1).until(
-            EC.invisibility_of_element_located(
-                (
-                    By.XPATH,
-                    '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]/div/h3/span[4]/input',
-                )
-            )
+        self.wait_for_invisibility(
+            By.XPATH,
+            '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]/div/h3/span[4]/input',
         )
         # Select "None" image should hide JSONSchema Editor
         image_select.select_by_value('')
-        WebDriverWait(self.web_driver, 1).until(
-            EC.invisibility_of_element_located(
-                (By.CSS_SELECTOR, '#id_devicefirmware-0-upgrade_options_jsoneditor')
-            )
+        self.wait_for_invisibility(
+            By.CSS_SELECTOR, '#id_devicefirmware-0-upgrade_options_jsoneditor'
         )
 
         # Select "build2" image
         image_select.select_by_value(str(image.pk))
         # Enable '-c' option
-        self.web_driver.find_element(
+        self.find_element(
             by=By.XPATH,
             value='//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]'
             '/div/div[2]/div/div/div[1]/div/div[1]/label/input',
         ).click()
         # Enable '-F' option
-        self.web_driver.find_element(
+        self.find_element(
             by=By.XPATH,
             value='//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]'
             '/div/div[2]/div/div/div[7]/div/div[1]/label/input',
@@ -248,33 +195,24 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         save_device()
 
         # Delete DeviceFirmware
-        WebDriverWait(self.web_driver, 2).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, '#id_devicefirmware-0-DELETE'))
-        ).click()
+        self.find_element(By.CSS_SELECTOR, '#id_devicefirmware-0-DELETE').click()
         save_device()
 
         # When adding firmware to the device for the first time,
         # JSONSchema editor should be rendered only when the image
         # is selected
-        self.web_driver.find_element(
+        self.find_element(
             by=By.XPATH, value='//*[@id="devicefirmware-group"]/fieldset/div[2]/a'
         ).click()
         # JSONSchema Editor should not be rendered without a change in the image field
-        WebDriverWait(self.web_driver, 1).until(
-            EC.invisibility_of_element_located(
-                (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
-            )
+        self.wait_for_invisibility(
+            By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
         )
         image_select = self._get_device_firmware_dropdown_select()
         image_select.select_by_index(1)
-        try:
-            WebDriverWait(self.web_driver, 1).until(
-                EC.visibility_of_element_located(
-                    (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
-                )
-            )
-        except TimeoutError:
-            self.fail('JSONSchema editor not shown after changing firmware image')
+        self.wait_for_visibility(
+            By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
+        )
         save_device()
 
     @capture_any_output()
@@ -293,43 +231,30 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             reverse(f'admin:{self.firmware_app_label}_build_change', args=[build2.id])
         )
         # Launch mass upgrade operation
-        self.web_driver.find_element(
+        self.find_element(
             by=By.CSS_SELECTOR,
             value='.title-wrapper .object-tools form button[type="submit"]',
         ).click()
 
         # Ensure JSONSchema form is rendered
-        try:
-            WebDriverWait(self.web_driver, 1).until(
-                EC.visibility_of_element_located(
-                    (By.CSS_SELECTOR, '.jsoneditor-wrapper')
-                )
-            )
-        except TimeoutError:
-            self.fail('JSONSchema editor not shown after changing firmware image')
+        self.wait_for_visibility(By.CSS_SELECTOR, '.jsoneditor-wrapper')
         # JSONSchema configuration editor should not be rendered
-        WebDriverWait(self.web_driver, 1).until(
-            EC.invisibility_of_element_located(
-                (
-                    By.XPATH,
-                    '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]/div/h3/span[4]/input',
-                )
-            )
+        self.wait_for_invisibility(
+            By.XPATH,
+            '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]/div/h3/span[4]/input',
         )
         # Disable -c flag
-        self.web_driver.find_element(
+        self.find_element(
             by=By.XPATH,
             value='//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[1]/div/div[1]/label/input',
         ).click()
         # Enable -n flag
-        self.web_driver.find_element(
+        self.find_element(
             by=By.XPATH,
             value='//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[3]/div/div[1]/label/input',
         ).click()
         # Upgrade all devices
-        self.web_driver.find_element(
-            by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
-        ).click()
+        self.find_element(by=By.CSS_SELECTOR, value='input[name="upgrade_all"]').click()
         try:
             WebDriverWait(self.web_driver, 5).until(
                 EC.url_contains('batchupgradeoperation')
@@ -391,12 +316,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             image_select.select_by_value(str(image2.pk))
             # Ensure JSONSchema editor is not rendered because
             # the upgrader does not define a schema
-            WebDriverWait(self.web_driver, 1).until(
-                EC.invisibility_of_element_located(
-                    (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
-                )
+            self.wait_for_invisibility(
+                By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
             )
-            self.web_driver.find_element(
+            self.find_element(
                 by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
             ).click()
             self.assertEqual(
@@ -412,19 +335,17 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 )
             )
             # Launch mass upgrade operation
-            self.web_driver.find_element(
+            self.find_element(
                 by=By.CSS_SELECTOR,
                 value='.title-wrapper .object-tools form button[type="submit"]',
             ).click()
             # Ensure JSONSchema editor is not rendered because
             # the upgrader does not define a schema
-            WebDriverWait(self.web_driver, 1).until(
-                EC.invisibility_of_element_located(
-                    (By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper')
-                )
+            self.wait_for_invisibility(
+                By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
             )
             # Upgrade all devices
-            self.web_driver.find_element(
+            self.find_element(
                 by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
             ).click()
             self.assertEqual(

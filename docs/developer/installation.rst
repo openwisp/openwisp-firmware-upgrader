@@ -105,7 +105,8 @@ Run quality assurance tests with:
 
     ./run-qa-checks
 
-Run tests with:
+Run tests with (make sure you have the :ref:`selenium dependencies
+<selenium_dependencies>` installed locally first):
 
 .. code-block:: shell
 
@@ -119,9 +120,6 @@ repository <firmware_upgrader_dev_docker>`. Once set up, you can run these
 specific tests as follows:
 
 .. code-block:: shell
-
-    # Run database tests against PostgreSQL backend
-    POSTGRESQL=1 ./runtests.py --parallel
 
     # Run only specific selenium tests classes
     cd tests/

@@ -39,12 +39,14 @@ jobs:
           cache-dependency-path: |
             **/requirements*.txt
 
-      - name: Install Dependencies
-        id: deps
+      - name: Disable man page auto-update
         run: |
           echo 'set man-db/auto-update false' | sudo debconf-communicate >/dev/null
           sudo dpkg-reconfigure man-db
 
+      - name: Install Dependencies
+        id: deps
+        run: |
           sudo apt update
           sudo apt -qq install \
                        sqlite3 \
@@ -60,8 +62,9 @@ jobs:
           pip install -U ${{ matrix.django-version }}
           sudo npm install -g prettier
 
-          # Start PostgreSQL
-          docker compose up -d postgres
+      - name: Start InfluxDB and redos
+        if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
+        run: docker compose up -d postgres redis
 
       - name: QA checks
         run: |
@@ -71,12 +74,16 @@ jobs:
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
         run: |
           coverage run runtests.py --parallel
-          # the following command runs tests with Postgres/PostGIS but
-          # only for specific test cases (e.g. browser tests)
-          POSTGRESQL=1 coverage run runtests.py --parallel --keepdb
           SAMPLE_APP=1 coverage run ./runtests.py --parallel
           coverage combine
           coverage xml
+        env:
+          SELENIUM_HEADLESS: 1
+          GECKO_LOG: 1
+
+      - name: Show gecko web driver log on failures
+        if: ${{ failure() }}
+        run: cat geckodriver.log
 
       - name: Upload Coverage
         if: ${{ success() }}
