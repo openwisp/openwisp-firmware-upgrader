@@ -70,7 +70,7 @@ jobs:
           pip install -U ${{ matrix.django-version }}
           sudo npm install -g prettier
 
-      - name: Start InfluxDB and redos
+      - name: Start InfluxDB and redis
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
         run: docker compose up -d postgres redis
 
@@ -82,7 +82,7 @@ jobs:
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
         run: |
           coverage run runtests.py --parallel
-          SAMPLE_APP=1 coverage run ./runtests.py --parallel
+          SAMPLE_APP=1 coverage run ./runtests.py --parallel --exclude-tag=selenium_tests
           coverage combine
           coverage xml
         env:
