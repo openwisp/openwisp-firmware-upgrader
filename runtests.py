@@ -2,17 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import os
-import shutil
 import sys
 
 from django.core.management import execute_from_command_line
-
-
-def check_geckodriver():
-    """Verify if geckodriver is installed."""
-    if shutil.which('geckodriver') is None:
-        print('Error: geckodriver is not installed or not in PATH.')
-        sys.exit(1)
 
 
 def run_tests(args, settings_module):
@@ -25,7 +17,6 @@ def run_tests(args, settings_module):
 
 if __name__ == '__main__':
     sys.path.insert(0, 'tests')
-    check_geckodriver()
 
     args = sys.argv
     args.insert(1, 'test')

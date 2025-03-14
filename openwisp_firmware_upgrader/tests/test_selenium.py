@@ -6,15 +6,14 @@ from django.core.management import call_command
 from django.test import tag
 from django.urls.base import reverse
 from reversion.models import Version
-from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentException
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
-from openwisp_utils.test_selenium_mixins import SeleniumTestMixin
-from openwisp_utils.tests import capture_any_output
+from openwisp_utils.tests import SeleniumTestMixin, capture_any_output
 
 from ..swapper import load_model
 from ..upgraders.openwisp import OpenWrt
@@ -54,34 +53,9 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             username=self.admin_username, password=self.admin_password
         )
 
-    def tearDown(self):
-        super().tearDown()
-        # Accept unsaved changes alert to allow other tests to run
-        try:
-            self.web_driver.refresh()
-        except UnexpectedAlertPresentException:
-            self.web_driver.switch_to_alert.accept()
-        else:
-            try:
-                WebDriverWait(self.web_driver, 1).until(EC.alert_is_present())
-            except TimeoutException:
-                pass
-            else:
-                self.web_driver.switch_to_alert.accept()
-        self.web_driver.refresh()
-        self.wait_for_visibility(By.XPATH, '//*[@id="site-name"]')
-
     def _get_device_firmware_dropdown_select(self):
         select_element = self.find_element(By.ID, 'id_devicefirmware-0-image')
         return Select(select_element)
-
-    def _assert_loading_overlay_hidden(self):
-        self.wait_for_invisibility(By.CSS_SELECTOR, '#loading-overlay')
-
-    def open(self, url, driver=None):
-        super().open(url, driver)
-        driver = driver or self.web_driver
-        self._assert_loading_overlay_hidden()
 
     @capture_any_output()
     def test_restoring_deleted_device(self):
@@ -150,7 +124,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
             ).click()
             self.wait_for_visibility(By.CSS_SELECTOR, '#devicefirmware-group')
-            self._assert_loading_overlay_hidden()
+            self.hide_loading_overlay()
 
         _, _, _, _, _, image, device = self._set_up_env()
         self.login()
@@ -161,6 +135,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 )
             )
         )
+        self.hide_loading_overlay()
         # JSONSchema Editor should not be rendered without a change in the image field
         self.wait_for_invisibility(
             By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
@@ -312,6 +287,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                     )
                 )
             )
+            self.hide_loading_overlay()
             image_select = self._get_device_firmware_dropdown_select()
             image_select.select_by_value(str(image2.pk))
             # Ensure JSONSchema editor is not rendered because
