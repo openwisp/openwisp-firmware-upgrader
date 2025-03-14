@@ -1,7 +1,7 @@
 [tool.coverage.run]
 source = ["openwisp_firmware_upgrader"]
 parallel = true
-concurrency = ["multiprocessing"]
+concurrency = ["multiprocessing", "thread"]
 omit = [
     "openwisp_firmware_upgrader/__init__.py",
     "*/tests/*",
