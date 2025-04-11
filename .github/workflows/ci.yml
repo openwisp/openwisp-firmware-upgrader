@@ -32,7 +32,7 @@ jobs:
           - python-version: "3.9"
             django-version: django~=5.1.0
           - python-version: "3.9"
-            django-version: django~=5.2
+            django-version: django~=5.2.0
           # Python 3.13 supported only in Django >=5.1.3
           - python-version: "3.13"
             django-version: django~=4.2.0
@@ -92,7 +92,7 @@ jobs:
       - name: Tests
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
         run: |
-          coverage run runtests.py --parallel
+          coverage run runtests.py
           SAMPLE_APP=1 coverage run ./runtests.py --parallel --exclude-tag=selenium_tests
           coverage combine
           coverage xml
