@@ -2,6 +2,7 @@ import json
 from datetime import timedelta
 from unittest import mock
 
+import django
 import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
