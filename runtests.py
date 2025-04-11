@@ -27,10 +27,10 @@ if __name__ == '__main__':
 
     # Run all tests except Selenium tests using SQLite
     sqlite_args = args.copy()
-    sqlite_args.extend(['--exclude-tag', 'selenium_tests'])
+    sqlite_args.extend(['--exclude-tag', 'selenium_tests', '--parallel', '1'])
     run_tests(sqlite_args, settings_module='openwisp2.settings')
 
     # Run Selenium tests using PostgreSQL
     psql_args = args.copy()
-    psql_args.extend(['--tag', 'selenium_tests'])
+    psql_args.extend(['--tag', 'selenium_tests', '--parallel', '1'])
     run_tests(psql_args, settings_module='openwisp2.postgresql_settings')
