@@ -26,6 +26,13 @@ class BaseSerializer(FilterSerializerByOrgManaged, ValidatedModelSerializer):
 
 
 class CategorySerializer(BaseSerializer):
+    def validate_organization(self, value):
+        if not value and not self.context.get('request').user.is_superuser:
+            raise serializers.ValidationError(
+                'Only superusers can create or edit shared categories'
+            )
+        return value
+
     class Meta(BaseMeta):
         model = Category
         fields = '__all__'
