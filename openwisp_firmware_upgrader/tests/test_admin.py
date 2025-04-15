@@ -577,9 +577,7 @@ class TestAdminTransaction(
             )
             self.assertContains(
                 response,
-                ('<ul class="errorlist"{}><li>Enter a valid JSON.</li></ul>').format(
-                    id_attr
-                ),
+                f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
             )
 
         with self.subTest('Test with valid upgrade_options'):
@@ -629,9 +627,7 @@ class TestAdminTransaction(
             )
             self.assertContains(
                 response,
-                ('<ul class="errorlist"{}><li>Enter a valid JSON.</li></ul>').format(
-                    id_attr
-                ),
+                f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
             )
 
         with self.subTest('Test with valid upgrade_options'):
