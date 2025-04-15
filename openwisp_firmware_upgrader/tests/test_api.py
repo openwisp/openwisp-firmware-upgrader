@@ -572,15 +572,12 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         url = reverse('upgrader:api_category_list')
 
         with self.subTest('Test non-superuser cannot create shared category'):
-            data = {
-                'name': 'Shared Category',
-                'organization': ''
-            }
+            data = {'name': 'Shared Category', 'organization': ''}
             r = self.client.post(url, data)
             self.assertEqual(r.status_code, 400)
             self.assertEqual(
                 r.data['organization'][0],
-                'Only superusers can create or edit shared categories'
+                'Only superusers can create or edit shared categories',
             )
 
         with self.subTest('Test non-superuser can create org-specific category'):
@@ -598,10 +595,7 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest('Test superuser can create shared category'):
             self._create_admin(username='admin', password='tester')
             self._login(username='admin', password='tester')
-            data = {
-                'name': 'Shared Category',
-                'organization': ''
-            }
+            data = {'name': 'Shared Category', 'organization': ''}
             r = self.client.post(url, data)
             self.assertEqual(r.status_code, 201)
             self.assertEqual(Category.objects.count(), 2)
