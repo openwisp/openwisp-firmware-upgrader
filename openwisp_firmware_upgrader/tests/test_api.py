@@ -568,6 +568,46 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url, data_filter)
         self.assertEqual(r.data['results'], serialized_list)
 
+    def test_category_serializer_validation(self):
+        url = reverse('upgrader:api_category_list')
+
+        with self.subTest('Test non-superuser cannot create shared category'):
+            data = {
+                'name': 'Shared Category',
+                'organization': ''
+            }
+            r = self.client.post(url, data)
+            self.assertEqual(r.status_code, 400)
+            self.assertEqual(
+                r.data['organization'][0],
+                'Only superusers can create or edit shared categories'
+            )
+
+        with self.subTest('Test non-superuser can create org-specific category'):
+            data = {
+                'name': 'Dummy category',
+                'organization': self.org.pk,
+            }
+            r = self.client.post(url, data)
+            self.assertEqual(r.status_code, 201)
+            self.assertEqual(Category.objects.count(), 1)
+            category = Category.objects.first()
+            serialized = self._serialize_category(category)
+            self.assertEqual(r.data, serialized)
+
+        with self.subTest('Test superuser can create shared category'):
+            self._create_admin(username='admin', password='tester')
+            self._login(username='admin', password='tester')
+            data = {
+                'name': 'Shared Category',
+                'organization': ''
+            }
+            r = self.client.post(url, data)
+            self.assertEqual(r.status_code, 201)
+            self.assertEqual(Category.objects.count(), 2)
+            category = Category.objects.get(name='Shared Category')
+            self.assertIsNone(category.organization)
+
     def test_category_create(self):
         url = reverse('upgrader:api_category_list')
         data = {

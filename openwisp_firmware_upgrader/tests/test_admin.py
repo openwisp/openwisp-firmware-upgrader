@@ -572,11 +572,10 @@ class TestAdminTransaction(
                 },
                 follow=True,
             )
+            id_attr = ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ''
             self.assertContains(
                 response,
-                ('<ul class="errorlist"{}><li>Enter a valid JSON.</li></ul>').format(
-                    ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ''
-                ),
+                ('<ul class="errorlist"{}><li>Enter a valid JSON.</li></ul>').format(id_attr),
             )
 
         with self.subTest('Test with valid upgrade_options'):
@@ -621,11 +620,10 @@ class TestAdminTransaction(
                 follow=True,
             )
             self.assertEqual(response.status_code, 200)
+            id_attr = ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ''
             self.assertContains(
                 response,
-                ('<ul class="errorlist"{}><li>Enter a valid JSON.</li></ul>').format(
-                    ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ''
-                ),
+                ('<ul class="errorlist"{}><li>Enter a valid JSON.</li></ul>').format(id_attr),
             )
 
         with self.subTest('Test with valid upgrade_options'):
