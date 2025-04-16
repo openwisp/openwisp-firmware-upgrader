@@ -155,8 +155,40 @@ class OpenWrt(object):
         except Exception as e:
             raise RecoverableFailure(str(e))
 
+    def _verify_device_uuid(self):
+        """
+        Verifies that the UUID of the device being upgraded matches
+        the UUID in the device's configuration
+        """
+        device_uuid = self.upgrade_operation.device.pk
+        # Get UUID from device's openwisp config
+        output, exit_code = self.exec_command(
+            'uci get openwisp.http.uuid',
+            exit_codes=[0, 1]
+        )
+        if exit_code == 1:
+            self.log(_('Could not read device UUID from configuration'))
+            raise UpgradeAborted(
+                'Could not verify device identity: UUID not found in device configuration'
+            )
+        device_config_uuid = output.strip()
+        if device_uuid != device_config_uuid:
+            self.log(_(
+                'Device UUID mismatch: expected {expected}, '
+                'found {found} in device configuration'
+            ).format(
+                expected=device_uuid,
+                found=device_config_uuid
+            ))
+            raise UpgradeAborted(
+                'Upgrade aborted: device UUID mismatch detected, '
+                'this could indicate an attempt to upgrade the wrong device'
+            )
+        self.log(_('Device identity verified successfully'))
+
     def upgrade(self, image):
         self._test_connection()
+        self._verify_device_uuid()
         checksum = self._test_checksum(image)
         remote_path = self.get_remote_path(image)
         self.upload(image.file, remote_path)
