@@ -72,6 +72,12 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
         raise CommandFailedException()
 
 
+def mocked_exec_uuid_mismatch(command, exit_codes=None, timeout=None):
+    if command == 'uci get openwisp.http.uuid':
+        return ['different-uuid', 0]
+    return mocked_exec_upgrade_success(command, exit_codes, timeout)
+
+
 def mocked_sysupgrade_failure(command, exit_codes=None, timeout=None):
     if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c'):
         raise CommandFailedException(
@@ -211,11 +217,28 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         return device_fw, device_conn, upgrade_op, output, task_signature
 
     @patch('scp.SCPClient.putfo')
-    @patch.object(
-        OpenWrt,
-        'exec_command',
-        side_effect=mocked_sysupgrade_test_failure,
-    )
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_uuid_mismatch)
+    def test_verify_device_uuid_mismatch(self, exec_command, is_alive, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(upgrade_op.status, 'aborted')
+        lines = [
+            'Connection successful, starting upgrade...',
+            'Device UUID mismatch: expected',
+            'found different-uuid in device configuration',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertFalse(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_sysupgrade_test_failure)
     def test_image_test_failed(self, exec_command, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
