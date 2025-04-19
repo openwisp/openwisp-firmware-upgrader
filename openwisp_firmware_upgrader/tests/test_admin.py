@@ -2,6 +2,7 @@ import json
 from datetime import timedelta
 from unittest import mock
 
+import django
 import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
@@ -571,8 +572,12 @@ class TestAdminTransaction(
                 },
                 follow=True,
             )
+            id_attr = (
+                ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ''
+            )
             self.assertContains(
-                response, '<ul class="errorlist"><li>Enter a valid JSON.</li></ul>'
+                response,
+                f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
             )
 
         with self.subTest('Test with valid upgrade_options'):
@@ -617,8 +622,12 @@ class TestAdminTransaction(
                 follow=True,
             )
             self.assertEqual(response.status_code, 200)
+            id_attr = (
+                ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ''
+            )
             self.assertContains(
-                response, '<ul class="errorlist"><li>Enter a valid JSON.</li></ul>'
+                response,
+                f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
             )
 
         with self.subTest('Test with valid upgrade_options'):
