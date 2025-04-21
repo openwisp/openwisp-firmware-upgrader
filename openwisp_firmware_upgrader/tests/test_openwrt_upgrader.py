@@ -16,13 +16,6 @@ from openwisp_controller.connection.connectors.openwrt.ssh import (
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_controller.connection.tests.utils import SshServer
 
-from ..exceptions import (
-    FirmwareUpgradeOptionsException,
-    ReconnectionFailed,
-    RecoverableFailure,
-    UpgradeAborted,
-    UpgradeNotNeeded,
-)
 from ..swapper import load_model, swapper_load_model
 from ..tasks import upgrade_firmware
 from ..upgraders.openwrt import OpenWrt
