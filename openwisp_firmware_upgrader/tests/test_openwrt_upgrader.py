@@ -36,9 +36,6 @@ def mocked_exec_upgrade_not_needed(command, exit_codes=None):
     }
     # Handle the UUID command dynamically
     if command == 'uci get openwisp.http.uuid':
-        # Return the device UUID that matches the one in the test
-        from openwisp_firmware_upgrader.models import DeviceFirmware
-
         device_fw = DeviceFirmware.objects.order_by('created').last()
         if device_fw:
             return [str(device_fw.device.pk), 0]
@@ -65,9 +62,6 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
     }
     # Handle the UUID command dynamically
     if command == 'uci get openwisp.http.uuid':
-        # Return the device UUID that matches the one in the test
-        from openwisp_firmware_upgrader.models import DeviceFirmware
-
         device_fw = DeviceFirmware.objects.order_by('created').last()
         if device_fw:
             return [str(device_fw.device.pk), 0]
