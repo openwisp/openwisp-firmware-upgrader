@@ -90,7 +90,10 @@ def mocked_exec_uuid_mismatch(command, exit_codes=None, timeout=None):
 
 def mocked_exec_uuid_not_found(command, exit_codes=None, timeout=None):
     if command == 'uci get openwisp.http.uuid':
-        return ['', 1]  # Return empty output with exit code 1 to simulate UUID not found
+        return [
+            '',
+            1,
+        ]  # Return empty output with exit code 1 to simulate UUID not found
     return mocked_exec_upgrade_success(command, exit_codes, timeout)
 
 
