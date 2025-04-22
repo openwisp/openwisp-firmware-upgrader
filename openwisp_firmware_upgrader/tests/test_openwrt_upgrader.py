@@ -245,9 +245,10 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upgrade_op.status, 'aborted')
         self.assertEqual(exec_command.call_count, 1)
+        uuid = '93e76d30-8bfd-4db1-9a24-9875098c9e61'
         lines = [
             'Connection successful, starting upgrade...',
-            f'Device UUID mismatch: expected {device_fw.device.pk}, found 93e76d30-8bfd-4db1-9a24-9875098c9e61 in device configuration',
+            f'Device UUID mismatch: expected {device_fw.device.pk}, found {uuid} in device configuration',
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
