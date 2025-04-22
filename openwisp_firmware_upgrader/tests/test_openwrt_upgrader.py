@@ -316,6 +316,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         lines = [
             'Image checksum file found',
             'Checksum different, proceeding',
+            'Device identity verified successfully',
             'Upgrade operation in progress',
             'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
             'Connected! Writing checksum',
