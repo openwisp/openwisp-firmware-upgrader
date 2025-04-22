@@ -167,9 +167,7 @@ class OpenWrt(object):
         )
         if exit_code == 1 or not output.strip():
             self.log(_('Could not read device UUID from configuration'))
-            raise UpgradeAborted(
-                'Could not verify device identity: UUID not found in device configuration'
-            )
+            raise UpgradeAborted()
         device_config_uuid = output.strip()
         if str(device_uuid) != device_config_uuid:
             self.log(
@@ -178,10 +176,7 @@ class OpenWrt(object):
                     'found {found} in device configuration'
                 ).format(expected=device_uuid, found=device_config_uuid)
             )
-            raise UpgradeAborted(
-                'Upgrade aborted: device UUID mismatch detected, '
-                'this could indicate an attempt to upgrade the wrong device'
-            )
+            raise UpgradeAborted()
         self.log(_('Device identity verified successfully'))
 
     def upgrade(self, image):

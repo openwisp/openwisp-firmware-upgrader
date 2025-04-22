@@ -84,7 +84,13 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
 
 def mocked_exec_uuid_mismatch(command, exit_codes=None, timeout=None):
     if command == 'uci get openwisp.http.uuid':
-        return ['different-uuid', 0]
+        return ['93e76d30-8bfd-4db1-9a24-9875098c9e61', 0]
+    return mocked_exec_upgrade_success(command, exit_codes, timeout)
+
+
+def mocked_exec_uuid_not_found(command, exit_codes=None, timeout=None):
+    if command == 'uci get openwisp.http.uuid':
+        return ['', 1]  # Return empty output with exit code 1 to simulate UUID not found
     return mocked_exec_upgrade_success(command, exit_codes, timeout)
 
 
@@ -238,8 +244,25 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(exec_command.call_count, 1)
         lines = [
             'Connection successful, starting upgrade...',
-            'Device UUID mismatch: expected',
-            'found different-uuid in device configuration',
+            f'Device UUID mismatch: expected {device_fw.device.pk}, found 93e76d30-8bfd-4db1-9a24-9875098c9e61 in device configuration',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertFalse(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_uuid_not_found)
+    def test_verify_device_uuid_not_found(self, exec_command, is_alive, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(exec_command.call_count, 1)
+        lines = [
+            'Connection successful, starting upgrade...',
+            'Could not read device UUID from configuration',
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
