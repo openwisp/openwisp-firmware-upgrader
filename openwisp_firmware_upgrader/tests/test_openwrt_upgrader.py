@@ -34,6 +34,11 @@ def mocked_exec_upgrade_not_needed(command, exit_codes=None):
         f'test -f {OpenWrt.CHECKSUM_FILE}': ['', 0],
         f'cat {OpenWrt.CHECKSUM_FILE}': [TEST_CHECKSUM, 0],
     }
+    # Handle the UUID command dynamically
+    if command == 'uci get openwisp.http.uuid':
+        device_fw = DeviceFirmware.objects.order_by('created').last()
+        if device_fw:
+            return [str(device_fw.device.pk), 0]
     return cases[command]
 
 
@@ -55,6 +60,11 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
         'test -f /sbin/wifi && /sbin/wifi down': defaults,
         'test -f /sbin/wifi && /sbin/wifi up': defaults,
     }
+    # Handle the UUID command dynamically
+    if command == 'uci get openwisp.http.uuid':
+        device_fw = DeviceFirmware.objects.order_by('created').last()
+        if device_fw:
+            return [str(device_fw.device.pk), 0]
     if command.startswith(f'{_sysupgrade} --test /tmp/openwrt-'):
         return defaults
     if command.startswith(f'{_sysupgrade} -v -c /tmp/openwrt-'):
@@ -70,6 +80,21 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
         return cases[command]
     except KeyError:
         raise CommandFailedException()
+
+
+def mocked_exec_uuid_mismatch(command, exit_codes=None, timeout=None):
+    if command == 'uci get openwisp.http.uuid':
+        return ['93e76d30-8bfd-4db1-9a24-9875098c9e61', 0]
+    return mocked_exec_upgrade_success(command, exit_codes, timeout)
+
+
+def mocked_exec_uuid_not_found(command, exit_codes=None, timeout=None):
+    if command == 'uci get openwisp.http.uuid':
+        return [
+            '',
+            1,
+        ]  # Return empty output with exit code 1 to simulate UUID not found
+    return mocked_exec_upgrade_success(command, exit_codes, timeout)
 
 
 def mocked_sysupgrade_failure(command, exit_codes=None, timeout=None):
@@ -211,15 +236,51 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         return device_fw, device_conn, upgrade_op, output, task_signature
 
     @patch('scp.SCPClient.putfo')
-    @patch.object(
-        OpenWrt,
-        'exec_command',
-        side_effect=mocked_sysupgrade_test_failure,
-    )
-    def test_image_test_failed(self, exec_command, putfo):
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_uuid_mismatch)
+    def test_verify_device_uuid_mismatch(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(exec_command.call_count, 6)
+        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(exec_command.call_count, 1)
+        uuid = '93e76d30-8bfd-4db1-9a24-9875098c9e61'
+        lines = [
+            'Connection successful, starting upgrade...',
+            f'Device UUID mismatch: expected {device_fw.device.pk}, found {uuid} in device configuration',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertFalse(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_uuid_not_found)
+    def test_verify_device_uuid_not_found(self, exec_command, is_alive, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(exec_command.call_count, 1)
+        lines = [
+            'Connection successful, starting upgrade...',
+            'Could not read device UUID from configuration',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertFalse(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_sysupgrade_test_failure)
+    def test_image_test_failed(self, exec_command, is_alive, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(exec_command.call_count, 7)
         putfo.assert_called_once()
         self.assertEqual(upgrade_op.status, 'aborted')
         self.assertIn('Invalid image type', upgrade_op.log)
@@ -233,7 +294,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     def test_upgrade_not_needed(self, mocked):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(mocked.call_count, 2)
+        self.assertEqual(mocked.call_count, 3)
         self.assertEqual(upgrade_op.status, 'success')
         self.assertIn('upgrade not needed', upgrade_op.log)
         self.assertTrue(device_fw.installed)
@@ -249,12 +310,13 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         # should be called 6 times but 1 time is
         # executed in a subprocess and not caught by mock
         self.assertEqual(upgrade_op.status, 'success')
-        self.assertEqual(exec_command.call_count, 8)
+        self.assertEqual(exec_command.call_count, 9)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 1)
         lines = [
             'Image checksum file found',
             'Checksum different, proceeding',
+            'Device identity verified successfully',
             'Upgrade operation in progress',
             'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
             'Connected! Writing checksum',
@@ -274,7 +336,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         start_time = timezone.now()
         with redirect_stderr(io.StringIO()):
             device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
-        self.assertEqual(exec_command.call_count, 6)
+        self.assertEqual(exec_command.call_count, 7)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(connect_fail_on_write_checksum.mock.call_count, 12)
         self.assertEqual(upgrade_op.status, 'failed')
@@ -446,7 +508,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op = device_fw.image.upgradeoperation_set.first()
         device_fw.refresh_from_db()
 
-        self.assertEqual(exec_command.call_count, 6)
+        self.assertEqual(exec_command.call_count, 7)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(upgrade_op.status, 'failed')
         lines = [
@@ -609,17 +671,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upgrade_op.status, 'success')
-        self.assertEqual(exec_command.call_count, 22)
+        self.assertEqual(exec_command.call_count, 23)
         self.assertEqual(
-            exec_command.call_args_list[5][0][0],
+            exec_command.call_args_list[6][0][0],
             'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd stop',
         )
         self.assertEqual(
-            exec_command.call_args_list[14][0][0],
+            exec_command.call_args_list[15][0][0],
             'test -f /etc/init.d/log && /etc/init.d/log stop',
         )
         self.assertEqual(
-            exec_command.call_args_list[15][0][0],
+            exec_command.call_args_list[16][0][0],
             'test -f /sbin/wifi && /sbin/wifi down',
         )
         self.assertEqual(putfo.call_count, 1)
@@ -652,13 +714,13 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upgrade_op.status, 'success')
-        self.assertEqual(exec_command.call_count, 24)
+        self.assertEqual(exec_command.call_count, 25)
         self.assertEqual(
-            exec_command.call_args_list[4][0][0],
+            exec_command.call_args_list[5][0][0],
             'cat /proc/meminfo | grep MemAvailable',
         )
         self.assertEqual(
-            exec_command.call_args_list[5][0][0], 'cat /proc/meminfo | grep MemFree'
+            exec_command.call_args_list[6][0][0], 'cat /proc/meminfo | grep MemFree'
         )
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 1)
@@ -688,17 +750,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upgrade_op.status, 'aborted')
-        self.assertEqual(exec_command.call_count, 30)
+        self.assertEqual(exec_command.call_count, 31)
         self.assertEqual(
-            exec_command.call_args_list[19][0][0],
+            exec_command.call_args_list[20][0][0],
             'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start',
         )
         self.assertEqual(
-            exec_command.call_args_list[28][0][0],
+            exec_command.call_args_list[29][0][0],
             'test -f /etc/init.d/log && /etc/init.d/log start',
         )
         self.assertEqual(
-            exec_command.call_args_list[29][0][0],
+            exec_command.call_args_list[30][0][0],
             'test -f /sbin/wifi && /sbin/wifi up',
         )
         self.assertEqual(putfo.call_count, 0)
@@ -729,17 +791,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upgrade_op.status, 'aborted')
-        self.assertEqual(exec_command.call_count, 31)
+        self.assertEqual(exec_command.call_count, 32)
         self.assertEqual(
-            exec_command.call_args_list[20][0][0],
+            exec_command.call_args_list[21][0][0],
             'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start',
         )
         self.assertEqual(
-            exec_command.call_args_list[29][0][0],
+            exec_command.call_args_list[30][0][0],
             'test -f /etc/init.d/log && /etc/init.d/log start',
         )
         self.assertEqual(
-            exec_command.call_args_list[30][0][0],
+            exec_command.call_args_list[31][0][0],
             'test -f /sbin/wifi && /sbin/wifi up',
         )
         self.assertEqual(putfo.call_count, 1)
@@ -772,7 +834,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         # should be called 6 times but 1 time is
         # executed in a subprocess and not caught by mock
         self.assertEqual(upgrade_op.status, 'success')
-        self.assertEqual(exec_command.call_count, 8)
+        self.assertEqual(exec_command.call_count, 9)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 1)
         lines = [
