@@ -250,23 +250,11 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
             raise ValidationError({'type': 'Could not find boards for this type'})
 
     def delete(self, *args, **kwargs):
+        """
+        Delete only deletes the database record
+        The actual file deletion is handled by the signal handlers
+        """
         super().delete(*args, **kwargs)
-        self._remove_file()
-
-    def _remove_file(self):
-        firmware_filename = self.file.name
-        self.file.storage.delete(firmware_filename)
-        # Delete the file directory
-        dir = os.path.split(firmware_filename)[0]
-        if dir:
-            try:
-                self.file.storage.delete(dir)
-            except OSError as error:
-                # A build can have multiple firmware images,
-                # therefore, deleting directory might not be
-                # always feasible.
-                if 'Directory not empty' not in str(error):
-                    raise error
 
     def _clean_type(self):
         """

@@ -26,6 +26,36 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         super().ready(*args, **kwargs)
         self.register_menu_groups()
         self.connect_device_signals()
+        self.connect_firmware_signals()
+
+    def connect_firmware_signals(self):
+        """
+        Connects firmware related signals to their receivers
+        """
+        from django.db.models.signals import pre_delete
+        from swapper import load_model
+
+        from . import signals
+
+        Organization = load_model('openwisp_users', 'Organization')
+        Build = load_model('firmware_upgrader', 'Build')
+        Category = load_model('firmware_upgrader', 'Category')
+
+        pre_delete.connect(
+            signals.delete_build_files,
+            sender=Build,
+            dispatch_uid='delete_build_files'
+        )
+        pre_delete.connect(
+            signals.delete_category_files,
+            sender=Category,
+            dispatch_uid='delete_category_files'
+        )
+        pre_delete.connect(
+            signals.delete_organization_files,
+            sender=Organization,
+            dispatch_uid='delete_org_files'
+        )
 
     def register_menu_groups(self):
         register_menu_group(
