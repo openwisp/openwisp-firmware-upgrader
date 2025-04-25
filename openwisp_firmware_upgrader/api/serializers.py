@@ -46,13 +46,14 @@ class CategoryRelationSerializer(BaseSerializer):
 
 
 class FirmwareImageSerializer(BaseSerializer):
-    file = serializers.SerializerMethodField()
+    file = serializers.FileField(required=False)
+    file_url = serializers.SerializerMethodField(read_only=True)
 
     def validate(self, data):
         data["build"] = self.context["view"].get_parent_queryset().get()
         return super().validate(data)
 
-    def get_file(self, obj):
+    def get_file_url(self, obj):
         request = self.context.get('request')
         if request and getattr(obj, 'pk', None):
             return request.build_absolute_uri(
@@ -62,6 +63,13 @@ class FirmwareImageSerializer(BaseSerializer):
                 )
             )
         return obj.file.url if hasattr(obj, 'file') else None
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        # Replace 'file' with the URL from file_url
+        if 'file_url' in ret:
+            ret['file'] = ret.pop('file_url')
+        return ret
 
     class Meta(BaseMeta):
         model = FirmwareImage

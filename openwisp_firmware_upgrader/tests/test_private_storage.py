@@ -79,7 +79,7 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         user = self._get_admin()
         self.client.force_login(user)
         self._download_firmware_assert_status(200)
-        
+
     def test_view_permission_check(self):
         # Create a staff user with organization admin privileges
         staff_user = self._get_operator()
@@ -87,26 +87,29 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
             user=staff_user, organization=self.test_org, is_admin=True
         )
         self.client.force_login(staff_user)
-        
+
         self._download_firmware_assert_status(403)
-        
+
         # Remove the view permission
         content_type = ContentType.objects.get_for_model(FirmwareImage)
         perm_codename = get_permission_codename('view', FirmwareImage._meta)
         view_perm = Permission.objects.get(
             content_type=content_type, codename=perm_codename
         )
-        
+
         # Create a custom permission group without view permission
         from django.contrib.auth.models import Group
+
         no_view_group = Group.objects.create(name='No View Permission')
         # Add all permissions except view permission
-        for perm in Permission.objects.filter(content_type=content_type).exclude(pk=view_perm.pk):
+        for perm in Permission.objects.filter(content_type=content_type).exclude(
+            pk=view_perm.pk
+        ):
             no_view_group.permissions.add(perm)
-        
+
         # Remove all permissions from user and add only the group permissions
         staff_user.user_permissions.clear()
         staff_user.groups.add(no_view_group)
-        
+
         # Now the user should not be able to download the firmware
         self._download_firmware_assert_status(403)

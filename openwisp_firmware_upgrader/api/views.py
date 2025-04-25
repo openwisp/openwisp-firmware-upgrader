@@ -1,7 +1,6 @@
-import os
 import swapper
 from django.core.exceptions import ValidationError
-from django.http import Http404, HttpResponse
+from django.http import Http404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics, pagination, serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied
