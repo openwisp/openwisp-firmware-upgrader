@@ -1,7 +1,6 @@
 import logging
 
 from django.db import transaction
-from swapper import load_model
 
 from .tasks import delete_firmware_files
 

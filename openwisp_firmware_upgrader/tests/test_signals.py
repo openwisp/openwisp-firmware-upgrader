@@ -5,7 +5,6 @@ from django.conf import settings
 from django.test import TestCase, TransactionTestCase
 from swapper import load_model
 
-from .. import settings as app_settings
 from ..tasks import delete_firmware_files
 from .base import TestUpgraderMixin
 

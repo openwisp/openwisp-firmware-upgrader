@@ -11,7 +11,6 @@ from openwisp_utils.tasks import OpenwispCeleryTask
 
 from . import settings as app_settings
 from .exceptions import RecoverableFailure
-from .private_storage.storage import file_system_private_storage
 from .swapper import load_model
 
 logger = logging.getLogger(__name__)
