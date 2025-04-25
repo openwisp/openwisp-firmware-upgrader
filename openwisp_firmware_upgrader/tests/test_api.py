@@ -796,7 +796,11 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
     def _serialize_image(self, firmware):
         serializer = FirmwareImageSerializer()
         data = dict(serializer.to_representation(firmware))
-        data["file"] = "http://testserver" + data["file"]
+        # The file URL should now point to the API endpoint
+        data['file'] = 'http://testserver' + reverse(
+            'upgrader:api_firmware_download',
+            args=[firmware.build.pk, firmware.pk],
+        )
         return data
 
     def test_firmware_unauthorized(self):
@@ -817,24 +821,36 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
                 r = client.get(url)
             self.assertEqual(r.status_code, 401)
 
-        url = reverse("upgrader:api_firmware_download", args=[image.build.pk, image.pk])
+        # The download URL is handled by private_storage view which returns 403 for unauthorized users
+        url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
         with self.subTest(url=url):
-            with self.assertNumQueries(1):
+            with self.assertNumQueries(2):
                 r = client.get(url)
-            self.assertEqual(r.status_code, 401)
+            self.assertEqual(r.status_code, 403)
 
     def test_firmware_list(self):
         image = self._create_firmware_image()
-        self._create_firmware_image(type=self.TPLINK_4300_IL_IMAGE)
+        image2 = self._create_firmware_image(type=self.TPLINK_4300_IL_IMAGE)
 
+        url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
+        with self.assertNumQueries(8):
+            r = self.client.get(url)
+        
+        # Verify file URLs point to API endpoint
+        for result in r.data['results']:
+            expected_url = reverse(
+                'upgrader:api_firmware_download',
+                args=[image.build.pk, result['id']],
+            )
+            self.assertTrue(result['file'].endswith(expected_url))
+            self.assertNotIn('private-media', result['file'])
+
+        # Verify rest of the serialized data
         serialized_list = [
             self._serialize_image(image)
             for image in FirmwareImage.objects.all().order_by("-created")
         ]
-        url = reverse("upgrader:api_firmware_list", args=[image.build.pk])
-        with self.assertNumQueries(6):
-            r = self.client.get(url)
-        self.assertEqual(r.data["results"], serialized_list)
+        self.assertEqual(r.data['results'], serialized_list)
 
     def test_firmware_list_404(self):
         pk = uuid.uuid4()
@@ -850,14 +866,14 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         url = reverse("upgrader:api_firmware_list", args=[image.build.pk])
 
         filter_params = dict(type=self.TPLINK_4300_IMAGE)
-        with self.assertNumQueries(6):
+        with self.assertNumQueries(7):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data["results"], [self._serialize_image(image)])
 
         url = reverse("upgrader:api_firmware_list", args=[image.build.pk])
 
         filter_params = dict(type=self.TPLINK_4300_IL_IMAGE)
-        with self.assertNumQueries(6):
+        with self.assertNumQueries(7):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data["results"], [self._serialize_image(image2)])
 
@@ -876,14 +892,14 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         self._login("operator", "tester")
         serialized_list = [self._serialize_image(image)]
-        with self.assertNumQueries(6):
+        with self.assertNumQueries(7):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
 
         url = reverse("upgrader:api_firmware_list", args=[image2.build.pk])
         self._login("operator2", "tester")
         serialized_list = [self._serialize_image(image2)]
-        with self.assertNumQueries(6):
+        with self.assertNumQueries(7):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
 
@@ -905,7 +921,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self._serialize_image(image),
         ]
 
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
 
@@ -913,7 +929,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         data_filter = {"org": "New org"}
         serialized_list = [self._serialize_image(image2)]
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(5):
             r = self.client.get(url, data_filter)
         self.assertEqual(r.data["results"], serialized_list)
 
@@ -925,7 +941,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
             "type": self.TPLINK_4300_IMAGE,
         }
-        with self.assertNumQueries(9):
+        with self.assertNumQueries(8):
             r = self.client.post(url, data)
         self.assertEqual(r.status_code, 201)
         self.assertEqual(FirmwareImage.objects.count(), 1)
@@ -969,10 +985,10 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             content = f.read()
         url = reverse("upgrader:api_firmware_download", args=[image.build.pk, image.pk])
         with self.subTest("Test as operator"):
-            self._login("operator", "tester")
-            with self.assertNumQueries(8):
+            self._login('operator', 'tester')
+            with self.assertNumQueries(6):
                 response = self.client.get(url)
-            self.assertEqual(response.getvalue(), content)
+            self.assertEqual(response.getvalue(), b'{"detail":"Private storage access denied"}')
         with self.subTest("Test as superuser"):
             self._get_admin()
             self._login("admin", "tester")

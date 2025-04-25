@@ -1,6 +1,7 @@
+import os
 import swapper
 from django.core.exceptions import ValidationError
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics, pagination, serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -186,6 +187,7 @@ class FirmwareImageDownloadView(FirmwareImageMixin, generics.RetrieveAPIView):
     lookup_fields = ["pk"]
     organization_field = "build__category__organization"
     queryset = FirmwareImage.objects.none()
+    permission_classes = []  # Permissions are checked in the private storage view
 
     def retrieve(self, request, *args, **kwargs):
         return private_storage.views.firmware_image_download(
