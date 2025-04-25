@@ -42,19 +42,17 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         Category = load_model('firmware_upgrader', 'Category')
 
         pre_delete.connect(
-            signals.delete_build_files,
-            sender=Build,
-            dispatch_uid='delete_build_files'
+            signals.delete_build_files, sender=Build, dispatch_uid='delete_build_files'
         )
         pre_delete.connect(
             signals.delete_category_files,
             sender=Category,
-            dispatch_uid='delete_category_files'
+            dispatch_uid='delete_category_files',
         )
         pre_delete.connect(
             signals.delete_organization_files,
             sender=Organization,
-            dispatch_uid='delete_org_files'
+            dispatch_uid='delete_org_files',
         )
 
     def register_menu_groups(self):

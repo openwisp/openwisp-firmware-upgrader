@@ -14,6 +14,7 @@ Category = load_model('firmware_upgrader', 'Category')
 FirmwareImage = load_model('firmware_upgrader', 'FirmwareImage')
 Organization = load_model('openwisp_users', 'Organization')
 
+
 class TestSignals(TestUpgraderMixin, TestCase):
     def setUp(self):
         # Ensure PRIVATE_STORAGE_ROOT exists
@@ -47,8 +48,10 @@ class TestSignals(TestUpgraderMixin, TestCase):
         fw = self._create_firmware_image(build=build)
         file_path = fw.file.path
         self.assertTrue(os.path.exists(file_path))
-        
-        with patch('openwisp_firmware_upgrader.tasks.delete_firmware_files.delay') as mock:
+
+        with patch(
+            'openwisp_firmware_upgrader.tasks.delete_firmware_files.delay'
+        ) as mock:
             build.delete()
             mock.assert_called_once()
             file_paths = mock.call_args[0][0]
@@ -61,8 +64,10 @@ class TestSignals(TestUpgraderMixin, TestCase):
         build2 = self._create_build(category=category)
         fw1 = self._create_firmware_image(build=build1)
         fw2 = self._create_firmware_image(build=build2)
-        
-        with patch('openwisp_firmware_upgrader.tasks.delete_firmware_files.delay') as mock:
+
+        with patch(
+            'openwisp_firmware_upgrader.tasks.delete_firmware_files.delay'
+        ) as mock:
             category.delete()
             mock.assert_called_once()
             file_paths = mock.call_args[0][0]
@@ -78,8 +83,10 @@ class TestSignals(TestUpgraderMixin, TestCase):
         build2 = self._create_build(category=category2)
         fw1 = self._create_firmware_image(build=build1)
         fw2 = self._create_firmware_image(build=build2)
-        
-        with patch('openwisp_firmware_upgrader.tasks.delete_firmware_files.delay') as mock:
+
+        with patch(
+            'openwisp_firmware_upgrader.tasks.delete_firmware_files.delay'
+        ) as mock:
             org.delete()
             mock.assert_called_once()
             file_paths = mock.call_args[0][0]
@@ -120,16 +127,16 @@ class TestDeleteFirmwareFilesTask(TestUpgraderMixin, TransactionTestCase):
         fw = self._create_firmware_image(build=build)
         file_path = fw.file.path
         self.assertTrue(os.path.exists(file_path))
-        
+
         # Create a list of file paths to delete
         file_paths = [fw.file.name]
-        
+
         # Call the task directly
         delete_firmware_files(file_paths)
-        
+
         # Check if the file has been deleted
         self.assertFalse(os.path.exists(file_path))
-        
+
         # Check if the directory has been deleted
         dir_path = os.path.dirname(file_path)
         self.assertFalse(os.path.exists(dir_path))

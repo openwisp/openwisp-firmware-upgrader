@@ -30,7 +30,11 @@ def delete_build_files(sender, instance, **kwargs):
     logger.info(f"Collected file paths: {paths}")
     if paths:
         logger.info("Scheduling delete_firmware_files task")
-        transaction.on_commit(lambda: delete_firmware_files.delay(paths))
+
+        def schedule_delete_task():
+            delete_firmware_files.delay(paths)
+
+        transaction.on_commit(schedule_delete_task)
 
 
 def delete_category_files(sender, instance, **kwargs):
@@ -49,7 +53,11 @@ def delete_category_files(sender, instance, **kwargs):
     logger.info(f"Collected file paths: {paths}")
     if paths:
         logger.info("Scheduling delete_firmware_files task")
-        transaction.on_commit(lambda: delete_firmware_files.delay(paths))
+
+        def schedule_delete_task():
+            delete_firmware_files.delay(paths)
+
+        transaction.on_commit(schedule_delete_task)
 
 
 def delete_organization_files(sender, instance, **kwargs):
@@ -71,4 +79,8 @@ def delete_organization_files(sender, instance, **kwargs):
     logger.info(f"Collected file paths: {paths}")
     if paths:
         logger.info("Scheduling delete_firmware_files task")
-        transaction.on_commit(lambda: delete_firmware_files.delay(paths))
+
+        def schedule_delete_task():
+            delete_firmware_files.delay(paths)
+
+        transaction.on_commit(schedule_delete_task)
