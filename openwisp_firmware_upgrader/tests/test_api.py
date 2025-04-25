@@ -832,7 +832,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
 
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
-        with self.assertNumQueries(8):
+        with self.assertNumQueries(7):
             r = self.client.get(url)
 
         # Verify file URLs point to API endpoint
