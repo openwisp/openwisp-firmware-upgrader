@@ -47,28 +47,23 @@ class CategoryRelationSerializer(BaseSerializer):
 
 class FirmwareImageSerializer(BaseSerializer):
     file = serializers.FileField(required=False)
-    file_url = serializers.SerializerMethodField(read_only=True)
 
     def validate(self, data):
         data["build"] = self.context["view"].get_parent_queryset().get()
         return super().validate(data)
 
-    def get_file_url(self, obj):
-        request = self.context.get('request')
-        if request and getattr(obj, 'pk', None):
-            return request.build_absolute_uri(
-                reverse(
-                    'upgrader:api_firmware_download',
-                    args=[obj.build.pk, obj.pk],
-                )
-            )
-        return obj.file.url if hasattr(obj, 'file') else None
-
     def to_representation(self, instance):
         ret = super().to_representation(instance)
-        # Replace 'file' with the URL from file_url
-        if 'file_url' in ret:
-            ret['file'] = ret.pop('file_url')
+        request = self.context.get('request')
+        if request and getattr(instance, 'pk', None):
+            ret['file'] = request.build_absolute_uri(
+                reverse(
+                    'upgrader:api_firmware_download',
+                    args=[instance.build.pk, instance.pk],
+                )
+            )
+        elif hasattr(instance, 'file'):
+            ret['file'] = instance.file.url
         return ret
 
     class Meta(BaseMeta):

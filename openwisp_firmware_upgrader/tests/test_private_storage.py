@@ -12,6 +12,7 @@ from .base import TestUpgraderMixin
 
 OrganizationUser = swapper.load_model('openwisp_users', 'OrganizationUser')
 FirmwareImage = load_model('FirmwareImage')
+Group = swapper.load_model('openwisp_users', 'Group')
 
 
 class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase):
@@ -98,8 +99,6 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         )
 
         # Create a custom permission group without view permission
-        from django.contrib.auth.models import Group
-
         no_view_group = Group.objects.create(name='No View Permission')
         # Add all permissions except view permission
         for perm in Permission.objects.filter(content_type=content_type).exclude(

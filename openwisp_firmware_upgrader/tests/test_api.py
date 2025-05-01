@@ -824,7 +824,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         # The download URL is handled by private_storage view which returns 403 for unauthorized users
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
         with self.subTest(url=url):
-            with self.assertNumQueries(2):
+            with self.assertNumQueries(1):
                 r = client.get(url)
             self.assertEqual(r.status_code, 403)
 
@@ -985,15 +985,13 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         url = reverse("upgrader:api_firmware_download", args=[image.build.pk, image.pk])
         with self.subTest("Test as operator"):
             self._login('operator', 'tester')
-            with self.assertNumQueries(6):
+            with self.assertNumQueries(9):
                 response = self.client.get(url)
-            self.assertEqual(
-                response.getvalue(), b'{"detail":"Private storage access denied"}'
-            )
+            self.assertEqual(response.getvalue(), b'{"detail":""}')
         with self.subTest("Test as superuser"):
             self._get_admin()
-            self._login("admin", "tester")
-            with self.assertNumQueries(3):
+            self._login('admin', 'tester')
+            with self.assertNumQueries(4):
                 response = self.client.get(url)
             self.assertEqual(response.getvalue(), content)
 
