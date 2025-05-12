@@ -29,7 +29,7 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         self.assertEqual(response.status_code, status_code)
 
     def test_unauthenticated_user(self):
-        self._download_firmware_assert_status(403)
+        self._download_firmware_assert_status(401)
 
     def test_authenticated_user(self):
         user = self._get_user()
@@ -74,7 +74,7 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
             user=staff_user, organization=self.test_org, is_admin=True
         )
         self.client.force_login(staff_user)
-        self._download_firmware_assert_status(403)
+        self._download_firmware_assert_status(200)
 
     def test_superuser(self):
         user = self._get_admin()
@@ -82,33 +82,42 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         self._download_firmware_assert_status(200)
 
     def test_view_permission_check(self):
-        # Create a staff user with organization admin privileges
         staff_user = self._get_operator()
-        self._create_org_user(
-            user=staff_user, organization=self.test_org, is_admin=True
-        )
         self.client.force_login(staff_user)
-
+        org = self.image.build.category.organization
         self._download_firmware_assert_status(403)
 
-        # Remove the view permission
+        # Add view permission first
         content_type = ContentType.objects.get_for_model(FirmwareImage)
         perm_codename = get_permission_codename('view', FirmwareImage._meta)
         view_perm = Permission.objects.get(
             content_type=content_type, codename=perm_codename
         )
+        staff_user.user_permissions.add(view_perm)
 
-        # Create a custom permission group without view permission
-        no_view_group = Group.objects.create(name='No View Permission')
-        # Add all permissions except view permission
-        for perm in Permission.objects.filter(content_type=content_type).exclude(
-            pk=view_perm.pk
-        ):
-            no_view_group.permissions.add(perm)
+        self._create_org_user(user=staff_user, organization=org, is_admin=True)
+        self._download_firmware_assert_status(200)
 
-        # Remove all permissions from user and add only the group permissions
-        staff_user.user_permissions.clear()
-        staff_user.groups.add(no_view_group)
+        # Remove org manager status
+        org_user = staff_user.openwisp_users_organization.get(
+            organization_users__organization=org
+        )
+        org_user.is_admin = False
+        org_user.save()
 
-        # Now the user should not be able to download the firmware
+        # Remove staff status
+        staff_user.is_staff = False
+        staff_user.save()
+
+        # Restore org manager status
+        org_user.is_admin = True
+        org_user.save()
+
+        # No access (missing staff status)
+        self._download_firmware_assert_status(403)
+
+        # Remove view permission
+        staff_user.user_permissions.remove(view_perm)
+
+        # No access (missing view permission)
         self._download_firmware_assert_status(403)
