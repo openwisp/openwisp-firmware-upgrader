@@ -46,8 +46,6 @@ class CategoryRelationSerializer(BaseSerializer):
 
 
 class FirmwareImageSerializer(BaseSerializer):
-    file = serializers.FileField(required=False)
-
     def validate(self, data):
         data["build"] = self.context["view"].get_parent_queryset().get()
         return super().validate(data)
@@ -63,7 +61,10 @@ class FirmwareImageSerializer(BaseSerializer):
                 )
             )
         elif hasattr(instance, 'file'):
-            ret['file'] = instance.file.url
+            ret['file'] = reverse(
+                'upgrader:api_firmware_download',
+                args=[instance.build.pk, instance.pk],
+            )
         return ret
 
     class Meta(BaseMeta):

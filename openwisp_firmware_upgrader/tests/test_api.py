@@ -821,18 +821,19 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
                 r = client.get(url)
             self.assertEqual(r.status_code, 401)
 
-        # The download URL is handled by private_storage view which returns 403 for unauthorized users
+        # The download URL is handled by private_storage view which returns 401 for unauthenticated users
         url = reverse('upgrader:api_firmware_download', args=[image.build.pk, image.pk])
         with self.subTest(url=url):
             with self.assertNumQueries(1):
                 r = client.get(url)
-            self.assertEqual(r.status_code, 403)
+            self.assertEqual(r.status_code, 401)
 
     def test_firmware_list(self):
         image = self._create_firmware_image()
+        self._create_firmware_image(type=self.TPLINK_4300_IL_IMAGE)
 
         url = reverse('upgrader:api_firmware_list', args=[image.build.pk])
-        with self.assertNumQueries(7):
+        with self.assertNumQueries(8):
             r = self.client.get(url)
 
         # Verify file URLs point to API endpoint
@@ -987,7 +988,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self._login('operator', 'tester')
             with self.assertNumQueries(9):
                 response = self.client.get(url)
-            self.assertEqual(response.getvalue(), b'{"detail":""}')
+            self.assertEqual(response.getvalue(), content)
         with self.subTest("Test as superuser"):
             self._get_admin()
             self._login('admin', 'tester')
