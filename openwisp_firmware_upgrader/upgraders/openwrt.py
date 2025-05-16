@@ -1,5 +1,6 @@
 import os
 import re
+import uuid
 from hashlib import sha256
 from time import sleep
 
@@ -160,7 +161,7 @@ class OpenWrt(object):
         Verifies that the UUID of the device being upgraded matches
         the UUID in the device's configuration
         """
-        device_uuid = self.upgrade_operation.device.pk
+        device_uuid = str(self.upgrade_operation.device.pk)
         # Get UUID from device's openwisp config
         output, exit_code = self.exec_command(
             'uci get openwisp.http.uuid', exit_codes=[0, 1]
@@ -168,13 +169,23 @@ class OpenWrt(object):
         if exit_code == 1 or not output.strip():
             self.log(_('Could not read device UUID from configuration'))
             raise UpgradeAborted()
-        device_config_uuid = output.strip()
-        if str(device_uuid) != device_config_uuid:
+        config_uuid = output.strip()
+        # Convert to strict UUID format for comparison
+        try:
+            config_uuid = str(uuid.UUID(config_uuid))
+        # Should not happen, but if it does,
+        # the process will abort below
+        except ValueError:
+            pass
+        # Do not proceed if the UUID in the configuration
+        # does not match the device UUID in the database:
+        # it's most probably not the right device!
+        if device_uuid != config_uuid:
             self.log(
                 _(
-                    'Device UUID mismatch: expected {expected}, '
-                    'found {found} in device configuration'
-                ).format(expected=device_uuid, found=device_config_uuid)
+                    'Device UUID mismatch: expected "{expected}", '
+                    'found "{found}" in device configuration'
+                ).format(expected=device_uuid, found=config_uuid)
             )
             raise UpgradeAborted()
         self.log(_('Device identity verified successfully'))
