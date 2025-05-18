@@ -161,9 +161,11 @@ class AbstractBuild(TimeStampedEditableModel):
         )
         batch.full_clean()
         batch.save()
-        transaction.on_commit(
-            lambda: batch_upgrade_operation.delay(batch.pk, firmwareless)
-        )
+
+        def schedule_batch_upgrade():
+            batch_upgrade_operation.delay(batch.pk, firmwareless)
+
+        transaction.on_commit(schedule_batch_upgrade)
         return batch
 
     def _find_related_device_firmwares(self, select_devices=False):
@@ -349,9 +351,13 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             operation.batch = batch
         operation.full_clean()
         operation.save()
+
         # launch ``upgrade_firmware`` in the background (celery)
         # once changes are committed to the database
-        transaction.on_commit(lambda: upgrade_firmware.delay(operation.pk))
+        def schedule_upgrade():
+            upgrade_firmware.delay(operation.pk)
+
+        transaction.on_commit(schedule_upgrade)
         return operation
 
     @classmethod
@@ -399,14 +405,19 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if instance.device.model not in REVERSE_FIRMWARE_IMAGE_MAP:
             return
 
-        transaction.on_commit(lambda: create_device_firmware.delay(instance.device.pk))
+        def schedule_device_firmware():
+            create_device_firmware.delay(instance.device.pk)
+
+        transaction.on_commit(schedule_device_firmware)
 
     @classmethod
     def auto_create_device_firmwares(cls, instance, created, **kwargs):
         if created:
-            transaction.on_commit(
-                lambda: create_all_device_firmwares.delay(instance.pk)
-            )
+
+            def schedule_all_device_firmwares():
+                create_all_device_firmwares.delay(instance.pk)
+
+            transaction.on_commit(schedule_all_device_firmwares)
 
     @classmethod
     def get_image_queryset_for_device(cls, device, device_firmware=None):
