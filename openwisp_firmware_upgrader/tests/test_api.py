@@ -986,13 +986,13 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         url = reverse("upgrader:api_firmware_download", args=[image.build.pk, image.pk])
         with self.subTest("Test as operator"):
             self._login('operator', 'tester')
-            with self.assertNumQueries(9):
+            with self.assertNumQueries(8):
                 response = self.client.get(url)
             self.assertEqual(response.getvalue(), content)
         with self.subTest("Test as superuser"):
             self._get_admin()
             self._login('admin', 'tester')
-            with self.assertNumQueries(4):
+            with self.assertNumQueries(3):
                 response = self.client.get(url)
             self.assertEqual(response.getvalue(), content)
 

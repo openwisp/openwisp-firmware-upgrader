@@ -85,7 +85,9 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         staff_user = self._get_operator()
         self.client.force_login(staff_user)
         org = self.image.build.category.organization
-        self._download_firmware_assert_status(403)
+
+        with self.subTest('Test initial access without permissions'):
+            self._download_firmware_assert_status(403)
 
         # Add view permission first
         content_type = ContentType.objects.get_for_model(FirmwareImage)
@@ -95,8 +97,9 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         )
         staff_user.user_permissions.add(view_perm)
 
-        self._create_org_user(user=staff_user, organization=org, is_admin=True)
-        self._download_firmware_assert_status(200)
+        with self.subTest('Test access with view permission and org admin status'):
+            self._create_org_user(user=staff_user, organization=org, is_admin=True)
+            self._download_firmware_assert_status(200)
 
         # Remove org manager status
         org_user = staff_user.openwisp_users_organization.get(
@@ -113,11 +116,11 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         org_user.is_admin = True
         org_user.save()
 
-        # No access (missing staff status)
-        self._download_firmware_assert_status(403)
+        with self.subTest('Test access without staff status'):
+            self._download_firmware_assert_status(403)
 
         # Remove view permission
         staff_user.user_permissions.remove(view_perm)
 
-        # No access (missing view permission)
-        self._download_firmware_assert_status(403)
+        with self.subTest('Test access without view permission'):
+            self._download_firmware_assert_status(403)

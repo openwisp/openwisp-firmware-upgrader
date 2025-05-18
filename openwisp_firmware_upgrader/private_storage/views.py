@@ -15,7 +15,6 @@ class FirmwareImageDownloadView(PermissionRequiredMixin, PrivateStorageDetailVie
     slug_url_kwarg = "path"
 
     def dispatch(self, request, *args, **kwargs):
-        # Return 401 for unauthenticated users instead of 403
         if not request.user.is_authenticated:
             return HttpResponse(status=401)
         return super().dispatch(request, *args, **kwargs)
@@ -30,15 +29,8 @@ class FirmwareImageDownloadView(PermissionRequiredMixin, PrivateStorageDetailVie
 
     def can_access_file(self, private_file):
         user = private_file.request.user
-        # Get object first since it's needed for organization check
-        self.object = self.get_object()
-
-        # Superusers can always access
-        if user.is_superuser:
-            return True
-
-        return user.is_staff and user.is_manager(
-            self.object.build.category.organization
+        return user.is_superuser or (
+            user.is_staff and user.is_manager(self.object.build.category.organization)
         )
 
 
