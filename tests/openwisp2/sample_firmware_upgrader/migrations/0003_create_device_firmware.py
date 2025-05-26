@@ -6,13 +6,13 @@ from openwisp_firmware_upgrader.migrations import create_device_firmware_for_con
 
 
 def create_device_firmware_for_connections_helper(apps, schema_editor):
-    app_label = 'firmware_upgrader'
+    app_label = "firmware_upgrader"
     create_device_firmware_for_connections(apps, schema_editor, app_label)
 
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('sample_firmware_upgrader', '0002_default_permissions'),
+        ("sample_firmware_upgrader", "0002_default_permissions"),
     ]
 
     operations = [

@@ -27,16 +27,16 @@ def upgrade_firmware(self, operation_id):
     ``UpgradeOperation`` instance in the background
     """
     try:
-        operation = load_model('UpgradeOperation').objects.get(pk=operation_id)
+        operation = load_model("UpgradeOperation").objects.get(pk=operation_id)
         recoverable = self.request.retries < self.max_retries
         operation.upgrade(recoverable=recoverable)
     except SoftTimeLimitExceeded:
-        operation.status = 'failed'
-        operation.log_line(_('Operation timed out.'))
-        logger.warning('SoftTimeLimitExceeded raised in upgrade_firmware task')
+        operation.status = "failed"
+        operation.log_line(_("Operation timed out."))
+        logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
     except ObjectDoesNotExist:
         logger.warning(
-            f'The UpgradeOperation object with id {operation_id} has been deleted'
+            f"The UpgradeOperation object with id {operation_id} has been deleted"
         )
 
 
@@ -47,22 +47,22 @@ def batch_upgrade_operation(self, batch_id, firmwareless):
     ``Build`` instance in the background
     """
     try:
-        batch_operation = load_model('BatchUpgradeOperation').objects.get(pk=batch_id)
+        batch_operation = load_model("BatchUpgradeOperation").objects.get(pk=batch_id)
         batch_operation.upgrade(firmwareless=firmwareless)
     except SoftTimeLimitExceeded:
-        batch_operation.status = 'failed'
+        batch_operation.status = "failed"
         batch_operation.save()
-        logger.warning('SoftTimeLimitExceeded raised in batch_upgrade_operation task')
+        logger.warning("SoftTimeLimitExceeded raised in batch_upgrade_operation task")
     except ObjectDoesNotExist:
         logger.warning(
-            f'The BatchUpgradeOperation object with id {batch_id} has been deleted'
+            f"The BatchUpgradeOperation object with id {batch_id} has been deleted"
         )
 
 
 @shared_task(base=OpenwispCeleryTask, bind=True)
 def create_device_firmware(self, device_id):
-    DeviceFirmware = load_model('DeviceFirmware')
-    Device = swapper.load_model('config', 'Device')
+    DeviceFirmware = load_model("DeviceFirmware")
+    Device = swapper.load_model("config", "Device")
 
     qs = DeviceFirmware.objects.filter(device_id=device_id)
     if qs.exists():
@@ -74,11 +74,11 @@ def create_device_firmware(self, device_id):
 
 @shared_task(base=OpenwispCeleryTask, bind=True)
 def create_all_device_firmwares(self, firmware_image_id):
-    DeviceFirmware = load_model('DeviceFirmware')
-    FirmwareImage = load_model('FirmwareImage')
-    Device = swapper.load_model('config', 'Device')
+    DeviceFirmware = load_model("DeviceFirmware")
+    FirmwareImage = load_model("FirmwareImage")
+    Device = swapper.load_model("config", "Device")
 
-    fw_image = FirmwareImage.objects.select_related('build').get(pk=firmware_image_id)
+    fw_image = FirmwareImage.objects.select_related("build").get(pk=firmware_image_id)
 
     queryset = Device.objects.filter(os=fw_image.build.os)
     for device in queryset.iterator():

@@ -7,28 +7,28 @@ from openwisp_users.multitenancy import (
 
 from .swapper import load_model
 
-Build = load_model('Build')
-Category = load_model('Category')
+Build = load_model("Build")
+Category = load_model("Category")
 
 
 class CategoryFilter(MultitenantRelatedOrgFilter):
-    field_name = 'category'
-    parameter_name = 'category_id'
-    title = _('category')
+    field_name = "category"
+    parameter_name = "category_id"
+    title = _("category")
 
 
 class CategoryOrganizationFilter(MultitenantOrgFilter):
-    parameter_name = 'category__organization'
+    parameter_name = "category__organization"
     rel_model = Category
 
 
 class BuildCategoryFilter(MultitenantRelatedOrgFilter):
-    field_name = 'category'
-    parameter_name = 'build__category'
-    title = _('category')
+    field_name = "category"
+    parameter_name = "build__category"
+    title = _("category")
     rel_model = Build
 
 
 class BuildCategoryOrganizationFilter(MultitenantOrgFilter):
-    parameter_name = 'build__category__organization'
+    parameter_name = "build__category__organization"
     rel_model = Category

@@ -21,58 +21,58 @@ from ..tasks import upgrade_firmware
 from ..upgraders.openwrt import OpenWrt
 from .base import TestUpgraderMixin, spy_mock
 
-DeviceFirmware = load_model('DeviceFirmware')
-DeviceConnection = swapper_load_model('connection', 'DeviceConnection')
-Device = swapper_load_model('config', 'Device')
+DeviceFirmware = load_model("DeviceFirmware")
+DeviceConnection = swapper_load_model("connection", "DeviceConnection")
+Device = swapper_load_model("config", "Device")
 
 
-TEST_CHECKSUM = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+TEST_CHECKSUM = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 
 def mocked_exec_upgrade_not_needed(command, exit_codes=None):
     cases = {
-        f'test -f {OpenWrt.CHECKSUM_FILE}': ['', 0],
-        f'cat {OpenWrt.CHECKSUM_FILE}': [TEST_CHECKSUM, 0],
+        f"test -f {OpenWrt.CHECKSUM_FILE}": ["", 0],
+        f"cat {OpenWrt.CHECKSUM_FILE}": [TEST_CHECKSUM, 0],
     }
     # Handle the UUID command dynamically
-    if command == 'uci get openwisp.http.uuid':
-        device_fw = DeviceFirmware.objects.order_by('created').last()
+    if command == "uci get openwisp.http.uuid":
+        device_fw = DeviceFirmware.objects.order_by("created").last()
         if device_fw:
-            return [str(device_fw.device.pk).replace('-', ''), 0]
+            return [str(device_fw.device.pk).replace("-", ""), 0]
     return cases[command]
 
 
 def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
-    defaults = ['', 0]
+    defaults = ["", 0]
     _sysupgrade = OpenWrt._SYSUPGRADE
     _checksum = OpenWrt.CHECKSUM_FILE
     cases = {
-        'rm -rf /tmp/opkg-lists/': defaults,
-        'sync && echo 3 > /proc/sys/vm/drop_caches': defaults,
-        'cat /proc/meminfo | grep MemAvailable': ['MemAvailable:      66984 kB', 0],
-        f'test -f {_checksum}': defaults,
-        f'cat {_checksum}': defaults,
-        'mkdir -p /etc/openwisp': defaults,
-        f'echo {TEST_CHECKSUM} > {_checksum}': defaults,
-        f'{_sysupgrade} --help': ['--test', 1],
-        'rm /etc/openwisp/checksum 2> /dev/null': defaults,
+        "rm -rf /tmp/opkg-lists/": defaults,
+        "sync && echo 3 > /proc/sys/vm/drop_caches": defaults,
+        "cat /proc/meminfo | grep MemAvailable": ["MemAvailable:      66984 kB", 0],
+        f"test -f {_checksum}": defaults,
+        f"cat {_checksum}": defaults,
+        "mkdir -p /etc/openwisp": defaults,
+        f"echo {TEST_CHECKSUM} > {_checksum}": defaults,
+        f"{_sysupgrade} --help": ["--test", 1],
+        "rm /etc/openwisp/checksum 2> /dev/null": defaults,
         # used in memory check tests
-        'test -f /sbin/wifi && /sbin/wifi down': defaults,
-        'test -f /sbin/wifi && /sbin/wifi up': defaults,
+        "test -f /sbin/wifi && /sbin/wifi down": defaults,
+        "test -f /sbin/wifi && /sbin/wifi up": defaults,
     }
     # Handle the UUID command dynamically
-    if command == 'uci get openwisp.http.uuid':
-        device_fw = DeviceFirmware.objects.order_by('created').last()
+    if command == "uci get openwisp.http.uuid":
+        device_fw = DeviceFirmware.objects.order_by("created").last()
         if device_fw:
             return [str(device_fw.device.pk), 0]
-    if command.startswith(f'{_sysupgrade} --test /tmp/openwrt-'):
+    if command.startswith(f"{_sysupgrade} --test /tmp/openwrt-"):
         return defaults
-    if command.startswith(f'{_sysupgrade} -v -c /tmp/openwrt-'):
+    if command.startswith(f"{_sysupgrade} -v -c /tmp/openwrt-"):
         return [
             (
-                'Image metadata not found\n'
-                'Reading partition table from bootdisk...\n'
-                'Reading partition table from image...\n'
+                "Image metadata not found\n"
+                "Reading partition table from bootdisk...\n"
+                "Reading partition table from image...\n"
             ),
             -1,
         ]
@@ -83,28 +83,28 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
 
 
 def mocked_exec_uuid_mismatch(command, exit_codes=None, timeout=None):
-    if command == 'uci get openwisp.http.uuid':
-        return ['93e76d30-8bfd-4db1-9a24-9875098c9e61', 0]
+    if command == "uci get openwisp.http.uuid":
+        return ["93e76d30-8bfd-4db1-9a24-9875098c9e61", 0]
     return mocked_exec_upgrade_success(command, exit_codes, timeout)
 
 
 def mocked_exec_uuid_invalid(command, exit_codes=None, timeout=None):
-    if command == 'uci get openwisp.http.uuid':
-        return ['invalid-uuid', 0]
+    if command == "uci get openwisp.http.uuid":
+        return ["invalid-uuid", 0]
     return mocked_exec_upgrade_success(command, exit_codes, timeout)
 
 
 def mocked_exec_uuid_not_found(command, exit_codes=None, timeout=None):
-    if command == 'uci get openwisp.http.uuid':
+    if command == "uci get openwisp.http.uuid":
         return [
-            '',
+            "",
             1,
         ]  # Return empty output with exit code 1 to simulate UUID not found
     return mocked_exec_upgrade_success(command, exit_codes, timeout)
 
 
 def mocked_sysupgrade_failure(command, exit_codes=None, timeout=None):
-    if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c'):
+    if command.startswith(f"{OpenWrt._SYSUPGRADE} -v -c"):
         raise CommandFailedException(
             "Invalid image type\nImage check 'platform_check_image' failed."
         )
@@ -112,8 +112,8 @@ def mocked_sysupgrade_failure(command, exit_codes=None, timeout=None):
 
 
 def mocked_sysupgrade_test_failure(command, exit_codes=None, timeout=None):
-    if command.startswith(f'{OpenWrt._SYSUPGRADE} --test'):
-        raise CommandFailedException('Invalid image type')
+    if command.startswith(f"{OpenWrt._SYSUPGRADE} --test"):
+        raise CommandFailedException("Invalid image type")
     return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
 
 
@@ -121,14 +121,14 @@ def mocked_exec_upgrade_memory_success(
     command, exit_codes=None, timeout=None, raise_unexpected_exit=None
 ):
     global _mock_memory_success_called
-    if command.startswith('test -f /etc/init.d/'):
-        return ['', 0]
+    if command.startswith("test -f /etc/init.d/"):
+        return ["", 0]
     elif (
         not _mock_memory_success_called
-        and command == 'cat /proc/meminfo | grep MemAvailable'
+        and command == "cat /proc/meminfo | grep MemAvailable"
     ):
         _mock_memory_success_called = True
-        return ['MemAvailable:      0 kB', 0]
+        return ["MemAvailable:      0 kB", 0]
     return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
 
 
@@ -136,14 +136,14 @@ def mocked_exec_upgrade_memory_success_legacy(
     command, exit_codes=None, timeout=None, raise_unexpected_exit=None
 ):
     global _mock_memory_success_called
-    if command == 'cat /proc/meminfo | grep MemAvailable':
-        return ['', 1]
-    elif command == 'cat /proc/meminfo | grep MemFree':
+    if command == "cat /proc/meminfo | grep MemAvailable":
+        return ["", 1]
+    elif command == "cat /proc/meminfo | grep MemFree":
         if not _mock_memory_success_called:
             _mock_memory_success_called = True
-            return ['MemFree:      0 kB', 0]
+            return ["MemFree:      0 kB", 0]
         else:
-            return ['MemFree:      66984 kB', 0]
+            return ["MemFree:      66984 kB", 0]
     return mocked_exec_upgrade_memory_success(
         command, exit_codes, timeout, raise_unexpected_exit
     )
@@ -152,39 +152,39 @@ def mocked_exec_upgrade_memory_success_legacy(
 def mocked_exec_upgrade_memory_failure(
     command, exit_codes=None, timeout=None, raise_unexpected_exit=None
 ):
-    if command == 'cat /proc/meminfo | grep MemAvailable':
-        return ['MemAvailable:      0 kB', 0]
+    if command == "cat /proc/meminfo | grep MemAvailable":
+        return ["MemAvailable:      0 kB", 0]
     return mocked_exec_upgrade_memory_success(command, exit_codes=None, timeout=None)
 
 
 def mocked_exec_upgrade_memory_aborted(
     command, exit_codes=None, timeout=None, raise_unexpected_exit=None
 ):
-    if command.startswith(f'{OpenWrt._SYSUPGRADE} --test'):
-        raise CommandFailedException('Invalid image type')
+    if command.startswith(f"{OpenWrt._SYSUPGRADE} --test"):
+        raise CommandFailedException("Invalid image type")
     return mocked_exec_upgrade_memory_success(command, exit_codes=None, timeout=None)
 
 
 def mocked_exec_upgrade_success_false_positives(
     command, exit_codes=None, timeout=None, raised_unexpected_exit=None
 ):
-    if command.startswith(f'{OpenWrt._SYSUPGRADE} -v -c /tmp/openwrt-'):
-        filename = command.split()[-1].split('/')[-1]
+    if command.startswith(f"{OpenWrt._SYSUPGRADE} -v -c /tmp/openwrt-"):
+        filename = command.split()[-1].split("/")[-1]
         raise CommandFailedException(
-            'Command failed: ubus call system sysupgrade '
+            "Command failed: ubus call system sysupgrade "
             '{ "prefix": "\/tmp\/root", '
             f'"path": "\/tmp\/{filename}", '
             '"backup": "\/tmp\/sysupgrade.tgz", '
             '"command": "\/lib\/upgrade\/do_stage2", '
             '"options": { "save_partitions": 1 } } '
-            '(Connection failed)'
+            "(Connection failed)"
         )
     return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
 
 
 def connect_fail_on_write_checksum_pre_action(*args, **kwargs):
     if connect_fail_on_write_checksum.mock.call_count >= 3:
-        raise NoValidConnectionsError(errors={'127.0.0.1': 'mocked error'})
+        raise NoValidConnectionsError(errors={"127.0.0.1": "mocked error"})
 
 
 _mock_memory_success_called = False
@@ -198,7 +198,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.mock_ssh_server = SshServer(
-            {'root': cls._TEST_RSA_PRIVATE_KEY_PATH}
+            {"root": cls._TEST_RSA_PRIVATE_KEY_PATH}
         ).__enter__()
         cls.ssh_server.port = cls.mock_ssh_server.port
 
@@ -223,14 +223,14 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                 )
         except Exception as e:
             if exception and isinstance(e, exception):
-                device_fw = DeviceFirmware.objects.order_by('created').last()
-                if hasattr(e, 'sig'):
+                device_fw = DeviceFirmware.objects.order_by("created").last()
+                if hasattr(e, "sig"):
                     task_signature = e.sig
             else:
                 raise e
         else:
             if exception:
-                self.fail(f'{exception.__name__} not raised')
+                self.fail(f"{exception.__name__} not raised")
 
         if not upgrade:
             return device_fw, device_conn, output
@@ -241,37 +241,37 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op = device_fw.image.upgradeoperation_set.first()
         return device_fw, device_conn, upgrade_op, output, task_signature
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_uuid_mismatch)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_uuid_mismatch)
     def test_verify_device_uuid_mismatch(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(upgrade_op.status, "aborted")
         self.assertEqual(exec_command.call_count, 1)
-        uuid = '93e76d30-8bfd-4db1-9a24-9875098c9e61'
+        uuid = "93e76d30-8bfd-4db1-9a24-9875098c9e61"
         lines = [
-            'Connection successful, starting upgrade...',
+            "Connection successful, starting upgrade...",
             f'Device UUID mismatch: expected "{device_fw.device.pk}", found "{uuid}" in device configuration',
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_uuid_invalid)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_uuid_invalid)
     def test_verify_device_uuid_invalid(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(upgrade_op.status, "aborted")
         self.assertEqual(exec_command.call_count, 1)
         lines = [
-            'Connection successful, starting upgrade...',
+            "Connection successful, starting upgrade...",
             f'Device UUID mismatch: expected "{device_fw.device.pk}", '
             'found "invalid-uuid" in device configuration',
         ]
@@ -279,84 +279,84 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_uuid_not_found)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_uuid_not_found)
     def test_verify_device_uuid_not_found(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(upgrade_op.status, "aborted")
         self.assertEqual(exec_command.call_count, 1)
         lines = [
-            'Connection successful, starting upgrade...',
-            'Could not read device UUID from configuration',
+            "Connection successful, starting upgrade...",
+            "Could not read device UUID from configuration",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_sysupgrade_test_failure)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_sysupgrade_test_failure)
     def test_image_test_failed(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(exec_command.call_count, 7)
         putfo.assert_called_once()
-        self.assertEqual(upgrade_op.status, 'aborted')
-        self.assertIn('Invalid image type', upgrade_op.log)
+        self.assertEqual(upgrade_op.status, "aborted")
+        self.assertIn("Invalid image type", upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
     @patch.object(
         OpenWrt,
-        'exec_command',
+        "exec_command",
         side_effect=mocked_exec_upgrade_not_needed,
     )
     def test_upgrade_not_needed(self, mocked):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(mocked.call_count, 3)
-        self.assertEqual(upgrade_op.status, 'success')
-        self.assertIn('upgrade not needed', upgrade_op.log)
+        self.assertEqual(upgrade_op.status, "success")
+        self.assertIn("upgrade not needed", upgrade_op.log)
         self.assertTrue(device_fw.installed)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success)
     def test_upgrade_success(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         # should be called 6 times but 1 time is
         # executed in a subprocess and not caught by mock
-        self.assertEqual(upgrade_op.status, 'success')
+        self.assertEqual(upgrade_op.status, "success")
         self.assertEqual(exec_command.call_count, 9)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 1)
         lines = [
-            'Image checksum file found',
-            'Checksum different, proceeding',
-            'Device identity verified successfully',
-            'Upgrade operation in progress',
-            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
-            'Connected! Writing checksum',
-            'Upgrade completed successfully',
+            "Image checksum file found",
+            "Checksum different, proceeding",
+            "Device identity verified successfully",
+            "Upgrade operation in progress",
+            "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
+            "Connected! Writing checksum",
+            "Upgrade completed successfully",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertTrue(device_fw.installed)
 
-    @patch.object(OpenWrt, '_call_reflash_command')
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
-    @patch.object(OpenWrtSshConnector, 'connect', connect_fail_on_write_checksum)
+    @patch.object(OpenWrt, "_call_reflash_command")
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success)
+    @patch.object(OpenWrtSshConnector, "connect", connect_fail_on_write_checksum)
     def test_cant_reconnect_on_write_checksum(self, exec_command, putfo, *args):
         start_time = timezone.now()
         with redirect_stderr(io.StringIO()):
@@ -364,29 +364,29 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(exec_command.call_count, 7)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(connect_fail_on_write_checksum.mock.call_count, 12)
-        self.assertEqual(upgrade_op.status, 'failed')
+        self.assertEqual(upgrade_op.status, "failed")
         lines = [
-            'Checksum different, proceeding',
-            'Upgrade operation in progress',
-            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
-            'Device not reachable yet',
-            'Giving up, device not reachable',
+            "Checksum different, proceeding",
+            "Upgrade operation in progress",
+            "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
+            "Device not reachable yet",
+            "Giving up, device not reachable",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertTrue(device_fw.installed)
         self.assertFalse(device_conn.is_working)
-        self.assertIn('Giving up', device_conn.failure_reason)
+        self.assertIn("Giving up", device_conn.failure_reason)
         self.assertTrue(device_conn.last_attempt > start_time)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch.object(upgrade_firmware, 'max_retries', 1)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch.object(upgrade_firmware, "max_retries", 1)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success)
     @patch.object(
         DeviceConnection,
-        'get_working_connection',
+        "get_working_connection",
         side_effect=NoWorkingDeviceConnectionError(connection=DeviceConnection()),
     )
     def test_connection_failure(self, get_working_connection, exec_command, putfo):
@@ -404,43 +404,43 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(exec_command.call_count, 0)
         self.assertEqual(putfo.call_count, 0)
         self.assertEqual(get_working_connection.call_count, 2)
-        self.assertEqual(upgrade_op.status, 'failed')
+        self.assertEqual(upgrade_op.status, "failed")
         device_conn_error = (
-            'Failed to establish connection with the device,'
-            ' tried all DeviceConnections.'
+            "Failed to establish connection with the device,"
+            " tried all DeviceConnections."
         )
         lines = [
             (
-                f'Failed to connect with device using {device_conn.credentials}.'
-                f' Error: {device_conn.failure_reason}'
+                f"Failed to connect with device using {device_conn.credentials}."
+                f" Error: {device_conn.failure_reason}"
             ),
-            f'Detected a recoverable failure: {device_conn_error}',
-            'The upgrade operation will be retried soon.',
-            f'Max retries exceeded. Upgrade failed: {device_conn_error}',
+            f"Detected a recoverable failure: {device_conn_error}",
+            "The upgrade operation will be retried soon.",
+            f"Max retries exceeded. Upgrade failed: {device_conn_error}",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch.object(upgrade_firmware, 'max_retries', 0)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch.object(upgrade_firmware, "max_retries", 0)
     @patch.object(
         OpenWrtSshConnector,
-        'connect',
+        "connect",
         side_effect=[
-            SSHException('Connection failed'),
-            SSHException('Authentication failed'),
+            SSHException("Connection failed"),
+            SSHException("Authentication failed"),
         ],
     )
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success)
     def test_connection_failure_log_all_failure(
         self, mocked_connect, exec_command, putfo
     ):
         org = self._get_org()
-        cred1 = self._create_credentials(name='Cred1', organization=org)
-        cred2 = self._create_credentials(name='Cred2', organization=org)
+        cred1 = self._create_credentials(name="Cred1", organization=org)
+        cred2 = self._create_credentials(name="Cred2", organization=org)
         device = self._create_config(organization=org).device
         conn1 = self._create_device_connection(device=device, credentials=cred1)
         conn2 = self._create_device_connection(device=device, credentials=cred2)
@@ -453,17 +453,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op.refresh_from_db()
         lines = [
             (
-                f'Failed to connect with device using {conn1.credentials}.'
-                f' Error: {conn1.failure_reason}'
+                f"Failed to connect with device using {conn1.credentials}."
+                f" Error: {conn1.failure_reason}"
             ),
             (
-                f'Failed to connect with device using {conn2.credentials}.'
-                f' Error: {conn2.failure_reason}'
+                f"Failed to connect with device using {conn2.credentials}."
+                f" Error: {conn2.failure_reason}"
             ),
             (
-                'Max retries exceeded. Upgrade failed:'
-                ' Failed to establish connection with the device,'
-                ' tried all DeviceConnections.'
+                "Max retries exceeded. Upgrade failed:"
+                " Failed to establish connection with the device,"
+                " tried all DeviceConnections."
             ),
         ]
         for line in lines:
@@ -472,13 +472,13 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
 
     @patch.object(
         OpenWrtSshConnector,
-        'upload',
-        side_effect=SSHException('Invalid packet blocking'),
+        "upload",
+        side_effect=SSHException("Invalid packet blocking"),
     )
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch.object(upgrade_firmware, 'max_retries', 1)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch.object(upgrade_firmware, "max_retries", 1)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success)
     def test_upload_failure(self, exec_command, upload):
         (
             device_fw,
@@ -491,25 +491,25 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op.refresh_from_db()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(upload.call_count, 2)
-        self.assertEqual(upgrade_op.status, 'failed')
+        self.assertEqual(upgrade_op.status, "failed")
         lines = [
-            'Image checksum file found',
-            'Checksum different, proceeding',
-            'Detected a recoverable failure: Invalid packet blocking.',
-            'The upgrade operation will be retried soon.',
-            'Max retries exceeded. Upgrade failed: Invalid packet blocking.',
+            "Image checksum file found",
+            "Checksum different, proceeding",
+            "Detected a recoverable failure: Invalid packet blocking.",
+            "The upgrade operation will be retried soon.",
+            "Max retries exceeded. Upgrade failed: Invalid packet blocking.",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
-    @patch('openwisp_controller.connection.settings.MANAGEMENT_IP_ONLY', False)
-    @patch.object(OpenWrt, '_call_reflash_command')
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch("openwisp_controller.connection.settings.MANAGEMENT_IP_ONLY", False)
+    @patch.object(OpenWrt, "_call_reflash_command")
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success)
     def test_device_ip_changed_after_reflash(self, exec_command, alive, putfo, *args):
         device_fw, device_conn, output = self._trigger_upgrade(upgrade=False)
 
@@ -519,13 +519,13 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
             # simulate case in which IP address of the device
             # has changed after a few attempts
             if connect_mocked.mock.call_count == 4:
-                Device.objects.update(management_ip='192.168.99.254')
+                Device.objects.update(management_ip="192.168.99.254")
             if connect_mocked.mock.call_count > 2:
-                raise NoValidConnectionsError(errors={'127.0.0.1': 'mocked error'})
+                raise NoValidConnectionsError(errors={"127.0.0.1": "mocked error"})
 
         connect_mocked = spy_mock(OpenWrtSshConnector.connect, connect_pre_action)
 
-        with patch.object(OpenWrtSshConnector, 'connect', connect_mocked):
+        with patch.object(OpenWrtSshConnector, "connect", connect_mocked):
             with redirect_stderr(io.StringIO()):
                 device_fw.save()
 
@@ -535,51 +535,51 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
 
         self.assertEqual(exec_command.call_count, 7)
         self.assertEqual(putfo.call_count, 1)
-        self.assertEqual(upgrade_op.status, 'failed')
+        self.assertEqual(upgrade_op.status, "failed")
         lines = [
-            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
-            'Trying to reconnect to device at 127.0.0.1 (attempt n.2)',
-            'Trying to reconnect to device at 192.168.99.254, 127.0.0.1 (attempt n.3)',
-            'Giving up, device not reachable',
+            "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
+            "Trying to reconnect to device at 127.0.0.1 (attempt n.2)",
+            "Trying to reconnect to device at 192.168.99.254, 127.0.0.1 (attempt n.3)",
+            "Giving up, device not reachable",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
 
-    @patch.object(OpenWrt, '_call_reflash_command')
-    @patch('scp.SCPClient.putfo')
-    @patch('paramiko.SSHClient.connect')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch.object(OpenWrt, "_call_reflash_command")
+    @patch("scp.SCPClient.putfo")
+    @patch("paramiko.SSHClient.connect")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success)
     @patch.object(
         DeviceConnection,
-        'get_addresses',
-        side_effect=[['127.0.0.1'], ['127.0.0.1'], []],
+        "get_addresses",
+        side_effect=[["127.0.0.1"], ["127.0.0.1"], []],
     )
-    @patch.object(OpenWrtSshConnector, 'upload')
+    @patch.object(OpenWrtSshConnector, "upload")
     def test_device_does_not_have_ip_after_reflash(self, *args):
         _, _, upgrade_op, _, _ = self._trigger_upgrade()
         self.assertNotIn(
-            'No valid IP addresses to initiate connections found', upgrade_op.log
+            "No valid IP addresses to initiate connections found", upgrade_op.log
         )
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_sysupgrade_failure)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_sysupgrade_failure)
     def test_sysupgrade_failure(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 0)
-        self.assertEqual(upgrade_op.status, 'failed')
+        self.assertEqual(upgrade_op.status, "failed")
         lines = [
-            'Image checksum file found',
-            'Checksum different, proceeding',
-            'Upgrade operation in progress',
-            'Invalid image type',
+            "Image checksum file found",
+            "Checksum different, proceeding",
+            "Upgrade operation in progress",
+            "Invalid image type",
             "Image check 'platform_check_image' failed.",
         ]
         for line in lines:
@@ -592,57 +592,57 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(OpenWrt.RECONNECT_MAX_RETRIES, 10)
         self.assertEqual(OpenWrt.UPGRADE_TIMEOUT, 80)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
-    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
+    @patch.object(OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success)
     def test_get_upgrade_command(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
 
-        with self.subTest('Test upgrade command without upgrade options'):
+        with self.subTest("Test upgrade command without upgrade options"):
             upgrade_op.upgrate_options = {}
             upgrader = OpenWrt(upgrade_op, device_conn)
-            upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
-            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -c /tmp/test.bin')
+            upgrade_command = upgrader.get_upgrade_command("/tmp/test.bin")
+            self.assertEqual(upgrade_command, "/sbin/sysupgrade -v -c /tmp/test.bin")
 
-        with self.subTest('Test upgrade command with upgrade options'):
+        with self.subTest("Test upgrade command with upgrade options"):
             upgrade_op.upgrade_options = {
-                'c': True,
-                'o': False,
-                'u': False,
-                'n': False,
-                'p': False,
-                'k': False,
-                'F': True,
+                "c": True,
+                "o": False,
+                "u": False,
+                "n": False,
+                "p": False,
+                "k": False,
+                "F": True,
             }
             upgrader = OpenWrt(upgrade_op, device_conn)
-            upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
-            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -c -F /tmp/test.bin')
+            upgrade_command = upgrader.get_upgrade_command("/tmp/test.bin")
+            self.assertEqual(upgrade_command, "/sbin/sysupgrade -v -c -F /tmp/test.bin")
 
-        with self.subTest('Test upgrade command with -F and -n'):
-            upgrade_op.upgrade_options = {'F': True, 'n': True, 'c': False}
+        with self.subTest("Test upgrade command with -F and -n"):
+            upgrade_op.upgrade_options = {"F": True, "n": True, "c": False}
             upgrader = OpenWrt(upgrade_op, device_conn)
-            upgrade_command = upgrader.get_upgrade_command('/tmp/test.bin')
-            self.assertEqual(upgrade_command, '/sbin/sysupgrade -v -F -n /tmp/test.bin')
+            upgrade_command = upgrader.get_upgrade_command("/tmp/test.bin")
+            self.assertEqual(upgrade_command, "/sbin/sysupgrade -v -F -n /tmp/test.bin")
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
     def test_call_reflash_command(self, is_alive, putfo):
         with patch.object(
-            OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success
+            OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success
         ) as exec_command:
             device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
 
         upgrader = OpenWrt(upgrade_op, device_conn)
-        path = '/tmp/openwrt-image.bin'
-        command = f'/sbin/sysupgrade -v -c {path}'
+        path = "/tmp/openwrt-image.bin"
+        command = f"/sbin/sysupgrade -v -c {path}"
 
-        with self.subTest('success'):
+        with self.subTest("success"):
             with patch.object(
-                OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_success
+                OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_success
             ) as exec_command:
                 failure_queue = Queue()
                 OpenWrt._call_reflash_command(
@@ -651,7 +651,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                 self.assertEqual(exec_command.call_count, 2)
                 self.assertEqual(
                     exec_command.call_args_list[0][0],
-                    ('rm /etc/openwisp/checksum 2> /dev/null',),
+                    ("rm /etc/openwisp/checksum 2> /dev/null",),
                 )
                 self.assertEqual(
                     exec_command.call_args_list[0][1], dict(exit_codes=[0, -1, 1])
@@ -664,9 +664,9 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                 self.assertTrue(failure_queue.empty())
                 failure_queue.close()
 
-        with self.subTest('failure'):
+        with self.subTest("failure"):
             with patch.object(
-                OpenWrt, 'exec_command', side_effect=mocked_sysupgrade_failure
+                OpenWrt, "exec_command", side_effect=mocked_sysupgrade_failure
             ) as exec_command:
                 failure_queue = Queue()
                 OpenWrt._call_reflash_command(
@@ -683,174 +683,174 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                     "Invalid image type\nImage check 'platform_check_image' failed.",
                 )
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
     @patch.object(
-        OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_memory_success
+        OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_memory_success
     )
     def test_upgrade_free_memory_success(self, exec_command, is_alive, putfo):
         global _mock_memory_success_called
         _mock_memory_success_called = False
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(upgrade_op.status, 'success')
+        self.assertEqual(upgrade_op.status, "success")
         self.assertEqual(exec_command.call_count, 23)
         self.assertEqual(
             exec_command.call_args_list[6][0][0],
-            'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd stop',
+            "test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd stop",
         )
         self.assertEqual(
             exec_command.call_args_list[15][0][0],
-            'test -f /etc/init.d/log && /etc/init.d/log stop',
+            "test -f /etc/init.d/log && /etc/init.d/log stop",
         )
         self.assertEqual(
             exec_command.call_args_list[16][0][0],
-            'test -f /sbin/wifi && /sbin/wifi down',
+            "test -f /sbin/wifi && /sbin/wifi down",
         )
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 1)
         lines = [
-            'Image checksum file found',
-            'Checksum different, proceeding',
-            'The image size (0 MiB) is greater than the available memory on the system (0 MiB).',
-            'For this reason the upgrade procedure will try to free up',
-            'Enough available memory was freed up on the system (65.41 MiB)!',
-            'Upgrade operation in progress',
-            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
-            'Connected! Writing checksum',
-            'Upgrade completed successfully',
+            "Image checksum file found",
+            "Checksum different, proceeding",
+            "The image size (0 MiB) is greater than the available memory on the system (0 MiB).",
+            "For this reason the upgrade procedure will try to free up",
+            "Enough available memory was freed up on the system (65.41 MiB)!",
+            "Upgrade operation in progress",
+            "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
+            "Connected! Writing checksum",
+            "Upgrade completed successfully",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertTrue(device_fw.installed)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
     @patch.object(
-        OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_memory_success_legacy
+        OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_memory_success_legacy
     )
     def test_upgrade_free_memory_success_legacy(self, exec_command, is_alive, putfo):
         global _mock_memory_success_called
         _mock_memory_success_called = False
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(upgrade_op.status, 'success')
+        self.assertEqual(upgrade_op.status, "success")
         self.assertEqual(exec_command.call_count, 25)
         self.assertEqual(
             exec_command.call_args_list[5][0][0],
-            'cat /proc/meminfo | grep MemAvailable',
+            "cat /proc/meminfo | grep MemAvailable",
         )
         self.assertEqual(
-            exec_command.call_args_list[6][0][0], 'cat /proc/meminfo | grep MemFree'
+            exec_command.call_args_list[6][0][0], "cat /proc/meminfo | grep MemFree"
         )
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 1)
         lines = [
-            'Image checksum file found',
-            'Checksum different, proceeding',
-            'The image size (0 MiB) is greater than the available memory on the system (0 MiB).',
-            'For this reason the upgrade procedure will try to free up',
-            'Enough available memory was freed up on the system (65.41 MiB)!',
-            'Upgrade operation in progress',
-            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
-            'Connected! Writing checksum',
-            'Upgrade completed successfully',
+            "Image checksum file found",
+            "Checksum different, proceeding",
+            "The image size (0 MiB) is greater than the available memory on the system (0 MiB).",
+            "For this reason the upgrade procedure will try to free up",
+            "Enough available memory was freed up on the system (65.41 MiB)!",
+            "Upgrade operation in progress",
+            "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
+            "Connected! Writing checksum",
+            "Upgrade completed successfully",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertTrue(device_fw.installed)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
     @patch.object(
-        OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_memory_failure
+        OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_memory_failure
     )
     def test_upgrade_free_memory_failure(self, exec_command, is_alive, putfo):
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(upgrade_op.status, "aborted")
         self.assertEqual(exec_command.call_count, 31)
         self.assertEqual(
             exec_command.call_args_list[20][0][0],
-            'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start',
+            "test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start",
         )
         self.assertEqual(
             exec_command.call_args_list[29][0][0],
-            'test -f /etc/init.d/log && /etc/init.d/log start',
+            "test -f /etc/init.d/log && /etc/init.d/log start",
         )
         self.assertEqual(
             exec_command.call_args_list[30][0][0],
-            'test -f /sbin/wifi && /sbin/wifi up',
+            "test -f /sbin/wifi && /sbin/wifi up",
         )
         self.assertEqual(putfo.call_count, 0)
         self.assertEqual(is_alive.call_count, 0)
         lines = [
-            'Image checksum file found',
-            'Checksum different, proceeding',
-            'The image size (0 MiB) is greater than the available memory on the system (0 MiB).',
-            'For this reason the upgrade procedure will try to free up',
-            'There is still not enough available memory on the system (0 MiB)',
-            'Starting non critical services again...',
-            'Non critical services started, aborting upgrade',
+            "Image checksum file found",
+            "Checksum different, proceeding",
+            "The image size (0 MiB) is greater than the available memory on the system (0 MiB).",
+            "For this reason the upgrade procedure will try to free up",
+            "There is still not enough available memory on the system (0 MiB)",
+            "Starting non critical services again...",
+            "Non critical services started, aborting upgrade",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
     @patch.object(
-        OpenWrt, 'exec_command', side_effect=mocked_exec_upgrade_memory_aborted
+        OpenWrt, "exec_command", side_effect=mocked_exec_upgrade_memory_aborted
     )
     def test_upgrade_free_memory_aborted(self, exec_command, is_alive, putfo):
         global _mock_memory_success_called
         _mock_memory_success_called = False
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
         self.assertTrue(device_conn.is_working)
-        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(upgrade_op.status, "aborted")
         self.assertEqual(exec_command.call_count, 32)
         self.assertEqual(
             exec_command.call_args_list[21][0][0],
-            'test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start',
+            "test -f /etc/init.d/uhttpd && /etc/init.d/uhttpd start",
         )
         self.assertEqual(
             exec_command.call_args_list[30][0][0],
-            'test -f /etc/init.d/log && /etc/init.d/log start',
+            "test -f /etc/init.d/log && /etc/init.d/log start",
         )
         self.assertEqual(
             exec_command.call_args_list[31][0][0],
-            'test -f /sbin/wifi && /sbin/wifi up',
+            "test -f /sbin/wifi && /sbin/wifi up",
         )
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 0)
         lines = [
-            'Image checksum file found',
-            'Checksum different, proceeding',
-            'The image size (0 MiB) is greater than the available memory on the system (0 MiB).',
-            'For this reason the upgrade procedure will try to free up',
-            'Enough available memory was freed up on the system (65.41 MiB)!',
-            'Invalid image type',
-            'Starting non critical services again...',
+            "Image checksum file found",
+            "Checksum different, proceeding",
+            "The image size (0 MiB) is greater than the available memory on the system (0 MiB).",
+            "For this reason the upgrade procedure will try to free up",
+            "Enough available memory was freed up on the system (65.41 MiB)!",
+            "Invalid image type",
+            "Starting non critical services again...",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertFalse(device_fw.installed)
 
-    @patch('scp.SCPClient.putfo')
-    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
-    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
-    @patch('billiard.Process.is_alive', return_value=True)
+    @patch("scp.SCPClient.putfo")
+    @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
+    @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
+    @patch("billiard.Process.is_alive", return_value=True)
     @patch.object(
         OpenWrt,
-        'exec_command',
+        "exec_command",
         side_effect=mocked_exec_upgrade_success_false_positives,
     )
     def test_upgrade_success_false_positives(self, exec_command, is_alive, putfo):
@@ -858,17 +858,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertTrue(device_conn.is_working)
         # should be called 6 times but 1 time is
         # executed in a subprocess and not caught by mock
-        self.assertEqual(upgrade_op.status, 'success')
+        self.assertEqual(upgrade_op.status, "success")
         self.assertEqual(exec_command.call_count, 9)
         self.assertEqual(putfo.call_count, 1)
         self.assertEqual(is_alive.call_count, 1)
         lines = [
-            'Image checksum file found',
-            'Checksum different, proceeding',
-            'Upgrade operation in progress',
-            'Trying to reconnect to device at 127.0.0.1 (attempt n.1)',
-            'Connected! Writing checksum',
-            'Upgrade completed successfully',
+            "Image checksum file found",
+            "Checksum different, proceeding",
+            "Upgrade operation in progress",
+            "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
+            "Connected! Writing checksum",
+            "Upgrade completed successfully",
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
