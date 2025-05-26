@@ -9,17 +9,17 @@ import openwisp_firmware_upgrader.base.models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('firmware_upgrader', '0002_default_permissions'),
+        ("firmware_upgrader", "0002_default_permissions"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='firmwareimage',
-            name='file',
+            model_name="firmwareimage",
+            name="file",
             field=private_storage.fields.PrivateFileField(
                 storage=private_storage.storage.files.PrivateFileSystemStorage(),
                 upload_to=openwisp_firmware_upgrader.base.models.get_build_directory,
-                verbose_name='File',
+                verbose_name="File",
             ),
         ),
     ]

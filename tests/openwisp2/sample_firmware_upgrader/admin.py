@@ -6,6 +6,6 @@ from openwisp_firmware_upgrader.admin import (  # noqa
     UpgradeOperationForm,
 )
 
-BatchUpgradeOperationAdmin.fields.append('details')
-UpgradeOperationForm.Meta.fields.append('details')
-DeviceUpgradeOperationInline.fields.append('details')
+BatchUpgradeOperationAdmin.fields.append("details")
+UpgradeOperationForm.Meta.fields.append("details")
+DeviceUpgradeOperationInline.fields.append("details")
