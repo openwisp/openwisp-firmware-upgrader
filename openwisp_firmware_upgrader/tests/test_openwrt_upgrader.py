@@ -38,7 +38,7 @@ def mocked_exec_upgrade_not_needed(command, exit_codes=None):
     if command == 'uci get openwisp.http.uuid':
         device_fw = DeviceFirmware.objects.order_by('created').last()
         if device_fw:
-            return [str(device_fw.device.pk), 0]
+            return [str(device_fw.device.pk).replace('-', ''), 0]
     return cases[command]
 
 
@@ -85,6 +85,12 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
 def mocked_exec_uuid_mismatch(command, exit_codes=None, timeout=None):
     if command == 'uci get openwisp.http.uuid':
         return ['93e76d30-8bfd-4db1-9a24-9875098c9e61', 0]
+    return mocked_exec_upgrade_success(command, exit_codes, timeout)
+
+
+def mocked_exec_uuid_invalid(command, exit_codes=None, timeout=None):
+    if command == 'uci get openwisp.http.uuid':
+        return ['invalid-uuid', 0]
     return mocked_exec_upgrade_success(command, exit_codes, timeout)
 
 
@@ -248,7 +254,26 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         uuid = '93e76d30-8bfd-4db1-9a24-9875098c9e61'
         lines = [
             'Connection successful, starting upgrade...',
-            f'Device UUID mismatch: expected {device_fw.device.pk}, found {uuid} in device configuration',
+            f'Device UUID mismatch: expected "{device_fw.device.pk}", found "{uuid}" in device configuration',
+        ]
+        for line in lines:
+            self.assertIn(line, upgrade_op.log)
+        self.assertFalse(device_fw.installed)
+
+    @patch('scp.SCPClient.putfo')
+    @patch.object(OpenWrt, 'RECONNECT_DELAY', 0)
+    @patch.object(OpenWrt, 'RECONNECT_RETRY_DELAY', 0)
+    @patch('billiard.Process.is_alive', return_value=True)
+    @patch.object(OpenWrt, 'exec_command', side_effect=mocked_exec_uuid_invalid)
+    def test_verify_device_uuid_invalid(self, exec_command, is_alive, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        self.assertTrue(device_conn.is_working)
+        self.assertEqual(upgrade_op.status, 'aborted')
+        self.assertEqual(exec_command.call_count, 1)
+        lines = [
+            'Connection successful, starting upgrade...',
+            f'Device UUID mismatch: expected "{device_fw.device.pk}", '
+            'found "invalid-uuid" in device configuration',
         ]
         for line in lines:
             self.assertIn(line, upgrade_op.log)
