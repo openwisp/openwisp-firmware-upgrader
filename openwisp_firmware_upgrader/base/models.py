@@ -17,6 +17,7 @@ from openwisp_users.mixins import ShareableOrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
+from ..websockets import UpgradeProgressPublisher
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
     ReconnectionFailed,
@@ -612,6 +613,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         if save:
             self.save()
 
+        publisher = UpgradeProgressPublisher(self.pk)
+        publisher.publish_progress({
+            'type': 'log',
+            'content': line,
+            'status': self.status
+        })
+
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
         if recoverable:
@@ -717,12 +725,19 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.device.devicefirmware.save(upgrade=False)
 
     def save(self, *args, **kwargs):
-        result = super().save(*args, **kwargs)
-        # when an operation is completed
-        # trigger an update on the batch operation
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if not is_new:
+            # Publish status update
+            from ..websockets import UpgradeProgressPublisher
+            publisher = UpgradeProgressPublisher(self.pk)
+            publisher.publish_progress({
+                'type': 'status',
+                'status': self.status
+            })
         if self.batch and self.status != 'in-progress':
             self.batch.update()
-        return result
+        return self
 
     @property
     def upgrader_schema(self):
