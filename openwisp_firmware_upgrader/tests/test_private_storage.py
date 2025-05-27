@@ -10,9 +10,9 @@ from openwisp_users.tests.utils import TestMultitenantAdminMixin
 from ..swapper import load_model
 from .base import TestUpgraderMixin
 
-OrganizationUser = swapper.load_model('openwisp_users', 'OrganizationUser')
-FirmwareImage = load_model('FirmwareImage')
-Group = swapper.load_model('openwisp_users', 'Group')
+OrganizationUser = swapper.load_model("openwisp_users", "OrganizationUser")
+FirmwareImage = load_model("FirmwareImage")
+Group = swapper.load_model("openwisp_users", "Group")
 
 
 class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase):
@@ -86,18 +86,18 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         self.client.force_login(staff_user)
         org = self.image.build.category.organization
 
-        with self.subTest('Test initial access without permissions'):
+        with self.subTest("Test initial access without permissions"):
             self._download_firmware_assert_status(403)
 
         # Add view permission first
         content_type = ContentType.objects.get_for_model(FirmwareImage)
-        perm_codename = get_permission_codename('view', FirmwareImage._meta)
+        perm_codename = get_permission_codename("view", FirmwareImage._meta)
         view_perm = Permission.objects.get(
             content_type=content_type, codename=perm_codename
         )
         staff_user.user_permissions.add(view_perm)
 
-        with self.subTest('Test access with view permission and org admin status'):
+        with self.subTest("Test access with view permission and org admin status"):
             self._create_org_user(user=staff_user, organization=org, is_admin=True)
             self._download_firmware_assert_status(200)
 
@@ -116,11 +116,11 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         org_user.is_admin = True
         org_user.save()
 
-        with self.subTest('Test access without staff status'):
+        with self.subTest("Test access without staff status"):
             self._download_firmware_assert_status(403)
 
         # Remove view permission
         staff_user.user_permissions.remove(view_perm)
 
-        with self.subTest('Test access without view permission'):
+        with self.subTest("Test access without view permission"):
             self._download_firmware_assert_status(403)

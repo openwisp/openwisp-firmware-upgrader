@@ -7,8 +7,8 @@ from ..swapper import load_model
 
 
 class FirmwareImageDownloadView(PermissionRequiredMixin, PrivateStorageDetailView):
-    model = load_model('FirmwareImage')
-    model_file_field = 'file'
+    model = load_model("FirmwareImage")
+    model_file_field = "file"
     raise_exception = True
 
     slug_field = "file"

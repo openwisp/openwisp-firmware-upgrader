@@ -52,17 +52,17 @@ class FirmwareImageSerializer(BaseSerializer):
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
-        request = self.context.get('request')
-        if request and getattr(instance, 'pk', None):
-            ret['file'] = request.build_absolute_uri(
+        request = self.context.get("request")
+        if request and getattr(instance, "pk", None):
+            ret["file"] = request.build_absolute_uri(
                 reverse(
-                    'upgrader:api_firmware_download',
+                    "upgrader:api_firmware_download",
                     args=[instance.build.pk, instance.pk],
                 )
             )
-        elif hasattr(instance, 'file'):
-            ret['file'] = reverse(
-                'upgrader:api_firmware_download',
+        elif hasattr(instance, "file"):
+            ret["file"] = reverse(
+                "upgrader:api_firmware_download",
                 args=[instance.build.pk, instance.pk],
             )
         return ret
