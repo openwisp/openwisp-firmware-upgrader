@@ -41,6 +41,7 @@ from ..utils import (
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
 )
+from ..websockets import UpgradeProgressPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -612,6 +613,11 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         if save:
             self.save()
 
+        publisher = UpgradeProgressPublisher(self.pk)
+        publisher.publish_progress(
+            {"type": "log", "content": line, "status": self.status}
+        )
+
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
         if recoverable:
@@ -717,12 +723,15 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.device.devicefirmware.save(upgrade=False)
 
     def save(self, *args, **kwargs):
-        result = super().save(*args, **kwargs)
-        # when an operation is completed
-        # trigger an update on the batch operation
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if not is_new:
+            # Publish status update
+            publisher = UpgradeProgressPublisher(self.pk)
+            publisher.publish_progress({"type": "status", "status": self.status})
         if self.batch and self.status != "in-progress":
             self.batch.update()
-        return result
+        return self
 
     @property
     def upgrader_schema(self):
