@@ -220,12 +220,14 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             # Disable -c flag
             self.find_element(
                 by=By.XPATH,
-                value='//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[1]/div/div[1]/label/input',
+                value='//*[@id="id_upgrade_options_jsoneditor"]'
+                "/div/div[2]/div/div/div[1]/div/div[1]/label/input",
             ).click()
             # Enable -n flag
             self.find_element(
                 by=By.XPATH,
-                value='//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[3]/div/div[1]/label/input',
+                value='//*[@id="id_upgrade_options_jsoneditor"]'
+                "/div/div[2]/div/div/div[3]/div/div[1]/label/input",
             ).click()
             # Upgrade all devices
             self.find_element(
