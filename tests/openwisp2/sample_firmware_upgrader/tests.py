@@ -30,7 +30,7 @@ from openwisp_firmware_upgrader.tests.test_openwrt_upgrader import (
 from openwisp_firmware_upgrader.tests.test_private_storage import (
     TestPrivateStorage as BaseTestPrivateStorage,
 )
-from openwisp_firmware_upgrader.tests.test_selenium import(
+from openwisp_firmware_upgrader.tests.test_selenium import (
     TestDeviceAdmin as BaseTestDeviceAdmin,
 )
 from openwisp_firmware_upgrader.tests.test_tasks import TestTasks as BaseTestTasks
@@ -77,7 +77,9 @@ class TestAdmin(BaseTestAdmin):
     def test_device_firmware_details(self):
         self._login()
         device_fw = self._create_device_firmware(details='sample device_fw details')
-        path = reverse(f'admin:{self.config_app_label}_device_change', args=[device_fw.device_id])
+        path = reverse(
+            f'admin:{self.config_app_label}_device_change', args=[device_fw.device_id]
+        )
         r = self.client.get(path)
         self.assertContains(
             r,
@@ -105,7 +107,9 @@ class TestAdmin(BaseTestAdmin):
         uo = UpgradeOperation.objects.first()
         uo.details = 'Test Upgrade device details'
         uo.save()
-        url = reverse(f'admin:{self.config_app_label}_device_change', args=[device_fw.device.pk])
+        url = reverse(
+            f'admin:{self.config_app_label}_device_change', args=[device_fw.device.pk]
+        )
         r = self.client.get(url)
         self.assertContains(r, '<div class="readonly">Test Upgrade device details')
 
