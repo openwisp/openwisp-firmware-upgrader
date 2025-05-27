@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 def get_upgrader_schema_for_device(device):
     upgrader_class = get_upgrader_class_for_device(device)
-    return getattr(upgrader_class, 'SCHEMA', None)
+    return getattr(upgrader_class, "SCHEMA", None)
 
 
 def get_upgrader_class_for_device(device):
@@ -25,7 +25,7 @@ def get_upgrader_class_for_device(device):
           device connection
     """
     device_conn = device.deviceconnection_set.filter(
-        update_strategy__icontains='ssh',
+        update_strategy__icontains="ssh",
         enabled=True,
     ).first()
     if not device_conn:

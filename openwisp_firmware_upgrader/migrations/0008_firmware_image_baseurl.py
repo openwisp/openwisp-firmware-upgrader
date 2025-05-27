@@ -13,19 +13,19 @@ from ..settings import FIRMWARE_API_BASEURL, IMAGE_URL_PATH
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('firmware_upgrader', '0007_nullable_upgrade_operation_image'),
+        ("firmware_upgrader", "0007_nullable_upgrade_operation_image"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='firmwareimage',
-            name='file',
+            model_name="firmwareimage",
+            name="file",
             field=private_storage.fields.PrivateFileField(
                 storage=private_storage.storage.files.PrivateFileSystemStorage(
                     base_url=urljoin(FIRMWARE_API_BASEURL, IMAGE_URL_PATH),
                 ),
                 upload_to=openwisp_firmware_upgrader.base.models.get_build_directory,
-                verbose_name='File',
+                verbose_name="File",
             ),
         ),
     ]

@@ -5,18 +5,18 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('firmware_upgrader', '0008_firmware_image_baseurl'),
+        ("firmware_upgrader", "0008_firmware_image_baseurl"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='batchupgradeoperation',
-            name='upgrade_options',
+            model_name="batchupgradeoperation",
+            name="upgrade_options",
             field=models.JSONField(default=dict, blank=True),
         ),
         migrations.AddField(
-            model_name='upgradeoperation',
-            name='upgrade_options',
+            model_name="upgradeoperation",
+            name="upgrade_options",
             field=models.JSONField(default=dict, blank=True),
         ),
     ]

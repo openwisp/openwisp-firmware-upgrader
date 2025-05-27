@@ -13,34 +13,34 @@ from .base.models import (
 class Category(AbstractCategory):
     class Meta(AbstractCategory.Meta):
         abstract = False
-        swappable = swappable_setting('firmware_upgrader', 'Category')
+        swappable = swappable_setting("firmware_upgrader", "Category")
 
 
 class Build(AbstractBuild):
     class Meta(AbstractBuild.Meta):
         abstract = False
-        swappable = swappable_setting('firmware_upgrader', 'Build')
+        swappable = swappable_setting("firmware_upgrader", "Build")
 
 
 class FirmwareImage(AbstractFirmwareImage):
     class Meta(AbstractFirmwareImage.Meta):
         abstract = False
-        swappable = swappable_setting('firmware_upgrader', 'FirmwareImage')
+        swappable = swappable_setting("firmware_upgrader", "FirmwareImage")
 
 
 class DeviceFirmware(AbstractDeviceFirmware):
     class Meta(AbstractDeviceFirmware.Meta):
         abstract = False
-        swappable = swappable_setting('firmware_upgrader', 'DeviceFirmware')
+        swappable = swappable_setting("firmware_upgrader", "DeviceFirmware")
 
 
 class BatchUpgradeOperation(AbstractBatchUpgradeOperation):
     class Meta(AbstractBatchUpgradeOperation.Meta):
         abstract = False
-        swappable = swappable_setting('firmware_upgrader', 'BatchUpgradeOperation')
+        swappable = swappable_setting("firmware_upgrader", "BatchUpgradeOperation")
 
 
 class UpgradeOperation(AbstractUpgradeOperation):
     class Meta(AbstractUpgradeOperation.Meta):
         abstract = False
-        swappable = swappable_setting('firmware_upgrader', 'UpgradeOperation')
+        swappable = swappable_setting("firmware_upgrader", "UpgradeOperation")

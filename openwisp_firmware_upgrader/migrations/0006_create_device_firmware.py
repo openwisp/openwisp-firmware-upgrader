@@ -6,13 +6,13 @@ from . import create_device_firmware_for_connections
 
 
 def create_device_firmware_for_connections_helper(apps, schema_editor):
-    app_label = 'firmware_upgrader'
+    app_label = "firmware_upgrader"
     create_device_firmware_for_connections(apps, schema_editor, app_label)
 
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('firmware_upgrader', '0005_build_os_identifier'),
+        ("firmware_upgrader", "0005_build_os_identifier"),
     ]
 
     operations = [

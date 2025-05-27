@@ -35,14 +35,14 @@ from .utils import get_upgrader_schema_for_device
 from .widgets import FirmwareSchemaWidget
 
 logger = logging.getLogger(__name__)
-BatchUpgradeOperation = load_model('BatchUpgradeOperation')
-UpgradeOperation = load_model('UpgradeOperation')
-DeviceFirmware = load_model('DeviceFirmware')
-FirmwareImage = load_model('FirmwareImage')
-Category = load_model('Category')
-Build = load_model('Build')
-Device = swapper.load_model('config', 'Device')
-DeviceConnection = swapper.load_model('connection', 'DeviceConnection')
+BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+UpgradeOperation = load_model("UpgradeOperation")
+DeviceFirmware = load_model("DeviceFirmware")
+FirmwareImage = load_model("FirmwareImage")
+Category = load_model("Category")
+Build = load_model("Build")
+Device = swapper.load_model("config", "Device")
+DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -54,13 +54,13 @@ class BaseVersionAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, VersionAdm
     save_on_top = True
 
 
-@admin.register(load_model('Category'))
+@admin.register(load_model("Category"))
 class CategoryAdmin(BaseVersionAdmin):
-    list_display = ['name', 'organization', 'created', 'modified']
+    list_display = ["name", "organization", "created", "modified"]
     list_filter = [MultitenantOrgFilter]
-    list_select_related = ['organization']
-    search_fields = ['name']
-    ordering = ['-name', '-created']
+    list_select_related = ["organization"]
+    search_fields = ["name"]
+    ordering = ["-name", "-created"]
 
 
 class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
@@ -68,22 +68,22 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
     extra = 0
 
     class Media:
-        extra = '' if getattr(settings, 'DEBUG', False) else '.min'
+        extra = "" if getattr(settings, "DEBUG", False) else ".min"
         i18n_name = admin.widgets.SELECT2_TRANSLATIONS.get(get_language())
         i18n_file = (
-            ('admin/js/vendor/select2/i18n/%s.js' % i18n_name,) if i18n_name else ()
+            ("admin/js/vendor/select2/i18n/%s.js" % i18n_name,) if i18n_name else ()
         )
         js = (
             (
-                'admin/js/vendor/jquery/jquery%s.js' % extra,
-                'admin/js/vendor/select2/select2.full%s.js' % extra,
+                "admin/js/vendor/jquery/jquery%s.js" % extra,
+                "admin/js/vendor/select2/select2.full%s.js" % extra,
             )
             + i18n_file
-            + ('admin/js/jquery.init.js', 'firmware-upgrader/js/build.js')
+            + ("admin/js/jquery.init.js", "firmware-upgrader/js/build.js")
         )
 
         css = {
-            'screen': ('admin/css/vendor/select2/select2%s.css' % extra,),
+            "screen": ("admin/css/vendor/select2/select2%s.css" % extra,),
         }
 
     def has_change_permission(self, request, obj=None):
@@ -100,40 +100,40 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
     class Meta:
         model = BatchUpgradeOperation
-        fields = ('build', 'upgrade_options')
+        fields = ("build", "upgrade_options")
 
     @property
     def media(self):
         js = [
-            'firmware-upgrader/js/upgrade-selected-confirmation.js',
+            "firmware-upgrader/js/upgrade-selected-confirmation.js",
         ]
-        css = {'all': ['firmware-upgrader/css/upgrade-selected-confirmation.css']}
+        css = {"all": ["firmware-upgrader/css/upgrade-selected-confirmation.css"]}
         return super().media + forms.Media(js=js, css=css)
 
 
-@admin.register(load_model('Build'))
+@admin.register(load_model("Build"))
 class BuildAdmin(BaseAdmin):
-    list_display = ['__str__', 'organization', 'category', 'created', 'modified']
+    list_display = ["__str__", "organization", "category", "created", "modified"]
     list_filter = [CategoryOrganizationFilter, CategoryFilter]
-    list_select_related = ['category', 'category__organization']
-    search_fields = ['category__name', 'version', 'os']
-    ordering = ['-created', '-version']
+    list_select_related = ["category", "category__organization"]
+    search_fields = ["category__name", "version", "os"]
+    ordering = ["-created", "-version"]
     inlines = [FirmwareImageInline]
-    actions = ['upgrade_selected']
-    multitenant_parent = 'category'
-    autocomplete_fields = ['category']
+    actions = ["upgrade_selected"]
+    multitenant_parent = "category"
+    autocomplete_fields = ["category"]
 
     # Allows apps that extend this modules to use this template with less hacks
-    change_form_template = 'admin/firmware_upgrader/change_form.html'
+    change_form_template = "admin/firmware_upgrader/change_form.html"
 
     def organization(self, obj):
         return obj.category.organization
 
-    organization.short_description = _('organization')
+    organization.short_description = _("organization")
 
     @admin.action(
-        description=_('Mass-upgrade devices related to the selected build'),
-        permissions=['change'],
+        description=_("Mass-upgrade devices related to the selected build"),
+        permissions=["change"],
     )
     def upgrade_selected(self, request, queryset):
         opts = self.model._meta
@@ -145,44 +145,44 @@ class BuildAdmin(BaseAdmin):
             self.message_user(
                 request,
                 _(
-                    'Multiple mass upgrades requested but at the moment only '
-                    'a single mass upgrade operation at time is supported.'
+                    "Multiple mass upgrades requested but at the moment only "
+                    "a single mass upgrade operation at time is supported."
                 ),
                 messages.ERROR,
             )
             # returning None will display the change list page again
             return None
-        upgrade_all = request.POST.get('upgrade_all')
-        upgrade_related = request.POST.get('upgrade_related')
-        upgrade_options = request.POST.get('upgrade_options')
+        upgrade_all = request.POST.get("upgrade_all")
+        upgrade_related = request.POST.get("upgrade_related")
+        upgrade_options = request.POST.get("upgrade_options")
         form = BatchUpgradeConfirmationForm()
         build = queryset.first()
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
             form = BatchUpgradeConfirmationForm(
-                data={'upgrade_options': upgrade_options, 'build': build}
+                data={"upgrade_options": upgrade_options, "build": build}
             )
             form.full_clean()
             if not form.errors:
-                upgrade_options = form.cleaned_data['upgrade_options']
+                upgrade_options = form.cleaned_data["upgrade_options"]
                 batch = build.batch_upgrade(
                     firmwareless=upgrade_all, upgrade_options=upgrade_options
                 )
                 text = _(
-                    'You can track the progress of this mass upgrade operation '
-                    'in this page. Refresh the page from time to time to check '
-                    'its progress.'
+                    "You can track the progress of this mass upgrade operation "
+                    "in this page. Refresh the page from time to time to check "
+                    "its progress."
                 )
                 self.message_user(request, mark_safe(text), messages.SUCCESS)
                 url = reverse(
-                    f'admin:{app_label}_batchupgradeoperation_change', args=[batch.pk]
+                    f"admin:{app_label}_batchupgradeoperation_change", args=[batch.pk]
                 )
                 return redirect(url)
         # upgrade needs to be confirmed
         result = BatchUpgradeOperation.dry_run(build=build)
-        related_device_fw = result['device_firmwares']
-        firmwareless_devices = result['devices']
-        title = _('Confirm mass upgrade operation')
+        related_device_fw = result["device_firmwares"]
+        firmwareless_devices = result["devices"]
+        title = _("Confirm mass upgrade operation")
         context = self.admin_site.each_context(request)
         upgrader_schema = BatchUpgradeOperation(build=build)._get_upgrader_schema(
             related_device_fw=related_device_fw,
@@ -191,49 +191,49 @@ class BuildAdmin(BaseAdmin):
 
         context.update(
             {
-                'title': title,
-                'related_device_fw': related_device_fw,
-                'related_count': len(related_device_fw),
-                'firmwareless_devices': firmwareless_devices,
-                'firmwareless_count': len(firmwareless_devices),
-                'form': form,
-                'firmware_upgrader_schema': json.dumps(
+                "title": title,
+                "related_device_fw": related_device_fw,
+                "related_count": len(related_device_fw),
+                "firmwareless_devices": firmwareless_devices,
+                "firmwareless_count": len(firmwareless_devices),
+                "form": form,
+                "firmware_upgrader_schema": json.dumps(
                     upgrader_schema, cls=DjangoJSONEncoder
                 ),
-                'build': build,
-                'opts': opts,
-                'action_checkbox_name': ACTION_CHECKBOX_NAME,
-                'media': self.media,
+                "build": build,
+                "opts": opts,
+                "action_checkbox_name": ACTION_CHECKBOX_NAME,
+                "media": self.media,
             }
         )
         request.current_app = self.admin_site.name
         return TemplateResponse(
             request,
             [
-                'admin/%s/%s/upgrade_selected_confirmation.html'
+                "admin/%s/%s/upgrade_selected_confirmation.html"
                 % (app_label, opts.model_name),
-                'admin/%s/upgrade_selected_confirmation.html' % app_label,
-                'admin/upgrade_selected_confirmation.html',
+                "admin/%s/upgrade_selected_confirmation.html" % app_label,
+                "admin/upgrade_selected_confirmation.html",
             ],
             context,
         )
 
     upgrade_selected.short_description = (
-        'Mass-upgrade devices related ' 'to the selected build'
+        "Mass-upgrade devices related " "to the selected build"
     )
 
-    def change_view(self, request, object_id, form_url='', extra_context=None):
+    def change_view(self, request, object_id, form_url="", extra_context=None):
         app_label = self.model._meta.app_label
         extra_context = extra_context or {}
-        upgrade_url = f'{app_label}_build_changelist'
-        extra_context.update({'upgrade_url': upgrade_url})
+        upgrade_url = f"{app_label}_build_changelist"
+        extra_context.update({"upgrade_url": upgrade_url})
         return super().change_view(request, object_id, form_url, extra_context)
 
 
 class UpgradeOperationForm(forms.ModelForm):
     class Meta:
-        fields = ['device', 'image', 'status', 'log', 'modified']
-        labels = {'modified': _('last updated')}
+        fields = ["device", "image", "status", "log", "modified"]
+        labels = {"modified": _("last updated")}
 
 
 class UpgradeOperationInline(admin.StackedInline):
@@ -249,20 +249,20 @@ class UpgradeOperationInline(admin.StackedInline):
         return False
 
     class Media:
-        css = {'all': ['firmware-upgrader/css/upgrade-options.css']}
+        css = {"all": ["firmware-upgrader/css/upgrade-options.css"]}
 
 
 class ReadonlyUpgradeOptionsMixin:
-    @admin.display(description=_('Upgrade options'))
+    @admin.display(description=_("Upgrade options"))
     def readonly_upgrade_options(self, obj):
         upgrader_schema = obj.upgrader_schema
         if not upgrader_schema:
-            return _('Upgrade options are not supported for this upgrader.')
+            return _("Upgrade options are not supported for this upgrader.")
         options = []
-        for key, value in upgrader_schema['properties'].items():
-            option_used = 'yes' if obj.upgrade_options.get(key, False) else 'no'
-            option_title = value['title']
-            icon_url = static(f'admin/img/icon-{option_used}.svg')
+        for key, value in upgrader_schema["properties"].items():
+            option_used = "yes" if obj.upgrade_options.get(key, False) else "no"
+            option_title = value["title"]
+            icon_url = static(f"admin/img/icon-{option_used}.svg")
             options.append(
                 f'<li><img src="{icon_url}" alt="{option_used}">{option_title}</li>'
             )
@@ -273,40 +273,40 @@ class ReadonlyUpgradeOptionsMixin:
 
 @admin.register(BatchUpgradeOperation)
 class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
-    list_display = ['build', 'organization', 'status', 'created', 'modified']
+    list_display = ["build", "organization", "status", "created", "modified"]
     list_filter = [
         BuildCategoryOrganizationFilter,
-        'status',
+        "status",
         BuildCategoryFilter,
     ]
-    list_select_related = ['build__category__organization']
-    ordering = ['-created']
+    list_select_related = ["build__category__organization"]
+    ordering = ["-created"]
     inlines = [UpgradeOperationInline]
-    multitenant_parent = 'build__category'
+    multitenant_parent = "build__category"
     fields = [
-        'build',
-        'status',
-        'completed',
-        'success_rate',
-        'failed_rate',
-        'aborted_rate',
-        'readonly_upgrade_options',
-        'created',
-        'modified',
+        "build",
+        "status",
+        "completed",
+        "success_rate",
+        "failed_rate",
+        "aborted_rate",
+        "readonly_upgrade_options",
+        "created",
+        "modified",
     ]
-    autocomplete_fields = ['build']
+    autocomplete_fields = ["build"]
     readonly_fields = [
-        'completed',
-        'success_rate',
-        'failed_rate',
-        'aborted_rate',
-        'readonly_upgrade_options',
+        "completed",
+        "success_rate",
+        "failed_rate",
+        "aborted_rate",
+        "readonly_upgrade_options",
     ]
 
     def organization(self, obj):
         return obj.build.category.organization
 
-    organization.short_description = _('organization')
+    organization.short_description = _("organization")
 
     def get_readonly_fields(self, request, obj):
         fields = super().get_readonly_fields(request, obj)
@@ -326,13 +326,13 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
 
     def __get_rate(self, value):
         if value:
-            return f'{value}%'
-        return 'N/A'
+            return f"{value}%"
+        return "N/A"
 
-    completed.short_description = _('completed')
-    success_rate.short_description = _('success rate')
-    failed_rate.short_description = _('failure rate')
-    aborted_rate.short_description = _('abortion rate')
+    completed.short_description = _("completed")
+    success_rate.short_description = _("success rate")
+    failed_rate.short_description = _("failure rate")
+    aborted_rate.short_description = _("abortion rate")
 
 
 class DeviceFirmwareForm(forms.ModelForm):
@@ -340,30 +340,30 @@ class DeviceFirmwareForm(forms.ModelForm):
 
     class Meta:
         model = DeviceFirmware
-        fields = '__all__'
+        fields = "__all__"
 
     class Media:
-        js = ['admin/js/jquery.init.js', 'firmware-upgrader/js/device-firmware.js']
-        css = {'all': ['firmware-upgrader/css/device-firmware.css']}
+        js = ["admin/js/jquery.init.js", "firmware-upgrader/js/device-firmware.js"]
+        css = {"all": ["firmware-upgrader/css/device-firmware.css"]}
 
     def __init__(self, device, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['image'].queryset = DeviceFirmware.get_image_queryset_for_device(
+        self.fields["image"].queryset = DeviceFirmware.get_image_queryset_for_device(
             device, device_firmware=self.instance
         )
 
     def full_clean(self):
         super().full_clean()
-        if not self.errors and hasattr(self, 'cleaned_data'):
+        if not self.errors and hasattr(self, "cleaned_data"):
             upgrade_op = UpgradeOperation(
-                device=self.cleaned_data['device'],
-                image=self.cleaned_data['image'],
-                upgrade_options=self.cleaned_data['upgrade_options'],
+                device=self.cleaned_data["device"],
+                image=self.cleaned_data["image"],
+                upgrade_options=self.cleaned_data["upgrade_options"],
             )
             try:
                 upgrade_op.full_clean()
             except forms.ValidationError as error:
-                self.add_error('__all__', error.messages[0])
+                self.add_error("__all__", error.messages[0])
 
     def save(self, commit=True):
         """
@@ -372,14 +372,14 @@ class DeviceFirmwareForm(forms.ModelForm):
         """
         if commit:
             # If committing, save the instance and the m2m data immediately.
-            self.instance.save(upgrade_options=self.cleaned_data['upgrade_options'])
+            self.instance.save(upgrade_options=self.cleaned_data["upgrade_options"])
         return self.instance
 
 
 class DeviceFormSet(forms.BaseInlineFormSet):
     def get_form_kwargs(self, index):
         kwargs = super().get_form_kwargs(index)
-        kwargs['device'] = self.instance
+        kwargs["device"] = self.instance
         return kwargs
 
 
@@ -389,18 +389,18 @@ class DeviceFirmwareInline(
     model = DeviceFirmware
     formset = DeviceFormSet
     form = DeviceFirmwareForm
-    exclude = ['created']
-    select_related = ['device', 'image']
-    readonly_fields = ['installed', 'modified']
-    verbose_name = _('Firmware')
+    exclude = ["created"]
+    select_related = ["device", "image"]
+    readonly_fields = ["installed", "modified"]
+    verbose_name = _("Firmware")
     verbose_name_plural = verbose_name
     extra = 0
-    multitenant_shared_relations = ['device']
-    template = 'admin/firmware_upgrader/device_firmware_inline.html'
+    multitenant_shared_relations = ["device"]
+    template = "admin/firmware_upgrader/device_firmware_inline.html"
     # hack for openwisp-monitoring integartion
     # TODO: remove when this issue solved:
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
-    sortable_options = {'disabled': True}
+    sortable_options = {"disabled": True}
 
     def _get_conditional_queryset(self, request, obj, select_related=False):
         return bool(obj)
@@ -428,21 +428,21 @@ class DeviceUpgradeOperationForm(UpgradeOperationForm):
 
 
 class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperationInline):
-    verbose_name = _('Recent Firmware Upgrades')
+    verbose_name = _("Recent Firmware Upgrades")
     verbose_name_plural = verbose_name
     formset = DeviceFormSet
     form = DeviceUpgradeOperationForm
     # hack for openwisp-monitoring integration
     # TODO: remove when this issue solved:
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
-    sortable_options = {'disabled': True}
+    sortable_options = {"disabled": True}
     fields = [
-        'device',
-        'image',
-        'status',
-        'log',
-        'readonly_upgrade_options',
-        'modified',
+        "device",
+        "image",
+        "status",
+        "log",
+        "readonly_upgrade_options",
+        "modified",
     ]
     readonly_fields = fields
 
@@ -453,11 +453,11 @@ class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperation
         """
         qs = super().get_queryset(request)
         resolved = resolve(request.path_info)
-        if 'object_id' in resolved.kwargs:
+        if "object_id" in resolved.kwargs:
             seven_days = localtime() - timedelta(days=7)
             qs = qs.filter(
-                device_id=resolved.kwargs['object_id'], created__gte=seven_days
-            ).order_by('-created')
+                device_id=resolved.kwargs["object_id"], created__gte=seven_days
+            ).order_by("-created")
         if select_related:
             qs = qs.select_related()
         return qs
@@ -471,6 +471,6 @@ class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperation
 # DeviceAdmin.get_inlines = device_admin_get_inlines
 DeviceAdmin.conditional_inlines += [DeviceFirmwareInline, DeviceUpgradeOperationInline]
 
-reversion.register(model=DeviceFirmware, follow=['device'])
+reversion.register(model=DeviceFirmware, follow=["device"])
 reversion.register(model=UpgradeOperation)
-DeviceAdmin.add_reversion_following(follow=['devicefirmware', 'upgradeoperation_set'])
+DeviceAdmin.add_reversion_following(follow=["devicefirmware", "upgradeoperation_set"])

@@ -7,12 +7,12 @@ from ..swapper import load_model
 
 
 class FirmwareImageDownloadView(PermissionRequiredMixin, PrivateStorageDetailView):
-    model = load_model('FirmwareImage')
-    model_file_field = 'file'
+    model = load_model("FirmwareImage")
+    model_file_field = "file"
     raise_exception = True
 
-    slug_field = 'file'
-    slug_url_kwarg = 'path'
+    slug_field = "file"
+    slug_url_kwarg = "path"
 
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:

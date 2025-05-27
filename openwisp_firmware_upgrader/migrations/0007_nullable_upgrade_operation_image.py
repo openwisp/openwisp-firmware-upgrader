@@ -7,13 +7,13 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('firmware_upgrader', '0006_create_device_firmware'),
+        ("firmware_upgrader", "0006_create_device_firmware"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='upgradeoperation',
-            name='image',
+            model_name="upgradeoperation",
+            name="image",
             field=models.ForeignKey(
                 null=True,
                 on_delete=django.db.models.deletion.SET_NULL,
