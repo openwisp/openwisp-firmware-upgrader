@@ -4,11 +4,11 @@ from ..swapper import load_model
 
 
 class FirmwareImageDownloadView(PrivateStorageDetailView):
-    model = load_model('FirmwareImage')
-    model_file_field = 'file'
+    model = load_model("FirmwareImage")
+    model_file_field = "file"
 
-    slug_field = 'file'
-    slug_url_kwarg = 'path'
+    slug_field = "file"
+    slug_url_kwarg = "path"
 
     def can_access_file(self, private_file):
         user = private_file.request.user

@@ -115,6 +115,7 @@ PRIVATE_STORAGE_ROOT = os.path.join(BASE_DIR, "private", "firmware")
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [os.path.join(os.path.dirname(BASE_DIR), "templates")],
         "OPTIONS": {
             "loaders": [
                 "django.template.loaders.filesystem.Loader",

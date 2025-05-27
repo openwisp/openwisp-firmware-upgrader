@@ -5,19 +5,19 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('firmware_upgrader', '0004_batch_upgrade_operation_idle_status'),
+        ("firmware_upgrader", "0004_batch_upgrade_operation_idle_status"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='build',
-            name='os',
+            model_name="build",
+            name="os",
             field=models.CharField(
                 blank=True,
-                help_text='OS identifier as presented by the device, used to automatically recognize the firmware image used by new devices that register into the system',
+                help_text="OS identifier as presented by the device, used to automatically recognize the firmware image used by new devices that register into the system",
                 max_length=64,
                 null=True,
-                verbose_name='OS identifier',
+                verbose_name="OS identifier",
             ),
         ),
     ]
