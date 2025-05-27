@@ -246,9 +246,11 @@ class Migration(migrations.Migration):
                 (
                     "type",
                     models.CharField(
-                        choices=COMMAND_CHOICES
-                        if django.VERSION < (5, 0)
-                        else get_command_choices,
+                        choices=(
+                            COMMAND_CHOICES
+                            if django.VERSION < (5, 0)
+                            else get_command_choices
+                        ),
                         max_length=16,
                     ),
                 ),
