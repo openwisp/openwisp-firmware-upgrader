@@ -34,6 +34,7 @@ from ..tasks import (
     batch_upgrade_operation,
     create_all_device_firmwares,
     create_device_firmware,
+    delete_firmware_files,
     upgrade_firmware,
 )
 from ..utils import (
@@ -277,6 +278,57 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         filename = self.file.name
         # removes leading prefix
         self.type = "-".join(filename.split("-")[1:])
+
+    @classmethod
+    def build_pre_delete_handler(cls, sender, instance, **kwargs):
+        """
+        Signal handler to collect firmware image files that need to be deleted
+        when a Build is deleted.
+        """
+        files_to_delete = []
+
+        # Get all firmware images related to this build
+        for image in cls.objects.filter(build=instance):
+            if image.file:
+                files_to_delete.append(image.file.name)
+
+        # Schedule file deletion after transaction is committed
+        if files_to_delete:
+            transaction.on_commit(lambda: delete_firmware_files.delay(files_to_delete))
+
+    @classmethod
+    def category_pre_delete_handler(cls, sender, instance, **kwargs):
+        """
+        Signal handler to collect firmware image files that need to be deleted
+        when a Category is deleted.
+        """
+        files_to_delete = []
+
+        # Get all firmware images related to builds in this category
+        for image in cls.objects.filter(build__category=instance):
+            if image.file:
+                files_to_delete.append(image.file.name)
+
+        # Schedule file deletion after transaction is committed
+        if files_to_delete:
+            transaction.on_commit(lambda: delete_firmware_files.delay(files_to_delete))
+
+    @classmethod
+    def organization_pre_delete_handler(cls, sender, instance, **kwargs):
+        """
+        Signal handler to collect firmware image files that need to be deleted
+        when an Organization is deleted.
+        """
+        files_to_delete = []
+
+        # Get all firmware images related to builds in categories of this organization
+        for image in cls.objects.filter(build__category__organization=instance):
+            if image.file:
+                files_to_delete.append(image.file.name)
+
+        # Schedule file deletion after transaction is committed
+        if files_to_delete:
+            transaction.on_commit(lambda: delete_firmware_files.delay(files_to_delete))
 
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):

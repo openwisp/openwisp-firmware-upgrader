@@ -83,3 +83,21 @@ def create_all_device_firmwares(self, firmware_image_id):
     queryset = Device.objects.filter(os=fw_image.build.os)
     for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)
+
+
+@shared_task
+def delete_firmware_files(files_to_delete):
+    FirmwareImage = load_model("FirmwareImage")
+    storage = FirmwareImage.file.field.storage
+
+    for file_path in files_to_delete:
+        try:
+            storage.delete(file_path)
+            dir_path = "/".join(file_path.split("/")[:-1])
+            if dir_path:
+                try:
+                    storage.delete(dir_path)
+                except Exception as error:
+                    logger.debug(f"Could not delete directory {dir_path}: {str(error)}")
+        except Exception as e:
+            logger.error(f"Error deleting firmware file {file_path}: {str(e)}")
