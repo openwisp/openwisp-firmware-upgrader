@@ -100,7 +100,9 @@ def delete_firmware_files(files_to_delete):
                     if not dirs and not files:
                         storage.delete(dir_path)
                     else:
-                        logger.debug(f"Directory {dir_path} is not empty, skipping deletion")
+                        logger.debug(
+                            f"Directory {dir_path} is not empty, skipping deletion"
+                        )
                 except Exception as error:
                     logger.debug(f"Could not delete directory {dir_path}: {str(error)}")
         except Exception as e:
