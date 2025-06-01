@@ -12,7 +12,7 @@ from openwisp_utils.tests import capture_any_output
 from .. import settings as app_settings
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
-from ..tasks import delete_firmware_files, upgrade_firmware
+from ..tasks import upgrade_firmware
 from .base import TestUpgraderMixin
 
 Group = swapper.load_model("openwisp_users", "Group")
@@ -328,57 +328,6 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.assertNotEqual(image.file, None)
             image.delete()
 
-    def test_delete_firmware_files_on_build_delete(self):
-        """Test that firmware files are deleted when a build is deleted"""
-        file_storage_backend = FirmwareImage.file.field.storage
-        build = self._create_build()
-        image = self._create_firmware_image(build=build)
-        file_name = image.file.name
-
-        # Delete the build
-        build.delete()
-
-        # Execute the Celery task synchronously
-        delete_firmware_files([file_name])
-
-        # Check that the file was deleted
-        self.assertEqual(file_storage_backend.exists(file_name), False)
-
-    def test_delete_firmware_files_on_category_delete(self):
-        """Test that firmware files are deleted when a category is deleted"""
-        file_storage_backend = FirmwareImage.file.field.storage
-        category = self._create_category()
-        build = self._create_build(category=category)
-        image = self._create_firmware_image(build=build)
-        file_name = image.file.name
-
-        # Delete the category
-        category.delete()
-
-        # Execute the Celery task synchronously
-        delete_firmware_files([file_name])
-
-        # Check that the file was deleted
-        self.assertEqual(file_storage_backend.exists(file_name), False)
-
-    def test_delete_firmware_files_on_organization_delete(self):
-        """Test that firmware files are deleted when an organization is deleted"""
-        file_storage_backend = FirmwareImage.file.field.storage
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category)
-        image = self._create_firmware_image(build=build)
-        file_name = image.file.name
-
-        # Delete the organization
-        org.delete()
-
-        # Execute the Celery task synchronously
-        delete_firmware_files([file_name])
-
-        # Check that the file was deleted
-        self.assertEqual(file_storage_backend.exists(file_name), False)
-
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
@@ -568,13 +517,8 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         build = self._create_build()
         image = self._create_firmware_image(build=build)
         file_name = image.file.name
-
         # Delete the build
         build.delete()
-
-        # Execute the Celery task synchronously
-        delete_firmware_files([file_name])
-
         # Check that the file was deleted
         self.assertEqual(file_storage_backend.exists(file_name), False)
 
@@ -585,13 +529,8 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         build = self._create_build(category=category)
         image = self._create_firmware_image(build=build)
         file_name = image.file.name
-
         # Delete the category
         category.delete()
-
-        # Execute the Celery task synchronously
-        delete_firmware_files([file_name])
-
         # Check that the file was deleted
         self.assertEqual(file_storage_backend.exists(file_name), False)
 
@@ -603,12 +542,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         build = self._create_build(category=category)
         image = self._create_firmware_image(build=build)
         file_name = image.file.name
-
         # Delete the organization
         org.delete()
-
-        # Execute the Celery task synchronously
-        delete_firmware_files([file_name])
-
         # Check that the file was deleted
         self.assertEqual(file_storage_backend.exists(file_name), False)

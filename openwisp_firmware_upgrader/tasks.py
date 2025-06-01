@@ -85,7 +85,7 @@ def create_all_device_firmwares(self, firmware_image_id):
         DeviceFirmware.create_for_device(device, fw_image)
 
 
-@shared_task
+@shared_task(base=OpenwispCeleryTask)
 def delete_firmware_files(files_to_delete):
     FirmwareImage = load_model("FirmwareImage")
     storage = FirmwareImage.file.field.storage
@@ -96,7 +96,11 @@ def delete_firmware_files(files_to_delete):
             dir_path = "/".join(file_path.split("/")[:-1])
             if dir_path:
                 try:
-                    storage.delete(dir_path)
+                    dirs, files = storage.listdir(dir_path)
+                    if not dirs and not files:
+                        storage.delete(dir_path)
+                    else:
+                        logger.debug(f"Directory {dir_path} is not empty, skipping deletion")
                 except Exception as error:
                     logger.debug(f"Could not delete directory {dir_path}: {str(error)}")
         except Exception as e:
