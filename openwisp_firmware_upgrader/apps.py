@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db.models.signals import post_save
 from django.utils.translation import gettext_lazy as _
 from swapper import get_model_name, load_model
@@ -26,6 +27,35 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         super().ready(*args, **kwargs)
         self.register_menu_groups()
         self.connect_device_signals()
+        if getattr(settings, "TESTING", False):
+            self._add_params_to_test_config()
+
+    def _add_params_to_test_config(self):
+        """
+        this methods adds the management fields of BaseTestAdmin
+        to the parameters used in config.tests.test_admin.TestAdmin
+        this hack is needed for the following reasons:
+            - avoids breaking config.tests.test_admin.TestAdmin
+            - avoids adding logic of firmware_upgrader app in config, this
+              way config doesn't know anything about firmware_upgrader, keeping
+              complexity down to a sane level
+        """
+        from openwisp_controller.config.tests.test_admin import (
+            TestAdmin as TestConfigAdmin,
+        )
+
+        from .tests.test_admin import BaseTestAdmin
+
+        params = BaseTestAdmin._device_params
+        delete_keys = []
+        # delete unnecessary fields
+        # leave only management fields
+        for key in params.keys():
+            if "_FORMS" not in key:
+                delete_keys.append(key)
+        for key in delete_keys:
+            del params[key]
+        TestConfigAdmin._additional_params.update(params)
 
     def register_menu_groups(self):
         register_menu_group(
