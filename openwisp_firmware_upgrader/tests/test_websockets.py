@@ -4,7 +4,7 @@ from channels.testing import WebsocketCommunicator
 from django.test import TestCase
 
 from ..swapper import load_model
-from ..websockets import UpgradeProgressConsumer
+from ..websockets import UpgradeProgressConsumer, BatchUpgradeProgressConsumer
 from .base import TestUpgraderMixin
 
 UpgradeOperation = load_model("UpgradeOperation")
@@ -82,3 +82,75 @@ class WebSocketTest(TestUpgraderMixin, TestCase):
             device=device, image=image, status="in-progress"
         )
         return operation
+
+    async def test_batch_upgrade_progress_consumer(self):
+        # Create test environment
+        env = await sync_to_async(self._create_upgrade_env)(device_firmware=True)
+        build = env["build2"]
+
+        # Create a test batch upgrade operation
+        BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+        batch = await sync_to_async(BatchUpgradeOperation.objects.create)(build=build)
+
+        # Create a WebSocket connection with proper URL routing
+        communicator = WebsocketCommunicator(
+            BatchUpgradeProgressConsumer.as_asgi(), f"/ws/batch-upgrade/{batch.id}/"
+        )
+        # Add URL route parameters to the scope
+        communicator.scope["url_route"] = {
+            "kwargs": {"batch_id": str(batch.id)}
+        }
+
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+
+        # Get channel layer
+        channel_layer = get_channel_layer()
+        group_name = f"batch_upgrade_{batch.id}"
+
+        # Send initial batch status message
+        await channel_layer.group_send(
+            group_name,
+            {
+                "type": "batch_upgrade_progress",
+                "data": {"type": "batch_status", "status": "in-progress", "completed": 0, "total": 2},
+            },
+        )
+
+        # Receive initial batch status message
+        initial_response = await communicator.receive_json_from()
+        self.assertEqual(initial_response["type"], "batch_status")
+        self.assertEqual(initial_response["status"], "in-progress")
+        self.assertEqual(initial_response["completed"], 0)
+        self.assertEqual(initial_response["total"], 2)
+
+        # Test receiving operation progress updates
+        await channel_layer.group_send(
+            group_name,
+            {
+                "type": "batch_upgrade_progress",
+                "data": {"type": "operation_progress", "operation_id": "op1", "status": "in-progress", "progress": 50},
+            },
+        )
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "operation_progress")
+        self.assertEqual(response["operation_id"], "op1")
+        self.assertEqual(response["status"], "in-progress")
+        self.assertEqual(response["progress"], 50)
+
+        # Test receiving batch status updates
+        await channel_layer.group_send(
+            group_name,
+            {
+                "type": "batch_upgrade_progress",
+                "data": {"type": "batch_status", "status": "success", "completed": 2, "total": 2},
+            },
+        )
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "batch_status")
+        self.assertEqual(response["status"], "success")
+        self.assertEqual(response["completed"], 2)
+        self.assertEqual(response["total"], 2)
+
+        # Close the connection
+        await communicator.disconnect()
