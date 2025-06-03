@@ -1,5 +1,6 @@
 from django.urls import re_path
-from .websockets import UpgradeProgressConsumer, BatchUpgradeProgressConsumer
+
+from .websockets import BatchUpgradeProgressConsumer, UpgradeProgressConsumer
 
 websocket_urlpatterns = [
     re_path(

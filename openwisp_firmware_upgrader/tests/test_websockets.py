@@ -4,7 +4,7 @@ from channels.testing import WebsocketCommunicator
 from django.test import TestCase
 
 from ..swapper import load_model
-from ..websockets import UpgradeProgressConsumer, BatchUpgradeProgressConsumer
+from ..websockets import BatchUpgradeProgressConsumer, UpgradeProgressConsumer
 from .base import TestUpgraderMixin
 
 UpgradeOperation = load_model("UpgradeOperation")
@@ -97,9 +97,7 @@ class WebSocketTest(TestUpgraderMixin, TestCase):
             BatchUpgradeProgressConsumer.as_asgi(), f"/ws/batch-upgrade/{batch.id}/"
         )
         # Add URL route parameters to the scope
-        communicator.scope["url_route"] = {
-            "kwargs": {"batch_id": str(batch.id)}
-        }
+        communicator.scope["url_route"] = {"kwargs": {"batch_id": str(batch.id)}}
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -113,7 +111,12 @@ class WebSocketTest(TestUpgraderMixin, TestCase):
             group_name,
             {
                 "type": "batch_upgrade_progress",
-                "data": {"type": "batch_status", "status": "in-progress", "completed": 0, "total": 2},
+                "data": {
+                    "type": "batch_status",
+                    "status": "in-progress",
+                    "completed": 0,
+                    "total": 2,
+                },
             },
         )
 
@@ -129,7 +132,12 @@ class WebSocketTest(TestUpgraderMixin, TestCase):
             group_name,
             {
                 "type": "batch_upgrade_progress",
-                "data": {"type": "operation_progress", "operation_id": "op1", "status": "in-progress", "progress": 50},
+                "data": {
+                    "type": "operation_progress",
+                    "operation_id": "op1",
+                    "status": "in-progress",
+                    "progress": 50,
+                },
             },
         )
         response = await communicator.receive_json_from()
@@ -143,7 +151,12 @@ class WebSocketTest(TestUpgraderMixin, TestCase):
             group_name,
             {
                 "type": "batch_upgrade_progress",
-                "data": {"type": "batch_status", "status": "success", "completed": 2, "total": 2},
+                "data": {
+                    "type": "batch_status",
+                    "status": "success",
+                    "completed": 2,
+                    "total": 2,
+                },
             },
         )
         response = await communicator.receive_json_from()

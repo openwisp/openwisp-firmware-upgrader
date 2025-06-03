@@ -52,23 +52,13 @@ class UpgradeProgressPublisher:
         )
 
     def publish_log(self, line, status):
-        self.publish_progress({
-            "type": "log",
-            "content": line,
-            "status": status
-        })
+        self.publish_progress({"type": "log", "content": line, "status": status})
 
     def publish_status(self, status):
-        self.publish_progress({
-            "type": "status",
-            "status": status
-        })
+        self.publish_progress({"type": "status", "status": status})
 
     def publish_error(self, error_message):
-        self.publish_progress({
-            "type": "error",
-            "message": error_message
-        })
+        self.publish_progress({"type": "error", "message": error_message})
 
 
 class BatchUpgradeProgressPublisher:
@@ -87,17 +77,21 @@ class BatchUpgradeProgressPublisher:
         )
 
     def publish_operation_progress(self, operation_id, status, progress):
-        self.publish_progress({
-            "type": "operation_progress",
-            "operation_id": operation_id,
-            "status": status,
-            "progress": progress
-        })
+        self.publish_progress(
+            {
+                "type": "operation_progress",
+                "operation_id": operation_id,
+                "status": status,
+                "progress": progress,
+            }
+        )
 
     def publish_batch_status(self, status, completed, total):
-        self.publish_progress({
-            "type": "batch_status",
-            "status": status,
-            "completed": completed,
-            "total": total
-        })
+        self.publish_progress(
+            {
+                "type": "batch_status",
+                "status": status,
+                "completed": completed,
+                "total": total,
+            }
+        )
