@@ -21,106 +21,83 @@ class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase)
         self.image = self._create_firmware_image()
         self.default_org = self._get_org("default")
         self.test_org = self._get_org()
+        self.other_org = self._create_org(name="other", slug="other")
+
+        # Get view permission
+        content_type = ContentType.objects.get_for_model(FirmwareImage)
+        perm_codename = get_permission_codename("view", FirmwareImage._meta)
+        self.view_perm = Permission.objects.get(
+            content_type=content_type, codename=perm_codename
+        )
+
+        # Get Operator group
+        self.operator_group = Group.objects.get(name="Operator")
 
     def _download_firmware_assert_status(self, status_code):
+        """Helper method to test firmware download via private storage view"""
         response = self.client.get(
             reverse("serve_private_file", args=[self.image.file])
         )
         self.assertEqual(response.status_code, status_code)
 
-    def test_unauthenticated_user(self):
-        self._download_firmware_assert_status(401)
+    def _setup_user(
+        self,
+        is_staff=False,
+        is_org_admin=False,
+        org=None,
+        has_view_perm=False,
+        is_operator=False,
+    ):
+        """Helper method to setup user with specific permissions"""
+        user = self._get_operator()
+        user.is_staff = is_staff
+        user.save()
 
-    def test_authenticated_user(self):
-        user = self._get_user()
+        if org:
+            self._create_org_user(user=user, organization=org, is_admin=is_org_admin)
+
+        if has_view_perm:
+            user.user_permissions.add(self.view_perm)
+
+        if is_operator:
+            user.groups.add(self.operator_group)
+
         self.client.force_login(user)
-        self._download_firmware_assert_status(403)
+        return user
 
-    def test_authenticated_user_with_different_organization(self):
-        self._create_org_user()
-        user = self._get_user()
-        self.client.force_login(user)
-        self._download_firmware_assert_status(403)
-
-    def test_authenticated_user_with_same_organization(self):
-        self._create_org_user(organization=self.test_org)
-        user = self._get_user()
-        self.client.force_login(user)
-        self._download_firmware_assert_status(403)
-
-    def test_staff_user_with_different_organization(self):
-        staff_user = self._get_operator()
-        self._create_org_user(user=staff_user, organization=self.default_org)
-        self.client.force_login(staff_user)
-        self._download_firmware_assert_status(403)
-
-    def test_staff_user_with_same_organization(self):
-        staff_user = self._get_operator()
-        self._create_org_user(user=staff_user, organization=self.test_org)
-        self.client.force_login(staff_user)
-        self._download_firmware_assert_status(403)
-
-    def test_staff_operator_with_different_organization(self):
-        staff_user = self._get_operator()
-        self._create_org_user(
-            user=staff_user, organization=self.default_org, is_admin=True
-        )
-        self.client.force_login(staff_user)
-        self._download_firmware_assert_status(403)
-
-    def test_staff_operator_with_same_organization(self):
-        staff_user = self._get_operator()
-        self._create_org_user(
-            user=staff_user, organization=self.test_org, is_admin=True
-        )
-        self.client.force_login(staff_user)
-        self._download_firmware_assert_status(200)
-
-    def test_superuser(self):
-        user = self._get_admin()
-        self.client.force_login(user)
-        self._download_firmware_assert_status(200)
-
-    def test_view_permission_check(self):
-        staff_user = self._get_operator()
-        self.client.force_login(staff_user)
-        org = self.image.build.category.organization
-
-        with self.subTest("Test initial access without permissions"):
+    def test_firmware_download_permissions(self):
+        """
+        Test firmware download permissions for different user scenarios.
+        """
+        with self.subTest("User without any permissions"):
+            user = self._get_user()
+            self.client.force_login(user)
             self._download_firmware_assert_status(403)
 
-        # Add view permission first
-        content_type = ContentType.objects.get_for_model(FirmwareImage)
-        perm_codename = get_permission_codename("view", FirmwareImage._meta)
-        view_perm = Permission.objects.get(
-            content_type=content_type, codename=perm_codename
-        )
-        staff_user.user_permissions.add(view_perm)
+        with self.subTest("Staff user without org admin or view permission"):
+            user = self._get_operator()
+            user.is_staff = True
+            user.save()
+            self.client.force_login(user)
+            self._download_firmware_assert_status(403)
 
-        with self.subTest("Test access with view permission and org admin status"):
-            self._create_org_user(user=staff_user, organization=org, is_admin=True)
+        with self.subTest("Staff user who is org admin of a different organization"):
+            self._setup_user(
+                is_staff=True,
+                is_org_admin=True,
+                org=self.other_org,
+            )
+            self._download_firmware_assert_status(403)
+
+        with self.subTest("Staff user who is org admin of same organization"):
+            self._setup_user(
+                is_staff=True,
+                is_org_admin=True,
+                org=self.image.build.category.organization,
+            )
             self._download_firmware_assert_status(200)
 
-        # Remove org manager status
-        org_user = staff_user.openwisp_users_organization.get(
-            organization_users__organization=org
-        )
-        org_user.is_admin = False
-        org_user.save()
-
-        # Remove staff status
-        staff_user.is_staff = False
-        staff_user.save()
-
-        # Restore org manager status
-        org_user.is_admin = True
-        org_user.save()
-
-        with self.subTest("Test access without staff status"):
-            self._download_firmware_assert_status(403)
-
-        # Remove view permission
-        staff_user.user_permissions.remove(view_perm)
-
-        with self.subTest("Test access without view permission"):
-            self._download_firmware_assert_status(403)
+        with self.subTest("Superuser access"):
+            user = self._get_admin()
+            self.client.force_login(user)
+            self._download_firmware_assert_status(200)
