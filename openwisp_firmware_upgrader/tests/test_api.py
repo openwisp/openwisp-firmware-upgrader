@@ -1,7 +1,9 @@
 import uuid
 
 import swapper
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_permission_codename, get_user_model
+from django.contrib.auth.models import Group, Permission
+from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
 from django.urls import reverse
 from packaging.version import parse as parse_version
@@ -1829,3 +1831,141 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
             self._login("admin", "tester")
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403)
+
+
+class TestFirmwareDownloadPermissions(TestAPIUpgraderMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.image = self._create_firmware_image()
+        self.default_org = self._get_org("default")
+        self.test_org = self._get_org()
+        self.other_org = self._create_org(name="other", slug="other")
+
+        # Get view permission
+        content_type = ContentType.objects.get_for_model(FirmwareImage)
+        perm_codename = get_permission_codename("view", FirmwareImage._meta)
+        self.view_perm = Permission.objects.get(
+            content_type=content_type, codename=perm_codename
+        )
+
+        # Get Operator group
+        self.operator_group = Group.objects.get(name="Operator")
+
+    def _setup_user(
+        self,
+        is_staff=False,
+        is_org_admin=False,
+        org=None,
+        has_view_perm=False,
+        is_operator=False,
+    ):
+        """Helper method to setup user with specific permissions"""
+        user = self._get_operator()
+        user.is_staff = is_staff
+        user.save()
+
+        # Clear existing permissions and relationships
+        user.user_permissions.clear()
+        user.groups.clear()
+        OrganizationUser.objects.filter(user=user).delete()
+
+        if org:
+            self._create_org_user(user=user, organization=org, is_admin=is_org_admin)
+
+        if has_view_perm:
+            user.user_permissions.add(self.view_perm)
+
+        if is_operator:
+            user.groups.add(self.operator_group)
+
+        self._login(user.username, "tester")
+        return user
+
+    def test_firmware_download_permissions(self):
+        """
+        Test firmware download permissions for different user scenarios.
+        """
+        with self.subTest("User without any permissions"):
+            user = self._get_user()
+            self._login(user.username, "tester")
+
+            url = reverse(
+                "upgrader:api_firmware_download",
+                args=[self.image.build.pk, self.image.pk],
+            )
+            with self.assertNumQueries(4):
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 403)
+
+        with self.subTest("Staff user without org admin or view permission"):
+            self._setup_user(
+                is_staff=True,
+                is_org_admin=False,
+                org=None,
+            )
+
+            url = reverse(
+                "upgrader:api_firmware_download",
+                args=[self.image.build.pk, self.image.pk],
+            )
+            with self.assertNumQueries(4):
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 403)
+
+        with self.subTest("Staff user who is org admin of a different organization"):
+            self._setup_user(
+                is_staff=True,
+                is_org_admin=True,
+                org=self.other_org,
+            )
+
+            url = reverse(
+                "upgrader:api_firmware_download",
+                args=[self.image.build.pk, self.image.pk],
+            )
+            with self.assertNumQueries(4):
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 403)
+
+        with self.subTest("Staff user who is org admin of same organization"):
+            # Create a staff user who is org admin of the same organization
+            user = self._get_operator()
+            user.is_staff = True
+            user.save()
+
+            # Clear existing permissions and relationships
+            user.user_permissions.clear()
+            user.groups.clear()
+            OrganizationUser.objects.filter(user=user).delete()
+
+            # Add to Operator group
+            user.groups.add(self.operator_group)
+
+            # Create org admin relationship
+            self._create_org_user(
+                user=user,
+                organization=self.image.build.category.organization,
+                is_admin=True,
+            )
+
+            self._login(user.username, "tester")
+
+            url = reverse(
+                "upgrader:api_firmware_download",
+                args=[self.image.build.pk, self.image.pk],
+            )
+            with self.assertNumQueries(8):
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+
+        with self.subTest("Superuser access"):
+            user = self._get_admin()
+            self._login(user.username, "tester")
+
+            url = reverse(
+                "upgrader:api_firmware_download",
+                args=[self.image.build.pk, self.image.pk],
+            )
+            with self.assertNumQueries(3):
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
