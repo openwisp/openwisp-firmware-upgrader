@@ -19,6 +19,7 @@ from django.utils.timezone import localtime
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
+from django.core.paginator import Paginator, InvalidPage
 
 from openwisp_controller.config.admin import DeactivatedDeviceReadOnlyMixin, DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
@@ -271,6 +272,22 @@ class ReadonlyUpgradeOptionsMixin:
         )
 
 
+@admin.register(UpgradeOperation)
+class UpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
+    list_display = ["device", "status", "image", "modified"]
+    list_filter = ["status"]
+    search_fields = ["device__name"]
+    readonly_fields = ["device", "image", "status", "log", "modified"]
+    ordering = ["-modified"]
+    fields = ["device", "image", "status", "log", "modified"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(BatchUpgradeOperation)
 class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
     list_display = ["build", "organization", "status", "created", "modified"]
@@ -281,7 +298,6 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     ]
     list_select_related = ["build__category__organization"]
     ordering = ["-created"]
-    inlines = [UpgradeOperationInline]
     multitenant_parent = "build__category"
     fields = [
         "build",
@@ -302,15 +318,55 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "aborted_rate",
         "readonly_upgrade_options",
     ]
+    change_form_template = "admin/firmware_upgrader/batch_upgrade_operation_change_form.html"
+    device_upgrades_per_page = 20
+    # search_fields = [
+    #     "upgradeoperation__device__id",
+    #     "upgradeoperation__device__name",
+    #     "upgradeoperation__device__mac_address",
+    #     "upgradeoperation__device__key",
+    #     "upgradeoperation__device__model",
+    #     "upgradeoperation__device__os",
+    #     "upgradeoperation__device__system",
+    #     "upgradeoperation__device__devicelocation__location__address"
+    # ]
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related("upgradeoperation_set__device", "upgradeoperation_set__image")
+
+    def get_upgrade_operations(self, obj):
+        return obj.upgradeoperation_set.all().select_related("device", "image")
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["title"] = _("Mass upgrade operations")
+        return super().changelist_view(request, extra_context)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        extra_context = extra_context or {}
+        obj = self.get_object(request, object_id)
+        if obj:
+            upgrades_qs = self.get_upgrade_operations(obj)
+            paginator = Paginator(upgrades_qs, self.device_upgrades_per_page)
+            page_number = request.GET.get('page', 1)
+            try:
+                page_obj = paginator.page(page_number)
+            except InvalidPage:
+                page_obj = paginator.page(1)
+            extra_context["upgrade_operations"] = page_obj.object_list
+            extra_context["page_obj"] = page_obj
+            extra_context["paginator"] = paginator
+        return super().change_view(request, object_id, extra_context)
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        return fields + self.__class__.readonly_fields
 
     def organization(self, obj):
         return obj.build.category.organization
 
     organization.short_description = _("organization")
-
-    def get_readonly_fields(self, request, obj):
-        fields = super().get_readonly_fields(request, obj)
-        return fields + self.__class__.readonly_fields
 
     def completed(self, obj):
         return obj.progress_report

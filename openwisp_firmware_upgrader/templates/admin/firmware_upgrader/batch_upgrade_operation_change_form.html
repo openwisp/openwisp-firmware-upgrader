@@ -1,0 +1,159 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrahead %}
+{{ block.super }}
+<script type="text/javascript" src="{% static 'admin/js/jquery.init.js' %}"></script>
+<script type="text/javascript">
+    django.jQuery(function($) {
+        var searchInput = $('#searchbar');
+        var table = $('#result_list');
+        var rows = table.find('tbody tr');
+
+        searchInput.on('keyup', function() {
+            var searchText = $(this).val().toLowerCase();
+            
+            rows.each(function() {
+                var deviceName = $(this).find('td:first').text().toLowerCase();
+                if (deviceName.indexOf(searchText) > -1) {
+                    $(this).show();
+                } else {
+                    $(this).hide();
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}
+
+{% block content %}
+{{ block.super }}
+<div class="module aligned">
+    <div class="results">
+        <table id="result_list" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>{% trans "Device" %}</th>
+                    <th>{% trans "Status" %}</th>
+                    <th>{% trans "Image" %}</th>
+                    <th>{% trans "Last update" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for operation in upgrade_operations %}
+                <tr class="{% cycle 'row1' 'row2' %}">
+                    <td>
+                        <strong><a href="{% url 'admin:firmware_upgrader_upgradeoperation_change' operation.id %}">{{ operation.device.name }}</a></strong>
+                    </td>
+                    <td>{{ operation.get_status_display }}</td>
+                    <td>
+                        {% if operation.image %}
+                            {{ operation.image }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ operation.modified }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4">{% trans "No device upgrades found." %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="paginator">
+            <span class="step-links">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}">{% trans 'Previous' %}</a>
+                {% endif %}
+                {% for i in paginator.page_range %}
+                    {% if page_obj.number == i %}
+                        <span class="this-page">{{ i }}</span>
+                    {% else %}
+                        <a href="?page={{ i }}">{{ i }}</a>
+                    {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}">{% trans 'Next' %}</a>
+                {% endif %}
+            </span>
+        </div>
+    </div>
+</div>
+
+<style>
+.custom-searchbar-container {
+    background: #fafafa;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    padding: 18px 10px 18px 10px;
+    margin-bottom: 18px;
+}
+.custom-searchbar-wrapper {
+    display: flex;
+    align-items: center;
+    position: relative;
+    max-width: 100%;
+}
+.custom-searchbar-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+}
+.custom-searchbar-icon img {
+    width: 20px;
+    height: 20px;
+    opacity: 0.7;
+}
+.custom-searchbar-input {
+    padding: 8px 12px 8px 42px;
+    border: 1px solid #ddd;
+    border-radius: 6px 0 0 6px;
+    font-size: 16px;
+    flex: 1;
+    background: #fff;
+    box-shadow: none;
+    outline: none;
+    height: 44px;
+}
+.custom-searchbar-btn {
+    padding: 0 28px;
+    height: 44px;
+    background: #222;
+    color: #fff;
+    border: none;
+    border-radius: 0 6px 6px 0;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-left: -1px;
+    box-shadow: none;
+}
+.custom-searchbar-btn:hover {
+    background: #444;
+}
+@media (max-width: 600px) {
+    .custom-searchbar-wrapper {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .custom-searchbar-btn, .custom-searchbar-input {
+        border-radius: 6px !important;
+        margin: 0 0 8px 0;
+        width: 100%;
+    }
+    .custom-searchbar-btn {
+        margin-left: 0;
+    }
+}
+</style>
+{% endblock %} 
