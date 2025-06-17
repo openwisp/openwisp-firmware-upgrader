@@ -1,0 +1,419 @@
+"use strict";
+
+var gettext =
+  window.gettext ||
+  function (word) {
+    return word;
+  };
+var interpolate = interpolate || function () {};
+
+django.jQuery(function ($) {
+  const firmwareDeviceId = getObjectIdFromUrl();
+
+  setTimeout(function () {
+    if (!firmwareDeviceId) {
+      return;
+    }
+
+    let upgradeSection = $("#upgradeoperation_set-group");
+    if (upgradeSection.length === 0) {
+      upgradeSection = $("[id*='upgradeoperation']").closest(".inline-group");
+    }
+
+    // Initialize existing upgrade operations with progress bars
+    initializeExistingUpgradeOperations($);
+
+    if (
+      typeof owControllerApiHost !== "undefined" &&
+      owControllerApiHost.host
+    ) {
+      const upgradeProgressWebSocket = new ReconnectingWebSocket(
+        `${getWebSocketProtocol()}${
+          owControllerApiHost.host
+        }/ws/firmware-upgrader/device/${firmwareDeviceId}/`,
+        null,
+        {
+          debug: false,
+          automaticOpen: false,
+          timeoutInterval: 7000,
+        },
+      );
+
+      // Initialize websocket connection
+      initUpgradeProgressWebSockets($, upgradeProgressWebSocket);
+    }
+  }, 500);
+});
+
+let upgradeOperationsInitialized = false;
+
+function initializeExistingUpgradeOperations($, isRetry = false) {
+  if (upgradeOperationsInitialized && isRetry) {
+    return;
+  }
+
+  let statusFields = $(
+    "#upgradeoperation_set-group .field-status .readonly, .field-status .readonly",
+  );
+
+  let processedCount = 0;
+  statusFields.each(function (index) {
+    let statusField = $(this);
+    let statusText = statusField.text().trim();
+
+    // Skip if already has progress bar
+    if (statusField.find(".upgrade-status-container").length > 0) {
+      return;
+    }
+
+    if (
+      statusText &&
+      (statusText.includes("progress") ||
+        statusText === "success" ||
+        statusText === "failed" ||
+        statusText === "aborted")
+    ) {
+      let operationFieldset = statusField.closest("fieldset");
+      let logElement = operationFieldset.find(".field-log .readonly");
+      let logContent = logElement.length > 0 ? logElement.text().trim() : "";
+
+      // Create operation object for updateStatusWithProgressBar
+      let operation = {
+        status: statusText,
+        log: logContent,
+        id: null,
+      };
+
+      updateStatusWithProgressBar(statusField, operation);
+      processedCount++;
+    }
+  });
+
+  // Mark as initialized if found and processed some operations, or if this is already a retry
+  if (processedCount > 0 || isRetry) {
+    upgradeOperationsInitialized = true;
+  } else if (!isRetry) {
+    setTimeout(function () {
+      initializeExistingUpgradeOperations($, true);
+    }, 1000);
+  }
+}
+
+function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
+  upgradeProgressWebSocket.open();
+  upgradeProgressWebSocket.addEventListener("message", function (e) {
+    let data = JSON.parse(e.data);
+
+    // Check if this is an upgrade operation update
+    if (data.model !== "UpgradeOperation") {
+      return;
+    }
+
+    data = data.data;
+
+    // Handle different types of updates
+    if (data.type === "operation_update") {
+      updateUpgradeOperationDisplay(data.operation);
+    } else if (data.type === "log") {
+      updateUpgradeOperationLog(data);
+    } else if (data.type === "status") {
+      updateUpgradeOperationStatus(data);
+    }
+  });
+}
+
+function updateUpgradeOperationDisplay(operation) {
+  let $ = django.jQuery;
+
+  // Find the upgrade operation element by ID
+  let operationIdInputField = $(`input[value="${operation.id}"]`);
+  if (operationIdInputField.length === 0) {
+    if (isUpgradeOperationsAbsent()) {
+      location.reload();
+    }
+    return;
+  }
+
+  let operationFieldset = operationIdInputField.parent().children("fieldset");
+  let statusField = operationFieldset.find(".field-status .readonly");
+
+  // Update status with progress bar
+  updateStatusWithProgressBar(statusField, operation);
+
+  // Update log with scroll-to-bottom behavior
+  let logElement = operationFieldset.find(".field-log .readonly");
+  let shouldScroll = isScrolledToBottom(logElement);
+
+  if (operation.status === "in-progress") {
+    // Show loading indicator for in-progress operations
+    logElement.html(
+      operation.log + '<div class="loader upgrade-progress-loader"></div>',
+    );
+  } else {
+    logElement.html(operation.log);
+  }
+
+  // Auto-scroll to bottom if user was already at bottom
+  if (shouldScroll) {
+    scrollToBottom(logElement);
+  }
+
+  // Update modified timestamp
+  if (operation.modified) {
+    operationFieldset
+      .find(".field-modified .readonly")
+      .html(getFormattedDateTimeString(operation.modified));
+  }
+
+  let colorCode = getStatusColor(operation.status);
+  operationFieldset.css("background-color", colorCode);
+  setTimeout(function () {
+    operationFieldset.addClass("object-updated");
+    operationFieldset.css("background-color", "inherit");
+  }, 100);
+}
+
+function updateStatusWithProgressBar(statusField, operation) {
+  let $ = django.jQuery;
+
+  let status = operation.status;
+  // Get log content to calculate real progress
+  let logContent = operation.log || "";
+  let progressPercentage = getProgressPercentage(status, logContent);
+  let progressClass = status.replace(/\s+/g, "-"); // Replace all spaces with dashes
+
+  // Create status container if it doesn't exist
+  if (!statusField.find(".upgrade-status-container").length) {
+    statusField.empty();
+    statusField.append('<div class="upgrade-status-container"></div>');
+  }
+
+  let statusContainer = statusField.find(".upgrade-status-container");
+
+  // Build the status HTML with progress bar
+  let statusHtml = `
+    <span class="upgrade-status-${progressClass}">${status}</span>
+  `;
+
+  // Add progress bar for all statuses
+  if (status === "in-progress" || status === "in progress") {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill in-progress" style="width: ${progressPercentage}%"></div>
+      </div>
+      <span class="upgrade-progress-text">${progressPercentage}%</span>
+    `;
+  } else if (status === "success") {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill success" style="width: 100%"></div>
+      </div>
+      <span class="upgrade-progress-text">100%</span>
+    `;
+  } else if (status === "failed" || status === "aborted") {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill ${status}" style="width: ${progressPercentage}%"></div>
+      </div>
+      <span class="upgrade-progress-text">${progressPercentage}%</span>
+    `;
+  } else {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill" style="width: ${progressPercentage}%"></div>
+      </div>
+      <span class="upgrade-progress-text">${progressPercentage}%</span>
+    `;
+  }
+
+  statusContainer.html(statusHtml);
+}
+
+function getProgressPercentage(status, logContent = "") {
+  if (status === "success") {
+    return 100;
+  } else if (status === "failed" || status === "aborted") {
+    // Calculate progress based on how far we got before failing
+    return calculateProgressFromLog(logContent);
+  } else if (status === "in-progress" || status === "in progress") {
+    // Calculate real progress from log content
+    return calculateProgressFromLog(logContent);
+  }
+  return 0;
+}
+
+function calculateProgressFromLog(logContent = "") {
+  if (!logContent) return 0;
+
+  const upgradeSteps = [
+    { keyword: "Connection successful, starting upgrade", progress: 10 },
+    { keyword: "Device identity verified successfully", progress: 15 },
+    { keyword: "Image checksum file found", progress: 20 },
+    { keyword: "Checksum different, proceeding", progress: 25 },
+    { keyword: "proceeding with the upload of the new image", progress: 30 },
+    { keyword: "upload of the new image", progress: 35 },
+    { keyword: "Enough available memory was freed up", progress: 40 },
+    { keyword: "Proceeding to upload of the image file", progress: 45 },
+    { keyword: "Sysupgrade test passed successfully", progress: 55 },
+    { keyword: "proceeding with the upgrade operation", progress: 60 },
+    { keyword: "Upgrade operation in progress", progress: 65 },
+    { keyword: "SSH connection closed, will wait", progress: 70 },
+    { keyword: "seconds before attempting to reconnect", progress: 75 },
+    { keyword: "Trying to reconnect to device", progress: 80 },
+    { keyword: "Connected! Writing checksum", progress: 90 },
+    { keyword: "Upgrade completed successfully", progress: 100 },
+  ];
+
+  let currentProgress = 0;
+
+  // Find the highest progress step that has been completed
+  for (const step of upgradeSteps) {
+    if (logContent.includes(step.keyword)) {
+      currentProgress = Math.max(currentProgress, step.progress);
+    }
+  }
+
+  // If no specific steps found but we're in progress, show at least 5%
+  if (currentProgress === 0 && logContent.length > 0) {
+    currentProgress = 5;
+  }
+
+  return currentProgress;
+}
+
+function updateUpgradeOperationLog(logData) {
+  let $ = django.jQuery;
+
+  // Find all in-progress operations and update their logs
+  $(".field-status .readonly").each(function () {
+    let statusField = $(this);
+    let currentStatusText =
+      statusField.find(".upgrade-status-container span").text() ||
+      statusField.text().trim();
+
+    if (
+      currentStatusText === "in progress" ||
+      currentStatusText === "in-progress"
+    ) {
+      let operationFieldset = $(this).closest("fieldset");
+      let logElement = operationFieldset.find(".field-log .readonly");
+      let shouldScroll = isScrolledToBottom(logElement);
+
+      // Append new log line
+      let currentLog = logElement.text().replace(/\s*$/, ""); // Remove trailing whitespace
+      let newLog = currentLog
+        ? currentLog + "\n" + logData.content
+        : logData.content;
+      logElement.html(
+        newLog + '<div class="loader upgrade-progress-loader"></div>',
+      );
+
+      // Update progress bar with new log content
+      let operation = {
+        status: "in-progress",
+        log: newLog,
+        id: null,
+      };
+      updateStatusWithProgressBar(statusField, operation);
+
+      if (shouldScroll) {
+        scrollToBottom(logElement);
+      }
+    }
+  });
+}
+
+function updateUpgradeOperationStatus(statusData) {
+  let $ = django.jQuery;
+
+  // Update status for in-progress operations
+  $(".field-status .readonly").each(function () {
+    let statusField = $(this);
+    let currentStatusText =
+      statusField.find(".upgrade-status-container span").text() ||
+      statusField.text().trim();
+
+    if (
+      currentStatusText === "in progress" ||
+      currentStatusText === "in-progress"
+    ) {
+      // Get current log content for progress calculation
+      let operationFieldset = statusField.closest("fieldset");
+      let logElement = operationFieldset.find(".field-log .readonly");
+      let logContent = logElement.length > 0 ? logElement.text().trim() : "";
+
+      // Create operation object for updateStatusWithProgressBar
+      let operation = {
+        status: statusData.status,
+        log: logContent,
+        id: null,
+      };
+
+      updateStatusWithProgressBar(statusField, operation);
+
+      // Remove loader if operation completed
+      if (statusData.status !== "in-progress") {
+        logElement.find(".upgrade-progress-loader").remove();
+      }
+    }
+  });
+}
+
+function getStatusColor(status) {
+  switch (status) {
+    case "success":
+      return "#bbffbb";
+    case "failed":
+      return "#ff949461";
+    case "aborted":
+      return "#ffcc99";
+    case "in-progress":
+      return "#cce5ff";
+    default:
+      return "inherit";
+  }
+}
+
+function isScrolledToBottom(element) {
+  if (!element.length) return false;
+  let el = element[0];
+  return el.scrollHeight - el.clientHeight <= el.scrollTop + 1;
+}
+
+function scrollToBottom(element) {
+  if (element.length) {
+    let el = element[0];
+    el.scrollTop = el.scrollHeight - el.clientHeight;
+  }
+}
+
+function isUpgradeOperationsAbsent() {
+  return document.getElementById("upgradeoperation_set-group") === null;
+}
+
+function getObjectIdFromUrl() {
+  let objectId;
+  try {
+    objectId = /\/((\w{4,12}-?)){5}\//.exec(window.location)[0];
+  } catch (error) {
+    try {
+      objectId = /\/(\d+)\//.exec(window.location)[0];
+    } catch (error) {
+      return null;
+    }
+  }
+  return objectId.replace(/\//g, "");
+}
+
+function getWebSocketProtocol() {
+  let protocol = "ws://";
+  if (window.location.protocol === "https:") {
+    protocol = "wss://";
+  }
+  return protocol;
+}
+
+function getFormattedDateTimeString(dateTimeString) {
+  let dateTime = new Date(dateTimeString);
+  return dateTime.toLocaleString();
+}

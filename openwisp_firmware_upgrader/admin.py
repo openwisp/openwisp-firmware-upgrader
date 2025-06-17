@@ -8,6 +8,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -19,7 +20,6 @@ from django.utils.timezone import localtime
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
-from django.core.paginator import Paginator, InvalidPage
 
 from openwisp_controller.config.admin import DeactivatedDeviceReadOnlyMixin, DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
@@ -318,7 +318,9 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "aborted_rate",
         "readonly_upgrade_options",
     ]
-    change_form_template = "admin/firmware_upgrader/batch_upgrade_operation_change_form.html"
+    change_form_template = (
+        "admin/firmware_upgrader/batch_upgrade_operation_change_form.html"
+    )
     device_upgrades_per_page = 20
     # search_fields = [
     #     "upgradeoperation__device__id",
@@ -333,7 +335,9 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        return qs.prefetch_related("upgradeoperation_set__device", "upgradeoperation_set__image")
+        return qs.prefetch_related(
+            "upgradeoperation_set__device", "upgradeoperation_set__image"
+        )
 
     def get_upgrade_operations(self, obj):
         return obj.upgradeoperation_set.all().select_related("device", "image")
@@ -349,7 +353,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         if obj:
             upgrades_qs = self.get_upgrade_operations(obj)
             paginator = Paginator(upgrades_qs, self.device_upgrades_per_page)
-            page_number = request.GET.get('page', 1)
+            page_number = request.GET.get("page", 1)
             try:
                 page_obj = paginator.page(page_number)
             except InvalidPage:
@@ -501,6 +505,18 @@ class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperation
         "modified",
     ]
     readonly_fields = fields
+
+    class Media:
+        js = [
+            "connection/js/lib/reconnecting-websocket.min.js",
+            "firmware-upgrader/js/upgrade-progress.js",
+        ]
+        css = {
+            "all": [
+                "firmware-upgrader/css/upgrade-progress.css",
+                "firmware-upgrader/css/upgrade-options.css",
+            ]
+        }
 
     def get_queryset(self, request, select_related=True):
         """
