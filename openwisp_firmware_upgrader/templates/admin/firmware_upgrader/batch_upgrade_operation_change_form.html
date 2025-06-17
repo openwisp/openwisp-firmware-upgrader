@@ -1,159 +1,153 @@
 {% extends "admin/change_form.html" %}
-{% load i18n admin_urls static %}
+{% load i18n admin_urls static admin_list ow_tags %}
 
 {% block extrahead %}
 {{ block.super }}
+<link rel="stylesheet" type="text/css" href="{% static "admin/css/changelists.css" %}">
+<link rel="stylesheet" type="text/css" href="{% static "admin/css/ow-filters.css" %}">
+<link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/batch-upgrade-operation.css" %}">
+<script src="{% static "admin/js/ow-filter.js" %}"></script>
 <script type="text/javascript" src="{% static 'admin/js/jquery.init.js' %}"></script>
-<script type="text/javascript">
-    django.jQuery(function($) {
-        var searchInput = $('#searchbar');
-        var table = $('#result_list');
-        var rows = table.find('tbody tr');
-
-        searchInput.on('keyup', function() {
-            var searchText = $(this).val().toLowerCase();
-            
-            rows.each(function() {
-                var deviceName = $(this).find('td:first').text().toLowerCase();
-                if (deviceName.indexOf(searchText) > -1) {
-                    $(this).show();
-                } else {
-                    $(this).hide();
-                }
-            });
-        });
-    });
-</script>
 {% endblock %}
 
 {% block content %}
 {{ block.super }}
-<div class="module aligned">
-    <div class="results">
-        <table id="result_list" style="width: 100%;">
-            <thead>
-                <tr>
-                    <th>{% trans "Device" %}</th>
-                    <th>{% trans "Status" %}</th>
-                    <th>{% trans "Image" %}</th>
-                    <th>{% trans "Last update" %}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for operation in upgrade_operations %}
-                <tr class="{% cycle 'row1' 'row2' %}">
-                    <td>
-                        <strong><a href="{% url 'admin:firmware_upgrader_upgradeoperation_change' operation.id %}">{{ operation.device.name }}</a></strong>
-                    </td>
-                    <td>{{ operation.get_status_display }}</td>
-                    <td>
-                        {% if operation.image %}
-                            {{ operation.image }}
-                        {% else %}
-                            -
-                        {% endif %}
-                    </td>
-                    <td>{{ operation.modified }}</td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="4">{% trans "No device upgrades found." %}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <div class="paginator">
-            <span class="step-links">
-                {% if page_obj.has_previous %}
-                    <a href="?page={{ page_obj.previous_page_number }}">{% trans 'Previous' %}</a>
-                {% endif %}
-                {% for i in paginator.page_range %}
-                    {% if page_obj.number == i %}
-                        <span class="this-page">{{ i }}</span>
-                    {% else %}
-                        <a href="?page={{ i }}">{{ i }}</a>
+
+<!-- Upgrade Operations Section -->
+<h1 class="upgrade-operations-title">{% trans "Upgrade Operations" %}</h1>
+        
+        <!-- OpenWISP Filter Section -->
+        {% if filter_specs %}
+        <div id="ow-changelist-filter">
+            <div class="filters-bottom">
+                <span class="left-arrow">
+                    <img src="{% static "ui/openwisp/images/left-arrow.svg" %}" alt="left">
+                </span>
+                <span class="right-arrow">
+                    <img src="{% static "ui/openwisp/images/right-arrow.svg" %}" alt="right">
+                </span>
+                <div aria-label="changelist filters region" tabindex="0" class="ow-filter-slider">
+                    <div class="slider">
+                        {% for spec in filter_specs %}
+                        <div class="ow-filter {{ spec.title|join_string }}">
+                            {% for choice in spec.choices %}
+                                {% if choice.selected %}
+                                <div id="{{ spec.title|join_string }}" aria-label="by {{ spec.title }}"
+                                    tabindex="0" aria-controls="choices-{{ spec.title|join_string }}"
+                                    role="button" aria-expanded="false" class="filter-title">
+                                    <h3>
+                                        {% blocktrans with filter_title=spec.title %} By {{ filter_title }} {% endblocktrans %}
+                                    </h3>
+                                    <div class="selected-option" tabindex="0" title="{{ choice.display }}">
+                                        {{ choice.display }}
+                                    </div>
+                                </div>
+                                {% endif %}
+                            {% endfor %}
+                            <div id="choices-{{ spec.title|join_string }}" role="region"
+                                aria-labelledby="{{ spec.title|join_string }}" class="filter-options">
+                                <ul>
+                                {% for choice in spec.choices %}
+                                    <li>
+                                        <a {% if choice.selected %} class="selected" {% endif %}
+                                            title="{{ choice.display | default_if_none:'------'}}"
+                                            href="{{ choice.query_string|iriencode }}">
+                                            {{ choice.display | default_if_none:'------' }}
+                                        </a>
+                                    </li>
+                                {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="filters-top">
+                <h2>{% trans 'Filter' %}</h2>
+                <div class="filters-control">
+                    {% if has_active_filters %}
+                        <h3 id="changelist-filter-clear" style="margin: 0; font-size: 14px; font-weight: normal;">
+                            <a href="?" style="color: #666; text-decoration: none;">✖ {% trans "Clear all filters" %}</a>
+                        </h3>
                     {% endif %}
-                {% endfor %}
-                {% if page_obj.has_next %}
-                    <a href="?page={{ page_obj.next_page_number }}">{% trans 'Next' %}</a>
-                {% endif %}
-            </span>
+                    {% if filter_specs|length > 4 %}
+                        <button id="ow-apply-filter" class="danger-btn">Apply Filters</button>
+                    {% endif %}
+                </div>
+            </div>
         </div>
-    </div>
+        {% endif %}
+
+<!-- Search Bar -->
+<div class="search-section">
+    <form method="get" class="search-form">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+        </svg>
+        <input type="text" id="searchbar" name="q" placeholder="{% trans 'Search devices...' %}" value="{{ request.GET.q }}" class="search-input">
+        <button type="submit" class="search-button">{% trans "Search" %}</button>
+        {% for param, value in request.GET.items %}
+            {% if param != 'q' and param != 'page' %}
+                <input type="hidden" name="{{ param }}" value="{{ value }}">
+            {% endif %}
+        {% endfor %}
+    </form>
 </div>
 
-<style>
-.custom-searchbar-container {
-    background: #fafafa;
-    border: 1px solid #eee;
-    border-radius: 4px;
-    padding: 18px 10px 18px 10px;
-    margin-bottom: 18px;
-}
-.custom-searchbar-wrapper {
-    display: flex;
-    align-items: center;
-    position: relative;
-    max-width: 100%;
-}
-.custom-searchbar-icon {
-    position: absolute;
-    left: 14px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 2;
-    width: 22px;
-    height: 22px;
-    display: flex;
-    align-items: center;
-    pointer-events: none;
-}
-.custom-searchbar-icon img {
-    width: 20px;
-    height: 20px;
-    opacity: 0.7;
-}
-.custom-searchbar-input {
-    padding: 8px 12px 8px 42px;
-    border: 1px solid #ddd;
-    border-radius: 6px 0 0 6px;
-    font-size: 16px;
-    flex: 1;
-    background: #fff;
-    box-shadow: none;
-    outline: none;
-    height: 44px;
-}
-.custom-searchbar-btn {
-    padding: 0 28px;
-    height: 44px;
-    background: #222;
-    color: #fff;
-    border: none;
-    border-radius: 0 6px 6px 0;
-    font-size: 16px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s;
-    margin-left: -1px;
-    box-shadow: none;
-}
-.custom-searchbar-btn:hover {
-    background: #444;
-}
-@media (max-width: 600px) {
-    .custom-searchbar-wrapper {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    .custom-searchbar-btn, .custom-searchbar-input {
-        border-radius: 6px !important;
-        margin: 0 0 8px 0;
-        width: 100%;
-    }
-    .custom-searchbar-btn {
-        margin-left: 0;
-    }
-}
-</style>
+<!-- Results Table -->
+<div class="results-container">
+    <table id="result_list" class="results-table">
+        <thead>
+            <tr>
+                <th>{% trans "DEVICE" %}</th>
+                <th>{% trans "STATUS" %}</th>
+                <th>{% trans "IMAGE" %}</th>
+                <th>{% trans "LAST UPDATED" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for operation in upgrade_operations %}
+            <tr class="{% cycle 'row1' 'row2' %}">
+                <td>
+                    <a href="{% url 'admin:firmware_upgrader_upgradeoperation_change' operation.id %}" class="device-link">{{ operation.device.name }}</a>
+                </td>
+                <td>{{ operation.get_status_display }}</td>
+                <td>
+                    {% if operation.image %}
+                        {{ operation.image }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>{{ operation.modified|date:"j M Y, G:i a." }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" class="empty-results">{% trans "No device upgrades found." %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="pagination">
+        <span class="step-links">
+            {% if page_obj.has_previous %}
+                <a href="?{% if request.GET.q %}q={{ request.GET.q }}&{% endif %}page={{ page_obj.previous_page_number }}">{% trans 'Previous' %}</a>
+            {% endif %}
+            <span class="current-page">
+                {% trans 'Page' %} {{ page_obj.number }} {% trans 'of' %} {{ page_obj.paginator.num_pages }}
+            </span>
+            {% if page_obj.has_next %}
+                <a href="?{% if request.GET.q %}q={{ request.GET.q }}&{% endif %}page={{ page_obj.next_page_number }}">{% trans 'Next' %}</a>
+            {% endif %}
+        </span>
+    </div>
+    {% endif %}
+</div>
+
+
 {% endblock %} 

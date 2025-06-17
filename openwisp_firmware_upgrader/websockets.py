@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.layers import get_channel_layer
@@ -73,8 +75,6 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
     async def send_update(self, event):
         """Send upgrade progress updates to the device page"""
-        from copy import deepcopy
-
         data = deepcopy(event)
         data.pop("type")
         await self.send_json(data)

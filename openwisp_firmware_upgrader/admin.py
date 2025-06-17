@@ -44,6 +44,7 @@ Category = load_model("Category")
 Build = load_model("Build")
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+Organization = swapper.load_model("openwisp_users", "Organization")
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -322,16 +323,6 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "admin/firmware_upgrader/batch_upgrade_operation_change_form.html"
     )
     device_upgrades_per_page = 20
-    # search_fields = [
-    #     "upgradeoperation__device__id",
-    #     "upgradeoperation__device__name",
-    #     "upgradeoperation__device__mac_address",
-    #     "upgradeoperation__device__key",
-    #     "upgradeoperation__device__model",
-    #     "upgradeoperation__device__os",
-    #     "upgradeoperation__device__system",
-    #     "upgradeoperation__device__devicelocation__location__address"
-    # ]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -351,16 +342,101 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         extra_context = extra_context or {}
         obj = self.get_object(request, object_id)
         if obj:
+            # Get upgrade operations with search and filtering
             upgrades_qs = self.get_upgrade_operations(obj)
+
+            # Handle search
+            search_query = request.GET.get("q", "")
+            if search_query:
+                upgrades_qs = upgrades_qs.filter(device__name__icontains=search_query)
+
+            # Get current filter values
+            current_status = request.GET.get("status", "")
+            current_org = request.GET.get("organization", "")
+
+            # Apply filters to queryset
+            if current_status:
+                upgrades_qs = upgrades_qs.filter(status=current_status)
+            if current_org:
+                upgrades_qs = upgrades_qs.filter(device__organization_id=current_org)
+
+            # Create filter specs for the template
+            filter_specs = []
+
+            # Status filter
+            status_choices = [
+                {
+                    "display": _("All"),
+                    "selected": not current_status,
+                    "query_string": "?",
+                },
+                {
+                    "display": _("idle"),
+                    "selected": current_status == "idle",
+                    "query_string": "?status=idle",
+                },
+                {
+                    "display": _("in progress"),
+                    "selected": current_status == "in-progress",
+                    "query_string": "?status=in-progress",
+                },
+                {
+                    "display": _("completed successfully"),
+                    "selected": current_status == "success",
+                    "query_string": "?status=success",
+                },
+                {
+                    "display": _("completed with some failures"),
+                    "selected": current_status == "failed",
+                    "query_string": "?status=failed",
+                },
+            ]
+
+            class StatusFilter:
+                title = _("status")
+                choices = status_choices
+
+            filter_specs.append(StatusFilter())
+
+            # Organization filter
+            org_choices = [
+                {"display": _("All"), "selected": not current_org, "query_string": "?"}
+            ]
+            for org in Organization.objects.all().order_by("name"):
+                org_choices.append(
+                    {
+                        "display": org.name,
+                        "selected": current_org == str(org.id),
+                        "query_string": f"?organization={org.id}",
+                    }
+                )
+
+            class OrganizationFilter:
+                title = _("organization")
+                choices = org_choices
+
+            filter_specs.append(OrganizationFilter())
+
+            # Pagination
             paginator = Paginator(upgrades_qs, self.device_upgrades_per_page)
             page_number = request.GET.get("page", 1)
             try:
                 page_obj = paginator.page(page_number)
             except InvalidPage:
                 page_obj = paginator.page(1)
-            extra_context["upgrade_operations"] = page_obj.object_list
-            extra_context["page_obj"] = page_obj
-            extra_context["paginator"] = paginator
+
+            extra_context.update(
+                {
+                    "upgrade_operations": page_obj.object_list,
+                    "page_obj": page_obj,
+                    "paginator": paginator,
+                    "filter_specs": filter_specs,
+                    "has_active_filters": any(
+                        request.GET.get(param) for param in ["status", "organization"]
+                    ),
+                }
+            )
+
         return super().change_view(request, object_id, extra_context)
 
     def get_readonly_fields(self, request, obj=None):
