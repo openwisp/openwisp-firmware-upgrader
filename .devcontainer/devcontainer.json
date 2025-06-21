@@ -1,0 +1,16 @@
+{
+    "name": "OpenWISP Firmware Upgrader Dev Container",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "settings": {
+        "python.pythonPath": "/usr/local/bin/python"
+    },
+    "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "batisteo.vscode-django"
+    ],
+    "postCreateCommand": "pip install -r requirements.txt",
+    "forwardPorts": [8000],
+    "remoteUser": "vscode"
