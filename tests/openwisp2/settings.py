@@ -96,12 +96,13 @@ ROOT_URLCONF = "openwisp2.urls"
 
 ASGI_APPLICATION = "openwisp2.routing.application"
 CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
-        },
-    },
+    "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
+    # "default": {
+    #     "BACKEND": "channels_redis.core.RedisChannelLayer",
+    #     "CONFIG": {
+    #         "hosts": [("127.0.0.1", 6379)],
+    #     },
+    # },
 }
 
 
@@ -171,7 +172,7 @@ SESSION_CACHE_ALIAS = "default"
 CELERY_BROKER_URL = "redis://localhost/2"
 CELERY_RESULT_BACKEND = "redis://localhost/2"
 
-# Only use eager mode for actual tests  
+# Only use eager mode for actual tests
 if TESTING and "pytest" in sys.modules:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
@@ -191,7 +192,10 @@ LOGGING = {
         "py.warnings": {"handlers": ["console"]},
         "celery": {"handlers": ["console"], "level": "DEBUG"},
         "celery.task": {"handlers": ["console"], "level": "DEBUG"},
-        "openwisp_firmware_upgrader.websockets": {"handlers": ["console"], "level": "DEBUG"},
+        "openwisp_firmware_upgrader.websockets": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+        },
         "channels": {"handlers": ["console"], "level": "DEBUG"},
     },
 }

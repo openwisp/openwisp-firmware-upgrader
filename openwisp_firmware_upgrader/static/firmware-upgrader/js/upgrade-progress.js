@@ -1,12 +1,5 @@
 "use strict";
 
-var gettext =
-  window.gettext ||
-  function (word) {
-    return word;
-  };
-var interpolate = interpolate || function () {};
-
 django.jQuery(function ($) {
   const firmwareDeviceId = getObjectIdFromUrl();
 
@@ -16,187 +9,33 @@ django.jQuery(function ($) {
     }
 
     let upgradeSection = $("#upgradeoperation_set-group");
-    if (upgradeSection.length === 0) {
-      upgradeSection = $("[id*='upgradeoperation']").closest(".inline-group");
-    }
 
     // Initialize existing upgrade operations with progress bars
     initializeExistingUpgradeOperations($);
 
-    // Debug: Check required variables
-    console.log("Debugging WebSocket setup:");
-    console.log("firmwareDeviceId:", firmwareDeviceId);
-    console.log("owControllerApiHost available:", typeof owControllerApiHost !== "undefined");
-    if (typeof owControllerApiHost !== "undefined") {
-      console.log("owControllerApiHost:", owControllerApiHost);
-      console.log("owControllerApiHost.host:", owControllerApiHost.host);
-    } else {
-      console.warn("owControllerApiHost is not defined - using fallback host");
-    }
-
     // Determine the host to use for WebSocket connection
     let wsHost = null;
-    if (typeof owControllerApiHost !== "undefined" && owControllerApiHost.host) {
+    if (
+      typeof owControllerApiHost !== "undefined" &&
+      owControllerApiHost.host
+    ) {
       wsHost = owControllerApiHost.host;
-      console.log("Using owControllerApiHost.host:", wsHost);
     } else {
-      // Fallback to current window location host
       wsHost = window.location.host;
-      console.log("Using fallback host from window.location.host:", wsHost);
     }
 
     if (wsHost && firmwareDeviceId) {
       const wsUrl = `${getWebSocketProtocol()}${wsHost}/ws/firmware-upgrader/device/${firmwareDeviceId}/`;
-      
-      console.log("WebSocket URL:", wsUrl);
-      console.log("WebSocket protocol:", getWebSocketProtocol());
-      console.log("Current window.location:", window.location.href);
-      
-      // Check if ReconnectingWebSocket is available
-      if (typeof ReconnectingWebSocket === "undefined") {
-        console.error("ReconnectingWebSocket is not defined - check if the library is loaded");
-        return;
-      }
-      
-      console.log("Creating ReconnectingWebSocket instance...");
-      const upgradeProgressWebSocket = new ReconnectingWebSocket(
-        wsUrl,
-        null,
-        {
-          debug: true,  // Enable debug mode for ReconnectingWebSocket
-          automaticOpen: false,
-          timeoutInterval: 7000,
-          maxRetries: 5,
-          retryInterval: 3000,
-        },
-      );
-      
-      console.log("ReconnectingWebSocket instance created:", upgradeProgressWebSocket);
+
+      const upgradeProgressWebSocket = new ReconnectingWebSocket(wsUrl, null, {
+        automaticOpen: false,
+        timeoutInterval: 7000,
+        maxRetries: 5,
+        retryInterval: 3000,
+      });
 
       // Initialize websocket connection
       initUpgradeProgressWebSockets($, upgradeProgressWebSocket);
-      
-      // Store reference globally for debugging
-      window.debugWebSocket = upgradeProgressWebSocket;
-      
-      // Add a test function for manual debugging
-      window.testWebSocketConnection = function() {
-        console.log("Testing WebSocket connection...");
-        console.log("WebSocket ready state:", upgradeProgressWebSocket.readyState);
-        console.log("WebSocket URL:", upgradeProgressWebSocket.url);
-        console.log("Expected device group: firmware_upgrader.device-" + firmwareDeviceId);
-        
-        // Check if user is authenticated
-        console.log("User authentication check:");
-        console.log("- Document cookies:", document.cookie);
-        console.log("- CSRF token:", document.querySelector('[name=csrfmiddlewaretoken]')?.value);
-        
-        if (upgradeProgressWebSocket.readyState === WebSocket.OPEN) {
-          console.log("✅ WebSocket is connected and ready");
-        } else if (upgradeProgressWebSocket.readyState === WebSocket.CONNECTING) {
-          console.log("🔄 WebSocket is connecting...");
-        } else if (upgradeProgressWebSocket.readyState === WebSocket.CLOSING) {
-          console.log("⚠️ WebSocket is closing...");
-        } else if (upgradeProgressWebSocket.readyState === WebSocket.CLOSED) {
-          console.log("❌ WebSocket is closed");
-        }
-        
-        // Test if the connection stays open by sending a ping
-        if (upgradeProgressWebSocket.readyState === WebSocket.OPEN) {
-          console.log("Testing connection stability...");
-          // Note: ReconnectingWebSocket might not support ping, but we can try
-          try {
-            upgradeProgressWebSocket.send('{"type":"ping"}');
-            console.log("Ping sent successfully");
-          } catch (e) {
-            console.log("Ping failed (normal for some WebSocket implementations):", e.message);
-          }
-        }
-      };
-      
-      // Add a test function to simulate a test message
-      window.sendTestWebSocketMessage = function() {
-        console.log("Testing if WebSocket can receive messages...");
-        // This will test if we can at least receive a test message
-        // Note: This is just to test the client-side reception
-        const testMessage = {
-          model: "UpgradeOperation",
-          data: {
-            type: "log",
-            content: "Test message from JavaScript console",
-            status: "in-progress",
-            timestamp: new Date().toISOString()
-          }
-        };
-        
-        console.log("Simulating WebSocket message reception:", testMessage);
-        
-        // Create a proper MessageEvent and dispatch it to the WebSocket
-        try {
-          const messageEvent = new MessageEvent('message', {
-            data: JSON.stringify(testMessage),
-            origin: window.location.origin,
-            source: window
-          });
-          
-          // Dispatch the event to the WebSocket
-          upgradeProgressWebSocket.dispatchEvent(messageEvent);
-          console.log("Test message dispatched successfully");
-        } catch (error) {
-          console.error("Error dispatching test message:", error);
-          
-          // Fallback: manually call the message processing logic
-          console.log("Trying fallback method...");
-          try {
-            const mockEvent = {
-              data: JSON.stringify(testMessage)
-            };
-            
-            // Directly call the message processing logic
-            console.log("upgradeProgressWebSocket.addEventListener('message') called", mockEvent);
-            console.log("Raw message data:", mockEvent.data);
-            
-            let data = JSON.parse(mockEvent.data);
-            console.log("Parsed data:", data);
-
-            // Check if this is an upgrade operation update
-            if (data.model !== "UpgradeOperation") {
-              console.log("Not an UpgradeOperation, received model:", data.model);
-              return;
-            }
-
-            data = data.data;
-            console.log("Processing UpgradeOperation data:", data);
-
-            // Handle different types of updates
-            if (data.type === "operation_update") {
-              console.log("Handling operation_update");
-              updateUpgradeOperationDisplay(data.operation);
-            } else if (data.type === "log") {
-              console.log("Handling log update");
-              updateUpgradeOperationLog(data);
-            } else if (data.type === "status") {
-              console.log("Handling status update");
-              updateUpgradeOperationStatus(data);
-            } else {
-              console.log("Unknown data type:", data.type);
-            }
-            
-            console.log("Fallback test message processed successfully");
-          } catch (fallbackError) {
-            console.error("Error in fallback processing:", fallbackError);
-          }
-        }
-      };
-      
-      console.log("WebSocket debugging functions available:");
-      console.log("- window.testWebSocketConnection() - Test connection status");
-      console.log("- window.sendTestWebSocketMessage() - Simulate message reception");
-      console.log("- window.debugWebSocket - Direct access to WebSocket instance");
-    } else {
-      console.error("Cannot initialize WebSocket: missing host or firmwareDeviceId");
-      console.error("wsHost:", wsHost);
-      console.error("firmwareDeviceId:", firmwareDeviceId);
     }
   }, 500);
 });
@@ -204,21 +43,19 @@ django.jQuery(function ($) {
 let upgradeOperationsInitialized = false;
 
 // Store accumulated log content to preserve across WebSocket reconnections
-let accumulatedLogContent = new Map(); // operationId -> full log content
+let accumulatedLogContent = new Map();
 
 function formatLogForDisplay(logContent) {
-  // Convert newlines to <br> tags for proper line breaks in HTML
-  return logContent ? logContent.replace(/\n/g, '<br>') : '';
+  return logContent ? logContent.replace(/\n/g, "<br>") : "";
 }
 
 function requestCurrentOperationState(websocket) {
   // Request current state of any in-progress operations to get full log content
-  // This helps when switching tabs where DOM might show truncated logs
   if (websocket.readyState === WebSocket.OPEN) {
     try {
       const requestMessage = {
         type: "request_current_state",
-        device_id: getObjectIdFromUrl()
+        device_id: getObjectIdFromUrl(),
       };
       websocket.send(JSON.stringify(requestMessage));
     } catch (error) {
@@ -241,7 +78,6 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
     let statusField = $(this);
     let statusText = statusField.text().trim();
 
-    // Skip if already has progress bar
     if (statusField.find(".upgrade-status-container").length > 0) {
       return;
     }
@@ -255,23 +91,23 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
     ) {
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
-      
+
       // Get operation ID for restoring accumulated content
       let operationIdInput = operationFieldset.find("input[name*='id'][value]");
-      let operationId = operationIdInput.length > 0 ? operationIdInput.val() : "unknown";
-      
-      // Use accumulated log content if available, fallback to DOM content
+      let operationId =
+        operationIdInput.length > 0 ? operationIdInput.val() : "unknown";
+
+      // Use accumulated log content if available
       let logContent;
       if (accumulatedLogContent.has(operationId)) {
         logContent = accumulatedLogContent.get(operationId);
-        
-        // Update DOM with accumulated content to ensure UI is in sync
+
         if (logElement.length > 0) {
           logElement.html(formatLogForDisplay(logContent));
         }
       } else {
         logContent = logElement.length > 0 ? logElement.text().trim() : "";
-        
+
         // Store this initial content for future use
         if (logContent && operationId !== "unknown") {
           accumulatedLogContent.set(operationId, logContent);
@@ -301,39 +137,25 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
 }
 
 function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
-  console.log("initUpgradeProgressWebSockets function called");
-  
-  // Add comprehensive WebSocket event handlers for debugging
   upgradeProgressWebSocket.addEventListener("open", function (e) {
-    console.log("WebSocket connection opened successfully", e);
-    
-    // Reset initialization flag and re-initialize existing operations when WebSocket reconnects
-    // This ensures progress bars and logs are properly restored after tab switches
     upgradeOperationsInitialized = false;
-    
+
     // Request current state of in-progress operations from server to get full log content
-    setTimeout(function() {
+    setTimeout(function () {
       requestCurrentOperationState(upgradeProgressWebSocket);
-      
+
       // Wait a bit for the server response before initializing with DOM content
-      setTimeout(function() {
+      setTimeout(function () {
         initializeExistingUpgradeOperations($, false);
       }, 200);
     }, 100);
   });
 
   upgradeProgressWebSocket.addEventListener("close", function (e) {
-    console.log("WebSocket connection closed", e.code, e.reason, e.wasClean);
-    
-    // Reset initialization flag when WebSocket closes to ensure clean state
     upgradeOperationsInitialized = false;
-    
+
     if (e.code === 1006) {
-      console.error("WebSocket closed abnormally - possible authentication or routing issue");
-    } else if (e.code === 1000) {
-      console.log("WebSocket closed normally");
-    } else {
-      console.error("WebSocket closed with error code:", e.code, "reason:", e.reason);
+      console.error("WebSocket closed");
     }
   });
 
@@ -341,22 +163,16 @@ function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
     console.error("WebSocket error occurred", e);
   });
 
-  upgradeProgressWebSocket.addEventListener("connecting", function (e) {
-    console.log("WebSocket connecting...", e);
-  });
-
   upgradeProgressWebSocket.addEventListener("message", function (e) {
     try {
       let data = JSON.parse(e.data);
 
-      // Check if this is an upgrade operation update
       if (data.model !== "UpgradeOperation") {
         return;
       }
 
       data = data.data;
 
-      // Handle different types of updates
       if (data.type === "operation_update") {
         updateUpgradeOperationDisplay(data.operation);
       } else if (data.type === "log") {
@@ -365,20 +181,14 @@ function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
         updateUpgradeOperationStatus(data);
       }
     } catch (error) {
-      console.error("Error parsing WebSocket message:", error, "Raw data:", e.data);
+      console.error("Error parsing WebSocket message:", error);
     }
   });
-
-  // Open the WebSocket connection
-  console.log("Opening WebSocket connection...");
   upgradeProgressWebSocket.open();
 }
 
 function updateUpgradeOperationDisplay(operation) {
-  console.log("updateUpgradeOperationDisplay function called", operation);
   let $ = django.jQuery;
-
-  // Find the upgrade operation element by ID
   let operationIdInputField = $(`input[value="${operation.id}"]`);
   if (operationIdInputField.length === 0) {
     if (isUpgradeOperationsAbsent()) {
@@ -390,7 +200,6 @@ function updateUpgradeOperationDisplay(operation) {
   let operationFieldset = operationIdInputField.parent().children("fieldset");
   let statusField = operationFieldset.find(".field-status .readonly");
 
-  // Store the log content in accumulated storage for future tab switches
   if (operation.log && operation.id) {
     accumulatedLogContent.set(operation.id, operation.log);
   }
@@ -398,20 +207,22 @@ function updateUpgradeOperationDisplay(operation) {
   // Update status with progress bar
   updateStatusWithProgressBar(statusField, operation);
 
-  // Update log with scroll-to-bottom behavior
   let logElement = operationFieldset.find(".field-log .readonly");
   let shouldScroll = isScrolledToBottom(logElement);
 
   if (operation.status === "in-progress") {
     // Show loading indicator for in-progress operations
     logElement.html(
-      formatLogForDisplay(operation.log) + '<div class="loader upgrade-progress-loader"></div>',
+      formatLogForDisplay(operation.log) +
+        '<div class="loader upgrade-progress-loader"></div>',
     );
   } else {
     logElement.html(formatLogForDisplay(operation.log));
-    
-    // Clean up accumulated content for completed operations to prevent memory leaks
-    if (operation.status === "success" || operation.status === "failed" || operation.status === "aborted") {
+    if (
+      operation.status === "success" ||
+      operation.status === "failed" ||
+      operation.status === "aborted"
+    ) {
       accumulatedLogContent.delete(operation.id);
     }
   }
@@ -443,9 +254,8 @@ function updateStatusWithProgressBar(statusField, operation) {
   // Get log content to calculate real progress
   let logContent = operation.log || "";
   let progressPercentage = getProgressPercentage(status, logContent);
-  let progressClass = status.replace(/\s+/g, "-"); // Replace all spaces with dashes
+  let progressClass = status.replace(/\s+/g, "-");
 
-  // Create status container if it doesn't exist
   if (!statusField.find(".upgrade-status-container").length) {
     statusField.empty();
     statusField.append('<div class="upgrade-status-container"></div>');
@@ -453,7 +263,6 @@ function updateStatusWithProgressBar(statusField, operation) {
 
   let statusContainer = statusField.find(".upgrade-status-container");
 
-  // Build the status HTML with progress bar
   let statusHtml = `
     <span class="upgrade-status-${progressClass}">${status}</span>
   `;
@@ -496,10 +305,8 @@ function getProgressPercentage(status, logContent = "") {
   if (status === "success") {
     return 100;
   } else if (status === "failed" || status === "aborted") {
-    // Calculate progress based on how far we got before failing
     return calculateProgressFromLog(logContent);
   } else if (status === "in-progress" || status === "in progress") {
-    // Calculate real progress from log content
     return calculateProgressFromLog(logContent);
   }
   return 0;
@@ -536,7 +343,7 @@ function calculateProgressFromLog(logContent = "") {
     }
   }
 
-  // If no specific steps found but we're in progress, show at least 5%
+  // show at least 5%
   if (currentProgress === 0 && logContent.length > 0) {
     currentProgress = 5;
   }
@@ -564,26 +371,26 @@ function updateUpgradeOperationLog(logData) {
 
       // Get operation ID for storing accumulated content
       let operationIdInput = operationFieldset.find("input[name*='id'][value]");
-      let operationId = operationIdInput.length > 0 ? operationIdInput.val() : "unknown";
+      let operationId =
+        operationIdInput.length > 0 ? operationIdInput.val() : "unknown";
 
-      // Get current log content - use accumulated content if available, fallback to DOM
       let currentLog;
       if (accumulatedLogContent.has(operationId)) {
         currentLog = accumulatedLogContent.get(operationId);
       } else {
-        currentLog = logElement.text().replace(/\s*$/, ""); // Remove trailing whitespace
+        currentLog = logElement.text().replace(/\s*$/, "");
       }
 
-      // Append new log line
       let newLog = currentLog
         ? currentLog + "\n" + logData.content
         : logData.content;
-      
+
       // Store accumulated content in memory
       accumulatedLogContent.set(operationId, newLog);
-      
+
       logElement.html(
-        formatLogForDisplay(newLog) + '<div class="loader upgrade-progress-loader"></div>',
+        formatLogForDisplay(newLog) +
+          '<div class="loader upgrade-progress-loader"></div>',
       );
 
       // Update progress bar with new log content
@@ -592,7 +399,7 @@ function updateUpgradeOperationLog(logData) {
         log: newLog,
         id: operationId,
       };
-      
+
       updateStatusWithProgressBar(statusField, operation);
 
       if (shouldScroll) {
@@ -621,7 +428,6 @@ function updateUpgradeOperationStatus(statusData) {
       let logElement = operationFieldset.find(".field-log .readonly");
       let logContent = logElement.length > 0 ? logElement.text().trim() : "";
 
-      // Create operation object for updateStatusWithProgressBar
       let operation = {
         status: statusData.status,
         log: logContent,
@@ -629,8 +435,6 @@ function updateUpgradeOperationStatus(statusData) {
       };
 
       updateStatusWithProgressBar(statusField, operation);
-
-      // Remove loader if operation completed
       if (statusData.status !== "in-progress") {
         logElement.find(".upgrade-progress-loader").remove();
       }

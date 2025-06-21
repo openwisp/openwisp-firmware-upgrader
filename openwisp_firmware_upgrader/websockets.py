@@ -1,5 +1,5 @@
-from copy import deepcopy
 import logging
+from copy import deepcopy
 
 from asgiref.sync import async_to_sync, sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -49,97 +49,52 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
     def _is_user_authenticated(self):
         try:
             user = self.scope.get("user")
-            logger.debug(f"WebSocket authentication check - User: {user}, Authenticated: {getattr(user, 'is_authenticated', False)}")
             assert self.scope["user"].is_authenticated is True
         except (KeyError, AssertionError) as e:
-            logger.warning(f"WebSocket authentication failed: {e}")
             return False
         else:
-            logger.debug("WebSocket authentication successful")
             return True
 
     def is_user_authorized(self):
         user = self.scope["user"]
         is_authorized = user.is_superuser or user.is_staff
-        logger.debug(f"WebSocket authorization check - User: {user.username if hasattr(user, 'username') else 'Unknown'}, Superuser: {getattr(user, 'is_superuser', False)}, Staff: {getattr(user, 'is_staff', False)}, Authorized: {is_authorized}")
         return is_authorized
 
     async def connect(self):
-        logger.info(f"🟢 WebSocket connection attempt from {self.scope.get('client', 'unknown')}")
-        print(f"🟢 WebSocket connection attempt from {self.scope.get('client', 'unknown')}")
-        
         try:
             auth_result = self._is_user_authenticated()
             if not auth_result:
-                logger.warning("🔴 WebSocket connection rejected due to authentication failure")
-                print("🔴 WebSocket connection rejected due to authentication failure")
                 return
-                
+
             if not self.is_user_authorized():
-                logger.warning("🔴 WebSocket connection rejected due to authorization failure") 
-                print("🔴 WebSocket connection rejected due to authorization failure")
                 await self.close()
                 return
-                
+
             self.pk_ = self.scope["url_route"]["kwargs"]["pk"]
             self.group_name = f"firmware_upgrader.device-{self.pk_}"
-            logger.info(f"🟡 WebSocket connecting to group: {self.group_name}")
-            print(f"🟡 WebSocket connecting to group: {self.group_name}")
-            
+
         except (AssertionError, KeyError) as e:
-            logger.error(f"🔴 WebSocket connection failed with error: {e}")
-            print(f"🔴 WebSocket connection failed with error: {e}")
             await self.close()
         else:
-            logger.info(f"🔧 About to join group: {self.group_name}, channel: {self.channel_name}")
-            print(f"🔧 About to join group: {self.group_name}, channel: {self.channel_name}")
-            
             try:
                 await self.channel_layer.group_add(self.group_name, self.channel_name)
-                logger.info(f"🔧 Group add COMPLETED successfully")
-                print(f"🔧 Group add COMPLETED successfully")
             except Exception as e:
-                logger.error(f"🔧 Group add FAILED: {e}")
-                print(f"🔧 Group add FAILED: {e}")
                 await self.close()
                 return
-                
-            await self.accept()
-            logger.info(f"✅ WebSocket connection FULLY ESTABLISHED for device {self.pk_}, channel: {self.channel_name}")
-            print(f"✅ WebSocket connection FULLY ESTABLISHED for device {self.pk_}, channel: {self.channel_name}")
-            
-            # Test if consumer stays alive by logging every 5 seconds
-            import asyncio
-            asyncio.create_task(self._heartbeat())
 
-    async def _heartbeat(self):
-        """Log heartbeat to track if consumer stays alive"""
-        import asyncio
-        while True:
-            try:
-                await asyncio.sleep(5)
-                logger.info(f"💓 Consumer ALIVE for device {self.pk_}")
-                print(f"💓 Consumer ALIVE for device {self.pk_}")
-            except Exception:
-                break
+            await self.accept()
 
     async def disconnect(self, close_code):
-        logger.info(f"🔴 WebSocket disconnecting with code: {close_code}")
-        print(f"🔴 WebSocket disconnecting with code: {close_code}")
         try:
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
-            logger.info(f"🔴 WebSocket removed from group: {self.group_name}")
-            print(f"🔴 WebSocket removed from group: {self.group_name}")
         except AttributeError:
-            logger.warning("🔴 WebSocket disconnect: group_name not found")
-            print("🔴 WebSocket disconnect: group_name not found")
             return
 
     async def receive_json(self, content):
         """Handle incoming messages from the client"""
-        message_type = content.get('type')
-        
-        if message_type == 'request_current_state':
+        message_type = content.get("type")
+
+        if message_type == "request_current_state":
             await self._handle_current_state_request(content)
         else:
             logger.warning(f"Unknown message type received: {message_type}")
@@ -147,42 +102,47 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
     async def _handle_current_state_request(self, content):
         """Handle request for current state of in-progress operations"""
         try:
-            # Import here to avoid circular imports
             from .models import UpgradeOperation
-            
+
             # Get in-progress operations for this device using sync_to_async
             get_operations = sync_to_async(
-                lambda: list(UpgradeOperation.objects.filter(
-                    device_id=self.pk_,
-                    status__in=['in-progress', 'in progress']
-                ).values(
-                    'id', 'status', 'log', 'modified', 'created'
-                ))
+                lambda: list(
+                    UpgradeOperation.objects.filter(
+                        device_id=self.pk_, status__in=["in-progress", "in progress"]
+                    ).values("id", "status", "log", "modified", "created")
+                )
             )
-            
+
             operations = await get_operations()
-            
+
             # Send current state for each in-progress operation
             for operation in operations:
                 operation_data = {
-                    'id': str(operation['id']),
-                    'status': operation['status'],
-                    'log': operation['log'] or '',
-                    'modified': operation['modified'].isoformat() if operation['modified'] else None,
-                    'created': operation['created'].isoformat() if operation['created'] else None,
+                    "id": str(operation["id"]),
+                    "status": operation["status"],
+                    "log": operation["log"] or "",
+                    "modified": (
+                        operation["modified"].isoformat()
+                        if operation["modified"]
+                        else None
+                    ),
+                    "created": (
+                        operation["created"].isoformat()
+                        if operation["created"]
+                        else None
+                    ),
                 }
-                
+
                 # Send as operation update
-                await self.send_json({
-                    'model': 'UpgradeOperation',
-                    'data': {
-                        'type': 'operation_update',
-                        'operation': operation_data
+                await self.send_json(
+                    {
+                        "model": "UpgradeOperation",
+                        "data": {
+                            "type": "operation_update",
+                            "operation": operation_data,
+                        },
                     }
-                })
-                
-                logger.info(f"📤 Sent current state for operation {operation['id']}")
-                
+                )
         except Exception as e:
             logger.error(f"Error handling current state request: {e}")
 

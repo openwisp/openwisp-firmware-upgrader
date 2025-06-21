@@ -617,7 +617,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             # Convert lazy translations to strings to avoid serialization issues
             line_str = str(line)  # Force evaluation of lazy translations
             status_str = str(self.status)
-            
+
             # Publish to operation-specific channel
             publisher = UpgradeProgressPublisher(self.pk)
             publisher.publish_progress(
@@ -627,7 +627,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             # Publish to device-specific channel for real-time UI updates
             device_publisher = DeviceUpgradeProgressPublisher(self.device.pk, self.pk)
             device_publisher.publish_log(line_str, status_str)
-            
+
         except Exception as e:
             logger.error(f"Failed to publish WebSocket messages: {e}")
 
@@ -723,7 +723,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 # even if the reconnection failed,
                 # the firmware image has been flashed
                 installed = True
-        # if no exception has been raised, the upgrade was successful
         else:
             installed = True
             self.status = "success"
@@ -747,11 +746,15 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             device_publisher = DeviceUpgradeProgressPublisher(self.device.pk, self.pk)
             device_publisher.publish_operation_update(
                 {
-                    "id": str(self.pk),  # Convert UUID to string
-                    "device": str(self.device.pk),  # Convert UUID to string
+                    "id": str(self.pk),
+                    "device": str(self.device.pk),
                     "status": self.status,
                     "log": self.log,
-                    "image": str(getattr(self.image, "pk", None)) if getattr(self.image, "pk", None) else None,  # Convert UUID to string
+                    "image": (
+                        str(getattr(self.image, "pk", None))
+                        if getattr(self.image, "pk", None)
+                        else None
+                    ),  # Convert UUID to string
                     "modified": self.modified.isoformat() if self.modified else None,
                     "created": self.created.isoformat() if self.created else None,
                 }
