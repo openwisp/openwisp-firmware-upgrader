@@ -126,7 +126,9 @@ class OpenWrt(object):
                 )
 
     def log(self, value, save=True):
-        self.upgrade_operation.log_line(value, save=save)
+        # Convert lazy translations to strings to avoid Redis serialization issues
+        value_str = str(value)
+        self.upgrade_operation.log_line(value_str, save=save)
 
     def connect(self):
         """
@@ -181,12 +183,11 @@ class OpenWrt(object):
         # does not match the device UUID in the database:
         # it's most probably not the right device!
         if device_uuid != config_uuid:
-            self.log(
-                _(
-                    'Device UUID mismatch: expected "{expected}", '
-                    'found "{found}" in device configuration'
-                ).format(expected=device_uuid, found=config_uuid)
+            message = _(
+                'Device UUID mismatch: expected "{expected}", '
+                'found "{found}" in device configuration'
             )
+            self.log(str(message).format(expected=device_uuid, found=config_uuid))
             raise UpgradeAborted()
         self.log(_("Device identity verified successfully"))
 

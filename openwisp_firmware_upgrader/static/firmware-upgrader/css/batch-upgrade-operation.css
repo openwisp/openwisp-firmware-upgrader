@@ -1,0 +1,121 @@
+/* Batch Upgrade Operation CSS */
+
+/* Title styling */
+.upgrade-operations-title {
+  font-size: 22px;
+  font-weight: 300;
+  color: #333;
+}
+
+/* Search section styling */
+.search-section {
+  background: #f8f8f8;
+  padding: 20px;
+}
+
+.search-form {
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  width: 20px;
+  height: 20px;
+  color: #333;
+  margin-right: 15px;
+}
+
+.search-input {
+  width: 400px;
+  padding: 10px 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+}
+
+.search-button {
+  padding: 10px 24px;
+  background: #333;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 15px;
+}
+
+/* Results table styling */
+.results-container {
+  background: #fff;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.results-table thead tr {
+  background: #f8f9fa;
+}
+
+.results-table th {
+  padding: 12px 20px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.results-table td {
+  padding: 15px 20px;
+  color: #666;
+}
+
+.results-table tr.row1 {
+  background-color: #fff;
+}
+
+.results-table tr.row2 {
+  background-color: #f9f9f9;
+}
+
+.results-table tr:not(:last-child) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.device-link {
+  color: #d73027;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.empty-results {
+  padding: 40px;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+/* Pagination styling */
+.pagination {
+  padding: 15px 20px;
+  text-align: right;
+  border-top: 2px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.pagination a {
+  color: #333;
+  text-decoration: none;
+  margin: 0 5px;
+}
+
+.pagination .current-page {
+  margin: 0 10px;
+  color: #666;
+}
