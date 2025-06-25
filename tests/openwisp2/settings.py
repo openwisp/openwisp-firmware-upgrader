@@ -96,13 +96,12 @@ ROOT_URLCONF = "openwisp2.urls"
 
 ASGI_APPLICATION = "openwisp2.routing.application"
 CHANNEL_LAYERS = {
-    "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
-    # "default": {
-    #     "BACKEND": "channels_redis.core.RedisChannelLayer",
-    #     "CONFIG": {
-    #         "hosts": [("127.0.0.1", 6379)],
-    #     },
-    # },
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
 }
 
 
@@ -209,10 +208,10 @@ OPENWISP_CUSTOM_OPENWRT_IMAGES = (
 OPENWISP_USERS_AUTH_API = True
 # for testing purposes
 OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS = {
-    "reconnect_delay": 150,
-    "reconnect_retry_delay": 30,
-    "reconnect_max_retries": 10,
-    "upgrade_timeout": 80,
+    "reconnect_delay": 20,
+    "reconnect_retry_delay": 5,
+    "reconnect_max_retries": 5,
+    "upgrade_timeout": 25,
 }
 
 if os.environ.get("SAMPLE_APP", False):

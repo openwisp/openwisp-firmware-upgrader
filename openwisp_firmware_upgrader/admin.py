@@ -538,6 +538,17 @@ class DeviceFirmwareInline(
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
     sortable_options = {"disabled": True}
 
+    class Media:
+        js = [
+            "connection/js/lib/reconnecting-websocket.min.js",
+            "firmware-upgrader/js/upgrade-progress.js",
+        ]
+        css = {
+            "all": [
+                "firmware-upgrader/css/upgrade-progress.css",
+            ]
+        }
+
     def _get_conditional_queryset(self, request, obj, select_related=False):
         return bool(obj)
 
