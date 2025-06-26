@@ -22,7 +22,7 @@ Install spatialite and sqlite:
 .. code-block:: shell
 
     sudo apt-get install sqlite3 libsqlite3-dev openssl libssl-dev
-    sudo apt-get install gdal-bin libproj-dev libgeos-dev libspatialite-dev
+    sudo apt-get install gdal-bin libproj-dev libgeos-dev libspatialite-dev libsqlite3-mod-spatialite
 
 Installing for Development
 --------------------------
@@ -39,11 +39,13 @@ Navigate into the cloned repository:
 
     cd openwisp-firmware-upgrader/
 
-Launch Redis:
+.. _firmware_upgrader_dev_docker:
+
+Launch Redis and PostgreSQL:
 
 .. code-block:: shell
 
-    docker-compose up -d redis
+    docker compose up -d redis postgres
 
 Setup and activate a virtual-environment (we'll be using `virtualenv
 <https://pypi.org/project/virtualenv/>`_):
@@ -97,15 +99,31 @@ windows are needed):
     celery -A openwisp2 worker -l info
     celery -A openwisp2 beat -l info
 
-Run tests with:
+Run quality assurance tests with:
 
 .. code-block:: shell
 
-    # run qa checks
     ./run-qa-checks
+
+Run tests with (make sure you have the :ref:`selenium dependencies
+<selenium_dependencies>` installed locally first):
+
+.. code-block:: shell
 
     # standard tests
     ./runtests.py
+
+Some tests, such as the Selenium UI tests, require a PostgreSQL database
+to run. If you don't have a PostgreSQL database running on your system,
+you can use the :ref:`Docker Compose configuration provided in this
+repository <firmware_upgrader_dev_docker>`. Once set up, you can run these
+specific tests as follows:
+
+.. code-block:: shell
+
+    # Run only specific selenium tests classes
+    cd tests/
+    DJANGO_SETTINGS_MODULE=openwisp2.postgresql_settings ./manage.py test openwisp_firmware_upgrader.tests.test_selenium.TestDeviceAdmin
 
     # tests for the sample app
     SAMPLE_APP=1 ./runtests.py --keepdb --failfast

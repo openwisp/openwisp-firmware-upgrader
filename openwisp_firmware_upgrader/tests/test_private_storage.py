@@ -6,19 +6,19 @@ from openwisp_users.tests.utils import TestMultitenantAdminMixin
 
 from .base import TestUpgraderMixin
 
-OrganizationUser = swapper.load_model('openwisp_users', 'OrganizationUser')
+OrganizationUser = swapper.load_model("openwisp_users", "OrganizationUser")
 
 
 class TestPrivateStorage(TestUpgraderMixin, TestMultitenantAdminMixin, TestCase):
     def setUp(self):
         # Firmware image is created in the default organization
         self.image = self._create_firmware_image()
-        self.default_org = self._get_org('default')
+        self.default_org = self._get_org("default")
         self.test_org = self._get_org()
 
     def _download_firmware_assert_status(self, status_code):
         response = self.client.get(
-            reverse('serve_private_file', args=[self.image.file])
+            reverse("serve_private_file", args=[self.image.file])
         )
         self.assertEqual(response.status_code, status_code)
 

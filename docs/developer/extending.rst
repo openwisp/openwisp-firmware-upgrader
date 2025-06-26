@@ -168,9 +168,7 @@ Once you have created the models, add the following to your
     FIRMWARE_UPGRADER_BUILD_MODEL = "myupgrader.Build"
     FIRMWARE_UPGRADER_FIRMWAREIMAGE_MODEL = "myupgrader.FirmwareImage"
     FIRMWARE_UPGRADER_DEVICEFIRMWARE_MODEL = "myupgrader.DeviceFirmware"
-    FIRMWARE_UPGRADER_BATCHUPGRADEOPERATION_MODEL = (
-        "myupgrader.BatchUpgradeOperation"
-    )
+    FIRMWARE_UPGRADER_BATCHUPGRADEOPERATION_MODEL = "myupgrader.BatchUpgradeOperation"
     FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = "myupgrader.UpgradeOperation"
 
 Substitute ``myupgrader`` with the name you chose in step 1.
