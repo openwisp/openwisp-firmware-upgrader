@@ -555,6 +555,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                "x86-64-generic-squashfs-combined-efi.img.gz",
                 {
                     "label": "Generic x86/64 (UEFI)",
                     "boards": ("x86_64_efi"),
