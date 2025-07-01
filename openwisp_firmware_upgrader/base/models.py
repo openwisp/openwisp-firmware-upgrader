@@ -41,6 +41,11 @@ from ..utils import (
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
 )
+from ..websockets import (
+    BatchUpgradeProgressPublisher,
+    DeviceUpgradeProgressPublisher,
+    UpgradeProgressPublisher,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -461,9 +466,33 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             self.status = "success"
         self.save()
 
+    def _publish_batch_progress(self):
+        """Publish batch upgrade progress to WebSocket"""
+        try:
+            publisher = BatchUpgradeProgressPublisher(self.pk)
+            completed = self.upgrade_operations.exclude(status="in-progress").count()
+            total = self.total_operations
+            success_rate = float(self.success_rate) if self.success_rate else 0.0
+            failed_rate = float(self.failed_rate) if self.failed_rate else 0.0
+            aborted_rate = float(self.aborted_rate) if self.aborted_rate else 0.0
+            
+            publisher.publish_progress({
+                "type": "batch_status",
+                "status": str(self.status),
+                "completed": completed,
+                "total": total,
+                "success_rate": success_rate,
+                "failed_rate": failed_rate,
+                "aborted_rate": aborted_rate,
+                "progress_report": str(self.progress_report)
+            })
+        except Exception as e:
+            logger.error(f"Failed to publish batch progress: {e}")
+
     def upgrade(self, firmwareless):
         self.status = "in-progress"
         self.save()
+        self._publish_batch_progress()
         self.upgrade_related_devices()
         if firmwareless:
             self.upgrade_firmwareless_devices()
@@ -572,8 +601,16 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return getattr(upgrader_class, "SCHEMA", None)
 
     def __get_rate(self, number):
-        result = Decimal(number) / Decimal(self.total_operations) * 100
-        return round(result, 2)
+        if not self.total_operations:
+            return 0.0
+        result = (number / self.total_operations) * 100
+        return round(float(result), 2)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Publish batch progress after any status change
+        if not self._state.adding:
+            self._publish_batch_progress()
 
 
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
@@ -611,6 +648,73 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         logger.info(f"# {line}")
         if save:
             self.save()
+
+        try:
+            # Convert lazy translations to strings to avoid serialization issues
+            line_str = str(line)  # Force evaluation of lazy translations
+            status_str = str(self.status)
+
+            # Publish to operation-specific channel
+            publisher = UpgradeProgressPublisher(self.pk)
+            publisher.publish_progress(
+                {"type": "log", "content": line_str, "status": status_str}
+            )
+
+            # Publish to device-specific channel for real-time UI updates
+            device_publisher = DeviceUpgradeProgressPublisher(self.device.pk, self.pk)
+            device_publisher.publish_log(line_str, status_str)
+
+            # Publish to batch upgrade channel if this operation is part of a batch
+            if self.batch:
+                batch_publisher = BatchUpgradeProgressPublisher(self.batch.pk)
+                # Calculate progress percentage from log content
+                progress = self._calculate_progress_from_log()
+                batch_publisher.publish_operation_progress(
+                    str(self.pk), status_str, int(progress)
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to publish WebSocket messages: {e}")
+
+    def _calculate_progress_from_log(self):
+        """Calculate upgrade progress percentage from log content"""
+        if not self.log:
+            return 0
+
+        log_content = self.log
+        
+        # Define upgrade steps and their progress percentages
+        upgrade_steps = [
+            {"keyword": "Connection successful, starting upgrade", "progress": 10},
+            {"keyword": "Device identity verified successfully", "progress": 15},
+            {"keyword": "Image checksum file found", "progress": 20},
+            {"keyword": "Checksum different, proceeding", "progress": 25},
+            {"keyword": "proceeding with the upload of the new image", "progress": 30},
+            {"keyword": "upload of the new image", "progress": 35},
+            {"keyword": "Enough available memory was freed up", "progress": 40},
+            {"keyword": "Proceeding to upload of the image file", "progress": 45},
+            {"keyword": "Sysupgrade test passed successfully", "progress": 55},
+            {"keyword": "proceeding with the upgrade operation", "progress": 60},
+            {"keyword": "Upgrade operation in progress", "progress": 65},
+            {"keyword": "SSH connection closed, will wait", "progress": 70},
+            {"keyword": "seconds before attempting to reconnect", "progress": 75},
+            {"keyword": "Trying to reconnect to device", "progress": 80},
+            {"keyword": "Connected! Writing checksum", "progress": 90},
+            {"keyword": "Upgrade completed successfully", "progress": 100},
+        ]
+
+        current_progress = 0
+
+        # Find the highest progress step that has been completed
+        for step in upgrade_steps:
+            if step["keyword"] in log_content:
+                current_progress = max(current_progress, step["progress"])
+
+        # Show at least 5% if there's any log content
+        if current_progress == 0 and len(log_content) > 0:
+            current_progress = 5
+
+        return current_progress
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
@@ -704,7 +808,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 # even if the reconnection failed,
                 # the firmware image has been flashed
                 installed = True
-        # if no exception has been raised, the upgrade was successful
         else:
             installed = True
             self.status = "success"
@@ -717,12 +820,43 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.device.devicefirmware.save(upgrade=False)
 
     def save(self, *args, **kwargs):
-        result = super().save(*args, **kwargs)
-        # when an operation is completed
-        # trigger an update on the batch operation
-        if self.batch and self.status != "in-progress":
-            self.batch.update()
-        return result
+        super().save(*args, **kwargs)
+        publisher = UpgradeProgressPublisher(self.pk)
+        publisher.publish_progress({"type": "status", "status": str(self.status)})
+
+        # Publish complete operation update to device-specific channel
+        device_publisher = DeviceUpgradeProgressPublisher(self.device.pk, self.pk)
+        device_publisher.publish_operation_update(
+            {
+                "id": str(self.pk),
+                "device": str(self.device.pk),
+                "status": str(self.status),
+                "log": self.log or "",
+                "image": (
+                    str(getattr(self.image, "pk", None))
+                    if getattr(self.image, "pk", None)
+                    else None
+                ),  # Convert UUID to string
+                "modified": self.modified.isoformat() if self.modified else None,
+                "created": self.created.isoformat() if self.created else None,
+            }
+        )
+
+        # Publish to batch upgrade channel if part of a batch
+        if self.batch:
+            batch_publisher = BatchUpgradeProgressPublisher(self.batch.pk)
+            progress = self._calculate_progress_from_log()
+            
+            # Always publish progress update for existing operations
+            batch_publisher.publish_operation_progress(
+                str(self.pk), str(self.status), int(progress)
+            )
+            
+            if self.status != "in-progress":
+                self.batch.update()
+            # Always publish batch progress for any operation status change
+            self.batch._publish_batch_progress()
+        return self
 
     @property
     def upgrader_schema(self):
