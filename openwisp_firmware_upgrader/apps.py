@@ -7,6 +7,7 @@ from openwisp_utils.api.apps import ApiAppConfig
 from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
+from .signals import handle_upgrade_operation_saved
 
 
 class FirmwareUpdaterConfig(ApiAppConfig):
@@ -60,6 +61,8 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         DeviceConnection = load_model("connection", "DeviceConnection")
         DeviceFirmware = load_model("firmware_upgrader", "DeviceFirmware")
         FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+        
         post_save.connect(
             DeviceFirmware.auto_add_device_firmware_to_device,
             sender=DeviceConnection,
@@ -69,6 +72,11 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             DeviceFirmware.auto_create_device_firmwares,
             sender=FirmwareImage,
             dispatch_uid="firmware_image.auto_add_device_firmwares",
+        )
+        post_save.connect(
+            handle_upgrade_operation_saved,
+            sender=UpgradeOperation,
+            dispatch_uid="upgrade_operation.websocket_publish",
         )
 
 

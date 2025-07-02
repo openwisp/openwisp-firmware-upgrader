@@ -17,6 +17,7 @@ from openwisp_users.mixins import ShareableOrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
+from ..signals import upgrade_log_line
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
     ReconnectionFailed,
@@ -41,7 +42,6 @@ from ..utils import (
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
 )
-from ..websockets import DeviceUpgradeProgressPublisher, UpgradeProgressPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -612,26 +612,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         logger.info(f"# {line}")
         if save:
             self.save()
-
-        try:
-            # Convert lazy translations to strings to avoid serialization issues
-            line_str = str(line)  # Force evaluation of lazy translations
-            status_str = str(self.status)
-
-            # Publish to operation-specific channel
-            publisher = UpgradeProgressPublisher(self.pk)
-            publisher.publish_progress(
-                {"type": "log", "content": line_str, "status": status_str}
-            )
-
-            # Publish to device-specific channel for real-time UI updates
-            device_publisher = DeviceUpgradeProgressPublisher(self.device.pk, self.pk)
-            device_publisher.publish_log(line_str, status_str)
-
-        except (ConnectionError, TimeoutError) as e:
-            logger.error(f"Failed to connect to channel layer for upgrade operation {self.pk}: {e}", exc_info=True)
-        except RuntimeError as e:
-            logger.error(f"Runtime error in WebSocket publishing for upgrade operation {self.pk}: {e}", exc_info=True)
+        upgrade_log_line.send(sender=self.__class__, instance=self, line=line)
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
@@ -737,35 +718,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.device.devicefirmware.save(upgrade=False)
 
     def save(self, *args, **kwargs):
-        is_new = self.pk is None
         super().save(*args, **kwargs)
-        if not is_new:
-            try:
-                # Publish status update to operation-specific channel
-                publisher = UpgradeProgressPublisher(self.pk)
-                publisher.publish_progress({"type": "status", "status": self.status})
-
-                # Publish complete operation update to device-specific channel
-                device_publisher = DeviceUpgradeProgressPublisher(self.device.pk, self.pk)
-                device_publisher.publish_operation_update(
-                    {
-                        "id": str(self.pk),
-                        "device": str(self.device.pk),
-                        "status": self.status,
-                        "log": self.log,
-                        "image": (
-                            str(getattr(self.image, "pk", None))
-                            if getattr(self.image, "pk", None)
-                            else None
-                        ),  # Convert UUID to string
-                        "modified": self.modified.isoformat() if self.modified else None,
-                        "created": self.created.isoformat() if self.created else None,
-                    }
-                )
-            except (ConnectionError, TimeoutError) as e:
-                logger.error(f"Failed to connect to channel layer for upgrade operation {self.pk}: {e}", exc_info=True)
-            except RuntimeError as e:
-                logger.error(f"Runtime error in WebSocket publishing for upgrade operation {self.pk}: {e}", exc_info=True)
         if self.batch and self.status != "in-progress":
             self.batch.update()
         return self

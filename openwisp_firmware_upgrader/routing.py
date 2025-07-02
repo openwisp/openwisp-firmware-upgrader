@@ -8,11 +8,11 @@ from .websockets import (
 
 websocket_urlpatterns = [
     re_path(
-        r"ws/upgrade/(?P<operation_id>[^/]+)/$",
+        r"ws/firmware-upgrader/upgrade-operation/(?P<operation_id>[^/]+)/$",
         UpgradeProgressConsumer.as_asgi(),
     ),
     re_path(
-        r"ws/batch-upgrade/(?P<batch_id>[^/]+)/$",
+        r"ws/firmware-upgrader/batch-upgrade-operation/(?P<batch_id>[^/]+)/$",
         BatchUpgradeProgressConsumer.as_asgi(),
     ),
     re_path(
