@@ -628,8 +628,10 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             device_publisher = DeviceUpgradeProgressPublisher(self.device.pk, self.pk)
             device_publisher.publish_log(line_str, status_str)
 
-        except Exception as e:
-            logger.error(f"Failed to publish WebSocket messages: {e}")
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Failed to connect to channel layer for upgrade operation {self.pk}: {e}", exc_info=True)
+        except RuntimeError as e:
+            logger.error(f"Runtime error in WebSocket publishing for upgrade operation {self.pk}: {e}", exc_info=True)
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
@@ -738,27 +740,32 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         is_new = self.pk is None
         super().save(*args, **kwargs)
         if not is_new:
-            # Publish status update to operation-specific channel
-            publisher = UpgradeProgressPublisher(self.pk)
-            publisher.publish_progress({"type": "status", "status": self.status})
+            try:
+                # Publish status update to operation-specific channel
+                publisher = UpgradeProgressPublisher(self.pk)
+                publisher.publish_progress({"type": "status", "status": self.status})
 
-            # Publish complete operation update to device-specific channel
-            device_publisher = DeviceUpgradeProgressPublisher(self.device.pk, self.pk)
-            device_publisher.publish_operation_update(
-                {
-                    "id": str(self.pk),
-                    "device": str(self.device.pk),
-                    "status": self.status,
-                    "log": self.log,
-                    "image": (
-                        str(getattr(self.image, "pk", None))
-                        if getattr(self.image, "pk", None)
-                        else None
-                    ),  # Convert UUID to string
-                    "modified": self.modified.isoformat() if self.modified else None,
-                    "created": self.created.isoformat() if self.created else None,
-                }
-            )
+                # Publish complete operation update to device-specific channel
+                device_publisher = DeviceUpgradeProgressPublisher(self.device.pk, self.pk)
+                device_publisher.publish_operation_update(
+                    {
+                        "id": str(self.pk),
+                        "device": str(self.device.pk),
+                        "status": self.status,
+                        "log": self.log,
+                        "image": (
+                            str(getattr(self.image, "pk", None))
+                            if getattr(self.image, "pk", None)
+                            else None
+                        ),  # Convert UUID to string
+                        "modified": self.modified.isoformat() if self.modified else None,
+                        "created": self.created.isoformat() if self.created else None,
+                    }
+                )
+            except (ConnectionError, TimeoutError) as e:
+                logger.error(f"Failed to connect to channel layer for upgrade operation {self.pk}: {e}", exc_info=True)
+            except RuntimeError as e:
+                logger.error(f"Runtime error in WebSocket publishing for upgrade operation {self.pk}: {e}", exc_info=True)
         if self.batch and self.status != "in-progress":
             self.batch.update()
         return self

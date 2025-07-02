@@ -78,7 +78,12 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
         else:
             try:
                 await self.channel_layer.group_add(self.group_name, self.channel_name)
-            except Exception as e:
+            except (ConnectionError, TimeoutError) as e:
+                logger.error(f"Failed to add channel to group {self.group_name}: {e}")
+                await self.close()
+                return
+            except RuntimeError as e:
+                logger.error(f"Channel layer error when joining group {self.group_name}: {e}")
                 await self.close()
                 return
 
@@ -143,8 +148,10 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                         },
                     }
                 )
-        except Exception as e:
-            logger.error(f"Error handling current state request: {e}")
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"Failed to connect to channel layer during current state request: {e}")
+        except RuntimeError as e:
+            logger.error(f"Runtime error during current state request: {e}")
 
     async def send_update(self, event):
         """Send upgrade progress updates to the device page"""
