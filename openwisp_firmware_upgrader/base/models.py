@@ -29,6 +29,7 @@ from ..hardware import (
     FIRMWARE_IMAGE_TYPE_CHOICES,
     REVERSE_FIRMWARE_IMAGE_MAP,
 )
+from ..signals import upgrade_log_line
 from ..swapper import get_model_name, load_model
 from ..tasks import (
     batch_upgrade_operation,
@@ -611,6 +612,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         logger.info(f"# {line}")
         if save:
             self.save()
+        upgrade_log_line.send(sender=self.__class__, instance=self, line=line)
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
@@ -704,7 +706,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 # even if the reconnection failed,
                 # the firmware image has been flashed
                 installed = True
-        # if no exception has been raised, the upgrade was successful
         else:
             installed = True
             self.status = "success"
@@ -717,12 +718,10 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.device.devicefirmware.save(upgrade=False)
 
     def save(self, *args, **kwargs):
-        result = super().save(*args, **kwargs)
-        # when an operation is completed
-        # trigger an update on the batch operation
+        super().save(*args, **kwargs)
         if self.batch and self.status != "in-progress":
             self.batch.update()
-        return result
+        return self
 
     @property
     def upgrader_schema(self):

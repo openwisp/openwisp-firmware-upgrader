@@ -4,11 +4,16 @@ from channels.security.websocket import AllowedHostsOriginValidator
 from django.core.asgi import get_asgi_application
 
 from openwisp_controller.routing import get_routes
+from openwisp_firmware_upgrader.routing import (
+    get_routes as get_firmware_upgrader_routes,
+)
 
 application = ProtocolTypeRouter(
     {
         "websocket": AllowedHostsOriginValidator(
-            AuthMiddlewareStack(URLRouter(get_routes()))
+            AuthMiddlewareStack(
+                URLRouter(get_routes() + get_firmware_upgrader_routes())
+            )
         ),
         "http": get_asgi_application(),
     }
