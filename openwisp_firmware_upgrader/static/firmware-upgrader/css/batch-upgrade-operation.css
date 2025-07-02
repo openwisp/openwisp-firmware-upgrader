@@ -1,13 +1,9 @@
-/* Batch Upgrade Operation CSS */
-
-/* Title styling */
 .upgrade-operations-title {
   font-size: 22px;
   font-weight: 300;
   color: #333;
 }
 
-/* Search section styling */
 .search-section {
   background: #f8f8f8;
   padding: 20px;
@@ -46,7 +42,6 @@
   margin-left: 15px;
 }
 
-/* Results table styling */
 .results-container {
   background: #fff;
 }
@@ -101,7 +96,6 @@
   font-style: italic;
 }
 
-/* Pagination styling */
 .pagination {
   padding: 15px 20px;
   text-align: right;
