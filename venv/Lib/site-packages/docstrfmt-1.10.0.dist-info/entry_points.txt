@@ -1,0 +1,4 @@
+[console_scripts]
+docstrfmt=docstrfmt.main:main
+docstrfmtd=docstrfmt.server:main [d]
+

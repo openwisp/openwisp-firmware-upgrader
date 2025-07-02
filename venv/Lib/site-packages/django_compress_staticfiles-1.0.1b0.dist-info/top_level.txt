@@ -1,0 +1,4 @@
+compress_staticfiles
+test_app
+test_project
+tests
