@@ -83,7 +83,9 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                 await self.close()
                 return
             except RuntimeError as e:
-                logger.error(f"Channel layer error when joining group {self.group_name}: {e}")
+                logger.error(
+                    f"Channel layer error when joining group {self.group_name}: {e}"
+                )
                 await self.close()
                 return
 
@@ -149,7 +151,9 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                     }
                 )
         except (ConnectionError, TimeoutError) as e:
-            logger.error(f"Failed to connect to channel layer during current state request: {e}")
+            logger.error(
+                f"Failed to connect to channel layer during current state request: {e}"
+            )
         except RuntimeError as e:
             logger.error(f"Runtime error during current state request: {e}")
 

@@ -17,7 +17,6 @@ from openwisp_users.mixins import ShareableOrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
-from ..signals import upgrade_log_line
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
     ReconnectionFailed,
@@ -30,6 +29,7 @@ from ..hardware import (
     FIRMWARE_IMAGE_TYPE_CHOICES,
     REVERSE_FIRMWARE_IMAGE_MAP,
 )
+from ..signals import upgrade_log_line
 from ..swapper import get_model_name, load_model
 from ..tasks import (
     batch_upgrade_operation,

@@ -2,6 +2,8 @@
   font-size: 22px;
   font-weight: 300;
   color: #333;
+  margin: 0;
+  padding: 0;
 }
 
 .search-section {
@@ -22,7 +24,7 @@
 }
 
 .search-input {
-  width: 400px;
+  width: 300px;
   padding: 10px 15px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -31,7 +33,7 @@
 }
 
 .search-button {
-  padding: 10px 24px;
+  padding: 10px 20px;
   background: #333;
   color: white;
   border: none;
@@ -68,7 +70,7 @@
 
 .results-table td {
   padding: 15px 20px;
-  color: #666;
+  color: #1f1f1f;
 }
 
 .results-table tr.row1 {
@@ -84,7 +86,7 @@
 }
 
 .device-link {
-  color: #d73027;
+  color: #d73027 !important;
   text-decoration: none;
   font-weight: bold;
 }
@@ -112,4 +114,12 @@
 .pagination .current-page {
   margin: 0 10px;
   color: #666;
+}
+
+.paginator {
+  font-size: 14px;
+  color: #7a7a7a;
+  padding: 10px 20px;
+  border-bottom: 1px solid #e9ecef;
+  margin: 0;
 }

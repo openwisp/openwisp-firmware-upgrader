@@ -255,6 +255,10 @@ class UpgradeOperationInline(admin.StackedInline):
 
 
 class ReadonlyUpgradeOptionsMixin:
+
+    class Media:
+        css = {"all": ["firmware-upgrader/css/upgrade-options.css"]}
+
     @admin.display(description=_("Upgrade options"))
     def readonly_upgrade_options(self, obj):
         upgrader_schema = obj.upgrader_schema

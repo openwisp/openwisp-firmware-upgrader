@@ -62,7 +62,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         DeviceFirmware = load_model("firmware_upgrader", "DeviceFirmware")
         FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
         UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
-        
+
         post_save.connect(
             DeviceFirmware.auto_add_device_firmware_to_device,
             sender=DeviceConnection,

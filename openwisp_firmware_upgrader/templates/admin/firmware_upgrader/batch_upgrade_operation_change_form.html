@@ -131,6 +131,13 @@
         </tbody>
     </table>
     
+    <!-- Results Count -->
+    {% if paginator %}
+        <p class="paginator">
+            {% blocktrans count counter=paginator.count %}{{ counter }} Upgrade Operation{% plural %}{{ counter }} upgrade operations{% endblocktrans %}
+        </p>
+    {% endif %}
+    
     <!-- Pagination -->
     {% if page_obj.has_other_pages %}
     <div class="pagination">

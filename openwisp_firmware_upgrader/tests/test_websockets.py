@@ -22,7 +22,8 @@ class WebSocketTest(TestUpgraderMixin, TestCase):
 
         # Create a WebSocket connection with proper URL routing
         communicator = WebsocketCommunicator(
-            UpgradeProgressConsumer.as_asgi(), f"/ws/firmware-upgrader/upgrade-operation/{operation.id}/"
+            UpgradeProgressConsumer.as_asgi(),
+            f"/ws/firmware-upgrader/upgrade-operation/{operation.id}/",
         )
         # Add URL route parameters to the scope
         communicator.scope["url_route"] = {
@@ -94,7 +95,8 @@ class WebSocketTest(TestUpgraderMixin, TestCase):
 
         # Create a WebSocket connection with proper URL routing
         communicator = WebsocketCommunicator(
-            BatchUpgradeProgressConsumer.as_asgi(), f"/ws/firmware-upgrader/batch-upgrade-operation/{batch.id}/"
+            BatchUpgradeProgressConsumer.as_asgi(),
+            f"/ws/firmware-upgrader/batch-upgrade-operation/{batch.id}/",
         )
         # Add URL route parameters to the scope
         communicator.scope["url_route"] = {"kwargs": {"batch_id": str(batch.id)}}
