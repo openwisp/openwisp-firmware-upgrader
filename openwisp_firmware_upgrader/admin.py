@@ -248,11 +248,12 @@ class UpgradeOperationInline(admin.StackedInline):
     def has_add_permission(self, request, obj):
         return False
 
+
+class ReadonlyUpgradeOptionsMixin:
+
     class Media:
         css = {"all": ["firmware-upgrader/css/upgrade-options.css"]}
 
-
-class ReadonlyUpgradeOptionsMixin:
     @admin.display(description=_("Upgrade options"))
     def readonly_upgrade_options(self, obj):
         upgrader_schema = obj.upgrader_schema
