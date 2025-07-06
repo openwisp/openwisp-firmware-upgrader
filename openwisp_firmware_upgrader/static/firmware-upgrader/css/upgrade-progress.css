@@ -1,23 +1,4 @@
-.upgrade-progress-loader {
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #3498db;
-  border-radius: 50%;
-  width: 16px;
-  height: 16px;
-  animation: upgrade-progress-spin 1s linear infinite;
-  display: inline-block;
-  margin-left: 8px;
-  vertical-align: middle;
-}
 
-@keyframes upgrade-progress-spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
 
 .field-status .readonly {
   min-height: 25px;
@@ -84,9 +65,4 @@
   vertical-align: middle;
 }
 
-@media (max-width: 768px) {
-  .upgrade-progress-loader {
-    width: 14px;
-    height: 14px;
-  }
-}
+

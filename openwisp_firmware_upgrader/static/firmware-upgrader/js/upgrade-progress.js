@@ -210,21 +210,13 @@ function updateUpgradeOperationDisplay(operation) {
   let logElement = operationFieldset.find(".field-log .readonly");
   let shouldScroll = isScrolledToBottom(logElement);
 
-  if (operation.status === "in-progress") {
-    // Show loading indicator for in-progress operations
-    logElement.html(
-      formatLogForDisplay(operation.log) +
-        '<div class="loader upgrade-progress-loader"></div>',
-    );
-  } else {
-    logElement.html(formatLogForDisplay(operation.log));
-    if (
-      operation.status === "success" ||
-      operation.status === "failed" ||
-      operation.status === "aborted"
-    ) {
-      accumulatedLogContent.delete(operation.id);
-    }
+  logElement.html(formatLogForDisplay(operation.log));
+  if (
+    operation.status === "success" ||
+    operation.status === "failed" ||
+    operation.status === "aborted"
+  ) {
+    accumulatedLogContent.delete(operation.id);
   }
 
   // Auto-scroll to bottom if user was already at bottom
@@ -332,6 +324,7 @@ function calculateProgressFromLog(logContent = "") {
     { keyword: "Trying to reconnect to device", progress: 80 },
     { keyword: "Connected! Writing checksum", progress: 90 },
     { keyword: "Upgrade completed successfully", progress: 100 },
+    { keyword: "Firmware already upgraded previously", progress: 100 },
   ];
 
   let currentProgress = 0;
@@ -354,16 +347,20 @@ function calculateProgressFromLog(logContent = "") {
 function updateUpgradeOperationLog(logData) {
   let $ = django.jQuery;
 
-  // Find all in-progress operations and update their logs
+  // Find all in-progress operations and recently completed operations to update their logs
   $(".field-status .readonly").each(function () {
     let statusField = $(this);
     let currentStatusText =
       statusField.find(".upgrade-status-container span").text() ||
       statusField.text().trim();
 
+    // Update logs for in-progress operations and recently completed operations
     if (
       currentStatusText === "in progress" ||
-      currentStatusText === "in-progress"
+      currentStatusText === "in-progress" ||
+      currentStatusText === "success" ||
+      currentStatusText === "failed" ||
+      currentStatusText === "aborted"
     ) {
       let operationFieldset = $(this).closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -388,14 +385,12 @@ function updateUpgradeOperationLog(logData) {
       // Store accumulated content in memory
       accumulatedLogContent.set(operationId, newLog);
 
-      logElement.html(
-        formatLogForDisplay(newLog) +
-          '<div class="loader upgrade-progress-loader"></div>',
-      );
+      // Update log content without spinner
+      logElement.html(formatLogForDisplay(newLog));
 
       // Update progress bar with new log content
       let operation = {
-        status: "in-progress",
+        status: currentStatusText,
         log: newLog,
         id: operationId,
       };
@@ -435,9 +430,6 @@ function updateUpgradeOperationStatus(statusData) {
       };
 
       updateStatusWithProgressBar(statusField, operation);
-      if (statusData.status !== "in-progress") {
-        logElement.find(".upgrade-progress-loader").remove();
-      }
     }
   });
 }
