@@ -26,13 +26,16 @@ def upgrade_firmware(self, operation_id):
     Calls the ``upgrade()`` method of an
     ``UpgradeOperation`` instance in the background
     """
+    operation = None
     try:
         operation = load_model("UpgradeOperation").objects.get(pk=operation_id)
         recoverable = self.request.retries < self.max_retries
         operation.upgrade(recoverable=recoverable)
     except SoftTimeLimitExceeded:
-        operation.status = "failed"
-        operation.log_line(_("Operation timed out."))
+        if operation:
+            operation.status = "failed"
+            operation.log_line(_("Operation timed out."))
+            operation.save()
         logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
     except ObjectDoesNotExist:
         logger.warning(
@@ -64,8 +67,7 @@ def create_device_firmware(self, device_id):
     DeviceFirmware = load_model("DeviceFirmware")
     Device = swapper.load_model("config", "Device")
 
-    qs = DeviceFirmware.objects.filter(device_id=device_id)
-    if qs.exists():
+    if DeviceFirmware.objects.filter(device_id=device_id).exists():
         return
 
     device = Device.objects.get(pk=device_id)
@@ -79,7 +81,7 @@ def create_all_device_firmwares(self, firmware_image_id):
     Device = swapper.load_model("config", "Device")
 
     fw_image = FirmwareImage.objects.select_related("build").get(pk=firmware_image_id)
-
     queryset = Device.objects.filter(os=fw_image.build.os)
+
     for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)
