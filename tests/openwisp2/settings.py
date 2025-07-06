@@ -172,7 +172,7 @@ CELERY_BROKER_URL = "redis://localhost/2"
 CELERY_RESULT_BACKEND = "redis://localhost/2"
 
 # Only use eager mode for actual tests
-if TESTING and "pytest" in sys.modules:
+if TESTING:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
     CELERY_BROKER_URL = "memory://"

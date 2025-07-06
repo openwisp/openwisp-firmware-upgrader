@@ -422,7 +422,9 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
             filter_specs.append(OrganizationFilter())
 
             # Pagination
-            paginator = Paginator(upgrades_qs, self.device_upgrades_per_page)
+            paginator = Paginator(
+                upgrades_qs.order_by("id"), self.device_upgrades_per_page
+            )
             page_number = request.GET.get("page", 1)
             try:
                 page_obj = paginator.page(page_number)
