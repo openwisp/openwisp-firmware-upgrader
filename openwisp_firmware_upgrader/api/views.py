@@ -54,7 +54,7 @@ class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
                 organization_filter = {self.organization_field + "__slug": org_filtered}
                 qs = qs.filter(**organization_filter)
         except ValidationError:
-            # when uuid is not valid
+            
             qs = []
         return qs
 
