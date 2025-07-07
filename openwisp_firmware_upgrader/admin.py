@@ -156,4 +156,4 @@ class UpgradeOperationAdmin(BaseAdmin):
 reversion.register(DeviceFirmware, follow=["device"])
 reversion.register(UpgradeOperation)
 DeviceAdmin.add_reversion_following(follow=["devicefirmware", "upgradeoperation_set"])
-DeviceAdmin.conditional_inlines += []  # You can append DeviceFirmwareInline if needed
+DeviceAdmin.conditional_inlines += [] 

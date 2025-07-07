@@ -85,3 +85,4 @@ def create_all_device_firmwares(self, firmware_image_id):
 
     for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)
+        
