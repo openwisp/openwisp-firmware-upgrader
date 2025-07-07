@@ -1,0 +1,106 @@
+{% load i18n %}
+{% load l10n %}
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {% block styles %}
+  <style type="text/css">
+    body {
+      min-width: 250px;
+      background: #ffe5e5;
+      margin: 0;
+      padding: 0;
+    }
+    .container{
+      background: #ffe5e5;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .box{
+      width: auto;
+      max-width: 650px;
+      padding: 30px;
+      background-color: #fcfcfc;
+      box-sizing: border-box;
+      box-shadow: 0 15px 25px rgba(256,256, 256,.5);
+      margin: 30px auto;
+      line-height: 27px;
+    }
+    .logo-container{
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo {
+      max-width: 210px;
+    }
+    .call-to-action{
+      text-align: center;
+      margin-top: 30px;
+    }
+    .subject{
+      font-size: medium;
+      font-weight: 700;
+      margin: 20px 0;
+    }
+    .msg{
+      color: #1b1818;
+      margin: 20px 0;
+      font-size: medium;
+    }
+    .btn{
+      appearance: button;
+      text-decoration: none;
+      color: #fff!important;
+      background: #333;
+      border-radius: 4px;
+      border: 0;
+      padding: 10px 15px;
+      font-weight: bold;
+      font-size: medium;
+    }
+    .btn:hover, .btn:focus {
+      background: #000;
+      outline: 0 none;
+      background: rgba(51, 51, 51, 0.7);
+    }
+    a:link:hover {
+      text-decoration: none;
+    }
+  </style>
+  {% endblock styles %}
+</head>
+<body>
+  {% block body %}
+  <div class="container">
+    <div class="box">
+      {% block mail_header %}
+      <div class="logo-container">
+        <img src="{{ logo_url }}" alt="Logo" class="logo">
+      </div>
+      {% if subject %}
+      <div class="subject">{{ subject }}</div>
+      {% endif %}
+      {% endblock mail_header %}
+      {% block mail_body %}
+      <div class="msg">{{ message | safe }}</div>
+      {% endblock mail_body %}
+      {% block call_to_action %}
+      {% if call_to_action_url %}
+      <div class="call-to-action">
+        <a href="{{ call_to_action_url }}" class="btn">{{ call_to_action_text }}</a>
+      </div>
+      {% endif %}
+      {% endblock call_to_action %}
+      {% block mail_footer %}
+        {% if footer %}
+          {{ footer }}
+        {% endif %}
+      {% endblock mail_footer %}
+    </div>
+  </div>
+  {% endblock body %}
+</body>
+</html>
