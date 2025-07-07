@@ -25,7 +25,11 @@ class Serializer(JSONSerializer):
     def start_serialization(self):
         self._init_options()
         self._cts = {}  # cache of CoordTransform's
-        self.stream.write('{"type": "FeatureCollection", "features": [')
+        self.stream.write(
+            '{"type": "FeatureCollection", '
+            '"crs": {"type": "name", "properties": {"name": "EPSG:%d"}},'
+            ' "features": [' % self.srid
+        )
 
     def end_serialization(self):
         self.stream.write("]}")

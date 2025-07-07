@@ -1,6 +1,6 @@
 from django.db import router
 
-from .base import Operation, OperationCategory
+from .base import Operation
 
 
 class SeparateDatabaseAndState(Operation):
@@ -11,7 +11,6 @@ class SeparateDatabaseAndState(Operation):
     that affect the state or not the database, or so on.
     """
 
-    category = OperationCategory.MIXED
     serialization_expand_args = ["database_operations", "state_operations"]
 
     def __init__(self, database_operations=None, state_operations=None):
@@ -69,7 +68,6 @@ class RunSQL(Operation):
     by this SQL change, in case it's custom column/table creation/deletion.
     """
 
-    category = OperationCategory.SQL
     noop = ""
 
     def __init__(
@@ -140,7 +138,6 @@ class RunPython(Operation):
     Run Python code in a context suitable for doing versioned ORM operations.
     """
 
-    category = OperationCategory.PYTHON
     reduces_to_sql = False
 
     def __init__(

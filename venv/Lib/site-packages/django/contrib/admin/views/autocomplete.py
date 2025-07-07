@@ -1,5 +1,4 @@
 from django.apps import apps
-from django.contrib.admin.exceptions import NotRegistered
 from django.core.exceptions import FieldDoesNotExist, PermissionDenied
 from django.http import Http404, JsonResponse
 from django.views.generic.list import BaseListView
@@ -98,8 +97,8 @@ class AutocompleteJsonView(BaseListView):
         except AttributeError as e:
             raise PermissionDenied from e
         try:
-            model_admin = self.admin_site.get_model_admin(remote_model)
-        except NotRegistered as e:
+            model_admin = self.admin_site._registry[remote_model]
+        except KeyError as e:
             raise PermissionDenied from e
 
         # Validate suitability of objects.

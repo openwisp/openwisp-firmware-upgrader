@@ -276,7 +276,8 @@ class DictWrapper(dict):
         before returning, otherwise return the raw value.
         """
         use_func = key.startswith(self.prefix)
-        key = key.removeprefix(self.prefix)
+        if use_func:
+            key = key[len(self.prefix) :]
         value = super().__getitem__(key)
         if use_func:
             return self.func(value)

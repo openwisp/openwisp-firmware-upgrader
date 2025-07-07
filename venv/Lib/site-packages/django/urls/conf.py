@@ -1,5 +1,4 @@
 """Functions for use in URLsconfs."""
-
 from functools import partial
 from importlib import import_module
 

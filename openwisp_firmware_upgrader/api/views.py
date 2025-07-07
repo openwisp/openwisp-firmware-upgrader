@@ -7,6 +7,8 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.request import clone_request
 from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
+from rest_framework.decorators import api_view
+from django.shortcuts import get_object_or_404
 
 from openwisp_firmware_upgrader import private_storage
 from openwisp_users.api.mixins import FilterByOrganizationManaged
@@ -296,30 +298,30 @@ class DeviceFirmwareDetailView(
         data = {**serializer.data}
         if upgrade_operation:
             data.update({"upgrade_operation": {"id": upgrade_operation.id}})
-        return ReturnDict(data, serializer=serializer)
+def update(self, request, *args, **kwargs):
+    partial = kwargs.pop("partial", False)
+    instance = self.get_object_or_none()
+    serializer = self.get_serializer(instance, data=request.data, partial=partial)
+    serializer.is_valid(raise_exception=True)
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop("partial", False)
+    if instance is None:
+        self.perform_create(serializer)
         instance = self.get_object_or_none()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-
-        if instance is None:
-            self.perform_create(serializer)
-            instance = self.get_object_or_none()
-            uo = instance.device.upgradeoperation_set.latest("created")
-            data = self._get_response_data(serializer, uo)
-            image_qs = self._get_image_queryset(uo, instance.device)
-            serializer.fields["image"].queryset = image_qs
-            return Response(data, status=status.HTTP_201_CREATED)
-
-        self.perform_update(serializer)
         uo = instance.device.upgradeoperation_set.latest("created")
         data = self._get_response_data(serializer, uo)
         image_qs = self._get_image_queryset(uo, instance.device)
         serializer.fields["image"].queryset = image_qs
-        return Response(data, status=status.HTTP_200_OK)
+        return Response(data, status=status.HTTP_201_CREATED)
 
+    self.perform_update(serializer)
+    uo = instance.device.upgradeoperation_set.latest("created")
+    data = self._get_response_data(serializer, uo)
+    image_qs = self._get_image_queryset(uo, instance.device)
+    serializer.fields["image"].queryset = image_qs
+    return Response(data, status=status.HTTP_200_OK)
+
+def perform_create(self, serializer):
+    serializer.save()
     def perform_create(self, serializer):
         serializer.save()
 
@@ -345,14 +347,23 @@ class DeviceFirmwareDetailView(
 build_list = BuildListView.as_view()
 build_detail = BuildDetailView.as_view()
 api_batch_upgrade = BuildBatchUpgradeView.as_view()
-category_list = CategoryListView.as_view()
-category_detail = CategoryDetailView.as_view()
-batch_upgrade_operation_list = BatchUpgradeOperationListView.as_view()
-batch_upgrade_operation_detail = BatchUpgradeOperationDetailView.as_view()
-firmware_image_list = FirmwareImageListView.as_view()
-firmware_image_detail = FirmwareImageDetailView.as_view()
-firmware_image_download = FirmwareImageDownloadView.as_view()
-upgrade_operation_list = UpgradeOperationListView.as_view()
-upgrade_operation_detail = UpgradeOperationDetailView.as_view()
-device_upgrade_operation_list = DeviceUpgradeOperationListView.as_view()
-device_firmware_detail = DeviceFirmwareDetailView.as_view()
+
+# Module-level API view for retrying upgrade operations
+@api_view(["POST"])
+def upgrade_operation_retry(request, pk):
+    """
+    Retry a failed upgrade operation
+    """
+    upgrade_op = get_object_or_404(UpgradeOperation, pk=pk)
+
+    if upgrade_op.status != "failed":
+        return Response(
+            {"error": "Only failed upgrades can be retried."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Trigger the Celery task to retry
+    from ..tasks import upgrade_firmware
+    upgrade_firmware.delay(upgrade_op.pk)
+
+    return Response({"detail": "Retry has been triggered."}, status=status.HTTP_202_ACCEPTED)

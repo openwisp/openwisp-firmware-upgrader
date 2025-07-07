@@ -1,5 +1,6 @@
+import cx_Oracle
+
 from django.db.backends.oracle.introspection import DatabaseIntrospection
-from django.db.backends.oracle.oracledb_any import oracledb
 from django.utils.functional import cached_property
 
 
@@ -11,7 +12,7 @@ class OracleIntrospection(DatabaseIntrospection):
     def data_types_reverse(self):
         return {
             **super().data_types_reverse,
-            oracledb.DB_TYPE_OBJECT: "GeometryField",
+            cx_Oracle.OBJECT: "GeometryField",
         }
 
     def get_geometry_type(self, table_name, description):

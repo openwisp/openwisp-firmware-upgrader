@@ -102,11 +102,7 @@ class SingleObjectMixin(ContextMixin):
 
 
 class BaseDetailView(SingleObjectMixin, View):
-    """
-    Base view for displaying a single object.
-
-    This requires subclassing to provide a response mixin.
-    """
+    """A base view for displaying a single object."""
 
     def get(self, request, *args, **kwargs):
         self.object = self.get_object()
@@ -121,10 +117,9 @@ class SingleObjectTemplateResponseMixin(TemplateResponseMixin):
     def get_template_names(self):
         """
         Return a list of template names to be used for the request. May not be
-        called if render_to_response() is overridden. Return a list containing
-        ``template_name``, if set on the value. Otherwise, return a list
-        containing:
+        called if render_to_response() is overridden. Return the following list:
 
+        * the value of ``template_name`` on the view (if provided)
         * the contents of the ``template_name_field`` field on the
           object instance that the view is operating upon (if available)
         * ``<app_label>/<model_name><template_name_suffix>.html``
@@ -171,11 +166,7 @@ class SingleObjectTemplateResponseMixin(TemplateResponseMixin):
             # If we still haven't managed to find any template names, we should
             # re-raise the ImproperlyConfigured to alert the user.
             if not names:
-                raise ImproperlyConfigured(
-                    "SingleObjectTemplateResponseMixin requires a definition "
-                    "of 'template_name', 'template_name_field', or 'model'; "
-                    "or an implementation of 'get_template_names()'."
-                )
+                raise
 
         return names
 

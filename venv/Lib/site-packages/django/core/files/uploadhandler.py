@@ -1,7 +1,6 @@
 """
 Base file upload handler classes, and the built-in concrete subclasses
 """
-
 import os
 from io import BytesIO
 

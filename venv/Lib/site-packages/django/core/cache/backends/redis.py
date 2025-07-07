@@ -14,9 +14,8 @@ class RedisSerializer:
         self.protocol = pickle.HIGHEST_PROTOCOL if protocol is None else protocol
 
     def dumps(self, obj):
-        # For better incr() and decr() atomicity, don't pickle integers.
-        # Using type() rather than isinstance() matches only integers and not
-        # subclasses like bool.
+        # Only skip pickling for integers, a int subclasses as bool should be
+        # pickled.
         if type(obj) is int:
             return obj
         return pickle.dumps(obj, self.protocol)

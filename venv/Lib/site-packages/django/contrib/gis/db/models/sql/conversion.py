@@ -2,7 +2,6 @@
 This module holds simple classes to convert geospatial values from the
 database.
 """
-
 from decimal import Decimal
 
 from django.contrib.gis.measure import Area, Distance

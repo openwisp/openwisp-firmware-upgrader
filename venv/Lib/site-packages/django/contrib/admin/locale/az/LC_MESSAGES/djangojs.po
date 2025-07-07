@@ -5,15 +5,14 @@
 # Emin Mastizada <emin@linux.com>, 2016,2020
 # Emin Mastizada <emin@linux.com>, 2016
 # Nicat Məmmədov <n1c4t97@gmail.com>, 2022
-# Nijat Mammadov, 2024-2025
 msgid ""
 msgstr ""
 "Project-Id-Version: django\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-03-25 15:04-0500\n"
-"PO-Revision-Date: 2025-04-01 15:04-0500\n"
-"Last-Translator: Nijat Mammadov, 2024-2025\n"
-"Language-Team: Azerbaijani (http://app.transifex.com/django/django/language/"
+"POT-Creation-Date: 2022-05-17 05:26-0500\n"
+"PO-Revision-Date: 2022-07-25 07:59+0000\n"
+"Last-Translator: Nicat Məmmədov <n1c4t97@gmail.com>\n"
+"Language-Team: Azerbaijani (http://www.transifex.com/django/django/language/"
 "az/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -23,33 +22,35 @@ msgstr ""
 
 #, javascript-format
 msgid "Available %s"
-msgstr "Mövcud %s"
+msgstr "Mümkün %s"
 
 #, javascript-format
 msgid ""
-"Choose %s by selecting them and then select the \"Choose\" arrow button."
+"This is the list of available %s. You may choose some by selecting them in "
+"the box below and then clicking the \"Choose\" arrow between the two boxes."
 msgstr ""
-" Seçmək istədikləriniz %s elementlərini işarələyin və sonra \"Seç\" (ox) "
-"düyməsini basın."
+"Bu, mümkün %s siyahısıdır. Onlardan bir neçəsini qarşısındakı xanaya işarə "
+"qoymaq və iki xana arasındakı \"Seç\"i tıqlamaqla seçmək olar."
 
 #, javascript-format
 msgid "Type into this box to filter down the list of available %s."
-msgstr "Bu xanaya yazmaqla mövcud %s siyahısını filtrləyə bilərsiniz."
+msgstr "Bu xanaya yazmaqla mümkün %s siyahısını filtrləyə bilərsiniz."
 
 msgid "Filter"
 msgstr "Süzgəc"
 
-#, javascript-format
-msgid "Choose all %s"
-msgstr "Bütün %s elementlərini seç"
+msgid "Choose all"
+msgstr "Hamısını seç"
 
 #, javascript-format
-msgid "Choose selected %s"
-msgstr "İşarələnmiş %s elementini seçin"
+msgid "Click to choose all %s at once."
+msgstr "Bütün %s siyahısını seçmək üçün tıqlayın."
 
-#, javascript-format
-msgid "Remove selected %s"
-msgstr "İşarələnmiş %s elementini sil"
+msgid "Choose"
+msgstr "Seç"
+
+msgid "Remove"
+msgstr "Yığışdır"
 
 #, javascript-format
 msgid "Chosen %s"
@@ -57,56 +58,47 @@ msgstr "Seçilmiş %s"
 
 #, javascript-format
 msgid ""
-"Remove %s by selecting them and then select the \"Remove\" arrow button."
+"This is the list of chosen %s. You may remove some by selecting them in the "
+"box below and then clicking the \"Remove\" arrow between the two boxes."
 msgstr ""
-" Silmək istədikləriniz %s elementlərini işarələyin və sonra \"Sil\" "
-"düyməsini basın."
+"Bu, seçilmiş %s siyahısıdır. Onlardan bir neçəsini aşağıdakı xanaya işarə "
+"qoymaq və iki xana arasındakı \"Sil\"i tıqlamaqla silmək olar."
+
+msgid "Remove all"
+msgstr "Hamısını sil"
 
 #, javascript-format
-msgid "Type into this box to filter down the list of selected %s."
-msgstr "Seçilmiş %s siyahısını filtrləmək üçün bu xanaya yazın"
-
-msgid "(click to clear)"
-msgstr "(təmizləmək üçün toxunun)"
-
-#, javascript-format
-msgid "Remove all %s"
-msgstr "Bütün %s elementlərini sil"
-
-#, javascript-format
-msgid "%s selected option not visible"
-msgid_plural "%s selected options not visible"
-msgstr[0] "%s seçilmiş seçim görünmür"
-msgstr[1] "%s seçilmiş seçimlər görünmür"
+msgid "Click to remove all chosen %s at once."
+msgstr "Seçilmiş %s siyahısının hamısını silmək üçün tıqlayın."
 
 msgid "%(sel)s of %(cnt)s selected"
 msgid_plural "%(sel)s of %(cnt)s selected"
 msgstr[0] "%(sel)s / %(cnt)s seçilib"
-msgstr[1] "%(cnt)s-dan/dən %(sel)s ədədi seçilib"
+msgstr[1] "%(sel)s / %(cnt)s seçilib"
 
 msgid ""
 "You have unsaved changes on individual editable fields. If you run an "
 "action, your unsaved changes will be lost."
 msgstr ""
-"Fərdi düzəliş oluna bilən xanalarda yadda saxlanılmamış dəyişiklikləriniz "
-"var. Əgər əməliyyatı icra etsəniz, dəyişikliklər əldən gedəcək."
+"Bəzi sahələrdə etdiyiniz dəyişiklikləri hələ yadda saxlamamışıq. Əgər "
+"əməliyyatı işə salsanız, dəyişikliklər əldən gedəcək."
 
 msgid ""
 "You have selected an action, but you haven’t saved your changes to "
 "individual fields yet. Please click OK to save. You’ll need to re-run the "
 "action."
 msgstr ""
-"Əməliyyat seçmisiniz, amma fərdi xanalardakı dəyişiklikləriniz hələ də yadda "
+"Əməliyyat seçmisiniz, amma fərdi sahələrdəki dəyişiklikləriniz hələ də yadda "
 "saxlanılmayıb. Saxlamaq üçün lütfən Tamam düyməsinə klikləyin. Əməliyyatı "
-"təkrar icra etməli olacaqsınız."
+"təkrar işlətməli olacaqsınız."
 
 msgid ""
 "You have selected an action, and you haven’t made any changes on individual "
 "fields. You’re probably looking for the Go button rather than the Save "
 "button."
 msgstr ""
-"Əməliyyat seçmisiniz və fərdi xanalarda heç bir dəyişiklik etməmisiniz. "
-"Böyük ehtimal Saxla düyməsi yerinə İrəli düyməsinə ehtiyyacınız var."
+"Əməliyyat seçmisiniz və fərdi sahələrdə dəyişiklər etməmisiniz. Böyük "
+"ehtimal Saxla düyməsi yerinə Get düyməsinə ehtiyyacınız var."
 
 msgid "Now"
 msgstr "İndi"
@@ -115,25 +107,25 @@ msgid "Midnight"
 msgstr "Gecə yarısı"
 
 msgid "6 a.m."
-msgstr "Səhər 6"
+msgstr "6 a.m."
 
 msgid "Noon"
 msgstr "Günorta"
 
 msgid "6 p.m."
-msgstr "Axşam 6"
+msgstr "6 p.m."
 
 #, javascript-format
 msgid "Note: You are %s hour ahead of server time."
 msgid_plural "Note: You are %s hours ahead of server time."
 msgstr[0] "Diqqət: Server vaxtından %s saat irəlidəsiniz."
-msgstr[1] "Qeyd: Server vaxtından %s saat irəlidəsiniz."
+msgstr[1] "Diqqət: Server vaxtından %s saat irəlidəsiniz."
 
 #, javascript-format
 msgid "Note: You are %s hour behind server time."
 msgid_plural "Note: You are %s hours behind server time."
 msgstr[0] "Diqqət: Server vaxtından %s saat geridəsiniz."
-msgstr[1] "Qeyd: Server vaxtından %s saat geridəsiniz."
+msgstr[1] "Diqqət: Server vaxtından %s saat geridəsiniz."
 
 msgid "Choose a Time"
 msgstr "Vaxt Seçin"
@@ -142,7 +134,7 @@ msgid "Choose a time"
 msgstr "Vaxtı seçin"
 
 msgid "Cancel"
-msgstr "İmtina"
+msgstr "Ləğv et"
 
 msgid "Today"
 msgstr "Bu gün"
@@ -240,66 +232,17 @@ msgctxt "abbrev. month December"
 msgid "Dec"
 msgstr "Dek"
 
-msgid "Sunday"
-msgstr "Bazar"
-
-msgid "Monday"
-msgstr "Bazar ertəsi"
-
-msgid "Tuesday"
-msgstr "Çərşənbə axşamı"
-
-msgid "Wednesday"
-msgstr "Çərşənbə"
-
-msgid "Thursday"
-msgstr "Cümə axşamı"
-
-msgid "Friday"
-msgstr "Cümə"
-
-msgid "Saturday"
-msgstr "Şənbə"
-
-msgctxt "abbrev. day Sunday"
-msgid "Sun"
-msgstr "Baz"
-
-msgctxt "abbrev. day Monday"
-msgid "Mon"
-msgstr "B.er"
-
-msgctxt "abbrev. day Tuesday"
-msgid "Tue"
-msgstr "Ç.ax"
-
-msgctxt "abbrev. day Wednesday"
-msgid "Wed"
-msgstr "Çər"
-
-msgctxt "abbrev. day Thursday"
-msgid "Thur"
-msgstr "C.ax"
-
-msgctxt "abbrev. day Friday"
-msgid "Fri"
-msgstr "Cüm"
-
-msgctxt "abbrev. day Saturday"
-msgid "Sat"
-msgstr "Şən"
-
 msgctxt "one letter Sunday"
 msgid "S"
 msgstr "B"
 
 msgctxt "one letter Monday"
 msgid "M"
-msgstr "B.e"
+msgstr "B"
 
 msgctxt "one letter Tuesday"
 msgid "T"
-msgstr "Ç.a"
+msgstr "Ç"
 
 msgctxt "one letter Wednesday"
 msgid "W"
@@ -307,7 +250,7 @@ msgstr "Ç"
 
 msgctxt "one letter Thursday"
 msgid "T"
-msgstr "C.a"
+msgstr "C"
 
 msgctxt "one letter Friday"
 msgid "F"
@@ -316,3 +259,14 @@ msgstr "C"
 msgctxt "one letter Saturday"
 msgid "S"
 msgstr "Ş"
+
+msgid ""
+"You have already submitted this form. Are you sure you want to submit it "
+"again?"
+msgstr ""
+
+msgid "Show"
+msgstr "Göstər"
+
+msgid "Hide"
+msgstr "Gizlət"

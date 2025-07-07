@@ -11,10 +11,8 @@ GET_ITERATOR_CHUNK_SIZE = 100
 # How many results to expect from a cursor.execute call
 MULTI = "multi"
 SINGLE = "single"
-NO_RESULTS = "no results"
-# Rather than returning results, returns:
 CURSOR = "cursor"
-ROW_COUNT = "row count"
+NO_RESULTS = "no results"
 
 ORDER_DIR = {
     "ASC": ("ASC", "DESC"),

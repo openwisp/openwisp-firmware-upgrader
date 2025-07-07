@@ -1,5 +1,4 @@
 import datetime
-import decimal
 
 from .base import Database
 
@@ -21,11 +20,10 @@ class InsertVar:
         "PositiveBigIntegerField": int,
         "PositiveSmallIntegerField": int,
         "PositiveIntegerField": int,
-        "BooleanField": int,
-        "FloatField": Database.DB_TYPE_BINARY_DOUBLE,
-        "DateTimeField": Database.DB_TYPE_TIMESTAMP,
+        "FloatField": Database.NATIVE_FLOAT,
+        "DateTimeField": Database.TIMESTAMP,
         "DateField": Database.Date,
-        "DecimalField": decimal.Decimal,
+        "DecimalField": Database.NUMBER,
     }
 
     def __init__(self, field):
@@ -44,10 +42,10 @@ class InsertVar:
 class Oracle_datetime(datetime.datetime):
     """
     A datetime object, with an additional class attribute
-    to tell oracledb to save the microseconds too.
+    to tell cx_Oracle to save the microseconds too.
     """
 
-    input_size = Database.DB_TYPE_TIMESTAMP
+    input_size = Database.TIMESTAMP
 
     @classmethod
     def from_datetime(cls, dt):

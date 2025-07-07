@@ -54,7 +54,7 @@ class MapWidget {
 
         // Altering using user-provided options
         for (const property in options) {
-            if (Object.hasOwn(options, property)) {
+            if (options.hasOwnProperty(property)) {
                 this.options[property] = options[property];
             }
         }
@@ -62,6 +62,11 @@ class MapWidget {
             this.options.base_layer = new ol.layer.Tile({source: new ol.source.OSM()});
         }
 
+        // RemovedInDjango51Warning: when the deprecation ends, remove setting
+        // width/height (3 lines below).
+        const mapContainer = document.getElementById(this.options.map_id);
+        mapContainer.style.width = `${mapContainer.dataset.width}px`;
+        mapContainer.style.height = `${mapContainer.dataset.height}px`;
         this.map = this.createMap();
         this.featureCollection = new ol.Collection();
         this.featureOverlay = new ol.layer.Vector({

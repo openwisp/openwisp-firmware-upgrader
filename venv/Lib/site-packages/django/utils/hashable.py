@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from django.utils.itercompat import is_iterable
 
 
 def make_hashable(value):
@@ -19,7 +19,7 @@ def make_hashable(value):
     try:
         hash(value)
     except TypeError:
-        if isinstance(value, Iterable):
+        if is_iterable(value):
             return tuple(map(make_hashable, value))
         # Non-hashable, non-iterable.
         raise

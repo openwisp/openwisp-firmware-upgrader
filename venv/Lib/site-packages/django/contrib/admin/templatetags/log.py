@@ -1,25 +1,27 @@
 from django import template
+from django.contrib.admin.models import LogEntry
 
 register = template.Library()
 
 
 class AdminLogNode(template.Node):
     def __init__(self, limit, varname, user):
-        self.limit = limit
-        self.varname = varname
-        self.user = user
+        self.limit, self.varname, self.user = limit, varname, user
 
     def __repr__(self):
         return "<GetAdminLog Node>"
 
     def render(self, context):
-        entries = context["log_entries"]
-        if self.user is not None:
+        if self.user is None:
+            entries = LogEntry.objects.all()
+        else:
             user_id = self.user
             if not user_id.isdigit():
                 user_id = context[self.user].pk
-            entries = entries.filter(user__pk=user_id)
-        context[self.varname] = entries[: int(self.limit)]
+            entries = LogEntry.objects.filter(user__pk=user_id)
+        context[self.varname] = entries.select_related("content_type", "user")[
+            : int(self.limit)
+        ]
         return ""
 
 

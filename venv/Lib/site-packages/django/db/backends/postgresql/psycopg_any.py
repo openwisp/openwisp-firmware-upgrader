@@ -75,15 +75,9 @@ except ImportError:
     from enum import IntEnum
 
     from psycopg2 import errors, extensions, sql  # NOQA
-    from psycopg2.extras import (  # NOQA
-        DateRange,
-        DateTimeRange,
-        DateTimeTZRange,
-        Inet,
-        Json,
-        NumericRange,
-        Range,
-    )
+    from psycopg2.extras import DateRange, DateTimeRange, DateTimeTZRange, Inet  # NOQA
+    from psycopg2.extras import Json as Jsonb  # NOQA
+    from psycopg2.extras import NumericRange, Range  # NOQA
 
     RANGE_TYPES = (DateRange, DateTimeRange, DateTimeTZRange, NumericRange)
 
@@ -107,8 +101,3 @@ except ImportError:
             return cursor.mogrify(sql, params).decode()
 
     is_psycopg3 = False
-
-    class Jsonb(Json):
-        def getquoted(self):
-            quoted = super().getquoted()
-            return quoted + b"::jsonb"

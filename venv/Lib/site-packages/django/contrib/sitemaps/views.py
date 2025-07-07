@@ -1,4 +1,5 @@
 import datetime
+import warnings
 from dataclasses import dataclass
 from functools import wraps
 
@@ -8,6 +9,7 @@ from django.http import Http404
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.deprecation import RemovedInDjango50Warning
 from django.utils.http import http_date
 
 
@@ -15,6 +17,15 @@ from django.utils.http import http_date
 class SitemapIndexItem:
     location: str
     last_mod: bool = None
+
+    # RemovedInDjango50Warning
+    def __str__(self):
+        msg = (
+            "Calling `__str__` on SitemapIndexItem is deprecated, use the `location` "
+            "attribute instead."
+        )
+        warnings.warn(msg, RemovedInDjango50Warning, stacklevel=2)
+        return self.location
 
 
 def x_robots_tag(func):

@@ -23,9 +23,6 @@ class BaseEngine:
                 "Unknown parameters: {}".format(", ".join(params))
             )
 
-    def check(self, **kwargs):
-        return []
-
     @property
     def app_dirname(self):
         raise ImproperlyConfigured(

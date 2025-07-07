@@ -4,7 +4,7 @@ from django.contrib.gis.db.models.fields import (
     GeometryField,
     LineStringField,
 )
-from django.db.models import Aggregate, Func, Value
+from django.db.models import Aggregate, Value
 from django.utils.functional import cached_property
 
 __all__ = ["Collect", "Extent", "Extent3D", "MakeLine", "Union"]
@@ -33,25 +33,24 @@ class GeoAggregate(Aggregate):
         if not self.is_extent:
             tolerance = self.extra.get("tolerance") or getattr(self, "tolerance", 0.05)
             clone = self.copy()
-            source_expressions = self.get_source_expressions()
-            source_expressions.pop()  # Don't wrap filters with SDOAGGRTYPE().
-            spatial_type_expr = Func(
-                *source_expressions,
-                Value(tolerance),
-                function="SDOAGGRTYPE",
-                output_field=self.output_field,
+            clone.set_source_expressions(
+                [
+                    *self.get_source_expressions(),
+                    Value(tolerance),
+                ]
             )
-            source_expressions = [spatial_type_expr, self.filter]
-            clone.set_source_expressions(source_expressions)
-            return clone.as_sql(compiler, connection, **extra_context)
+            template = "%(function)s(SDOAGGRTYPE(%(expressions)s))"
+            return clone.as_sql(
+                compiler, connection, template=template, **extra_context
+            )
         return self.as_sql(compiler, connection, **extra_context)
 
     def resolve_expression(
         self, query=None, allow_joins=True, reuse=None, summarize=False, for_save=False
     ):
         c = super().resolve_expression(query, allow_joins, reuse, summarize, for_save)
-        for field in c.get_source_fields():
-            if not hasattr(field, "geom_type"):
+        for expr in c.get_source_expressions():
+            if not hasattr(expr.field, "geom_type"):
                 raise ValueError(
                     "Geospatial aggregates only allowed on geometry fields."
                 )

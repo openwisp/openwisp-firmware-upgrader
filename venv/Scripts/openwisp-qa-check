@@ -41,9 +41,9 @@ show_help() {
   printf "ReStructuredText check options:\n"
   printf "  --skip-checkrst\t\t: Skip ReStructuredText check\n"
   printf "CSSlinter check options:\n"
-  printf "  --csslinter\t\t\t: Runs prettier check on css files\n"
+  printf "  --csslinter\t\t\t: Runs stylelint check\n"
   printf "Jslinter check options:\n"
-  printf "  --jslinter\t\t\t: Runs prettier check on javascript files\n"
+  printf "  --jslinter\t\t\t: Runs jshint check\n"
 }
 
 echoerr() { echo "$@" 1>&2; }
@@ -67,13 +67,13 @@ runcheckendline() {
   fi
 }
 
-runcssprettiercheck() {
-  package='prettier'
-  if which prettier > /dev/null; then
-    prettier $(find . -type f -name "*.css") --check &&
-      echo "SUCCESS: Prettier check successful!" ||
+runstylelintcheck() {
+  package='stylelint'
+  if which stylelint > /dev/null; then
+    stylelint verbose $(find . -type f -name "*.css") &&
+      echo "SUCCESS: Stylelint check successful!" ||
       {
-        echoerr "ERROR: Prettier check failed! Hint: did you forget to run openwisp-qa-format?"
+        echoerr "ERROR: Stylelint check failed! Hint: did you forget to run openwisp-qa-format?"
         FAILURE=1
       }
   else
@@ -82,13 +82,13 @@ runcssprettiercheck() {
   fi
 }
 
-runjsprettiercheck() {
-  package='prettier'
-  if which prettier > /dev/null; then
-    prettier $(find . -type f -name "*.js" -a ! -path "*vendor/*.js") --check &&
-      echo "SUCCESS: Prettier check successful!" ||
+runjshintcheck() {
+  package='jshint'
+  if which jshint > /dev/null; then
+    jshint --verbose $(find . -type f -name "*.js" -a ! -path "*vendor/*.js") &&
+      echo "SUCCESS: Jshint check successful!" ||
       {
-        echoerr "ERROR: Prettier check failed! Hint: please follow js code conventions. Visit: https://openwisp.io/docs/dev/developer/contributing.html#css-and-javascript-code-conventions"
+        echoerr "ERROR: Jshint check failed! Hint: please follow js code conventions. Visit: https://openwisp.io/docs/developer/contributing.html#javascript-code-conventions"
         FAILURE=1
       }
   else
@@ -145,7 +145,7 @@ runisort() {
 }
 
 runblack() {
-  black --check --diff --quiet . &&
+  black -S --check --diff --quiet . &&
     echo "SUCCESS: Black check successful!" ||
     {
       echoerr "ERROR: Black check failed! Hint: did you forget to run openwisp-qa-format?"
@@ -283,11 +283,11 @@ if ! $SKIP_FLAKE8; then
 fi
 
 if ! $SKIP_CSS_LINTER; then
-  runcssprettiercheck
+  runstylelintcheck
 fi
 
 if ! $SKIP_JS_LINTER; then
-  runjsprettiercheck
+  runjshintcheck
 fi
 
 if ! $SKIP_RSTCHECK; then

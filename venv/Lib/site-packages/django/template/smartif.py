@@ -1,9 +1,8 @@
 """
 Parser and utilities for the smart 'if' tag
 """
-
 # Using a simple top down parser, as described here:
-#    https://11l-lang.org/archive/simple-top-down-parsing/
+#    http://effbot.org/zone/simple-top-down-parsing.htm.
 # 'led' = left denotation
 # 'nud' = null denotation
 # 'bp' = binding power (left = lbp, right = rbp)
