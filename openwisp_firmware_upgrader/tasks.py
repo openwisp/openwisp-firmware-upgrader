@@ -83,3 +83,4 @@ def create_all_device_firmwares(self, firmware_image_id):
     queryset = Device.objects.filter(os=fw_image.build.os)
     for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)
+        
