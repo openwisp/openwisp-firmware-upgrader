@@ -70,7 +70,7 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
   }
 
   let statusFields = $(
-    "#upgradeoperation_set-group .field-status .readonly, .field-status .readonly",
+    "#upgradeoperation_set-group .field-status .readonly",
   );
 
   let processedCount = 0;
@@ -321,7 +321,7 @@ function updateUpgradeOperationLog(logData) {
   let $ = django.jQuery;
 
   // Find all in-progress operations and recently completed operations to update their logs
-  $(".field-status .readonly").each(function () {
+  $("#upgradeoperation_set-group .field-status .readonly").each(function () {
     let statusField = $(this);
     let currentStatusText =
       statusField.find(".upgrade-status-container span").text() ||
@@ -382,7 +382,7 @@ function updateUpgradeOperationStatus(statusData) {
   let $ = django.jQuery;
 
   // Update status for in-progress operations
-  $(".field-status .readonly").each(function () {
+  $("#upgradeoperation_set-group .field-status .readonly").each(function () {
     let statusField = $(this);
     let currentStatusText =
       statusField.find(".upgrade-status-container span").text() ||
