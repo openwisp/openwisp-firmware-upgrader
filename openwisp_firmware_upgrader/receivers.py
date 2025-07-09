@@ -64,6 +64,7 @@ def handle_upgrade_operation_saved(sender, instance, created, **kwargs):
                     "device": str(instance.device.pk),
                     "status": instance.status,
                     "log": instance.log,
+                    "progress": getattr(instance, 'progress', 0),  # Include progress field
                     "image": (
                         str(getattr(instance.image, "pk", None))
                         if getattr(instance.image, "pk", None)

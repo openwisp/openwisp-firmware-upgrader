@@ -5,6 +5,7 @@ from decimal import Decimal
 import jsonschema
 import swapper
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -594,6 +595,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
     )
     log = models.TextField(blank=True)
+    progress = models.IntegerField(
+        default=0,
+        validators=[
+            MinValueValidator(0),
+            MaxValueValidator(100),
+        ]
+    )
     batch = models.ForeignKey(
         get_model_name("BatchUpgradeOperation"),
         on_delete=models.CASCADE,
@@ -613,6 +621,12 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         if save:
             self.save()
         firmware_upgrader_log_updated.send(sender=self.__class__, instance=self, line=line)
+
+    def update_progress(self, progress, save=True):
+        """Update progress percentage (0-100) in a language-independent way"""
+        self.progress = max(0, min(100, progress))
+        if save:
+            self.save()
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
@@ -681,6 +695,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # means the device was aleady flashed previously with the same image
         except UpgradeNotNeeded:
             self.status = "success"
+            self.update_progress(100, save=False)  # Don't save yet - we'll save once at the end
             installed = True
         # this exception is raised when the test of the image fails,
         # meaning the image file is corrupted or not apt for flashing
@@ -709,6 +724,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         else:
             installed = True
             self.status = "success"
+            self.update_progress(100, save=False)  # Don't save yet - we'll save once at the end
         self.save()
         # if the firmware has been successfully installed,
         # or if it was already installed

@@ -190,6 +190,7 @@ class OpenWrt(object):
             self.log(str(message).format(expected=device_uuid, found=config_uuid))
             raise UpgradeAborted()
         self.log(_("Device identity verified successfully"))
+        self.upgrade_operation.update_progress(15)
 
     def upgrade(self, image):
         self._test_connection()
@@ -206,6 +207,7 @@ class OpenWrt(object):
         if not result:
             raise RecoverableFailure("Connection failed")
         self.log(_("Connection successful, starting upgrade..."))
+        self.upgrade_operation.update_progress(10)
 
     _non_critical_services = [
         "uhttpd",
@@ -366,7 +368,8 @@ class OpenWrt(object):
             f"test -f {self.CHECKSUM_FILE}", exit_codes=[0, 1]
         )
         if exit_code == 0:
-            self.log(_("Image checksum file found"), save=False)
+            self.log(_("Image checksum file found"))
+            self.upgrade_operation.update_progress(20)
             cat = f"cat {self.CHECKSUM_FILE}"
             output, code = self.exec_command(cat)
             if checksum == output.strip():
@@ -423,6 +426,7 @@ class OpenWrt(object):
         """
         self.disconnect()
         self.log(_("Upgrade operation in progress..."))
+        self.upgrade_operation.update_progress(65)
 
         failure_queue = Queue()
         subprocess = Process(
@@ -519,11 +523,13 @@ class OpenWrt(object):
                 continue
             self._log_reconnecting_error(attempt)
             self.log(_("Connected! Writing checksum " f"file to {self.CHECKSUM_FILE}"))
+            self.upgrade_operation.update_progress(90)
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
             self.exec_command(f"mkdir -p {checksum_dir}")
             self.exec_command(f"echo {checksum} > {self.CHECKSUM_FILE}")
             self.disconnect()
             self.log(_("Upgrade completed successfully."))
+            self.upgrade_operation.update_progress(100)
             return
         # if all previous attempts failed
         raise ReconnectionFailed(

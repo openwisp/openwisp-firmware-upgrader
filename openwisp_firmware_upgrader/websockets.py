@@ -111,12 +111,14 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
         try:
             from .models import UpgradeOperation
 
-            # Get in-progress operations for this device using sync_to_async
+            # Get recent operations (including recently completed) for this device using sync_to_async
             get_operations = sync_to_async(
                 lambda: list(
                     UpgradeOperation.objects.filter(
-                        device_id=self.pk_, status__in=["in-progress", "in progress"]
-                    ).values("id", "status", "log", "modified", "created")
+                        device_id=self.pk_,
+                        status__in=["in-progress", "in progress", "success", "failed", "aborted"]
+                    ).order_by("-modified")[:5]
+                    .values("id", "status", "log", "progress", "modified", "created")
                 )
             )
 
@@ -128,6 +130,7 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                     "id": str(operation["id"]),
                     "status": operation["status"],
                     "log": operation["log"] or "",
+                    "progress": operation.get("progress", 0),  # Include progress field
                     "modified": (
                         operation["modified"].isoformat()
                         if operation["modified"]

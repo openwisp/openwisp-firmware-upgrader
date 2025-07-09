@@ -37,7 +37,7 @@ django.jQuery(function ($) {
       // Initialize websocket connection
       initUpgradeProgressWebSockets($, upgradeProgressWebSocket);
     }
-  }, 500);
+  }, 100);
 });
 
 let upgradeOperationsInitialized = false;
@@ -119,6 +119,7 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
         status: statusText,
         log: logContent,
         id: operationId,
+        progress: null,
       };
 
       updateStatusWithProgressBar(statusField, operation);
@@ -140,15 +141,13 @@ function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
   upgradeProgressWebSocket.addEventListener("open", function (e) {
     upgradeOperationsInitialized = false;
 
-    // Request current state of in-progress operations from server to get full log content
     setTimeout(function () {
       requestCurrentOperationState(upgradeProgressWebSocket);
 
-      // Wait a bit for the server response before initializing with DOM content
       setTimeout(function () {
         initializeExistingUpgradeOperations($, false);
-      }, 200);
-    }, 100);
+      }, 100);
+    }, 50);
   });
 
   upgradeProgressWebSocket.addEventListener("close", function (e) {
@@ -243,9 +242,8 @@ function updateStatusWithProgressBar(statusField, operation) {
   let $ = django.jQuery;
 
   let status = operation.status;
-  // Get log content to calculate real progress
   let logContent = operation.log || "";
-  let progressPercentage = getProgressPercentage(status, logContent);
+  let progressPercentage = getProgressPercentage(status, logContent, operation.progress);
   let progressClass = status.replace(/\s+/g, "-");
 
   if (!statusField.find(".upgrade-status-container").length) {
@@ -293,56 +291,31 @@ function updateStatusWithProgressBar(statusField, operation) {
   statusContainer.html(statusHtml);
 }
 
-function getProgressPercentage(status, logContent = "") {
+function getProgressPercentage(status, logContent = "", operationProgress = null) {
+  if (operationProgress !== null && operationProgress !== undefined) {
+    return Math.min(100, Math.max(0, operationProgress));
+  }
+
   if (status === "success") {
     return 100;
   } else if (status === "failed" || status === "aborted") {
-    return calculateProgressFromLog(logContent);
+    return calculateProgressFromLogLength(logContent);
   } else if (status === "in-progress" || status === "in progress") {
-    return calculateProgressFromLog(logContent);
+    return calculateProgressFromLogLength(logContent);
   }
   return 0;
 }
 
-function calculateProgressFromLog(logContent = "") {
+function calculateProgressFromLogLength(logContent = "") {
   if (!logContent) return 0;
+  
+  const logLines = logContent.split('\n').filter(line => line.trim().length > 0);
+  const estimatedTotalSteps = 20;
+  const currentProgress = Math.min(95, (logLines.length / estimatedTotalSteps) * 100);
 
-  const upgradeSteps = [
-    { keyword: "Connection successful, starting upgrade", progress: 10 },
-    { keyword: "Device identity verified successfully", progress: 15 },
-    { keyword: "Image checksum file found", progress: 20 },
-    { keyword: "Checksum different, proceeding", progress: 25 },
-    { keyword: "proceeding with the upload of the new image", progress: 30 },
-    { keyword: "upload of the new image", progress: 35 },
-    { keyword: "Enough available memory was freed up", progress: 40 },
-    { keyword: "Proceeding to upload of the image file", progress: 45 },
-    { keyword: "Sysupgrade test passed successfully", progress: 55 },
-    { keyword: "proceeding with the upgrade operation", progress: 60 },
-    { keyword: "Upgrade operation in progress", progress: 65 },
-    { keyword: "SSH connection closed, will wait", progress: 70 },
-    { keyword: "seconds before attempting to reconnect", progress: 75 },
-    { keyword: "Trying to reconnect to device", progress: 80 },
-    { keyword: "Connected! Writing checksum", progress: 90 },
-    { keyword: "Upgrade completed successfully", progress: 100 },
-    { keyword: "Firmware already upgraded previously", progress: 100 },
-  ];
-
-  let currentProgress = 0;
-
-  // Find the highest progress step that has been completed
-  for (const step of upgradeSteps) {
-    if (logContent.includes(step.keyword)) {
-      currentProgress = Math.max(currentProgress, step.progress);
-    }
-  }
-
-  // show at least 5%
-  if (currentProgress === 0 && logContent.length > 0) {
-    currentProgress = 5;
-  }
-
-  return currentProgress;
+  return Math.max(5, currentProgress);
 }
+
 
 function updateUpgradeOperationLog(logData) {
   let $ = django.jQuery;
@@ -393,6 +366,7 @@ function updateUpgradeOperationLog(logData) {
         status: currentStatusText,
         log: newLog,
         id: operationId,
+        progress: null, 
       };
 
       updateStatusWithProgressBar(statusField, operation);
@@ -427,6 +401,7 @@ function updateUpgradeOperationStatus(statusData) {
         status: statusData.status,
         log: logContent,
         id: null,
+        progress: null, 
       };
 
       updateStatusWithProgressBar(statusField, operation);
