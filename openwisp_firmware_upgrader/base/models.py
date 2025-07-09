@@ -29,7 +29,7 @@ from ..hardware import (
     FIRMWARE_IMAGE_TYPE_CHOICES,
     REVERSE_FIRMWARE_IMAGE_MAP,
 )
-from ..signals import upgrade_log_line
+from ..signals import firmware_upgrader_log_updated
 from ..swapper import get_model_name, load_model
 from ..tasks import (
     batch_upgrade_operation,
@@ -612,7 +612,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         logger.info(f"# {line}")
         if save:
             self.save()
-        upgrade_log_line.send(sender=self.__class__, instance=self, line=line)
+        firmware_upgrader_log_updated.send(sender=self.__class__, instance=self, line=line)
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)

@@ -7,7 +7,7 @@ from openwisp_utils.api.apps import ApiAppConfig
 from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
-from .signals import handle_upgrade_operation_saved
+from .receivers import handle_upgrade_operation_saved
 
 
 class FirmwareUpdaterConfig(ApiAppConfig):
