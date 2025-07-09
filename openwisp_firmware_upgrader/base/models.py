@@ -623,7 +623,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         firmware_upgrader_log_updated.send(sender=self.__class__, instance=self, line=line)
 
     def update_progress(self, progress, save=True):
-        """Update progress percentage (0-100) in a language-independent way"""
         self.progress = max(0, min(100, progress))
         if save:
             self.save()
@@ -695,7 +694,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # means the device was aleady flashed previously with the same image
         except UpgradeNotNeeded:
             self.status = "success"
-            self.update_progress(100, save=False)  # Don't save yet - we'll save once at the end
+            self.update_progress(100, save=False)
             installed = True
         # this exception is raised when the test of the image fails,
         # meaning the image file is corrupted or not apt for flashing
@@ -724,7 +723,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         else:
             installed = True
             self.status = "success"
-            self.update_progress(100, save=False)  # Don't save yet - we'll save once at the end
+            self.update_progress(100, save=False)
         self.save()
         # if the firmware has been successfully installed,
         # or if it was already installed
