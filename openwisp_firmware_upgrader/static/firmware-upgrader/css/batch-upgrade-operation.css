@@ -21,6 +21,7 @@
   height: 20px;
   color: #333;
   margin-right: 15px;
+  font-size: 16px;
 }
 
 .search-input {
@@ -42,6 +43,22 @@
   font-size: 14px;
   font-weight: 500;
   margin-left: 15px;
+}
+
+/* Filter clear styles */
+.filter-clear-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: normal;
+}
+
+.filter-clear-link {
+  color: #666;
+  text-decoration: none;
+}
+
+.filter-clear-link:hover {
+  color: #333;
 }
 
 .results-container {
