@@ -600,7 +600,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         validators=[
             MinValueValidator(0),
             MaxValueValidator(100),
-        ]
+        ],
     )
     batch = models.ForeignKey(
         get_model_name("BatchUpgradeOperation"),
@@ -620,7 +620,9 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         logger.info(f"# {line}")
         if save:
             self.save()
-        firmware_upgrader_log_updated.send(sender=self.__class__, instance=self, line=line)
+        firmware_upgrader_log_updated.send(
+            sender=self.__class__, instance=self, line=line
+        )
 
     def update_progress(self, progress, save=True):
         self.progress = max(0, min(100, progress))

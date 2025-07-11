@@ -116,8 +116,15 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                 lambda: list(
                     UpgradeOperation.objects.filter(
                         device_id=self.pk_,
-                        status__in=["in-progress", "in progress", "success", "failed", "aborted"]
-                    ).order_by("-modified")[:5]
+                        status__in=[
+                            "in-progress",
+                            "in progress",
+                            "success",
+                            "failed",
+                            "aborted",
+                        ],
+                    )
+                    .order_by("-modified")[:5]
                     .values("id", "status", "log", "progress", "modified", "created")
                 )
             )
@@ -174,13 +181,16 @@ class UpgradeProgressPublisher:
         self.group_name = f"upgrade_{operation_id}"
 
     def publish_progress(self, data):
-        async_to_sync(self.channel_layer.group_send)(
-            self.group_name,
-            {
-                "type": "upgrade_progress",
-                "data": {**data, "timestamp": timezone.now().isoformat()},
-            },
-        )
+        async def _send_message():
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    "type": "upgrade_progress",
+                    "data": {**data, "timestamp": timezone.now().isoformat()},
+                },
+            )
+
+        async_to_sync(_send_message)()
 
     def publish_log(self, line, status):
         self.publish_progress({"type": "log", "content": line, "status": status})
@@ -214,14 +224,18 @@ class DeviceUpgradeProgressPublisher:
             "data": {**data, "timestamp": timezone.now().isoformat()},
         }
 
-        # Send to device-specific channel
-        async_to_sync(self.channel_layer.group_send)(self.device_group_name, message)
+        async def _send_messages():
+            # Send to device-specific channel
+            await self.channel_layer.group_send(self.device_group_name, message)
 
-        # Also send to operation-specific channel if available
-        if hasattr(self, "operation_group_name"):
-            async_to_sync(self.channel_layer.group_send)(
-                self.operation_group_name, {"type": "upgrade_progress", "data": data}
-            )
+            # Also send to operation-specific channel if available
+            if hasattr(self, "operation_group_name"):
+                await self.channel_layer.group_send(
+                    self.operation_group_name,
+                    {"type": "upgrade_progress", "data": data},
+                )
+
+        async_to_sync(_send_messages)()
 
     def publish_operation_update(self, operation_data):
         """Publish complete operation update"""
@@ -244,13 +258,17 @@ class BatchUpgradeProgressPublisher:
         self.group_name = f"batch_upgrade_{batch_id}"
 
     def publish_progress(self, data):
-        async_to_sync(self.channel_layer.group_send)(
-            self.group_name,
-            {
-                "type": "batch_upgrade_progress",
-                "data": {**data, "timestamp": timezone.now().isoformat()},
-            },
-        )
+
+        async def _send_message():
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    "type": "batch_upgrade_progress",
+                    "data": {**data, "timestamp": timezone.now().isoformat()},
+                },
+            )
+
+        async_to_sync(_send_message)()
 
     def publish_operation_progress(self, operation_id, status, progress):
         self.publish_progress(

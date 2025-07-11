@@ -69,9 +69,7 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
     return;
   }
 
-  let statusFields = $(
-    "#upgradeoperation_set-group .field-status .readonly",
-  );
+  let statusFields = $("#upgradeoperation_set-group .field-status .readonly");
 
   let processedCount = 0;
   statusFields.each(function (index) {
@@ -243,7 +241,11 @@ function updateStatusWithProgressBar(statusField, operation) {
 
   let status = operation.status;
   let logContent = operation.log || "";
-  let progressPercentage = getProgressPercentage(status, logContent, operation.progress);
+  let progressPercentage = getProgressPercentage(
+    status,
+    logContent,
+    operation.progress,
+  );
   let progressClass = status.replace(/\s+/g, "-");
 
   if (!statusField.find(".upgrade-status-container").length) {
@@ -291,7 +293,11 @@ function updateStatusWithProgressBar(statusField, operation) {
   statusContainer.html(statusHtml);
 }
 
-function getProgressPercentage(status, logContent = "", operationProgress = null) {
+function getProgressPercentage(
+  status,
+  logContent = "",
+  operationProgress = null,
+) {
   if (operationProgress !== null && operationProgress !== undefined) {
     return Math.min(100, Math.max(0, operationProgress));
   }
@@ -308,14 +314,18 @@ function getProgressPercentage(status, logContent = "", operationProgress = null
 
 function calculateProgressFromLogLength(logContent = "") {
   if (!logContent) return 0;
-  
-  const logLines = logContent.split('\n').filter(line => line.trim().length > 0);
+
+  const logLines = logContent
+    .split("\n")
+    .filter((line) => line.trim().length > 0);
   const estimatedTotalSteps = 20;
-  const currentProgress = Math.min(95, (logLines.length / estimatedTotalSteps) * 100);
+  const currentProgress = Math.min(
+    95,
+    (logLines.length / estimatedTotalSteps) * 100,
+  );
 
   return Math.max(5, currentProgress);
 }
-
 
 function updateUpgradeOperationLog(logData) {
   let $ = django.jQuery;
@@ -366,7 +376,7 @@ function updateUpgradeOperationLog(logData) {
         status: currentStatusText,
         log: newLog,
         id: operationId,
-        progress: null, 
+        progress: null,
       };
 
       updateStatusWithProgressBar(statusField, operation);
@@ -401,7 +411,7 @@ function updateUpgradeOperationStatus(statusData) {
         status: statusData.status,
         log: logContent,
         id: null,
-        progress: null, 
+        progress: null,
       };
 
       updateStatusWithProgressBar(statusField, operation);

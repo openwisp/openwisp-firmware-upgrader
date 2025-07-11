@@ -72,9 +72,7 @@ class WebSocketTest(TestCase):
             UpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
-        communicator.scope["url_route"] = {
-            "kwargs": {"operation_id": operation_id}
-        }
+        communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -295,7 +293,9 @@ class WebSocketTest(TestCase):
             },
         ]
 
-        with patch("openwisp_firmware_upgrader.websockets.sync_to_async") as mock_sync_to_async:
+        with patch(
+            "openwisp_firmware_upgrader.websockets.sync_to_async"
+        ) as mock_sync_to_async:
             mock_sync_to_async.return_value = AsyncMock(return_value=test_operations)
 
             # The consumer should send current state for each operation
@@ -337,7 +337,9 @@ class WebSocketTest(TestCase):
         publisher = UpgradeProgressPublisher(operation_id)
 
         # Test publishing progress
-        with patch.object(publisher.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             test_data = {"type": "test", "data": "test_value"}
             publisher.publish_progress(test_data)
 
@@ -349,7 +351,9 @@ class WebSocketTest(TestCase):
             self.assertIn("timestamp", call_args[1]["data"])
 
         # Test publishing log
-        with patch.object(publisher.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             publisher.publish_log("Test log line", "in-progress")
 
             call_args = mock_group_send.call_args[0]
@@ -358,7 +362,9 @@ class WebSocketTest(TestCase):
             self.assertEqual(call_args[1]["data"]["status"], "in-progress")
 
         # Test publishing status
-        with patch.object(publisher.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             publisher.publish_status("success")
 
             call_args = mock_group_send.call_args[0]
@@ -366,7 +372,9 @@ class WebSocketTest(TestCase):
             self.assertEqual(call_args[1]["data"]["status"], "success")
 
         # Test publishing error
-        with patch.object(publisher.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             publisher.publish_error("Test error message")
 
             call_args = mock_group_send.call_args[0]
@@ -380,7 +388,9 @@ class WebSocketTest(TestCase):
         publisher = DeviceUpgradeProgressPublisher(device_id, operation_id)
 
         # Test publishing progress
-        with patch.object(publisher.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             test_data = {"type": "test", "data": "test_value"}
             publisher.publish_progress(test_data)
 
@@ -401,7 +411,9 @@ class WebSocketTest(TestCase):
             self.assertEqual(operation_call[0][1]["data"]["type"], "test")
 
         # Test publishing operation update
-        with patch.object(publisher.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             operation_data = {"id": "op1", "status": "success"}
             publisher.publish_operation_update(operation_data)
 
@@ -412,7 +424,9 @@ class WebSocketTest(TestCase):
         # Test publishing without operation_id
         publisher_no_op = DeviceUpgradeProgressPublisher(device_id)
 
-        with patch.object(publisher_no_op.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher_no_op.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             test_data = {"type": "test", "data": "test_value"}
             publisher_no_op.publish_progress(test_data)
 
@@ -425,7 +439,9 @@ class WebSocketTest(TestCase):
         publisher = BatchUpgradeProgressPublisher(batch_id)
 
         # Test publishing progress
-        with patch.object(publisher.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             test_data = {"type": "test", "data": "test_value"}
             publisher.publish_progress(test_data)
 
@@ -437,7 +453,9 @@ class WebSocketTest(TestCase):
             self.assertIn("timestamp", call_args[1]["data"])
 
         # Test publishing operation progress
-        with patch.object(publisher.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             publisher.publish_operation_progress("op1", "in-progress", 75)
 
             call_args = mock_group_send.call_args[0]
@@ -447,7 +465,9 @@ class WebSocketTest(TestCase):
             self.assertEqual(call_args[1]["data"]["progress"], 75)
 
         # Test publishing batch status
-        with patch.object(publisher.channel_layer, 'group_send', new_callable=AsyncMock) as mock_group_send:
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
             publisher.publish_batch_status("success", 5, 10)
 
             call_args = mock_group_send.call_args[0]
@@ -470,7 +490,9 @@ class WebSocketTest(TestCase):
         except (KeyError, Exception):
             pass
 
-    @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    @override_settings(
+        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    )
     async def test_websocket_with_inmemory_channel_layer(self):
         """Test WebSocket functionality with in-memory channel layer."""
         operation_id = str(uuid4())
@@ -480,9 +502,7 @@ class WebSocketTest(TestCase):
             UpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
-        communicator.scope["url_route"] = {
-            "kwargs": {"operation_id": operation_id}
-        }
+        communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -514,9 +534,7 @@ class WebSocketTest(TestCase):
             UpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
-        communicator.scope["url_route"] = {
-            "kwargs": {"operation_id": operation_id}
-        }
+        communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -527,8 +545,12 @@ class WebSocketTest(TestCase):
     async def test_device_upgrade_progress_consumer_channel_layer_errors(self):
         """Test DeviceUpgradeProgressConsumer channel layer error handling."""
         device_id = str(uuid4())
-        with patch.object(DeviceUpgradeProgressConsumer, "channel_layer", create=True) as mock_channel_layer:
-            mock_channel_layer.group_add.side_effect = ConnectionError("Connection failed")
+        with patch.object(
+            DeviceUpgradeProgressConsumer, "channel_layer", create=True
+        ) as mock_channel_layer:
+            mock_channel_layer.group_add.side_effect = ConnectionError(
+                "Connection failed"
+            )
             communicator = WebsocketCommunicator(
                 DeviceUpgradeProgressConsumer.as_asgi(),
                 f"/ws/firmware-upgrader/device/{device_id}/",
@@ -539,7 +561,9 @@ class WebSocketTest(TestCase):
                 await communicator.connect()
             except Exception:
                 pass
-        with patch.object(DeviceUpgradeProgressConsumer, "channel_layer", create=True) as mock_channel_layer:
+        with patch.object(
+            DeviceUpgradeProgressConsumer, "channel_layer", create=True
+        ) as mock_channel_layer:
             mock_channel_layer.group_add.side_effect = RuntimeError("Runtime error")
             communicator = WebsocketCommunicator(
                 DeviceUpgradeProgressConsumer.as_asgi(),
@@ -555,8 +579,12 @@ class WebSocketTest(TestCase):
     async def test_device_upgrade_progress_consumer_disconnect_error_handling(self):
         """Test DeviceUpgradeProgressConsumer disconnect error handling."""
         device_id = str(uuid4())
-        with patch.object(DeviceUpgradeProgressConsumer, "channel_layer", create=True) as mock_channel_layer:
-            mock_channel_layer.group_discard.side_effect = AttributeError("No channel layer")
+        with patch.object(
+            DeviceUpgradeProgressConsumer, "channel_layer", create=True
+        ) as mock_channel_layer:
+            mock_channel_layer.group_discard.side_effect = AttributeError(
+                "No channel layer"
+            )
             communicator = WebsocketCommunicator(
                 DeviceUpgradeProgressConsumer.as_asgi(),
                 f"/ws/firmware-upgrader/device/{device_id}/",
@@ -572,16 +600,22 @@ class WebSocketTest(TestCase):
         operation_id = str(uuid4())
         device_id = str(uuid4())
         # Patch group_send with a synchronous mock
-        with patch("openwisp_firmware_upgrader.websockets.get_channel_layer") as mock_get_channel_layer:
+        with patch(
+            "openwisp_firmware_upgrader.websockets.get_channel_layer"
+        ) as mock_get_channel_layer:
             mock_channel_layer = MagicMock()
-            mock_channel_layer.group_send.side_effect = ConnectionError("Connection failed")
+            mock_channel_layer.group_send.side_effect = ConnectionError(
+                "Connection failed"
+            )
             mock_get_channel_layer.return_value = mock_channel_layer
             publisher = UpgradeProgressPublisher(operation_id)
             try:
                 publisher.publish_progress({"type": "test", "data": "test_value"})
             except ConnectionError:
                 pass
-        with patch("openwisp_firmware_upgrader.websockets.get_channel_layer") as mock_get_channel_layer:
+        with patch(
+            "openwisp_firmware_upgrader.websockets.get_channel_layer"
+        ) as mock_get_channel_layer:
             mock_channel_layer = MagicMock()
             mock_channel_layer.group_send.side_effect = RuntimeError("Runtime error")
             mock_get_channel_layer.return_value = mock_channel_layer
@@ -600,9 +634,7 @@ class WebSocketTest(TestCase):
             UpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
-        communicator.scope["url_route"] = {
-            "kwargs": {"operation_id": operation_id}
-        }
+        communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -630,7 +662,9 @@ class WebSocketTest(TestCase):
 
         await communicator.disconnect()
 
-    @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    @override_settings(
+        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    )
     async def test_multiple_websocket_connections(self):
         """Test multiple WebSocket connections to the same operation."""
         operation_id = str(uuid4())
@@ -640,17 +674,13 @@ class WebSocketTest(TestCase):
             UpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
-        communicator1.scope["url_route"] = {
-            "kwargs": {"operation_id": operation_id}
-        }
+        communicator1.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
 
         communicator2 = WebsocketCommunicator(
             UpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
-        communicator2.scope["url_route"] = {
-            "kwargs": {"operation_id": operation_id}
-        }
+        communicator2.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
 
         connected1, _ = await communicator1.connect()
         connected2, _ = await communicator2.connect()
@@ -740,9 +770,7 @@ class WebSocketTest(TestCase):
             UpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
-        communicator.scope["url_route"] = {
-            "kwargs": {"operation_id": operation_id}
-        }
+        communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
