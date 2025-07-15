@@ -16,6 +16,7 @@ from openwisp_controller.connection.connectors.openwrt.ssh import (
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_controller.connection.tests.utils import SshServer
 
+from ..exceptions import UpgradeAborted
 from ..swapper import load_model, swapper_load_model
 from ..tasks import upgrade_firmware
 from ..upgraders.openwrt import OpenWrt
@@ -42,7 +43,9 @@ def mocked_exec_upgrade_not_needed(command, exit_codes=None):
     return cases[command]
 
 
-def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
+def mocked_exec_upgrade_success(
+    command, exit_codes=None, timeout=None, raise_unexpected_exit=None
+):
     defaults = ["", 0]
     _sysupgrade = OpenWrt._SYSUPGRADE
     _checksum = OpenWrt.CHECKSUM_FILE
@@ -60,6 +63,25 @@ def mocked_exec_upgrade_success(command, exit_codes=None, timeout=None):
         "test -f /sbin/wifi && /sbin/wifi down": defaults,
         "test -f /sbin/wifi && /sbin/wifi up": defaults,
     }
+
+    # Handle service control commands for cancellation tests
+    services = [
+        "uhttpd",
+        "dnsmasq",
+        "openwisp_config",
+        "openwisp-config",
+        "openwisp-monitoring",
+        "cron",
+        "rpcd",
+        "rssileds",
+        "odhcpd",
+        "log",
+    ]
+    for service in services:
+        initd = f"/etc/init.d/{service}"
+        cases[f"test -f {initd} && {initd} stop"] = defaults
+        cases[f"test -f {initd} && {initd} start"] = defaults
+
     # Handle the UUID command dynamically
     if command == "uci get openwisp.http.uuid":
         device_fw = DeviceFirmware.objects.order_by("created").last()
@@ -873,3 +895,126 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         for line in lines:
             self.assertIn(line, upgrade_op.log)
         self.assertTrue(device_fw.installed)
+
+    @patch("scp.SCPClient.putfo")
+    def test_upgrade_aborted_exception(self, putfo):
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+
+        ssh = device_conn.connector_instance
+        ssh.connect()
+
+        # We need to let some commands succeed (like UUID verification) but fail on the test image command
+        def selective_failing_exec_command(cmd, **kwargs):
+            if "uci get openwisp.http.uuid" in cmd:
+                # Return the device UUID for verification
+                return [str(upgrade_op.device.pk), 0]
+            elif "sysupgrade --test" in cmd:
+                # This is where we want the failure to occur
+                raise CommandFailedException("exit status 1")
+            else:
+                # Let other commands pass through
+                # Remove raise_unexpected_exit from kwargs if present since mocked_exec_upgrade_success doesn't expect it
+                filtered_kwargs = {
+                    k: v for k, v in kwargs.items() if k != "raise_unexpected_exit"
+                }
+                return mocked_exec_upgrade_success(cmd, **filtered_kwargs)
+
+        ssh.exec_command = selective_failing_exec_command
+
+        upgrader = OpenWrt(upgrade_op, device_conn)
+
+        with self.assertRaises(UpgradeAborted):
+            upgrader.upgrade(upgrade_op.image)
+
+        upgrade_op.refresh_from_db()
+        self.assertEqual(upgrade_op.status, "aborted")
+        ssh.disconnect()
+
+    def test_upgrade_cancellation_early_stage(self):
+        """Test cancellation during early stages of upgrade"""
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+
+        ssh = device_conn.connector_instance
+        ssh.connect()
+
+        # Mock the connection and exec_command to simulate normal upgrade flow
+        ssh.exec_command = mocked_exec_upgrade_success
+
+        upgrader = OpenWrt(upgrade_op, device_conn)
+
+        # Mock the cancellation check to simulate user cancellation
+        original_check_cancellation = upgrader._check_cancellation
+
+        def mock_check_cancellation():
+            # Cancel after the first check
+            if not hasattr(mock_check_cancellation, "called"):
+                mock_check_cancellation.called = True
+                return original_check_cancellation()
+            else:
+                upgrade_op.status = "aborted"
+                upgrade_op.save()
+                return original_check_cancellation()
+
+        upgrader._check_cancellation = mock_check_cancellation
+
+        with self.assertRaises(UpgradeAborted):
+            upgrader.upgrade(upgrade_op.image)
+
+        ssh.disconnect()
+
+    def test_upgrade_cancellation_services_restart(self):
+        """Test that non-critical services are restarted when upgrade is cancelled"""
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+
+        ssh = device_conn.connector_instance
+        ssh.connect()
+
+        # Mock exec_command to track service restart calls
+        service_restart_calls = []
+
+        def mock_exec_command(cmd, **kwargs):
+            if "start" in cmd:
+                service_restart_calls.append(cmd)
+            # Always return success for this test
+            return ["", 0]
+
+        ssh.exec_command = mock_exec_command
+        upgrader = OpenWrt(upgrade_op, device_conn)
+        upgrader._stop_non_critical_services()
+
+        upgrade_op.status = "aborted"
+        upgrade_op.save()
+
+        # Check cancellation (should restart services)
+        with self.assertRaises(UpgradeAborted):
+            upgrader._check_cancellation()
+
+        # Verify services were restarted
+        self.assertTrue(len(service_restart_calls) > 0)
+        self.assertTrue(any("start" in call for call in service_restart_calls))
+
+        ssh.disconnect()
+
+    def test_upgrade_cancellation_check_method(self):
+        """Test the _check_cancellation method directly"""
+        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+
+        ssh = device_conn.connector_instance
+        ssh.connect()
+        ssh.exec_command = mocked_exec_upgrade_success
+
+        upgrader = OpenWrt(upgrade_op, device_conn)
+
+        # Test that no exception is raised when operation is in progress
+        upgrade_op.status = "in-progress"
+        upgrade_op.save()
+        upgrader._check_cancellation()
+
+        # Test that UpgradeAborted is raised when operation is aborted
+        upgrade_op.status = "aborted"
+        upgrade_op.save()
+
+        with self.assertRaises(UpgradeAborted):
+            upgrader._check_cancellation()
+
+        ssh.disconnect()
