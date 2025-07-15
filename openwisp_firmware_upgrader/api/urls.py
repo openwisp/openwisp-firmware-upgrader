@@ -58,6 +58,11 @@ urlpatterns = [
                     name="api_upgradeoperation_detail",
                 ),
                 path(
+                    "upgrade-operation/<uuid:pk>/cancel/",
+                    views.cancel_upgrade_operation,
+                    name="api_cancel_upgradeoperation",
+                ),
+                path(
                     "device/<uuid:pk>/upgrade-operation/",
                     views.device_upgrade_operation_list,
                     name="api_deviceupgradeoperation_list",

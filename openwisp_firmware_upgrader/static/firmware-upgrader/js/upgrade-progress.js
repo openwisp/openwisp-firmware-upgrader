@@ -267,6 +267,23 @@ function updateStatusWithProgressBar(statusField, operation) {
       </div>
       <span class="upgrade-progress-text">${progressPercentage}%</span>
     `;
+
+    const canCancel = progressPercentage < 60;
+    const cancelButtonClass = canCancel
+      ? "upgrade-cancel-btn"
+      : "upgrade-cancel-btn disabled";
+    const cancelButtonTitle = canCancel
+      ? "Cancel upgrade"
+      : "Cannot cancel - firmware flashing in progress";
+
+    statusHtml += `
+      <button class="${cancelButtonClass}" 
+              data-operation-id="${operation.id}" 
+              title="${cancelButtonTitle}"
+              ${!canCancel ? "disabled" : ""}>
+        Cancel
+      </button>
+    `;
   } else if (status === "success") {
     statusHtml += `
       <div class="upgrade-progress-bar">
@@ -291,6 +308,15 @@ function updateStatusWithProgressBar(statusField, operation) {
   }
 
   statusContainer.html(statusHtml);
+
+  statusContainer
+    .find(".upgrade-cancel-btn:not(.disabled)")
+    .off("click")
+    .on("click", function (e) {
+      e.preventDefault();
+      const operationId = $(this).data("operation-id");
+      showCancelConfirmationModal(operationId);
+    });
 }
 
 function getProgressPercentage(
@@ -476,4 +502,51 @@ function getWebSocketProtocol() {
 function getFormattedDateTimeString(dateTimeString) {
   let dateTime = new Date(dateTimeString);
   return dateTime.toLocaleString();
+}
+
+function showCancelConfirmationModal(operationId) {
+  const $ = django.jQuery;
+
+  const confirmed = confirm(
+    "Are you sure you want to cancel this upgrade operation?\n\n" +
+      "Warning: This action cannot be undone.",
+  );
+
+  if (confirmed) {
+    cancelUpgradeOperation(operationId);
+  }
+}
+
+function cancelUpgradeOperation(operationId) {
+  const $ = django.jQuery;
+
+  const csrfToken = $("[name=csrfmiddlewaretoken]").val();
+
+  $.ajax({
+    url: `/api/v1/firmware-upgrader/upgrade-operation/${operationId}/cancel/`,
+    type: "POST",
+    headers: {
+      "X-CSRFToken": csrfToken,
+    },
+    success: function (response) {
+      if (typeof django.contrib !== "undefined" && django.contrib.messages) {
+        django.contrib.messages.success(
+          "Upgrade operation cancelled successfully.",
+        );
+      }
+    },
+    error: function (xhr, status, error) {
+      let errorMessage = "Failed to cancel upgrade operation.";
+
+      if (xhr.responseJSON && xhr.responseJSON.error) {
+        errorMessage = xhr.responseJSON.error;
+      }
+
+      if (typeof django.contrib !== "undefined" && django.contrib.messages) {
+        django.contrib.messages.error(errorMessage);
+      } else {
+        alert(errorMessage);
+      }
+    },
+  });
 }

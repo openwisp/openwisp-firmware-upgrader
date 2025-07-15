@@ -3,7 +3,9 @@ from django.core.exceptions import ValidationError
 from django.http import Http404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics, pagination, serializers, status
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import clone_request
 from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
@@ -12,6 +14,7 @@ from openwisp_firmware_upgrader import private_storage
 from openwisp_users.api.mixins import FilterByOrganizationManaged
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 
+from ..exceptions import UpgradeAborted
 from ..swapper import load_model
 from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
@@ -342,6 +345,50 @@ class DeviceFirmwareDetailView(
                 raise
 
 
+class CancelUpgradeOperationView(ProtectedAPIMixin, generics.GenericAPIView):
+    queryset = UpgradeOperation.objects.all()
+    serializer_class = serializers.Serializer
+    lookup_fields = ["pk"]
+    organization_field = "device__organization"
+
+    def post(self, request, pk):
+        try:
+            operation = self.get_object()
+
+            if operation.status != "in-progress":
+                return Response(
+                    {
+                        "error": f"Cannot cancel operation with status: {operation.status}"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if operation.progress >= 65:
+                return Response(
+                    {
+                        "error": "Cannot cancel operation - firmware flashing has already started"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            operation.cancel()
+
+            return Response(
+                {"message": "Upgrade operation canceled successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+        except Http404:
+            return Response(
+                {"error": "Upgrade operation not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to cancel upgrade operation: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
 build_list = BuildListView.as_view()
 build_detail = BuildDetailView.as_view()
 api_batch_upgrade = BuildBatchUpgradeView.as_view()
@@ -356,3 +403,4 @@ upgrade_operation_list = UpgradeOperationListView.as_view()
 upgrade_operation_detail = UpgradeOperationDetailView.as_view()
 device_upgrade_operation_list = DeviceUpgradeOperationListView.as_view()
 device_firmware_detail = DeviceFirmwareDetailView.as_view()
+cancel_upgrade_operation = CancelUpgradeOperationView.as_view()

@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import jsonschema
 import swapper
+from celery import current_app
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
@@ -38,6 +39,7 @@ from ..tasks import (
     create_device_firmware,
     upgrade_firmware,
 )
+from ..upgraders.openwrt import OpenWrt
 from ..utils import (
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
@@ -628,6 +630,58 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         self.progress = max(0, min(100, progress))
         if save:
             self.save()
+
+    def cancel(self):
+        if self.status != "in-progress":
+            raise ValueError(f"Cannot cancel operation with status: {self.status}")
+
+        if self.progress >= 65:
+            raise ValueError(
+                "Cannot cancel upgrade: firmware reflashing has already started"
+            )
+
+        try:
+            active_tasks = current_app.control.inspect().active()
+            if active_tasks:
+                for worker_tasks in active_tasks.values():
+                    for task in worker_tasks:
+                        if (
+                            task["name"]
+                            == "openwisp_firmware_upgrader.tasks.upgrade_firmware"
+                            and task["args"]
+                            and len(task["args"]) > 0
+                            and str(task["args"][0]) == str(self.pk)
+                        ):
+                            current_app.control.revoke(task["id"], terminate=True)
+                            break
+        except Exception as e:
+            self.log_line(f"Warning: Could not revoke Celery task: {e}")
+
+        self.status = "aborted"
+        self.log_line("Upgrade operation canceled by user")
+        self._restart_services_after_cancellation()
+        self.save()
+
+    def _restart_services_after_cancellation(self):
+        """
+        Restart non-critical services if they were stopped during upgrade.
+        """
+        try:
+            DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+            conn = DeviceConnection.get_working_connection(self.device)
+
+            if conn:
+                upgrader = OpenWrt(self, conn)
+
+                if upgrader.connect():
+                    upgrader._start_non_critical_services()
+                    self.log_line("Non-critical services restarted after cancellation")
+                    upgrader.disconnect()
+
+        except Exception as e:
+            self.log_line(
+                f"Warning: Could not restart services after cancellation: {e}"
+            )
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)

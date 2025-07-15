@@ -170,6 +170,8 @@ class OpenWrt(object):
         )
         if exit_code == 1 or not output.strip():
             self.log(_("Could not read device UUID from configuration"))
+            self.upgrade_operation.status = "aborted"
+            self.upgrade_operation.save()
             raise UpgradeAborted()
         config_uuid = output.strip()
         # Convert to strict UUID format for comparison
@@ -188,19 +190,41 @@ class OpenWrt(object):
                 'found "{found}" in device configuration'
             )
             self.log(str(message).format(expected=device_uuid, found=config_uuid))
+            self.upgrade_operation.status = "aborted"
+            self.upgrade_operation.save()
             raise UpgradeAborted()
         self.log(_("Device identity verified successfully"))
         self.upgrade_operation.update_progress(15)
 
     def upgrade(self, image):
         self._test_connection()
+        self._check_cancellation()
         self._verify_device_uuid()
+        self._check_cancellation()
         checksum = self._test_checksum(image)
+        self._check_cancellation()
         remote_path = self.get_remote_path(image)
         self.upload(image.file, remote_path)
+        self._check_cancellation()
         self._test_image(remote_path)
         self._reflash(remote_path)
         self._write_checksum(checksum)
+
+    def _check_cancellation(self):
+        """
+        Check if the upgrade operation has been cancelled.
+        """
+        self.upgrade_operation.refresh_from_db()
+
+        if self.upgrade_operation.status == "aborted":
+            self.log(_("Upgrade operation has been cancelled by user"))
+
+            if self._non_critical_services_stopped:
+                self.log(_("Restarting non-critical services..."))
+                self._start_non_critical_services()
+
+            self.disconnect()
+            raise UpgradeAborted("Upgrade cancelled by user")
 
     def _test_connection(self):
         result = self.connect()
@@ -274,6 +298,8 @@ class OpenWrt(object):
             )
             self._start_non_critical_services()
             self.log(_("Non critical services started, aborting upgrade."))
+            self.upgrade_operation.status = "aborted"
+            self.upgrade_operation.save()
             raise UpgradeAborted()
 
     def _get_mib(self, value):
@@ -407,6 +433,8 @@ class OpenWrt(object):
                 self.log(_("Starting non critical services again..."))
                 self._start_non_critical_services()
             self.disconnect()
+            self.upgrade_operation.status = "aborted"
+            self.upgrade_operation.save()
             raise UpgradeAborted()
         self.log(
             _(

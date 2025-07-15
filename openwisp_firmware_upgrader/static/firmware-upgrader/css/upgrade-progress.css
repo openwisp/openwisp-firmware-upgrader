@@ -62,3 +62,29 @@
   display: inline-block;
   vertical-align: middle;
 }
+
+.upgrade-cancel-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  margin-left: 10px;
+}
+
+.upgrade-cancel-btn:hover:not(.disabled) {
+  background-color: #c82333;
+}
+
+.upgrade-cancel-btn.disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.upgrade-cancel-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
