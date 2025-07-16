@@ -62,9 +62,7 @@ def handle_upgrade_operation_saved(sender, instance, created, **kwargs):
                 "device": str(instance.device.pk),
                 "status": instance.status,
                 "log": instance.log,
-                "progress": getattr(
-                    instance, "progress", 0
-                ),  # Include progress field
+                "progress": getattr(instance, "progress", 0),  # Include progress field
                 "image": (
                     str(getattr(instance.image, "pk", None))
                     if getattr(instance.image, "pk", None)
@@ -73,9 +71,7 @@ def handle_upgrade_operation_saved(sender, instance, created, **kwargs):
                 "modified": (
                     instance.modified.isoformat() if instance.modified else None
                 ),
-                "created": (
-                    instance.created.isoformat() if instance.created else None
-                ),
+                "created": (instance.created.isoformat() if instance.created else None),
             }
         )
     except (ConnectionError, TimeoutError) as e:

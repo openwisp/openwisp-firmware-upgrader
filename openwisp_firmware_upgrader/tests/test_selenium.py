@@ -418,7 +418,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         org, category, build1, build2, image1, image2, device = self._set_up_env()
 
         UpgradeOperation.objects.create(
-            device=device, image=image2, status="failed", log="Upgrade failed with error"
+            device=device,
+            image=image2,
+            status="failed",
+            log="Upgrade failed with error",
         )
 
         self.login()
@@ -579,3 +582,198 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertIn("Could not read device UUID", log_html)
         self.assertIn("aborted for security reasons", log_html)
         self.assertIn("aborting upgrade", log_html)
+
+    @capture_any_output()
+    def test_in_progress_upgrade(self):
+        """Test detailed in-progress upgrade operation with all visible components"""
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+
+        progress_log = (
+            "Connection successful, starting upgrade...\n"
+            "Device identity verified successfully\n"
+            "Preparing device for upgrade...\n"
+            "Upload progress: 25%\n"
+            "Upload progress: 50%\n"
+            "Upload progress: 75%\n"
+            "Upload completed, verifying image...\n"
+            "Image verification successful\n"
+            "Starting sysupgrade process..."
+        )
+
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="in-progress",
+            log=progress_log,
+            progress=80,
+        )
+
+        self.login()
+        self.open(
+            "{}#upgradeoperation_set-group".format(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
+            )
+        )
+        self.hide_loading_overlay()
+
+        self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
+
+        WebDriverWait(self.web_driver, 2).until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, ".upgrade-status-container")
+            )
+        )
+
+        status_container = self.find_element(
+            By.CSS_SELECTOR, ".upgrade-status-container"
+        )
+        self.assertTrue(status_container.is_displayed())
+
+        progress_bar = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-bar")
+        self.assertTrue(progress_bar.is_displayed())
+
+        progress_fill = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-fill")
+        self.assertTrue(progress_fill.is_displayed())
+
+        progress_text = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-text")
+        self.assertTrue(progress_text.is_displayed())
+
+        log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
+        self.assertTrue(log_element.is_displayed())
+        log_html = log_element.get_attribute("innerHTML")
+
+        self.assertIn("Connection successful", log_html)
+        self.assertIn("Device identity verified", log_html)
+        self.assertIn("Preparing device for upgrade", log_html)
+        self.assertIn("Upload progress: 25%", log_html)
+        self.assertIn("Upload progress: 50%", log_html)
+        self.assertIn("Upload progress: 75%", log_html)
+        self.assertIn("Upload completed", log_html)
+        self.assertIn("Image verification successful", log_html)
+        self.assertIn("Starting sysupgrade process", log_html)
+
+    @capture_any_output()
+    def test_duplicate_upgrade_abortion(self):
+        """Test that attempting duplicate upgrade operations results in abortion"""
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="in-progress",
+            log="First upgrade operation in progress...",
+        )
+
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="aborted",
+            log="Another upgrade operation is in progress, aborting...",
+        )
+
+        self.login()
+        self.open(
+            "{}#upgradeoperation_set-group".format(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
+            )
+        )
+        self.hide_loading_overlay()
+
+        self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
+
+        WebDriverWait(self.web_driver, 2).until(
+            EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, ".upgrade-status-container")
+            )
+        )
+
+        status_containers = self.find_elements(
+            By.CSS_SELECTOR, ".upgrade-status-container"
+        )
+        self.assertEqual(len(status_containers), 2)
+
+        log_elements = self.find_elements(By.CSS_SELECTOR, ".field-log .readonly")
+        self.assertEqual(len(log_elements), 2)
+
+        log_contents = [elem.get_attribute("innerHTML") for elem in log_elements]
+
+        any_contains_abort_message = any(
+            "Another upgrade operation is in progress" in content
+            for content in log_contents
+        )
+        self.assertTrue(any_contains_abort_message)
+
+    @capture_any_output()
+    def test_multiple_devices_upgrade_operations(self):
+        """Test device with multiple upgrade operations showing different statuses"""
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image1,
+            status="success",
+            log="First upgrade completed successfully",
+        )
+
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="failed",
+            log="Second upgrade failed: connection timeout",
+        )
+
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="in-progress",
+            log="Third upgrade in progress...",
+        )
+
+        self.login()
+        self.open(
+            "{}#upgradeoperation_set-group".format(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
+            )
+        )
+        self.hide_loading_overlay()
+
+        self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
+
+        WebDriverWait(self.web_driver, 2).until(
+            EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, ".upgrade-status-container")
+            )
+        )
+
+        status_containers = self.find_elements(
+            By.CSS_SELECTOR, ".upgrade-status-container"
+        )
+        self.assertEqual(len(status_containers), 3)
+
+        progress_fills = self.find_elements(By.CSS_SELECTOR, ".upgrade-progress-fill")
+        self.assertEqual(len(progress_fills), 3)
+
+        log_elements = self.find_elements(By.CSS_SELECTOR, ".field-log .readonly")
+        self.assertEqual(len(log_elements), 3)
+
+        log_contents = [elem.get_attribute("innerHTML") for elem in log_elements]
+
+        any_contains_success = any(
+            "completed successfully" in content for content in log_contents
+        )
+        any_contains_failed = any(
+            "connection timeout" in content for content in log_contents
+        )
+        any_contains_progress = any(
+            "in progress" in content for content in log_contents
+        )
+
+        self.assertTrue(any_contains_success)
+        self.assertTrue(any_contains_failed)
+        self.assertTrue(any_contains_progress)
