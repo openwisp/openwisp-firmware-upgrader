@@ -293,21 +293,12 @@ function updateStatusWithProgressBar(statusField, operation) {
   statusContainer.html(statusHtml);
 }
 
-function getProgressPercentage(
-  status,
-  logContent = "",
-  operationProgress = null,
-) {
+function getProgressPercentage(status, operationProgress = null) {
   if (operationProgress !== null && operationProgress !== undefined) {
     return Math.min(100, Math.max(0, operationProgress));
   }
-
   if (status === "success") {
     return 100;
-  } else if (status === "failed" || status === "aborted") {
-    return calculateProgressFromLogLength(logContent);
-  } else if (status === "in-progress" || status === "in progress") {
-    return calculateProgressFromLogLength(logContent);
   }
   return 0;
 }

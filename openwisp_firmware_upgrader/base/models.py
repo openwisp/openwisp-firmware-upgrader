@@ -736,6 +736,8 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
+        # when an operation is completed
+        # trigger an update on the batch operation
         if self.batch and self.status != "in-progress":
             self.batch.update()
         return self
