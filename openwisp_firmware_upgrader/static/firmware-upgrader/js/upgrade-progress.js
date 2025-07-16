@@ -243,7 +243,6 @@ function updateStatusWithProgressBar(statusField, operation) {
   let logContent = operation.log || "";
   let progressPercentage = getProgressPercentage(
     status,
-    logContent,
     operation.progress,
   );
   let progressClass = status.replace(/\s+/g, "-");
