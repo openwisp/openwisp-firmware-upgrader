@@ -422,11 +422,11 @@ function updateUpgradeOperationStatus(statusData) {
 function getStatusColor(status) {
   switch (status) {
     case "success":
-      return "#bbffbb";
+      return "#70bf2b";
     case "failed":
-      return "#ff949461";
+      return "#dd4646";
     case "aborted":
-      return "#ffcc99";
+      return "#efb80b";
     case "in-progress":
       return "#cce5ff";
     default:

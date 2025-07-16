@@ -9,6 +9,17 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+def _convert_lazy_translations(obj):
+    if isinstance(obj, dict):
+        return {key: _convert_lazy_translations(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(_convert_lazy_translations(item) for item in obj)
+    elif hasattr(obj, '__str__') and hasattr(obj, '_proxy____cast'):
+        return str(obj)
+    else:
+        return obj
+
+
 class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         self.operation_id = self.scope["url_route"]["kwargs"]["operation_id"]
@@ -181,6 +192,8 @@ class UpgradeProgressPublisher:
         self.group_name = f"upgrade_{operation_id}"
 
     def publish_progress(self, data):
+        data = _convert_lazy_translations(data)
+        
         async def _send_message():
             await self.channel_layer.group_send(
                 self.group_name,
@@ -218,6 +231,8 @@ class DeviceUpgradeProgressPublisher:
 
     def publish_progress(self, data):
         """Publish to device-specific channel"""
+        data = _convert_lazy_translations(data)
+        
         message = {
             "type": "send_update",
             "model": "UpgradeOperation",
@@ -258,6 +273,7 @@ class BatchUpgradeProgressPublisher:
         self.group_name = f"batch_upgrade_{batch_id}"
 
     def publish_progress(self, data):
+        data = _convert_lazy_translations(data)
 
         async def _send_message():
             await self.channel_layer.group_send(
