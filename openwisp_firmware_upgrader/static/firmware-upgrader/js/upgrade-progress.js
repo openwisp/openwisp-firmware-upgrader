@@ -243,7 +243,6 @@ function updateStatusWithProgressBar(statusField, operation) {
   let logContent = operation.log || "";
   let progressPercentage = getProgressPercentage(
     status,
-    logContent,
     operation.progress,
   );
   let progressClass = status.replace(/\s+/g, "-");
@@ -319,21 +318,12 @@ function updateStatusWithProgressBar(statusField, operation) {
     });
 }
 
-function getProgressPercentage(
-  status,
-  logContent = "",
-  operationProgress = null,
-) {
+function getProgressPercentage(status, operationProgress = null) {
   if (operationProgress !== null && operationProgress !== undefined) {
     return Math.min(100, Math.max(0, operationProgress));
   }
-
   if (status === "success") {
     return 100;
-  } else if (status === "failed" || status === "aborted") {
-    return calculateProgressFromLogLength(logContent);
-  } else if (status === "in-progress" || status === "in progress") {
-    return calculateProgressFromLogLength(logContent);
   }
   return 0;
 }
@@ -448,11 +438,11 @@ function updateUpgradeOperationStatus(statusData) {
 function getStatusColor(status) {
   switch (status) {
     case "success":
-      return "#bbffbb";
+      return "#70bf2b";
     case "failed":
-      return "#ff949461";
+      return "#dd4646";
     case "aborted":
-      return "#ffcc99";
+      return "#efb80b";
     case "in-progress":
       return "#cce5ff";
     default:
