@@ -44,6 +44,9 @@ from ..utils import (
 
 logger = logging.getLogger(__name__)
 
+# New: Location model (assumes it exists via swapper)
+Location = swapper.load_model("geo", "Location")
+
 
 class UpgradeOptionsMixin(models.Model):
     upgrade_options = models.JSONField(default=dict, blank=True)
@@ -129,10 +132,10 @@ class AbstractBuild(TimeStampedEditableModel):
                 }
             )
 
-    def batch_upgrade(self, firmwareless, upgrade_options=None):
+    def batch_upgrade(self, firmwareless, upgrade_options=None, location=None):
         upgrade_options = upgrade_options or {}
         batch = load_model("BatchUpgradeOperation")(
-            build=self, upgrade_options=upgrade_options
+            build=self, upgrade_options=upgrade_options, location=location
         )
         batch.full_clean()
         batch.save()
@@ -141,11 +144,14 @@ class AbstractBuild(TimeStampedEditableModel):
         )
         return batch
 
-    def _find_related_device_firmwares(self, select_devices=False):
+    def _find_related_device_firmwares(self, select_devices=False, location=None):
+        """
+        Find DeviceFirmware objects for this build, optionally filtered by location.
+        """
         related = ["image"]
         if select_devices:
             related.append("device")
-        return (
+        qs = (
             load_model("DeviceFirmware")
             .objects.all()
             .select_related(*related)
@@ -153,8 +159,11 @@ class AbstractBuild(TimeStampedEditableModel):
             .exclude(image__build=self, installed=True)
             .order_by("-created")
         )
+        if location:
+            qs = qs.filter(device__location=location)
+        return qs
 
-    def _find_firmwareless_devices(self, boards=None):
+    def _find_firmwareless_devices(self, boards=None, location=None):
         if boards is None:
             boards = []
             for image in self.firmwareimage_set.all():
@@ -163,6 +172,8 @@ class AbstractBuild(TimeStampedEditableModel):
         qs = Device.objects.filter(devicefirmware__isnull=True, model__in=boards)
         if self.category.organization_id:
             qs = qs.filter(organization_id=self.category.organization_id)
+        if location:
+            qs = qs.filter(location=location)
         return qs.order_by("-created")
 
 
@@ -299,6 +310,13 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
 class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     build = models.ForeignKey(get_model_name("Build"), on_delete=models.CASCADE)
+    location = models.ForeignKey(  # <-- New field
+        Location,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        help_text=_("Target only devices at this location"),
+    )
     STATUS_CHOICES = (
         ("idle", _("idle")),
         ("in-progress", _("in progress")),
@@ -316,6 +334,15 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
     def __str__(self):
         return f"Upgrade of {self.build} on {self.created}"
+
+    def clean(self):
+        super().clean()
+        # Ensure location belongs to same organization as build
+        if self.location and self.build.category.organization:
+            if self.location.organization != self.build.category.organization:
+                raise ValidationError(
+                    {"location": _("Location must belong to the same organization as the build.")}
+                )
 
     def update(self):
         operations = self.upgradeoperation_set
@@ -335,7 +362,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             self.upgrade_firmwareless_devices()
 
     def upgrade_related_devices(self):
-        device_firmwares = self.build._find_related_device_firmwares()
+        device_firmwares = self.build._find_related_device_firmwares(location=self.location)
         for device_fw in device_firmwares:
             image = self.build.firmwareimage_set.filter(type=device_fw.image.type).first()
             if image:
@@ -345,7 +372,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
     def upgrade_firmwareless_devices(self):
         for image in self.build.firmwareimage_set.all():
-            devices = self.build._find_firmwareless_devices(image.boards)
+            devices = self.build._find_firmwareless_devices(image.boards, location=self.location)
             for device in devices:
                 DeviceFirmware = load_model("DeviceFirmware")
                 device_fw = DeviceFirmware(device=device, image=image)

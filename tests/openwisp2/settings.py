@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "reversion",
     "leaflet",
     "flat_json_widget",
+    "private_storage",
     # rest framework
     "rest_framework",
     "rest_framework.authtoken",
