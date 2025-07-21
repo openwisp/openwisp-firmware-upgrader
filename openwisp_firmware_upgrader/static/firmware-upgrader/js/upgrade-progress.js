@@ -241,10 +241,7 @@ function updateStatusWithProgressBar(statusField, operation) {
 
   let status = operation.status;
   let logContent = operation.log || "";
-  let progressPercentage = getProgressPercentage(
-    status,
-    operation.progress,
-  );
+  let progressPercentage = getProgressPercentage(status, operation.progress);
   let progressClass = status.replace(/\s+/g, "-");
 
   if (!statusField.find(".upgrade-status-container").length) {
@@ -497,14 +494,71 @@ function getFormattedDateTimeString(dateTimeString) {
 function showCancelConfirmationModal(operationId) {
   const $ = django.jQuery;
 
-  const confirmed = confirm(
-    "Are you sure you want to cancel this upgrade operation?\n\n" +
-      "Warning: This action cannot be undone.",
+  // Create modal if it doesn't exist
+  if ($("#ow-cancel-confirmation-modal").length === 0) {
+    createCancelConfirmationModal($);
+  }
+
+  // Set the operation ID and show the modal
+  $("#ow-cancel-confirmation-modal").data("operation-id", operationId);
+  $("#ow-cancel-confirmation-modal").removeClass("ow-hide");
+}
+
+function createCancelConfirmationModal($) {
+  const modalHtml = `
+    <div id="ow-cancel-confirmation-modal" class="ow-overlay ow-overlay-notification ow-overlay-inner ow-hide">
+      <div class="ow-dialog-notification ow-cancel-confirmation-dialog">
+        <span class="ow-dialog-close ow-dialog-close-x">&times;</span>
+        <div class="ow-cancel-confirmation-header">
+          <h2 class="ow-cancel-confirmation-title">STOP UPGRADE OPERATION</h2>
+        </div>
+        <div class="ow-cancel-confirmation-content">
+          <p>Are you sure you want to cancel this upgrade operation?</p>
+        </div>
+        <div class="ow-dialog-buttons ow-cancel-confirmation-buttons">
+          <button class="ow-cancel-btn-confirm button default danger-btn">
+            Yes
+          </button>
+          <button class="ow-dialog-close button default">
+            No
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  $("body").append(modalHtml);
+
+  // Close modal handlers
+  $("#ow-cancel-confirmation-modal .ow-dialog-close").on("click", function () {
+    $("#ow-cancel-confirmation-modal").addClass("ow-hide");
+  });
+
+  // Confirm cancellation handler
+  $("#ow-cancel-confirmation-modal .ow-cancel-btn-confirm").on(
+    "click",
+    function () {
+      const operationId = $("#ow-cancel-confirmation-modal").data(
+        "operation-id",
+      );
+      $("#ow-cancel-confirmation-modal").addClass("ow-hide");
+      cancelUpgradeOperation(operationId);
+    },
   );
 
-  if (confirmed) {
-    cancelUpgradeOperation(operationId);
-  }
+  // Close on escape key
+  $(document).on("keyup", function (e) {
+    if (e.keyCode === 27 && $("#ow-cancel-confirmation-modal").is(":visible")) {
+      $("#ow-cancel-confirmation-modal").addClass("ow-hide");
+    }
+  });
+
+  // Close on overlay click (outside dialog)
+  $("#ow-cancel-confirmation-modal").on("click", function (e) {
+    if (e.target === this) {
+      $(this).addClass("ow-hide");
+    }
+  });
 }
 
 function cancelUpgradeOperation(operationId) {
