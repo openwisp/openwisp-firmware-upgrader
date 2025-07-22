@@ -317,12 +317,12 @@ function updateStatusWithProgressBar(statusField, operation) {
 
 function getProgressPercentage(status, operationProgress = null) {
   if (operationProgress !== null && operationProgress !== undefined) {
-    return Math.min(100, Math.max(0, operationProgress));
+    return Math.min(100, Math.max(5, operationProgress));
   }
   if (status === "success") {
     return 100;
   }
-  return 0;
+  return 5;
 }
 
 function calculateProgressFromLogLength(logContent = "") {
