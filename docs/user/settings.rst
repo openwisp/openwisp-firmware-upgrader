@@ -133,9 +133,9 @@ Allows changing the default OpenWrt upgrader settings, e.g.:
 .. code-block:: python
 
     OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS = {
-        "reconnect_delay": 120,
+        "reconnect_delay": 180,
         "reconnect_retry_delay": 20,
-        "reconnect_max_retries": 15,
+        "reconnect_max_retries": 35,
         "upgrade_timeout": 90,
     }
 
