@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def _convert_lazy_translations(obj):
+    """Recursively convert Django lazy translation objects to strings for JSON serialization."""
     if isinstance(obj, dict):
         return {key: _convert_lazy_translations(value) for key, value in obj.items()}
     elif isinstance(obj, (list, tuple)):

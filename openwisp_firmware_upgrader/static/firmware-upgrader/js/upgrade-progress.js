@@ -241,10 +241,7 @@ function updateStatusWithProgressBar(statusField, operation) {
 
   let status = operation.status;
   let logContent = operation.log || "";
-  let progressPercentage = getProgressPercentage(
-    status,
-    operation.progress,
-  );
+  let progressPercentage = getProgressPercentage(status, operation.progress);
   let progressClass = status.replace(/\s+/g, "-");
 
   if (!statusField.find(".upgrade-status-container").length) {
@@ -294,12 +291,12 @@ function updateStatusWithProgressBar(statusField, operation) {
 
 function getProgressPercentage(status, operationProgress = null) {
   if (operationProgress !== null && operationProgress !== undefined) {
-    return Math.min(100, Math.max(0, operationProgress));
+    return Math.min(100, Math.max(5, operationProgress));
   }
   if (status === "success") {
     return 100;
   }
-  return 0;
+  return 5;
 }
 
 function calculateProgressFromLogLength(logContent = "") {
