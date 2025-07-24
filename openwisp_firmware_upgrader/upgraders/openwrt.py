@@ -361,7 +361,7 @@ class OpenWrt(object):
 
     def get_remote_path(self, image):
         # discard directory info from image name
-        filename = image.name.split("/")[-1]
+        filename = image.file.name.split("/")[-1]
         return os.path.join(self.REMOTE_UPLOAD_DIR, filename)
 
     def get_upgrade_command(self, path):
@@ -387,8 +387,8 @@ class OpenWrt(object):
         the device, which indicates the upgrade has already been performed previously
         """
         # calculate firmware image checksum
-        checksum = sha256(image.read()).hexdigest()
-        image.seek(0)
+        checksum = sha256(image.file.read()).hexdigest()
+        image.file.seek(0)
         # test for presence of firmware checksum signature file
         output, exit_code = self.exec_command(
             f"test -f {self.CHECKSUM_FILE}", exit_codes=[0, 1]
