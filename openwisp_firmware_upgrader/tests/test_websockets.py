@@ -1,9 +1,6 @@
-import json
-import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model

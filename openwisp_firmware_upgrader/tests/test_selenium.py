@@ -503,7 +503,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             "Device identity verified successfully\n"
             "Image checksum file not found, proceeding with the upload of the new image...\n"
             "The image size (12.3 MiB) is greater than the available memory on the system (8.1 MiB).\n"
-            "For this reason the upgrade procedure will try to free up memory by stopping non critical services.\n"
             "Enough available memory was freed up on the system (11.2 MiB)!\n"
             "Proceeding to upload of the image file...\n"
             "Sysupgrade test failed: Image check failed\n"
