@@ -8,7 +8,6 @@ from django.urls.base import reverse
 from reversion.models import Version
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
@@ -806,7 +805,9 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
 
         # Wait for progress bars and status containers to load
         WebDriverWait(self.web_driver, 2).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-status-container"))
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, ".upgrade-status-container")
+            )
         )
 
         # Wait for cancel button to be present and clickable
@@ -830,27 +831,35 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         modal = self.find_element(By.ID, "ow-cancel-confirmation-modal")
         self.assertTrue(modal.is_displayed())
 
-        # Verify modal content
-        WebDriverWait(self.web_driver, 2).until(
-            EC.text_to_be_present_in_element(
-                (By.CSS_SELECTOR, ".ow-cancel-confirmation-title"), 
-                "STOP UPGRADE OPERATION"
+        modal = self.find_element(By.ID, "ow-cancel-confirmation-modal")
+
+        title_element = WebDriverWait(self.web_driver, 2).until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    "#ow-cancel-confirmation-modal .ow-cancel-confirmation-title",
+                )
             )
         )
 
+        self.assertEqual(title_element.text.strip(), "STOP UPGRADE OPERATION")
+        self.assertTrue(title_element.is_displayed())
+
         # Test closing modal with No button
         no_button = WebDriverWait(self.web_driver, 2).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, ".ow-dialog-close.button"))
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "#ow-cancel-confirmation-modal .ow-dialog-close-x")
+            )
         )
         self.web_driver.execute_script("arguments[0].click();", no_button)
 
-        # Wait for modal to close   
+        # Wait for modal to close
         WebDriverWait(self.web_driver, 2).until(
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
 
         # Test actual cancellation
-        with patch('openwisp_firmware_upgrader.models.current_app') as mock_app:
+        with patch("openwisp_firmware_upgrader.base.models.current_app") as mock_app:
             mock_control = mock_app.control
             mock_inspect = mock_control.inspect.return_value
             mock_inspect.active.return_value = {}
@@ -863,12 +872,19 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
 
             # Wait for modal to appear again
             WebDriverWait(self.web_driver, 30).until(
-                EC.visibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
+                EC.visibility_of_element_located(
+                    (By.ID, "ow-cancel-confirmation-modal")
+                )
             )
 
             # Click Yes to confirm cancellation
             yes_button = WebDriverWait(self.web_driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, ".ow-cancel-btn-confirm"))
+                EC.element_to_be_clickable(
+                    (
+                        By.CSS_SELECTOR,
+                        "#ow-cancel-confirmation-modal .ow-cancel-btn-confirm",
+                    )
+                )
             )
             self.web_driver.execute_script("arguments[0].click();", yes_button)
 

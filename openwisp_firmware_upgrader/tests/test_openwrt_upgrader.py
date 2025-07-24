@@ -912,8 +912,6 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                 # This is where we want the failure to occur
                 raise CommandFailedException("exit status 1")
             else:
-                # Let other commands pass through
-                # Remove raise_unexpected_exit from kwargs if present since mocked_exec_upgrade_success doesn't expect it
                 filtered_kwargs = {
                     k: v for k, v in kwargs.items() if k != "raise_unexpected_exit"
                 }
