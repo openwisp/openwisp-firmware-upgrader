@@ -60,9 +60,8 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
     def _is_user_authenticated(self):
         try:
-            user = self.scope.get("user")
             assert self.scope["user"].is_authenticated is True
-        except (KeyError, AssertionError) as e:
+        except (KeyError, AssertionError):
             return False
         else:
             return True
@@ -85,7 +84,7 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
             self.pk_ = self.scope["url_route"]["kwargs"]["pk"]
             self.group_name = f"firmware_upgrader.device-{self.pk_}"
 
-        except (AssertionError, KeyError) as e:
+        except (AssertionError, KeyError):
             await self.close()
         else:
             try:

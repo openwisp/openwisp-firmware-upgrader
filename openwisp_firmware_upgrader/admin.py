@@ -431,6 +431,9 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
             except InvalidPage:
                 page_obj = paginator.page(1)
 
+            # Get the app label for URL construction
+            upgrade_operation_app_label = load_model("UpgradeOperation")._meta.app_label
+
             extra_context.update(
                 {
                     "upgrade_operations": page_obj.object_list,
@@ -440,6 +443,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
                     "has_active_filters": any(
                         request.GET.get(param) for param in ["status", "organization"]
                     ),
+                    "upgrade_operation_app_label": upgrade_operation_app_label,
                 }
             )
 

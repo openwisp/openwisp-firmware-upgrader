@@ -188,9 +188,6 @@ function updateUpgradeOperationDisplay(operation) {
   let $ = django.jQuery;
   let operationIdInputField = $(`input[value="${operation.id}"]`);
   if (operationIdInputField.length === 0) {
-    if (isUpgradeOperationsAbsent()) {
-      location.reload();
-    }
     return;
   }
 
@@ -458,10 +455,6 @@ function scrollToBottom(element) {
     let el = element[0];
     el.scrollTop = el.scrollHeight - el.clientHeight;
   }
-}
-
-function isUpgradeOperationsAbsent() {
-  return document.getElementById("upgradeoperation_set-group") === null;
 }
 
 function getObjectIdFromUrl() {
