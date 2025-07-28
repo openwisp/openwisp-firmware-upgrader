@@ -19,7 +19,7 @@ from ..websockets import (
 User = get_user_model()
 
 
-class WebSocketTest(TestCase):
+class TestFirmwareUpgradeSockets(TestCase):
     """Test WebSocket consumers and publishers for firmware upgrade progress."""
 
     @classmethod
