@@ -216,7 +216,7 @@ class OpenWrt(object):
         """
         self.upgrade_operation.refresh_from_db()
 
-        if self.upgrade_operation.status == "aborted":
+        if self.upgrade_operation.status in ["aborted", "cancelled"]:
             self.log(_("Upgrade operation has been cancelled by user"))
 
             if self._non_critical_services_stopped:

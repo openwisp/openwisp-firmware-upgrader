@@ -41,6 +41,10 @@
   background-color: #efb80b;
 }
 
+.upgrade-progress-fill.cancelled {
+  background-color: #efb80b;
+}
+
 .upgrade-progress-fill.in-progress {
   background-color: #70bf2b;
 }

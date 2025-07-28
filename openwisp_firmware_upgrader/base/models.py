@@ -547,6 +547,22 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self.__get_rate(aborted)
 
     @property
+    def cancelled_rate(self):
+        if not self.total_operations:
+            return 0
+        cancelled = self.upgrade_operations.filter(status="cancelled").count()
+        return self.__get_rate(cancelled)
+
+    @property
+    def aborted_and_cancelled_rate(self):
+        if not self.total_operations:
+            return 0
+        aborted_and_cancelled = self.upgrade_operations.filter(
+            status__in=["aborted", "cancelled"]
+        ).count()
+        return self.__get_rate(aborted_and_cancelled)
+
+    @property
     def upgrader_class(self):
         return self._get_upgrader_class()
 
@@ -586,6 +602,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         ("success", _("success")),
         ("failed", _("failed")),
         ("aborted", _("aborted")),
+        ("cancelled", _("cancelled")),
     )
     device = models.ForeignKey(
         swapper.get_model_name("config", "Device"), on_delete=models.CASCADE
@@ -657,7 +674,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         except Exception as e:
             self.log_line(f"Warning: Could not revoke Celery task: {e}")
 
-        self.status = "aborted"
+        self.status = "cancelled"
         self.log_line("Upgrade operation canceled by user")
         self._restart_services_after_cancellation()
         self.save()

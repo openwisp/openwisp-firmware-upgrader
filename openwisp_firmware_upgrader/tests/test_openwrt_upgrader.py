@@ -1015,4 +1015,10 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         with self.assertRaises(UpgradeAborted):
             upgrader._check_cancellation()
 
+        upgrade_op.status = "cancelled"
+        upgrade_op.save()
+
+        with self.assertRaises(UpgradeAborted):
+            upgrader._check_cancellation()
+
         ssh.disconnect()

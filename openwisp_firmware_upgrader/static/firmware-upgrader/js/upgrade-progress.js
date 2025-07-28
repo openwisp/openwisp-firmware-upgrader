@@ -85,7 +85,8 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
       (statusText.includes("progress") ||
         statusText === "success" ||
         statusText === "failed" ||
-        statusText === "aborted")
+        statusText === "aborted" ||
+        statusText === "cancelled")
     ) {
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -208,7 +209,8 @@ function updateUpgradeOperationDisplay(operation) {
   if (
     operation.status === "success" ||
     operation.status === "failed" ||
-    operation.status === "aborted"
+    operation.status === "aborted" ||
+    operation.status === "cancelled"
   ) {
     accumulatedLogContent.delete(operation.id);
   }
@@ -277,7 +279,11 @@ function updateStatusWithProgressBar(statusField, operation) {
       </div>
       <span class="upgrade-progress-text">100%</span>
     `;
-  } else if (status === "failed" || status === "aborted") {
+  } else if (
+    status === "failed" ||
+    status === "aborted" ||
+    status === "cancelled"
+  ) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill ${status}" style="width: ${progressPercentage}%"></div>
@@ -346,7 +352,8 @@ function updateUpgradeOperationLog(logData) {
       currentStatusText === "in-progress" ||
       currentStatusText === "success" ||
       currentStatusText === "failed" ||
-      currentStatusText === "aborted"
+      currentStatusText === "aborted" ||
+      currentStatusText === "cancelled"
     ) {
       let operationFieldset = $(this).closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");

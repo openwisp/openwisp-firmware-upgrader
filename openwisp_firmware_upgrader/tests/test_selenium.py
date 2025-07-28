@@ -890,5 +890,5 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
 
         # Verify operation was cancelled
         operation.cancel()
-        self.assertEqual(operation.status, "aborted")
+        self.assertEqual(operation.status, "cancelled")
         self.assertIn("canceled by user", operation.log)

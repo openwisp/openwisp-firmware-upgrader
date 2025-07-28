@@ -1834,7 +1834,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         self.assertIn("message", response.data)
 
         operation.refresh_from_db()
-        self.assertEqual(operation.status, "aborted")
+        self.assertEqual(operation.status, "cancelled")
         self.assertIn("canceled by user", operation.log)
 
     def test_cancel_upgrade_after_reflashing(self):
