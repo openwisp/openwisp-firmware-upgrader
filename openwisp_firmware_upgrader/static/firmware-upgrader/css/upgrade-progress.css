@@ -4,15 +4,6 @@
   align-items: center;
 }
 
-.object-updated {
-  transition: background-color 0.3s ease;
-}
-
-.upgrade-operation-updated {
-  border-left: 4px solid #3498db;
-  background-color: rgba(52, 152, 219, 0.1);
-}
-
 .upgrade-status-container {
   display: flex;
   align-items: center;
