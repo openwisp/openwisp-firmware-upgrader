@@ -224,13 +224,6 @@ function updateUpgradeOperationDisplay(operation) {
       .find(".field-modified .readonly")
       .html(getFormattedDateTimeString(operation.modified));
   }
-
-  let colorCode = getStatusColor(operation.status);
-  operationFieldset.css("background-color", colorCode);
-  setTimeout(function () {
-    operationFieldset.addClass("object-updated");
-    operationFieldset.css("background-color", "inherit");
-  }, 100);
 }
 
 function updateStatusWithProgressBar(statusField, operation) {
@@ -401,21 +394,6 @@ function updateUpgradeOperationStatus(statusData) {
       updateStatusWithProgressBar(statusField, operation);
     }
   });
-}
-
-function getStatusColor(status) {
-  switch (status) {
-    case "success":
-      return "#70bf2b";
-    case "failed":
-      return "#dd4646";
-    case "aborted":
-      return "#efb80b";
-    case "in-progress":
-      return "#cce5ff";
-    default:
-      return "inherit";
-  }
 }
 
 function isScrolledToBottom(element) {
