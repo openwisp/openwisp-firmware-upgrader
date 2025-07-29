@@ -108,7 +108,9 @@ class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
         self.factory = RequestFactory()
 
     def make_device_admin_request(self, pk):
-        return self.factory.get(reverse(f'admin:{self.config_app_label}_device_change', args=[pk]))
+        return self.factory.get(
+            reverse(f'admin:{self.config_app_label}_device_change', args=[pk])
+        )
 
     @property
     def build_list_url(self):
@@ -188,7 +190,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
         org = self._get_org()
         self._create_administrator(organizations=[org])
         self._login(username='administrator', password='tester')
-        url = reverse(f'admin:{self.config_app_label}_device_change', args=[device_fw.device_id])
+        url = reverse(
+            f'admin:{self.config_app_label}_device_change', args=[device_fw.device_id]
+        )
         r = self.client.get(url)
         self.assertContains(r, str(device_fw.image_id))
 
@@ -597,7 +601,10 @@ class TestAdminTransaction(
                 self.assertContains(r, '<li class="success">')
                 self.assertContains(r, "track the progress")
                 self.assertEqual(
-                    UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 2
+                    UpgradeOperation.objects.filter(
+                        upgrade_options={'c': True}
+                    ).count(),
+                    2,
                 )
                 self.assertEqual(fw.count(), 2)
 
@@ -649,7 +656,10 @@ class TestAdminTransaction(
                 self.assertContains(response, '<li class="success">')
                 self.assertContains(response, "track the progress")
                 self.assertEqual(
-                    UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 3
+                    UpgradeOperation.objects.filter(
+                        upgrade_options={'c': True}
+                    ).count(),
+                    3,
                 )
                 self.assertEqual(fw.count(), 3)
                 self.assertContains(
@@ -720,7 +730,8 @@ class TestAdminTransaction(
             self.test_upgrade_all()
             uo = UpgradeOperation.objects.first()
             url = reverse(
-                f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+                f'admin:{self.app_label}_batchupgradeoperation_change',
+                args=[uo.batch.pk],
             )
             response = self.client.get(url)
             self.assertContains(response, "Success rate")
@@ -732,7 +743,9 @@ class TestAdminTransaction(
         with mock.patch(self._mock_connect, return_value=True):
             self._login()
             env = self._create_upgrade_env()
-            url = reverse(f"admin:{self.config_app_label}_device_change", args=[env["d2"].pk])
+            url = reverse(
+                f'admin:{self.config_app_label}_device_change', args=[env['d2'].pk]
+            )
             r = self.client.get(url)
             self.assertNotContains(r, "Recent Firmware Upgrades")
             env["build2"].batch_upgrade(firmwareless=True)
@@ -752,7 +765,8 @@ class TestAdminTransaction(
                 DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=None)
             )
             self.assertIn(
-                DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=device)
+                DeviceUpgradeOperationInline,
+                deviceadmin.get_inlines(request, obj=device),
             )
 
     @mock.patch(_mock_upgrade, return_value=True)
@@ -797,7 +811,9 @@ class TestAdminTransaction(
                 device, device_conn, image, device_fw, json.dumps(upgrade_options)
             )
             response = self.client.post(
-                reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+                reverse(
+                    f'admin:{self.config_app_label}_device_change', args=[device.id]
+                ),
                 data=device_params,
                 follow=True,
             )
@@ -858,16 +874,18 @@ class TestAdminTransaction(
             )
             device_params.update(
                 {
-                    "model": device.model,
-                    "devicefirmware-0-image": str(image.id),
-                    "devicefirmware-0-id": str(device_fw.id),
-                    "devicefirmware-0-upgrade_options": json.dumps(upgrade_options),
-                    "organization": str(device.organization.id),
-                    "config-0-id": str(device.config.pk),
-                    "config-0-device": str(device.id),
-                    "deviceconnection_set-0-credentials": str(device_conn.credentials_id),
-                    "deviceconnection_set-0-id": str(device_conn.id),
-                    "deviceconnection_set-0-update_strategy": (
+                    'model': device.model,
+                    'devicefirmware-0-image': str(image.id),
+                    'devicefirmware-0-id': str(device_fw.id),
+                    'devicefirmware-0-upgrade_options': json.dumps(upgrade_options),
+                    'organization': str(device.organization.id),
+                    'config-0-id': str(device.config.pk),
+                    'config-0-device': str(device.id),
+                    'deviceconnection_set-0-credentials': str(
+                        device_conn.credentials_id
+                    ),
+                    'deviceconnection_set-0-id': str(device_conn.id),
+                    'deviceconnection_set-0-update_strategy': (
                         conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
                     ),
                     "deviceconnection_set-0-enabled": True,
@@ -883,7 +901,9 @@ class TestAdminTransaction(
 
             with self.subTest('Test DeviceFirmwareInline does not have schema defined'):
                 response = self.client.get(
-                    reverse(f'admin:{self.config_app_label}_device_change', args=[device.id])
+                    reverse(
+                        f'admin:{self.config_app_label}_device_change', args=[device.id]
+                    )
                 )
                 self.assertContains(
                     response, '<script>\nvar firmwareUpgraderSchema = null\n</script>'
@@ -891,7 +911,9 @@ class TestAdminTransaction(
 
             with self.subTest('Test using upgrade options with unsupported upgrader'):
                 response = self.client.post(
-                    reverse(f'admin:{self.config_app_label}_device_change', args=[device.id]),
+                    reverse(
+                        f'admin:{self.config_app_label}_device_change', args=[device.id]
+                    ),
                     data=device_params,
                     follow=True,
                 )
@@ -906,7 +928,9 @@ class TestAdminTransaction(
             with self.subTest('Test upgrading without upgrade options'):
                 del device_params['devicefirmware-0-upgrade_options']
                 response = self.client.post(
-                    reverse(f'admin:{self.config_app_label}_device_change', args=[device.id]),
+                    reverse(
+                        f'admin:{self.config_app_label}_device_change', args=[device.id]
+                    ),
                     data=device_params,
                     follow=True,
                 )
