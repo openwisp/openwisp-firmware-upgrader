@@ -100,10 +100,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             By.XPATH, '//*[@id="device_form"]/div/div[1]/input[1]'
         ).click()
         try:
-            device_changelist_url=self.live_server_url + reverse(f"admin:{self.config_app_label}_device_changelist")
-            WebDriverWait(self.web_driver, 5).until(
-                EC.url_to_be(device_changelist_url)
+            device_changelist_url = self.live_server_url + reverse(
+                f"admin:{self.config_app_label}_device_changelist"
             )
+            WebDriverWait(self.web_driver, 5).until(EC.url_to_be(device_changelist_url))
         except TimeoutException:
             self.fail("Deleted device was not restored")
 
@@ -118,6 +118,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     )
     def test_device_firmware_upgrade_options(self, *args):
         with patch(self._mock_connect, return_value=True):
+
             def save_device():
                 self.find_element(
                     by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
@@ -199,7 +200,9 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             _, _, _, build2, _, _, _ = self._set_up_env()
             self.login()
             self.open(
-                reverse(f'admin:{self.firmware_app_label}_build_change', args=[build2.id])
+                reverse(
+                    f'admin:{self.firmware_app_label}_build_change', args=[build2.id]
+                )
             )
             # Launch mass upgrade operation
             self.find_element(
@@ -225,7 +228,9 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 value='//*[@id="id_upgrade_options_jsoneditor"]/div/div[2]/div/div/div[3]/div/div[1]/label/input',
             ).click()
             # Upgrade all devices
-            self.find_element(by=By.CSS_SELECTOR, value='input[name="upgrade_all"]').click()
+            self.find_element(
+                by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
+            ).click()
             try:
                 WebDriverWait(self.web_driver, 5).until(
                     EC.url_contains('batchupgradeoperation')
@@ -276,7 +281,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 self.open(
                     '{}#devicefirmware-group'.format(
                         reverse(
-                            f'admin:{self.config_app_label}_device_change', args=[device.id]
+                            f'admin:{self.config_app_label}_device_change',
+                            args=[device.id],
                         )
                     )
                 )
@@ -300,7 +306,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             with self.subTest('Test BatchUpgradeOperation'):
                 self.open(
                     reverse(
-                        f'admin:{self.firmware_app_label}_build_change', args=[build2.id]
+                        f'admin:{self.firmware_app_label}_build_change',
+                        args=[build2.id],
                     )
                 )
                 # Launch mass upgrade operation
