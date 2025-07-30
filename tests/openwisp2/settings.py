@@ -15,7 +15,11 @@ DATABASES = {
     }
 }
 
-SPATIALITE_LIBRARY_PATH = "mod_spatialite.so"
+# SPATIALITE_LIBRARY_PATH = "mod_spatialite.so"
+SPATIALITE_LIBRARY_PATH = (
+    "/opt/homebrew/Cellar/libspatialite/5.1.0_1/lib/mod_spatialite.dylib"
+)
+
 
 SECRET_KEY = "fn)t*+$)ugeyip6-#txyy$5wf2ervc0d2n#h)qb)y5@ly$t*@w"
 
@@ -208,10 +212,10 @@ OPENWISP_CUSTOM_OPENWRT_IMAGES = (
 OPENWISP_USERS_AUTH_API = True
 # for testing purposes
 OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS = {
-    "reconnect_delay": 150,
-    "reconnect_retry_delay": 30,
-    "reconnect_max_retries": 10,
-    "upgrade_timeout": 80,
+    "reconnect_delay": 20,
+    "reconnect_retry_delay": 5,
+    "reconnect_max_retries": 5,
+    "upgrade_timeout": 25,
 }
 
 if os.environ.get("SAMPLE_APP", False):

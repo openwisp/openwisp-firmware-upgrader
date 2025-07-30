@@ -317,6 +317,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     ]
     autocomplete_fields = ["build"]
     readonly_fields = [
+        "status",
         "completed",
         "success_rate",
         "failed_rate",
@@ -327,6 +328,17 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "admin/firmware_upgrader/batch_upgrade_operation_change_form.html"
     )
     device_upgrades_per_page = 20
+
+    class Media:
+        js = [
+            "firmware-upgrader/js/batch-upgrade-progress.js",
+        ]
+        css = {
+            "all": [
+                "firmware-upgrader/css/batch-upgrade-operation.css",
+                "firmware-upgrader/css/upgrade-progress.css",
+            ]
+        }
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)

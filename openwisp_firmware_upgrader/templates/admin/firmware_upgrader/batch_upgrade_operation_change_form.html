@@ -6,8 +6,10 @@
 <link rel="stylesheet" type="text/css" href="{% static "admin/css/changelists.css" %}">
 <link rel="stylesheet" type="text/css" href="{% static "admin/css/ow-filters.css" %}">
 <link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/batch-upgrade-operation.css" %}">
-<script src="{% static "admin/js/ow-filter.js" %}"></script>
+<script src="{% static " admin/js/ow-filter.js" %}"></script>
 <script type="text/javascript" src="{% static 'admin/js/jquery.init.js' %}"></script>
+<script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-upgrade-progress.js' %}"></script>
 {% endblock %}
 
 {% block content %}
@@ -97,7 +99,6 @@
 </div>
 
 <!-- Results Table -->
-<div class="results-container">
   <table id="result_list" class="results-table">
     <thead>
       <tr>
@@ -164,4 +165,3 @@
   {% endif %}
 </div>
 {% endblock %}
-

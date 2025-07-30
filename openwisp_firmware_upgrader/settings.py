@@ -22,7 +22,7 @@ RETRY_OPTIONS = getattr(
     dict(max_retries=4, retry_backoff=60, retry_backoff_max=600, retry_jitter=True),
 )
 
-TASK_TIMEOUT = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT", 1500)
+TASK_TIMEOUT = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT", 200)
 
 FIRMWARE_UPGRADER_API = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_API", True)
 FIRMWARE_API_BASEURL = getattr(settings, "OPENWISP_FIRMWARE_API_BASEURL", "/")
