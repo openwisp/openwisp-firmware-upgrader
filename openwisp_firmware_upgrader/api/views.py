@@ -1,3 +1,5 @@
+from asyncio.log import logger
+
 import swapper
 from django.core.exceptions import ValidationError
 from django.http import Http404
@@ -342,48 +344,59 @@ class DeviceFirmwareDetailView(
                 raise
 
 
-class CancelUpgradeOperationView(ProtectedAPIMixin, generics.GenericAPIView):
+class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     queryset = UpgradeOperation.objects.all()
     serializer_class = serializers.Serializer
-    lookup_fields = ["pk"]
+    lookup_field = "pk"  # Use singular form
     organization_field = "device__organization"
 
+    # Constants for better maintainability
+    CANCELLABLE_STATUS = "in-progress"
+    MAX_CANCELLABLE_PROGRESS = 65
+
     def post(self, request, pk):
+        """Cancel an upgrade operation if conditions are met."""
         try:
             operation = self.get_object()
-
-            if operation.status != "in-progress":
-                return Response(
-                    {
-                        "error": f"Cannot cancel operation with status: {operation.status}"
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if operation.progress >= 65:
-                return Response(
-                    {
-                        "error": "Cannot cancel operation - firmware flashing has already started"
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
+            self._validate_cancellation(operation)
             operation.cancel()
 
+            logger.info(
+                f"Upgrade operation {pk} canceled successfully by user {request.user}"
+            )
             return Response(
                 {"message": "Upgrade operation canceled successfully"},
                 status=status.HTTP_200_OK,
             )
 
         except Http404:
-            return Response(
-                {"error": "Upgrade operation not found"},
-                status=status.HTTP_404_NOT_FOUND,
+            return self._error_response(
+                "Upgrade operation not found", status.HTTP_404_NOT_FOUND
             )
+        except ValidationError as e:
+            return self._error_response(str(e), status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response(
-                {"error": f"Failed to cancel upgrade operation: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            logger.error(f"Failed to cancel upgrade operation {pk}: {str(e)}")
+            return self._error_response(
+                "Failed to cancel upgrade operation",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    def _validate_cancellation(self, operation):
+        """Validate if the operation can be canceled."""
+        if operation.status != self.CANCELLABLE_STATUS:
+            raise ValidationError(
+                f"Cannot cancel operation with status: {operation.status}"
+            )
+
+        if operation.progress >= self.MAX_CANCELLABLE_PROGRESS:
+            raise ValidationError(
+                "Cannot cancel operation - firmware flashing has already started"
+            )
+
+    def _error_response(self, message, status_code):
+        """Helper method to create consistent error responses."""
+        return Response({"error": message}, status=status_code)
 
 
 build_list = BuildListView.as_view()
@@ -400,4 +413,4 @@ upgrade_operation_list = UpgradeOperationListView.as_view()
 upgrade_operation_detail = UpgradeOperationDetailView.as_view()
 device_upgrade_operation_list = DeviceUpgradeOperationListView.as_view()
 device_firmware_detail = DeviceFirmwareDetailView.as_view()
-cancel_upgrade_operation = CancelUpgradeOperationView.as_view()
+upgrade_operation_cancel = UpgradeOperationCancelView.as_view()

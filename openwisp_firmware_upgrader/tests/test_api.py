@@ -1814,7 +1814,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403)
 
-    def test_cancel_upgrade_operation_success(self):
+    def test_upgrade_operation_cancel_success(self):
         """Test successful cancellation of an upgrade operation"""
         env = self._create_upgrade_env(upgrade_operation=True, organization=self.org)
         device = env["d1"]
@@ -1825,7 +1825,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         )
 
         url = reverse(
-            "upgrader:api_cancel_upgradeoperation",
+            "upgrader:api_upgradeoperation_cancel",
             kwargs={"pk": operation.pk},
         )
 
@@ -1848,18 +1848,18 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         )
 
         url = reverse(
-            "upgrader:api_cancel_upgradeoperation",
+            "upgrader:api_upgradeoperation_cancel",
             kwargs={"pk": operation.pk},
         )
 
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 404)
         self.assertIn("firmware flashing has already started", response.data["error"])
 
-    def test_cancel_upgrade_operation_not_found(self):
+    def test_upgrade_operation_cancel_not_found(self):
         """Test cancellation of a non-existent operation"""
         url = reverse(
-            "upgrader:api_cancel_upgradeoperation",
+            "upgrader:api_upgradeoperation_cancel",
             kwargs={"pk": "00000000-0000-0000-0000-000000000000"},
         )
 
