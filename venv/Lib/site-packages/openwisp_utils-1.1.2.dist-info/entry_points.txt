@@ -1,0 +1,3 @@
+[console_scripts]
+checkcommit = openwisp_utils.qa:check_commit_message
+checkmigrations = openwisp_utils.qa:check_migration_name

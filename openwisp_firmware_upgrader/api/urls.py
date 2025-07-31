@@ -37,6 +37,12 @@ urlpatterns = [
                     views.category_detail,
                     name="api_category_detail",
                 ),
+           
+                path(
+                    "upgrades/<uuid:pk>/retry/",
+                    views.upgrade_operation_retry,
+                    name="upgradeoperation-retry"),
+
                 path(
                     "batch-upgrade-operation/",
                     views.batch_upgrade_operation_list,
