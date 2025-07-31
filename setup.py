@@ -23,7 +23,7 @@ setup(
         'django-private-storage~=3.1.0',
     ],
     classifiers=[
-        'Development Status :: 5 - Production/Stable ',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: Web Environment',
         'Topic :: Internet :: WWW/HTTP',
         'Topic :: System :: Networking',
