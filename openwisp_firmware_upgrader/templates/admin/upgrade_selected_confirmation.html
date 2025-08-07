@@ -48,8 +48,29 @@
   <input type="hidden" name="action" value="upgrade_selected">
   {% if firmwareless_count or related_count %}
   <div>{% if form.errors %}{{ form.errors }} {% endif %}</div>
-  <div class="form-row{% if form.errors.upgrade_options %} errors{% endif %}">
-    {{ form }}
+
+    {{ form.build }}
+    
+    <fieldset class="module aligned">
+      <h2>{% trans "Upgrade Options" %}</h2>
+      
+      <div class="form-row">
+        <div>
+          <label for="{{ form.group.id_for_label }}">{{ form.group.label }}:</label>
+          {{ form.group }}
+          {% if form.group.help_text %}
+            <p class="help">{{ form.group.help_text }}</p>
+          {% endif %}
+        </div>
+      </div>
+      
+      <div class="form-row">
+        <div>
+          {{ form.upgrade_options.label_tag }}
+          {{ form.upgrade_options }}
+        </div>
+      </div>
+    </fieldset>
   </div>
   <input type="submit" name="upgrade_all" value="{% trans "Upgrade all devices" %}">
   {% if firmwareless_count and related_count %}

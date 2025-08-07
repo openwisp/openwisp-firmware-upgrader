@@ -331,4 +331,5 @@ class TestRealTimeWebsockets(
         self.assertIn("Device identity verified successfully", updated_log)
         
         self._assert_no_js_errors()
-        await communicator.disconnect() 
+        await communicator.disconnect()
+         

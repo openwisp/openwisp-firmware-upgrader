@@ -99,10 +99,36 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
     build = forms.ModelChoiceField(
         widget=forms.HiddenInput(), required=False, queryset=Build.objects.all()
     )
+    group = forms.ModelChoiceField(
+        queryset=swapper.load_model("config", "DeviceGroup").objects.none(),
+        required=False,
+        help_text=_("Limit the upgrade to devices belonging to this group"),
+        empty_label=_("All devices (no group filter)"),
+    )
 
     class Meta:
         model = BatchUpgradeOperation
-        fields = ("build", "upgrade_options")
+        fields = ("build", "group", "upgrade_options")
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set the appropriate queryset for group field based on the build's organization
+        if self.initial.get("build"):
+            build = self.initial["build"]
+            if hasattr(build, 'category') and build.category.organization:
+                self.fields["group"].queryset = swapper.load_model(
+                    "config", "DeviceGroup"
+                ).objects.filter(organization=build.category.organization)
+            else:
+                # For shared builds, allow all groups
+                self.fields["group"].queryset = swapper.load_model(
+                    "config", "DeviceGroup"
+                ).objects.all()
+        else:
+            # If no build in initial, show all groups
+            self.fields["group"].queryset = swapper.load_model(
+                "config", "DeviceGroup"
+            ).objects.all()
 
     @property
     def media(self):
@@ -157,18 +183,20 @@ class BuildAdmin(BaseAdmin):
         upgrade_all = request.POST.get("upgrade_all")
         upgrade_related = request.POST.get("upgrade_related")
         upgrade_options = request.POST.get("upgrade_options")
-        form = BatchUpgradeConfirmationForm()
+        group_id = request.POST.get("group")
+        form = BatchUpgradeConfirmationForm(initial={"build": queryset.first()})
         build = queryset.first()
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
             form = BatchUpgradeConfirmationForm(
-                data={"upgrade_options": upgrade_options, "build": build}
+                data={"upgrade_options": upgrade_options, "build": build, "group": group_id}
             )
             form.full_clean()
             if not form.errors:
                 upgrade_options = form.cleaned_data["upgrade_options"]
+                group = form.cleaned_data.get("group")
                 batch = build.batch_upgrade(
-                    firmwareless=upgrade_all, upgrade_options=upgrade_options
+                    firmwareless=upgrade_all, upgrade_options=upgrade_options, group=group
                 )
                 text = _(
                     "You can track the progress of this mass upgrade operation "
@@ -181,7 +209,13 @@ class BuildAdmin(BaseAdmin):
                 )
                 return redirect(url)
         # upgrade needs to be confirmed
-        result = BatchUpgradeOperation.dry_run(build=build)
+        group = None
+        if group_id:
+            try:
+                group = swapper.load_model("config", "DeviceGroup").objects.get(pk=group_id)
+            except:
+                pass
+        result = BatchUpgradeOperation.dry_run(build=build, group=group)
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
         title = _("Confirm mass upgrade operation")
@@ -300,12 +334,14 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         BuildCategoryOrganizationFilter,
         "status",
         BuildCategoryFilter,
+        ("group", admin.RelatedOnlyFieldListFilter),
     ]
-    list_select_related = ["build__category__organization"]
+    list_select_related = ["build__category__organization", "group"]
     ordering = ["-created"]
     multitenant_parent = "build__category"
     fields = [
         "build",
+        "group",
         "status",
         "completed",
         "success_rate",
@@ -315,7 +351,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "created",
         "modified",
     ]
-    autocomplete_fields = ["build"]
+    autocomplete_fields = ["build", "group"]
     readonly_fields = [
         "completed",
         "success_rate",
