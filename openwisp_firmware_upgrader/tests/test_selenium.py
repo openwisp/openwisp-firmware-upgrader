@@ -1,6 +1,8 @@
 from unittest.mock import patch
+from time import sleep
 
 import swapper
+from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.management import call_command
 from django.test import tag
