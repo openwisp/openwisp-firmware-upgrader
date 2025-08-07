@@ -1,3 +1,5 @@
+from asyncio.log import logger
+
 import swapper
 from django.core.exceptions import ValidationError
 from django.http import Http404
@@ -342,6 +344,61 @@ class DeviceFirmwareDetailView(
                 raise
 
 
+class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
+    queryset = UpgradeOperation.objects.all()
+    serializer_class = serializers.Serializer
+    lookup_field = "pk"  # Use singular form
+    organization_field = "device__organization"
+
+    # Constants for better maintainability
+    CANCELLABLE_STATUS = "in-progress"
+    MAX_CANCELLABLE_PROGRESS = 65
+
+    def post(self, request, pk):
+        """Cancel an upgrade operation if conditions are met."""
+        try:
+            operation = self.get_object()
+            self._validate_cancellation(operation)
+            operation.cancel()
+
+            logger.info(
+                f"Upgrade operation {pk} canceled successfully by user {request.user}"
+            )
+            return Response(
+                {"message": "Upgrade operation canceled successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+        except Http404:
+            return self._error_response(
+                "Upgrade operation not found", status.HTTP_404_NOT_FOUND
+            )
+        except ValidationError as e:
+            return self._error_response(str(e), status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Failed to cancel upgrade operation {pk}: {str(e)}")
+            return self._error_response(
+                "Failed to cancel upgrade operation",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def _validate_cancellation(self, operation):
+        """Validate if the operation can be canceled."""
+        if operation.status != self.CANCELLABLE_STATUS:
+            raise ValidationError(
+                f"Cannot cancel operation with status: {operation.status}"
+            )
+
+        if operation.progress >= self.MAX_CANCELLABLE_PROGRESS:
+            raise ValidationError(
+                "Cannot cancel operation - firmware flashing has already started"
+            )
+
+    def _error_response(self, message, status_code):
+        """Helper method to create consistent error responses."""
+        return Response({"error": message}, status=status_code)
+
+
 build_list = BuildListView.as_view()
 build_detail = BuildDetailView.as_view()
 api_batch_upgrade = BuildBatchUpgradeView.as_view()
@@ -356,3 +413,4 @@ upgrade_operation_list = UpgradeOperationListView.as_view()
 upgrade_operation_detail = UpgradeOperationDetailView.as_view()
 device_upgrade_operation_list = DeviceUpgradeOperationListView.as_view()
 device_firmware_detail = DeviceFirmwareDetailView.as_view()
+upgrade_operation_cancel = UpgradeOperationCancelView.as_view()

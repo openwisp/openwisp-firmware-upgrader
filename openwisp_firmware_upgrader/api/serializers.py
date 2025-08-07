@@ -97,6 +97,7 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
     success_rate = serializers.IntegerField(read_only=True)
     failed_rate = serializers.IntegerField(read_only=True)
     aborted_rate = serializers.IntegerField(read_only=True)
+    cancelled_rate = serializers.IntegerField(read_only=True)
     upgradeoperations = UpgradeOperationSerializer(
         read_only=True, source="upgradeoperation_set", many=True
     )
