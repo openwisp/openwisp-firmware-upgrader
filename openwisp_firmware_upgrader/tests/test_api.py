@@ -1838,15 +1838,15 @@ class TestFirmwareDownloadPermissions(
     FirmwareDownloadPermissionTestMixin, TestAPIUpgraderMixin, TestCase
 ):
     expected_queries = {
-        'unauthenticated': 1,
-        'no_permissions': 4,
-        'authenticated_no_permission': 4,
-        'different_org': 4,
-        'staff_no_permissions': 4,
-        'staff_different_org': 4,
-        'staff_with_permission': 9,
-        'operator_same_org': 8,
-        'superuser': 3,
+        "unauthenticated": 1,
+        "no_permissions": 4,
+        "authenticated_no_permission": 4,
+        "different_org": 4,
+        "staff_no_permissions": 4,
+        "staff_different_org": 4,
+        "staff_with_permission": 9,
+        "operator_same_org": 8,
+        "superuser": 3,
     }
 
     def get_download_url(self):

@@ -226,15 +226,15 @@ class FirmwareDownloadPermissionTestMixin:
     """
 
     expected_queries = {
-        'unauthenticated': None,
-        'no_permissions': None,
-        'authenticated_no_permission': None,
-        'different_org': None,
-        'staff_no_permissions': None,
-        'staff_different_org': None,
-        'staff_with_permission': None,
-        'operator_same_org': None,
-        'superuser': None,
+        "unauthenticated": None,
+        "no_permissions": None,
+        "authenticated_no_permission": None,
+        "different_org": None,
+        "staff_no_permissions": None,
+        "staff_different_org": None,
+        "staff_with_permission": None,
+        "operator_same_org": None,
+        "superuser": None,
     }
 
     def setUp(self):
@@ -288,7 +288,7 @@ class FirmwareDownloadPermissionTestMixin:
         if is_operator:
             user.groups.add(self.operator_group)
         if auto_login:
-            if hasattr(self, '_login'):
+            if hasattr(self, "_login"):
                 # For API tests that use TestAPIUpgraderMixin
                 self._login(user.username, "tester")
             else:
@@ -314,31 +314,31 @@ class FirmwareDownloadPermissionTestMixin:
         """Test firmware download with unauthenticated user"""
         self.client.logout()
         self.client.defaults = {}
-        self._make_request_and_assert(401, 'unauthenticated')
+        self._make_request_and_assert(401, "unauthenticated")
 
     def test_firmware_download_user_without_permissions(self):
         """Test firmware download with user without any permissions"""
         self._setup_user()
-        self._make_request_and_assert(403, 'no_permissions')
+        self._make_request_and_assert(403, "no_permissions")
 
     def test_firmware_download_authenticated_user_without_permission(self):
         """Test firmware download with authenticated user without permission"""
         user = self._get_user()
-        if hasattr(self, '_login'):
+        if hasattr(self, "_login"):
             self._login(user.username, "tester")
         else:
             self.client.force_login(user)
-        self._make_request_and_assert(403, 'authenticated_no_permission')
+        self._make_request_and_assert(403, "authenticated_no_permission")
 
     def test_firmware_download_user_different_organization(self):
         """Test firmware download with user from different organization"""
         self._setup_user(org=self.other_org)
-        self._make_request_and_assert(403, 'different_org')
+        self._make_request_and_assert(403, "different_org")
 
     def test_firmware_download_staff_user_without_org_admin_or_view_permission(self):
         """Test firmware download with staff user without org admin or view permission"""
         self._setup_user(is_staff=True)
-        self._make_request_and_assert(403, 'staff_no_permissions')
+        self._make_request_and_assert(403, "staff_no_permissions")
 
     def test_firmware_download_staff_user_org_admin_different_organization(self):
         """Test firmware download with staff user who is org admin of a different organization"""
@@ -347,7 +347,7 @@ class FirmwareDownloadPermissionTestMixin:
             is_org_admin=True,
             org=self.other_org,
         )
-        self._make_request_and_assert(403, 'staff_different_org')
+        self._make_request_and_assert(403, "staff_different_org")
 
     def test_firmware_download_staff_user_with_view_permission(self):
         """Test firmware download with staff user who has view permission"""
@@ -356,7 +356,7 @@ class FirmwareDownloadPermissionTestMixin:
             has_view_perm=True,
             is_operator=True,
         )
-        self._make_request_and_assert(403, 'staff_with_permission')
+        self._make_request_and_assert(403, "staff_with_permission")
 
     def test_firmware_download_operator_same_organization(self):
         """Test firmware download with operator from same organization"""
@@ -376,19 +376,19 @@ class FirmwareDownloadPermissionTestMixin:
             is_admin=True,
         )
 
-        if hasattr(self, '_login'):
+        if hasattr(self, "_login"):
             self._login(staff_user.username, "tester")
         else:
             self.client.force_login(staff_user)
 
-        self._make_request_and_assert(200, 'operator_same_org')
+        self._make_request_and_assert(200, "operator_same_org")
 
     def test_firmware_download_superuser_access(self):
         """Test firmware download with superuser access"""
         user = self._get_admin()
-        if hasattr(self, '_login'):
+        if hasattr(self, "_login"):
             self._login(user.username, "tester")
         else:
             self.client.force_login(user)
 
-        self._make_request_and_assert(200, 'superuser')
+        self._make_request_and_assert(200, "superuser")

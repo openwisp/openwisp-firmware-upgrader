@@ -16,15 +16,15 @@ class TestPrivateStorage(
     TestCase,
 ):
     expected_queries = {
-        'unauthenticated': 0,
-        'no_permissions': 3,
-        'authenticated_no_permission': 3,
-        'different_org': 3,
-        'staff_no_permissions': 3,
-        'staff_different_org': 3,
-        'staff_with_permission': 8,
-        'operator_same_org': 7,
-        'superuser': 2,
+        "unauthenticated": 0,
+        "no_permissions": 3,
+        "authenticated_no_permission": 3,
+        "different_org": 3,
+        "staff_no_permissions": 3,
+        "staff_different_org": 3,
+        "staff_with_permission": 8,
+        "operator_same_org": 7,
+        "superuser": 2,
     }
 
     def get_download_url(self):
