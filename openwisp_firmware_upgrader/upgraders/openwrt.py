@@ -185,7 +185,7 @@ class OpenWrt(object):
                 _(
                     "Device UUID mismatch: expected {expected}, "
                     "found {found} in device configuration"
-                ).format(expected=device_uuid, found=device_config_uuid)
+                ).format(expected=device_uuid, found=config_uuid)
             )
             raise UpgradeAborted()
         self.log(_("Device identity verified successfully"))
