@@ -3,6 +3,7 @@ from unittest.mock import patch
 import swapper
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.management import call_command
+from django.test import tag
 from django.urls.base import reverse
 from reversion.models import Version
 from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentException
@@ -25,6 +26,7 @@ DeviceFirmware = load_model('DeviceFirmware')
 BatchUpgradeOperation = load_model('BatchUpgradeOperation')
 
 
+@tag('selenium_tests')
 class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
     config_app_label = 'config'
     firmware_app_label = 'firmware_upgrader'
