@@ -186,6 +186,7 @@ class FirmwareImageDownloadView(FirmwareImageMixin, generics.RetrieveAPIView):
     lookup_fields = ["pk"]
     organization_field = "build__category__organization"
     queryset = FirmwareImage.objects.none()
+    permission_classes = []  # Permissions are checked in the private storage view
 
     def retrieve(self, request, *args, **kwargs):
         return private_storage.views.firmware_image_download(
