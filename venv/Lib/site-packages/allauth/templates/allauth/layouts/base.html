@@ -1,0 +1,80 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>
+            {% block head_title %}
+            {% endblock head_title %}
+        </title>
+        {% block extra_head %}
+        {% endblock extra_head %}
+    </head>
+    <body>
+        {% block body %}
+            {% if messages %}
+                <div>
+                    <strong>{% trans "Messages:" %}</strong>
+                    <ul>
+                        {% for message in messages %}<li>{{ message }}</li>{% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+            <div>
+                <strong>{% trans "Menu:" %}</strong>
+                <ul>
+                    {% if user.is_authenticated %}
+                        {% url 'account_email' as email_url %}
+                        {% if email_url %}
+                            <li>
+                                <a href="{{ email_url }}">{% trans "Change Email" %}</a>
+                            </li>
+                        {% endif %}
+                        {% url 'account_change_password' as change_password_url %}
+                        {% if change_password_url %}
+                            <li>
+                                <a href="{{ change_password_url }}">{% trans "Change Password" %}</a>
+                            </li>
+                        {% endif %}
+                        {% url 'mfa_index' as mfa_url %}
+                        {% if mfa_url %}
+                            <li>
+                                <a href="{{ mfa_url }}">{% trans "Two-Factor Authentication" %}</a>
+                            </li>
+                        {% endif %}
+                        {% url 'usersessions_list' as usersessions_list_url %}
+                        {% if usersessions_list_url %}
+                            <li>
+                                <a href="{{ usersessions_list_url }}">{% trans "Sessions" %}</a>
+                            </li>
+                        {% endif %}
+                        {% url 'account_logout' as logout_url %}
+                        {% if logout_url %}
+                            <li>
+                                <a href="{{ logout_url }}">{% trans "Sign Out" %}</a>
+                            </li>
+                        {% endif %}
+                    {% else %}
+                        {% url 'account_login' as login_url %}
+                        {% if login_url %}
+                            <li>
+                                <a href="{{ login_url }}">{% trans "Sign In" %}</a>
+                            </li>
+                        {% endif %}
+                        {% url 'account_signup' as signup_url %}
+                        {% if signup_url %}
+                            <li>
+                                <a href="{{ signup_url }}">{% trans "Sign Up" %}</a>
+                            </li>
+                        {% endif %}
+                    {% endif %}
+                </ul>
+            </div>
+            {% block content %}
+            {% endblock content %}
+        {% endblock body %}
+        {% block extra_body %}
+        {% endblock extra_body %}
+    </body>
+</html>

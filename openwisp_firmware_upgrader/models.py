@@ -1,4 +1,5 @@
 from swapper import swappable_setting
+from django.db import models
 
 from .base.models import (
     AbstractBatchUpgradeOperation,
@@ -8,6 +9,10 @@ from .base.models import (
     AbstractFirmwareImage,
     AbstractUpgradeOperation,
 )
+
+# Import Location model (for ForeignKey)
+import swapper
+Location = swapper.load_model("geo", "Location")
 
 
 class Category(AbstractCategory):
@@ -35,6 +40,15 @@ class DeviceFirmware(AbstractDeviceFirmware):
 
 
 class BatchUpgradeOperation(AbstractBatchUpgradeOperation):
+    # Explicitly declare the field so Django generates the migration
+    location = models.ForeignKey(
+        Location,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        help_text="Target only devices at this location",
+    )
+
     class Meta(AbstractBatchUpgradeOperation.Meta):
         abstract = False
         swappable = swappable_setting("firmware_upgrader", "BatchUpgradeOperation")

@@ -1,7 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
-
 from openwisp_controller.connection import settings as conn_settings
 
 CUSTOM_OPENWRT_IMAGES = getattr(settings, "OPENWISP_CUSTOM_OPENWRT_IMAGES", None)
@@ -28,7 +27,7 @@ FIRMWARE_UPGRADER_API = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_API", True
 FIRMWARE_API_BASEURL = getattr(settings, "OPENWISP_FIRMWARE_API_BASEURL", "/")
 OPENWRT_SETTINGS = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS", {})
 
-# Path of urls that need to be refered in migrations files.
+
 IMAGE_URL_PATH = "firmware/"
 
 try:
