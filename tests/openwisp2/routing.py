@@ -1,7 +1,13 @@
-from channels.auth import AuthMiddlewareStack
+import os
+
+import django
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.security.websocket import AllowedHostsOriginValidator
 from django.core.asgi import get_asgi_application
+
+django.setup()
+
+from channels.auth import AuthMiddlewareStack
+from channels.security.websocket import AllowedHostsOriginValidator
 
 from openwisp_controller.routing import get_routes
 from openwisp_firmware_upgrader.routing import (
@@ -10,11 +16,11 @@ from openwisp_firmware_upgrader.routing import (
 
 application = ProtocolTypeRouter(
     {
+        "http": get_asgi_application(),
         "websocket": AllowedHostsOriginValidator(
             AuthMiddlewareStack(
                 URLRouter(get_routes() + get_firmware_upgrader_routes())
             )
         ),
-        "http": get_asgi_application(),
     }
 )

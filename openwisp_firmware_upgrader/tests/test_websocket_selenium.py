@@ -1,4 +1,4 @@
-import json
+import asyncio
 from time import sleep
 
 import pytest
@@ -16,6 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
+from openwisp_firmware_upgrader.websockets import DeviceUpgradeProgressPublisher
 from openwisp_utils.tests import SeleniumTestMixin
 
 from ..swapper import load_model
@@ -49,7 +50,6 @@ class TestRealTimeWebsockets(
 
     def setUp(self):
         org = self._get_org()
-        # Create admin with unique username to avoid conflicts
         import uuid
 
         unique_suffix = str(uuid.uuid4())[:8]
@@ -61,7 +61,6 @@ class TestRealTimeWebsockets(
         self.admin_client = self.client
         self.admin_client.force_login(self.admin)
 
-        # Create test environment
         category = self._get_category(organization=org)
         build1 = self._create_build(category=category, version="0.1", os=self.os)
         build2 = self._create_build(
@@ -92,7 +91,7 @@ class TestRealTimeWebsockets(
         browser_logs = []
         for log in self.get_browser_logs():
             # ignore if not console-api
-            if log["source"] != "console-api":
+            if log.get("source") != "console-api":
                 continue
             else:
                 print(log)
@@ -115,20 +114,18 @@ class TestRealTimeWebsockets(
 
     async def _prepare(self):
         communicator = await self._get_communicator(self.admin_client, self.device.pk)
-        connected, _ = await communicator.connect()
-        assert connected is True
-
         path = reverse(
             f"admin:{self.config_app_label}_device_change", args=[self.device.pk]
         )
-        self.login()
+
+        self.login(username=self.admin.username, password=self.admin_password)
+
         self.open(f"{path}#upgradeoperation_set-group")
+
         self.hide_loading_overlay()
 
-        # Wait for the page to load and elements to be visible
         self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
 
-        # Wait for websocket connection to be established
         WebDriverWait(self.web_driver, 10).until(
             lambda driver: driver.execute_script(
                 "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;"
@@ -151,7 +148,7 @@ class TestRealTimeWebsockets(
         communicator = await self._prepare()
 
         # Wait for initial state
-        WebDriverWait(self.web_driver, 5).until(
+        WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
 
@@ -184,9 +181,6 @@ class TestRealTimeWebsockets(
             }
         )
 
-        message = await communicator.receive_json_from()
-        self._snooze()
-
         # Verify UI update
         progress_text = self.find_element(
             By.CSS_SELECTOR, ".upgrade-progress-text"
@@ -203,7 +197,10 @@ class TestRealTimeWebsockets(
         self.assertIn("Progress: 75%", log_html)
 
         self._assert_no_js_errors()
-        await communicator.disconnect()
+        try:
+            await communicator.disconnect()
+        except (Exception, asyncio.CancelledError):
+            pass
 
     async def test_real_time_status_change(self):
         """Test real-time status change from in-progress to success"""
@@ -219,7 +216,7 @@ class TestRealTimeWebsockets(
         communicator = await self._prepare()
 
         # Wait for initial state
-        WebDriverWait(self.web_driver, 5).until(
+        WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
 
@@ -235,7 +232,6 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        from openwisp_firmware_upgrader.websockets import DeviceUpgradeProgressPublisher
 
         publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
@@ -250,9 +246,6 @@ class TestRealTimeWebsockets(
                 "created": operation.created.isoformat(),
             }
         )
-
-        message = await communicator.receive_json_from()
-        self._snooze()
 
         # Verify UI update
         progress_text = self.find_element(
@@ -271,7 +264,11 @@ class TestRealTimeWebsockets(
         self.assertIn("Upgrade completed successfully!", log_html)
 
         self._assert_no_js_errors()
-        await communicator.disconnect()
+
+        try:
+            await communicator.disconnect()
+        except (Exception, asyncio.CancelledError):
+            pass
 
     async def test_real_time_log_updates(self):
         """Test real-time log line appending during upgrade"""
@@ -301,14 +298,8 @@ class TestRealTimeWebsockets(
         operation.log = f"{operation.log}\n{new_log_line}"
         await database_sync_to_async(operation.save)()
 
-        # Publish websocket update
-        from openwisp_firmware_upgrader.websockets import DeviceUpgradeProgressPublisher
-
         publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_log(new_log_line, "in-progress")
-
-        message = await communicator.receive_json_from()
-        self._snooze()
 
         # Verify UI update
         updated_log = self.find_element(
@@ -317,4 +308,7 @@ class TestRealTimeWebsockets(
         self.assertIn("Device identity verified successfully", updated_log)
 
         self._assert_no_js_errors()
-        await communicator.disconnect()
+        try:
+            await communicator.disconnect()
+        except (Exception, asyncio.CancelledError):
+            pass

@@ -3,6 +3,7 @@
 django.jQuery(function ($) {
   const firmwareDeviceId = getObjectIdFromUrl();
 
+  window.firmwareDeviceId = firmwareDeviceId;
   setTimeout(function () {
     if (!firmwareDeviceId) {
       return;
@@ -34,6 +35,7 @@ django.jQuery(function ($) {
         retryInterval: 3000,
       });
 
+      window.upgradeProgressWebSocket = upgradeProgressWebSocket;
       // Initialize websocket connection
       initUpgradeProgressWebSockets($, upgradeProgressWebSocket);
     }
