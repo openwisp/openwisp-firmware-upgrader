@@ -136,7 +136,7 @@ class TestRealTimeWebsockets(
 
     async def test_real_time_progress_updates(self):
         """Test real-time progress updates via websocket"""
-        # preparation
+
         operation = await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device,
             image=self.image2,
@@ -147,26 +147,45 @@ class TestRealTimeWebsockets(
 
         communicator = await self._prepare()
 
-        # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
 
-        initial_progress_text = self.find_element(
-            By.CSS_SELECTOR, ".upgrade-progress-text"
-        ).text
+        # Test initial progress bar visibility and components
+        progress_container = self.find_element(
+            By.CSS_SELECTOR, ".upgrade-status-container"
+        )
+        self.assertTrue(
+            progress_container.is_displayed(), "Progress container should be visible"
+        )
+
+        progress_bar = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-bar")
+        self.assertTrue(progress_bar.is_displayed(), "Progress bar should be visible")
+
+        progress_fill = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-fill")
+        self.assertTrue(progress_fill.is_displayed(), "Progress fill should be visible")
+
+        progress_text = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-text")
+        self.assertTrue(progress_text.is_displayed(), "Progress text should be visible")
+
+        # Verify initial state
+        initial_progress_text = progress_text.text
         self.assertEqual(initial_progress_text, "25%")
 
-        # Update operation
+        initial_style = progress_fill.get_attribute("style")
+        self.assertIn("width: 25%", initial_style)
+
+        # Update operation to 75% progress
         operation.progress = 75
         operation.log = (
-            "Starting upgrade process...\nUploading firmware image...\nProgress: 75%"
+            "Starting upgrade process...\n"
+            "Device identity verified successfully\n"
+            "Uploading firmware image...\n"
+            "Upload progress: 75%"
         )
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        from openwisp_firmware_upgrader.websockets import DeviceUpgradeProgressPublisher
-
         publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
@@ -181,20 +200,24 @@ class TestRealTimeWebsockets(
             }
         )
 
-        # Verify UI update
-        progress_text = self.find_element(
+        # Verify real-time UI updates
+        updated_progress_text = self.find_element(
             By.CSS_SELECTOR, ".upgrade-progress-text"
         ).text
-        self.assertEqual(progress_text, "75%")
+        self.assertEqual(updated_progress_text, "75%")
 
-        progress_fill = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-fill")
-        style = progress_fill.get_attribute("style")
-        self.assertIn("width: 75%", style)
+        updated_progress_fill = self.find_element(
+            By.CSS_SELECTOR, ".upgrade-progress-fill"
+        )
+        updated_style = updated_progress_fill.get_attribute("style")
+        self.assertIn("width: 75%", updated_style)
 
+        # Verify log updates in real-time
         log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
         log_html = log_element.get_attribute("innerHTML")
+        self.assertIn("Device identity verified successfully", log_html)
         self.assertIn("Uploading firmware image", log_html)
-        self.assertIn("Progress: 75%", log_html)
+        self.assertIn("Upload progress: 75%", log_html)
 
         self._assert_no_js_errors()
         try:
@@ -202,7 +225,7 @@ class TestRealTimeWebsockets(
         except (Exception, asyncio.CancelledError):
             pass
 
-    async def test_real_time_status_change(self):
+    async def test_real_time_status_change_to_success(self):
         """Test real-time status change from in-progress to success"""
         # preparation
         operation = await database_sync_to_async(UpgradeOperation.objects.create)(
@@ -225,14 +248,24 @@ class TestRealTimeWebsockets(
         ).text
         self.assertEqual(initial_progress_text, "75%")
 
-        # Update operation status
+        # Update operation status to success with realistic log
         operation.status = "success"
         operation.progress = 100
-        operation.log = "Starting upgrade process...\nUploading firmware...\nUpgrade completed successfully!"
+        operation.log = (
+            "Connection successful, starting upgrade...\n"
+            "Device identity verified successfully\n"
+            "Image checksum file not found, proceeding with the upload of the new image...\n"
+            "The image size (8.5 MiB) is within available memory (64.2 MiB)\n"
+            "Sysupgrade test passed successfully, proceeding with the upgrade operation...\n"
+            "Upgrade operation in progress...\n"
+            "SSH connection closed, will wait 180 seconds before attempting to reconnect...\n"
+            "Trying to reconnect to device at 192.168.1.1 (attempt n.1)...\n"
+            "Connection re-established successfully\n"
+            "Firmware upgrade completed successfully"
+        )
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-
         publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
@@ -247,11 +280,16 @@ class TestRealTimeWebsockets(
             }
         )
 
-        # Verify UI update
-        progress_text = self.find_element(
-            By.CSS_SELECTOR, ".upgrade-progress-text"
-        ).text
-        self.assertEqual(progress_text, "100%")
+        # Verify real-time UI updates for success status
+        WebDriverWait(self.web_driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-status-success"))
+        )
+
+        status_element = self.find_element(By.CSS_SELECTOR, ".upgrade-status-success")
+        self.assertEqual(status_element.text, "success")
+
+        progress_text = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-text")
+        self.assertEqual(progress_text.text, "100%")
 
         progress_fill = self.find_element(
             By.CSS_SELECTOR, ".upgrade-progress-fill.success"
@@ -259,9 +297,13 @@ class TestRealTimeWebsockets(
         style = progress_fill.get_attribute("style")
         self.assertIn("width: 100%", style)
 
+        # Verify comprehensive success log display
         log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
         log_html = log_element.get_attribute("innerHTML")
-        self.assertIn("Upgrade completed successfully!", log_html)
+        self.assertIn("Connection successful", log_html)
+        self.assertIn("Device identity verified", log_html)
+        self.assertIn("Sysupgrade test passed", log_html)
+        self.assertIn("completed successfully", log_html)
 
         self._assert_no_js_errors()
 
@@ -308,6 +350,141 @@ class TestRealTimeWebsockets(
         self.assertIn("Device identity verified successfully", updated_log)
 
         self._assert_no_js_errors()
+        try:
+            await communicator.disconnect()
+        except (Exception, asyncio.CancelledError):
+            pass
+
+    async def test_real_time_status_change_to_failed(self):
+        """Test real-time status change to failed"""
+        # preparation
+        operation = await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device,
+            image=self.image2,
+            status="in-progress",
+            log="Starting upgrade process...",
+            progress=50,
+        )
+
+        communicator = await self._prepare()
+
+        # Wait for initial state
+        WebDriverWait(self.web_driver, 2).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
+        )
+
+        operation.status = "failed"
+        operation.progress = 50  # Failed operations don't reach 100%
+        operation.log = (
+            "Connection successful, starting upgrade...\n"
+            "Device identity verified successfully\n"
+            "Image checksum file not found, proceeding with the upload of the new image...\n"
+            "The image size (12.3 MiB) is greater than the available memory on the system (8.1 MiB).\n"
+            "Enough available memory was freed up on the system (11.2 MiB)!\n"
+            "Proceeding to upload of the image file...\n"
+            "Sysupgrade test failed: Image check failed\n"
+            "Starting non critical services again...\n"
+            "Non critical services started, aborting upgrade.\n"
+            "Upgrade operation failed"
+        )
+        await database_sync_to_async(operation.save)()
+
+        # Publish websocket update
+        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher.publish_operation_update(
+            {
+                "id": str(operation.pk),
+                "device": str(self.device.pk),
+                "status": "failed",
+                "log": operation.log,
+                "progress": 50,
+                "image": str(self.image2.pk),
+                "modified": operation.modified.isoformat(),
+                "created": operation.created.isoformat(),
+            }
+        )
+
+        WebDriverWait(self.web_driver, 5).until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, ".upgrade-progress-fill.failed")
+            )
+        )
+
+        progress_fill = self.find_element(
+            By.CSS_SELECTOR, ".upgrade-progress-fill.failed"
+        )
+        class_list = progress_fill.get_attribute("class")
+        self.assertIn("failed", class_list)
+
+        log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
+        log_html = log_element.get_attribute("innerHTML")
+        self.assertIn("Image check failed", log_html)
+        self.assertIn("aborting upgrade", log_html)
+        self.assertIn("operation failed", log_html)
+        self.assertIn("Starting non critical services", log_html)
+
+        self._assert_no_js_errors()
+
+        try:
+            await communicator.disconnect()
+        except (Exception, asyncio.CancelledError):
+            pass
+
+    async def test_real_time_status_change_to_aborted(self):
+        """Test real-time status change to aborted"""
+        # preparation
+        operation = await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device,
+            image=self.image2,
+            status="in-progress",
+            log="Starting upgrade process...",
+            progress=30,
+        )
+
+        communicator = await self._prepare()
+
+        # Wait for initial state
+        WebDriverWait(self.web_driver, 2).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
+        )
+
+        operation.status = "aborted"
+        operation.progress = 30  # Aborted operations stop at current progress
+        operation.log = (
+            "Connection successful, starting upgrade...\n"
+            "Could not read device UUID from configuration\n"
+            'Device UUID mismatch: expected "12345678-1234-1234-1234-123456789abc", '
+            'found "87654321-4321-4321-4321-cba987654321" in device configuration\n'
+            "Upgrade operation aborted for security reasons\n"
+            "Starting non critical services again...\n"
+            "Non critical services started, aborting upgrade."
+        )
+        await database_sync_to_async(operation.save)()
+
+        # Publish websocket update
+        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher.publish_operation_update(
+            {
+                "id": str(operation.pk),
+                "device": str(self.device.pk),
+                "status": "aborted",
+                "log": operation.log,
+                "progress": 30,
+                "image": str(self.image2.pk),
+                "modified": operation.modified.isoformat(),
+                "created": operation.created.isoformat(),
+            }
+        )
+
+        log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
+        log_html = log_element.get_attribute("innerHTML")
+        self.assertIn("UUID mismatch", log_html)
+        self.assertIn("Could not read device UUID", log_html)
+        self.assertIn("aborted for security reasons", log_html)
+        self.assertIn("aborting upgrade", log_html)
+
+        self._assert_no_js_errors()
+
         try:
             await communicator.disconnect()
         except (Exception, asyncio.CancelledError):
