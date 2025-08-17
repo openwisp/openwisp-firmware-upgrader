@@ -6,6 +6,17 @@ Version 1.2.0 [Unreleased]
 
 Work in progress.
 
+Version 1.1.2 [2025-08-14]
+--------------------------
+
+Bugfixes
+~~~~~~~~
+
+- Fixed the outdated defaults for
+  `OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS
+  <https://openwisp.io/docs/stable/firmware-upgrader/user/settings.html#openwisp-firmware-upgrader-openwrt-settings>`_
+  setting in the documentation.
+
 Version 1.1.1 [2025-01-31]
 --------------------------
 
