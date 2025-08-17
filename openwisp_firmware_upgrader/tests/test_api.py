@@ -1839,10 +1839,10 @@ class TestFirmwareDownloadPermissions(
 ):
     expected_queries = {
         "unauthenticated": 1,
-        "no_permissions": 4,
-        "authenticated_no_permission": 4,
-        "different_org": 4,
-        "staff_no_permissions": 4,
+        "no_permissions": 5,
+        "authenticated_no_permission": 5,
+        "different_org": 5,
+        "staff_no_permissions": 5,
         "staff_different_org": 4,
         "staff_with_permission": 9,
         "operator_same_org": 8,
