@@ -1,6 +1,7 @@
 import logging
 import os
 from decimal import Decimal
+from functools import partial
 
 import jsonschema
 import swapper
@@ -34,13 +35,13 @@ from ..tasks import (
     batch_upgrade_operation,
     create_all_device_firmwares,
     create_device_firmware,
-    delete_firmware_files,
     upgrade_firmware,
 )
 from ..utils import (
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
+    schedule_firmware_file_deletion,
 )
 
 logger = logging.getLogger(__name__)
@@ -163,7 +164,7 @@ class AbstractBuild(TimeStampedEditableModel):
         batch.full_clean()
         batch.save()
         transaction.on_commit(
-            lambda: batch_upgrade_operation.delay(batch.pk, firmwareless)
+            partial(batch_upgrade_operation.delay, batch.pk, firmwareless)
         )
         return batch
 
@@ -285,16 +286,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         Signal handler to collect firmware image files that need to be deleted
         when a Build is deleted.
         """
-        files_to_delete = []
-
-        # Get all firmware images related to this build
-        for image in cls.objects.filter(build=instance):
-            if image.file:
-                files_to_delete.append(image.file.name)
-
-        # Schedule file deletion after transaction is committed
-        if files_to_delete:
-            transaction.on_commit(lambda: delete_firmware_files.delay(files_to_delete))
+        schedule_firmware_file_deletion(cls, build=instance)
 
     @classmethod
     def category_pre_delete_handler(cls, sender, instance, **kwargs):
@@ -302,16 +294,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         Signal handler to collect firmware image files that need to be deleted
         when a Category is deleted.
         """
-        files_to_delete = []
-
-        # Get all firmware images related to builds in this category
-        for image in cls.objects.filter(build__category=instance):
-            if image.file:
-                files_to_delete.append(image.file.name)
-
-        # Schedule file deletion after transaction is committed
-        if files_to_delete:
-            transaction.on_commit(lambda: delete_firmware_files.delay(files_to_delete))
+        schedule_firmware_file_deletion(cls, build__category=instance)
 
     @classmethod
     def organization_pre_delete_handler(cls, sender, instance, **kwargs):
@@ -319,16 +302,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         Signal handler to collect firmware image files that need to be deleted
         when an Organization is deleted.
         """
-        files_to_delete = []
-
-        # Get all firmware images related to builds in categories of this organization
-        for image in cls.objects.filter(build__category__organization=instance):
-            if image.file:
-                files_to_delete.append(image.file.name)
-
-        # Schedule file deletion after transaction is committed
-        if files_to_delete:
-            transaction.on_commit(lambda: delete_firmware_files.delay(files_to_delete))
+        schedule_firmware_file_deletion(cls, build__category__organization=instance)
 
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):
@@ -403,7 +377,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         operation.save()
         # launch ``upgrade_firmware`` in the background (celery)
         # once changes are committed to the database
-        transaction.on_commit(lambda: upgrade_firmware.delay(operation.pk))
+        transaction.on_commit(partial(upgrade_firmware.delay, operation.pk))
         return operation
 
     @classmethod
@@ -451,13 +425,13 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if instance.device.model not in REVERSE_FIRMWARE_IMAGE_MAP:
             return
 
-        transaction.on_commit(lambda: create_device_firmware.delay(instance.device.pk))
+        transaction.on_commit(partial(create_device_firmware.delay, instance.device.pk))
 
     @classmethod
     def auto_create_device_firmwares(cls, instance, created, **kwargs):
         if created:
             transaction.on_commit(
-                lambda: create_all_device_firmwares.delay(instance.pk)
+                partial(create_all_device_firmwares.delay, instance.pk)
             )
 
     @classmethod

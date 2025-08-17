@@ -11,6 +11,7 @@ from openwisp_utils.tasks import OpenwispCeleryTask
 from . import settings as app_settings
 from .exceptions import RecoverableFailure
 from .swapper import load_model
+from .utils import delete_file_with_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -87,23 +88,15 @@ def create_all_device_firmwares(self, firmware_image_id):
 
 @shared_task(base=OpenwispCeleryTask)
 def delete_firmware_files(files_to_delete):
+    """
+    Celery task to delete firmware image files and their parent directories if empty.
+
+    Args:
+        files_to_delete (list[str]): A list of file paths (relative to the storage backend)
+                                     that should be deleted.
+    """
     FirmwareImage = load_model("FirmwareImage")
     storage = FirmwareImage.file.field.storage
 
     for file_path in files_to_delete:
-        try:
-            storage.delete(file_path)
-            dir_path = "/".join(file_path.split("/")[:-1])
-            if dir_path:
-                try:
-                    dirs, files = storage.listdir(dir_path)
-                    if not dirs and not files:
-                        storage.delete(dir_path)
-                    else:
-                        logger.debug(
-                            f"Directory {dir_path} is not empty, skipping deletion"
-                        )
-                except Exception as error:
-                    logger.debug(f"Could not delete directory {dir_path}: {str(error)}")
-        except Exception as e:
-            logger.error(f"Error deleting firmware file {file_path}: {str(e)}")
+        delete_file_with_cleanup(storage, file_path)
