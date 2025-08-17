@@ -21,7 +21,10 @@ if TESTING and "--exclude-tag=no_parallel" not in sys.argv:
         "NAME": os.path.join(BASE_DIR, "openwisp_firmware_upgrader_tests.db"),
     }
 
-SPATIALITE_LIBRARY_PATH = "mod_spatialite.so"
+# SPATIALITE_LIBRARY_PATH = "mod_spatialite.so"
+SPATIALITE_LIBRARY_PATH = (
+    "/opt/homebrew/Cellar/libspatialite/5.1.0_1/lib/mod_spatialite.dylib"
+)
 
 SECRET_KEY = "fn)t*+$)ugeyip6-#txyy$5wf2ervc0d2n#h)qb)y5@ly$t*@w"
 
