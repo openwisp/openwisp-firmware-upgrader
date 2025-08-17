@@ -80,6 +80,8 @@ def delete_file_with_cleanup(storage, file_path):
                     logger.debug(
                         "Directory %s is not empty, skipping deletion", dir_path
                     )
+            except FileNotFoundError:
+                logger.debug("Directory %s already removed", dir_path)
             except Exception as error:
                 logger.warning(
                     "Could not delete directory %s: %s", dir_path, str(error)
