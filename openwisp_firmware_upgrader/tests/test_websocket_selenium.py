@@ -3,7 +3,6 @@ from time import sleep
 
 import pytest
 import swapper
-from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.testing import ChannelsLiveServerTestCase, WebsocketCommunicator
 from django.conf import settings
