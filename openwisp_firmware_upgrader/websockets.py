@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from copy import deepcopy
 
@@ -84,7 +85,8 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
             self.pk_ = self.scope["url_route"]["kwargs"]["pk"]
             self.group_name = f"firmware_upgrader.device-{self.pk_}"
 
-        except (AssertionError, KeyError):
+        except (AssertionError, KeyError) as e:
+            logger.error(f"Error in websocket connect: {e}")
             await self.close()
         else:
             try:
@@ -250,7 +252,12 @@ class DeviceUpgradeProgressPublisher:
                     {"type": "upgrade_progress", "data": data},
                 )
 
-        async_to_sync(_send_messages)()
+        # Check if we're already in an async context
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(_send_messages())
+        except RuntimeError:
+            async_to_sync(_send_messages)()
 
     def publish_operation_update(self, operation_data):
         """Publish complete operation update"""
