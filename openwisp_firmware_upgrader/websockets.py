@@ -254,7 +254,7 @@ class DeviceUpgradeProgressPublisher:
 
         # Check if we're already in an async context
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             asyncio.create_task(_send_messages())
         except RuntimeError:
             async_to_sync(_send_messages)()
