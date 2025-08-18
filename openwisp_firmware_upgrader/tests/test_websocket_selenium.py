@@ -1,14 +1,11 @@
-import asyncio
 from time import sleep
 
 import pytest
 import swapper
 from channels.db import database_sync_to_async
-from channels.testing import ChannelsLiveServerTestCase, WebsocketCommunicator
-from django.conf import settings
+from channels.testing import ChannelsLiveServerTestCase
 from django.test import tag
 from django.urls import reverse
-from django.utils.module_loading import import_string
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -114,7 +111,6 @@ class TestRealTimeWebsockets(
                 "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;"
             )
         )
-
 
     async def test_real_time_progress_updates(self):
         """Test real-time progress updates via websocket"""
