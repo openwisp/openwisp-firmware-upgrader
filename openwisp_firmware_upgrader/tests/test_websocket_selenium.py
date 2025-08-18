@@ -44,8 +44,7 @@ class TestRealTimeWebsockets(
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
     browser = "firefox"
     maxDiff = None
-    retry_max = 6
-    application = import_string(getattr(settings, "ASGI_APPLICATION"))
+    retry_max = 1
 
     def setUp(self):
         org = self._get_org()
@@ -97,22 +96,7 @@ class TestRealTimeWebsockets(
                 browser_logs.append(log)
         self.assertEqual(browser_logs, [])
 
-    async def _get_communicator(self, admin_client, device_id):
-        session_id = admin_client.cookies["sessionid"].value
-        communicator = WebsocketCommunicator(
-            self.application,
-            path=f"ws/firmware-upgrader/device/{device_id}/",
-            headers=[
-                (
-                    b"cookie",
-                    f"sessionid={session_id}".encode("ascii"),
-                )
-            ],
-        )
-        return communicator
-
     async def _prepare(self):
-        communicator = await self._get_communicator(self.admin_client, self.device.pk)
         path = reverse(
             f"admin:{self.config_app_label}_device_change", args=[self.device.pk]
         )
@@ -131,7 +115,6 @@ class TestRealTimeWebsockets(
             )
         )
 
-        return communicator
 
     async def test_real_time_progress_updates(self):
         """Test real-time progress updates via websocket"""
@@ -144,7 +127,7 @@ class TestRealTimeWebsockets(
             progress=25,
         )
 
-        communicator = await self._prepare()
+        await self._prepare()
 
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
@@ -219,10 +202,6 @@ class TestRealTimeWebsockets(
         self.assertIn("Upload progress: 75%", log_html)
 
         self._assert_no_js_errors()
-        try:
-            await communicator.disconnect()
-        except (Exception, asyncio.CancelledError):
-            pass
 
     async def test_real_time_status_change_to_success(self):
         """Test real-time status change from in-progress to success"""
@@ -235,7 +214,7 @@ class TestRealTimeWebsockets(
             progress=75,
         )
 
-        communicator = await self._prepare()
+        await self._prepare()
 
         # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
@@ -306,11 +285,6 @@ class TestRealTimeWebsockets(
 
         self._assert_no_js_errors()
 
-        try:
-            await communicator.disconnect()
-        except (Exception, asyncio.CancelledError):
-            pass
-
     async def test_real_time_log_updates(self):
         """Test real-time log line appending during upgrade"""
         # preparation
@@ -322,7 +296,7 @@ class TestRealTimeWebsockets(
             progress=20,
         )
 
-        communicator = await self._prepare()
+        await self._prepare()
 
         # Wait for initial state
         WebDriverWait(self.web_driver, 5).until(
@@ -349,10 +323,6 @@ class TestRealTimeWebsockets(
         self.assertIn("Device identity verified successfully", updated_log)
 
         self._assert_no_js_errors()
-        try:
-            await communicator.disconnect()
-        except (Exception, asyncio.CancelledError):
-            pass
 
     async def test_real_time_status_change_to_failed(self):
         """Test real-time status change to failed"""
@@ -365,7 +335,7 @@ class TestRealTimeWebsockets(
             progress=50,
         )
 
-        communicator = await self._prepare()
+        await self._prepare()
 
         # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
@@ -424,11 +394,6 @@ class TestRealTimeWebsockets(
 
         self._assert_no_js_errors()
 
-        try:
-            await communicator.disconnect()
-        except (Exception, asyncio.CancelledError):
-            pass
-
     async def test_real_time_status_change_to_aborted(self):
         """Test real-time status change to aborted"""
         # preparation
@@ -440,7 +405,7 @@ class TestRealTimeWebsockets(
             progress=30,
         )
 
-        communicator = await self._prepare()
+        await self._prepare()
 
         # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
@@ -483,8 +448,3 @@ class TestRealTimeWebsockets(
         self.assertIn("aborting upgrade", log_html)
 
         self._assert_no_js_errors()
-
-        try:
-            await communicator.disconnect()
-        except (Exception, asyncio.CancelledError):
-            pass
