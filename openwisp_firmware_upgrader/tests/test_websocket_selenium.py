@@ -1,3 +1,4 @@
+import uuid
 from time import sleep
 
 import pytest
@@ -45,7 +46,6 @@ class TestRealTimeWebsockets(
 
     def setUp(self):
         org = self._get_org()
-        import uuid
 
         unique_suffix = str(uuid.uuid4())[:8]
         self.admin = self._create_admin(
