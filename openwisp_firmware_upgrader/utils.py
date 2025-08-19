@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from django.utils.module_loading import import_string
 
@@ -42,44 +41,3 @@ def get_upgrader_class_from_device_connection(device_conn):
         logger.exception(e)
         return
     return upgrader_class
-
-
-def delete_file_and_cleanup(storage, file_path):
-    """
-    Delete a file and clean up its parent directory if empty.
-
-    Args:
-        storage: Django storage backend instance
-        file_path (str): Path to the file to delete (relative to storage root)
-
-    Returns:
-        bool: True if file was successfully deleted, False otherwise
-
-    This function:
-        - Deletes the specified file using the storage backend
-        - Checks the parent directory after deletion
-        - Removes the parent directory if it's empty
-        - Logs appropriate messages for each action
-        - Handles exceptions gracefully without raising them
-    """
-    try:
-        storage.delete(file_path)
-        logger.info("Deleted firmware file: %s", file_path)
-    except Exception as e:
-        logger.error("Error deleting firmware file %s: %s", file_path, str(e))
-        return False
-    # Clean up parent directory if empty
-    dir_path = str(Path(file_path).parent)
-    if dir_path and dir_path != ".":
-        try:
-            dirs, files = storage.listdir(dir_path)
-            if not dirs and not files:
-                storage.delete(dir_path)
-                logger.info("Deleted empty directory: %s", dir_path)
-            else:
-                logger.debug("Directory %s is not empty, skipping deletion", dir_path)
-        except FileNotFoundError:
-            logger.debug("Directory %s already removed", dir_path)
-        except Exception as error:
-            logger.warning("Could not delete directory %s: %s", dir_path, str(error))
-    return True

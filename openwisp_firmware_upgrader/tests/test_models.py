@@ -383,6 +383,104 @@ class TestModels(TestUpgraderMixin, TestCase):
         # Should still call transaction.on_commit because image1 has a valid file name
         mock_on_commit.assert_called_once()
 
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_success(self, mock_storage, mock_logger):
+        mock_storage.listdir.return_value = ([], [])  # Empty directory
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)
+        mock_storage.delete.assert_any_call("build/123/firmware.bin")
+        mock_storage.delete.assert_any_call("build/123")
+        mock_logger.info.assert_any_call(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        mock_logger.info.assert_any_call("Deleted empty directory: %s", "build/123")
+        self.assertEqual(mock_storage.delete.call_count, 2)
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_non_empty_directory(self, mock_storage, mock_logger):
+        mock_storage.listdir.return_value = (["subdir"], ["other_file.bin"])
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)
+        mock_storage.delete.assert_called_once_with("build/123/firmware.bin")
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        mock_logger.debug.assert_called_once_with(
+            "Directory %s is not empty, skipping deletion", "build/123"
+        )
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_file_deletion_failure(self, mock_storage, mock_logger):
+        mock_storage.delete.side_effect = Exception("Storage error")
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertFalse(result)
+        mock_storage.delete.assert_called_once_with("build/123/firmware.bin")
+        mock_logger.error.assert_called_once_with(
+            "Error deleting firmware file %s: %s",
+            "build/123/firmware.bin",
+            "Storage error",
+        )
+        mock_logger.info.assert_not_called()
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_directory_listing_failure(self, mock_storage, mock_logger):
+        mock_storage.listdir.side_effect = Exception("Directory access error")
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)  # File deletion succeeded, directory cleanup failed
+        mock_storage.delete.assert_called_once_with("build/123/firmware.bin")
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        mock_logger.error.assert_called_once_with(
+            "Could not delete directory %s: %s", "build/123", "Directory access error"
+        )
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_directory_not_found(self, mock_storage, mock_logger):
+        mock_storage.listdir.side_effect = FileNotFoundError("Directory not found")
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)  # File deletion succeeded
+        mock_storage.delete.assert_called_once_with("build/123/firmware.bin")
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        # Expecting debug, not error
+        mock_logger.debug.assert_called_once_with(
+            "Directory %s already removed", "build/123"
+        )
+        mock_logger.error.assert_not_called()
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_directory_deletion_failure(self, mock_storage, mock_logger):
+        mock_storage.listdir.return_value = ([], [])  # Empty directory
+        mock_storage.delete.side_effect = [None, Exception("Directory deletion error")]
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)  # File deletion succeeded, directory cleanup failed
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        mock_logger.error.assert_called_once_with(
+            "Could not delete directory %s: %s", "build/123", "Directory deletion error"
+        )
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_root_directory(self, mock_storage, mock_logger):
+        result = FirmwareImage._remove_file("firmware.bin")
+        self.assertTrue(result)
+        mock_storage.delete.assert_called_once_with("firmware.bin")
+        # Expecting directory cleanup is skipped
+        mock_storage.listdir.assert_not_called()
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "firmware.bin"
+        )
+
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
