@@ -56,8 +56,8 @@
       
       <div class="form-row">
         <div>
-          <label for="{{ form.group.id_for_label }}">{{ form.group.label }}:</label>
-          {{ form.group }}
+          <div for="{{ form.group.id_for_label }}">{{ form.group.label }}:</div>
+          <div class="field-box">{{ form.group }}</div>
           {% if form.group.help_text %}
             <p class="help">{{ form.group.help_text }}</p>
           {% endif %}
