@@ -3,11 +3,8 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from .. import settings as app_settings
-from ..swapper import load_model
 from ..utils import get_upgrader_class_from_device_connection
 from .base import TestUpgraderMixin
-
-FirmwareImage = load_model("FirmwareImage")
 
 
 class TestUtils(TestUpgraderMixin, TestCase):
