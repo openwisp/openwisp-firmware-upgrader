@@ -1,6 +1,7 @@
 import io
 from contextlib import redirect_stdout
 from unittest import mock
+from unittest.mock import MagicMock, patch
 
 import swapper
 from celery.exceptions import Retry
@@ -327,6 +328,60 @@ class TestModels(TestUpgraderMixin, TestCase):
             file_storage_backend.delete(file_name)
             self.assertNotEqual(image.file, None)
             image.delete()
+
+    @patch("django.db.transaction.on_commit")
+    @patch.object(FirmwareImage, "objects")
+    def test_schedule_firmware_file_deletion_with_files(
+        self, mock_fw_image_manager, mock_on_commit
+    ):
+        mock_image1 = MagicMock()
+        mock_image1.file.name = "build/123/image1.bin"
+        mock_image2 = MagicMock()
+        mock_image2.file.name = "build/123/image2.bin"
+        mocked_qs_result = MagicMock()
+        mocked_qs_result.iterator.return_value = [mock_image1, mock_image2]
+        mock_fw_image_manager.filter.return_value = mocked_qs_result
+        FirmwareImage.schedule_firmware_file_deletion(build__id=123)
+        mock_fw_image_manager.filter.assert_called_once_with(build__id=123)
+        mock_on_commit.assert_called_once()
+        # The actual partial function call is complex to test directly,
+        # but we can verify it was called with the right pattern
+        call_args = mock_on_commit.call_args[0][0]
+        self.assertIsNotNone(call_args)
+
+    @patch("django.db.transaction.on_commit")
+    @patch.object(FirmwareImage, "objects")
+    def test_schedule_firmware_file_deletion_no_files(
+        self, mock_fw_image_manager, mock_on_commit
+    ):
+        mocked_qs_result = MagicMock()
+        mocked_qs_result.iterator.return_value = []
+        mock_fw_image_manager.filter.return_value = mocked_qs_result
+        FirmwareImage.schedule_firmware_file_deletion(build__id=123)
+        mock_on_commit.assert_not_called()
+
+    @patch("django.db.transaction.on_commit")
+    @patch.object(FirmwareImage, "objects")
+    def test_schedule_firmware_file_deletion_files_without_names(
+        self, mock_fw_image_manager, mock_on_commit
+    ):
+        mock_image1 = MagicMock()
+        mock_image1.file.name = "build/123/image1.bin"
+        mock_image2 = MagicMock()
+        mock_image2.file.name = None  # No file name
+        mock_image3 = MagicMock()
+        mock_image3.file.name = ""  # Empty file name
+        mocked_qs_result = MagicMock()
+        mocked_qs_result.iterator.return_value = [
+            mock_image1,
+            mock_image2,
+            mock_image3,
+        ]
+        mock_fw_image_manager.filter.return_value = mocked_qs_result
+        FirmwareImage.schedule_firmware_file_deletion(category__id=456)
+        mock_fw_image_manager.filter.assert_called_once_with(category__id=456)
+        # Should still call transaction.on_commit because image1 has a valid file name
+        mock_on_commit.assert_called_once()
 
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):

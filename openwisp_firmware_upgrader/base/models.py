@@ -41,7 +41,6 @@ from ..utils import (
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
-    schedule_firmware_file_deletion,
 )
 
 logger = logging.getLogger(__name__)
@@ -283,26 +282,51 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     @classmethod
     def build_pre_delete_handler(cls, sender, instance, **kwargs):
         """
-        Signal handler to collect firmware image files that need to be deleted
-        when a Build is deleted.
+        Triggers deletion of firmware image files when a Build is deleted.
         """
-        schedule_firmware_file_deletion(cls, build=instance)
+        cls.schedule_firmware_file_deletion(build=instance)
 
     @classmethod
     def category_pre_delete_handler(cls, sender, instance, **kwargs):
         """
-        Signal handler to collect firmware image files that need to be deleted
-        when a Category is deleted.
+        Triggers deletion of firmware image files when a Category is deleted.
         """
-        schedule_firmware_file_deletion(cls, build__category=instance)
+        cls.schedule_firmware_file_deletion(build__category=instance)
 
     @classmethod
     def organization_pre_delete_handler(cls, sender, instance, **kwargs):
         """
-        Signal handler to collect firmware image files that need to be deleted
-        when an Organization is deleted.
+        Triggers deletion of firmware image files when an Organization is deleted.
         """
-        schedule_firmware_file_deletion(cls, build__category__organization=instance)
+        cls.schedule_firmware_file_deletion(build__category__organization=instance)
+
+    @classmethod
+    def schedule_firmware_file_deletion(cls, **filter_kwargs):
+        """
+        Schedules the deletion of firmware image files in the background.
+
+        Args:
+            firmware_image_class: The FirmwareImage model class
+            **filter_kwargs: Django ORM filter arguments to find the firmware images
+
+        This function:
+            - Queries firmware images based on the provided filter kwargs
+            - Collects file paths from images that have files
+            - Schedules asynchronous deletion of collected files after transaction commit
+            - Uses the delete_firmware_files Celery task for actual deletion
+        """
+        # Avoid circular import
+        from ..tasks import delete_firmware_files
+
+        files_to_delete = []
+        # Get all firmware images matching the filter criteria
+        queryset = cls.objects.filter(**filter_kwargs)
+        for image in queryset.iterator():
+            if image.file and image.file.name:
+                files_to_delete.append(image.file.name)
+        # Schedule file deletion after transaction is committed
+        if files_to_delete:
+            transaction.on_commit(partial(delete_firmware_files.delay, files_to_delete))
 
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):

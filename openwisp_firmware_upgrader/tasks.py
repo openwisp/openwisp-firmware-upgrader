@@ -11,7 +11,7 @@ from openwisp_utils.tasks import OpenwispCeleryTask
 from . import settings as app_settings
 from .exceptions import RecoverableFailure
 from .swapper import load_model
-from .utils import delete_file_with_cleanup
+from .utils import delete_file_and_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -99,4 +99,4 @@ def delete_firmware_files(files_to_delete):
     storage = FirmwareImage.file.field.storage
 
     for file_path in files_to_delete:
-        delete_file_with_cleanup(storage, file_path)
+        delete_file_and_cleanup(storage, file_path)
