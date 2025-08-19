@@ -1,5 +1,6 @@
 import swapper
 from django.core.exceptions import ValidationError
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -48,6 +49,23 @@ class FirmwareImageSerializer(BaseSerializer):
     def validate(self, data):
         data["build"] = self.context["view"].get_parent_queryset().get()
         return super().validate(data)
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get("request")
+        if request and getattr(instance, "pk", None):
+            ret["file"] = request.build_absolute_uri(
+                reverse(
+                    "upgrader:api_firmware_download",
+                    args=[instance.build.pk, instance.pk],
+                )
+            )
+        elif hasattr(instance, "file"):
+            ret["file"] = reverse(
+                "upgrader:api_firmware_download",
+                args=[instance.build.pk, instance.pk],
+            )
+        return ret
 
     class Meta(BaseMeta):
         model = FirmwareImage
