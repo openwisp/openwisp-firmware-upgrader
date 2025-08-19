@@ -28,7 +28,7 @@ jobs:
           - django~=5.1.0
           - django~=5.2.0
         exclude:
-           # Django 5.0+ requires Python >=3.10
+          # Django 5.0+ requires Python >=3.10
           - python-version: "3.9"
             django-version: django~=5.1.0
           - python-version: "3.9"
@@ -43,7 +43,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          cache: "pip"
           cache-dependency-path: |
             **/requirements*.txt
 
