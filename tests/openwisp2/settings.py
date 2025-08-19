@@ -12,6 +12,9 @@ DATABASES = {
     "default": {
         "ENGINE": "openwisp_utils.db.backends.spatialite",
         "NAME": "openwisp-firmware-upgrader.db",
+        "TEST": {
+            "NAME": "test_openwisp2",
+        },
     }
 }
 
