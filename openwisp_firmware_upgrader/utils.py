@@ -113,7 +113,7 @@ def schedule_firmware_file_deletion(firmware_image_class, **filter_kwargs):
     files_to_delete = []
 
     # Get all firmware images matching the filter criteria
-    for image in firmware_image_class.objects.filter(**filter_kwargs):
+    for image in firmware_image_class.objects.iterator(**filter_kwargs):
         if image.file and image.file.name:
             files_to_delete.append(image.file.name)
 
