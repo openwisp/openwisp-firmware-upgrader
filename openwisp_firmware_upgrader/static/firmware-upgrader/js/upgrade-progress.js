@@ -262,9 +262,8 @@ function updateStatusWithProgressBar(statusField, operation) {
   } else if (status === "failed" || status === "aborted") {
     statusHtml += `
       <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${status}" style="width: ${progressPercentage}%"></div>
+        <div class="upgrade-progress-fill ${status}" style="width: 100%"></div>
       </div>
-      <span class="upgrade-progress-text">${progressPercentage}%</span>
     `;
   } else {
     statusHtml += `
