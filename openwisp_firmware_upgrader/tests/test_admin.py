@@ -151,7 +151,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(13):
+        with self.assertNumQueries(15):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -167,7 +167,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(12):
+        with self.assertNumQueries(14):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -1138,6 +1138,52 @@ class TestAdminTransaction(
             response = self.client.get(url + "?q=unique-test&status=failed")
             self.assertEqual(response.status_code, 200)
             self.assertNotContains(response, "unique-test-device")
+
+    def test_batch_upgrade_confirmation_form_group_queryset_organization(self, *args):
+        """Test BatchUpgradeConfirmationForm group queryset filtering by organization."""
+        org1 = self._get_org()
+        org2 = self._create_org(name="Org 2", slug="org2")
+        
+        # Create groups for different organizations
+        group1 = self._create_device_group(name="Group Org1", organization=org1)
+        group2 = self._create_device_group(name="Group Org2", organization=org2)
+        
+        # Create build in org1
+        category = self._create_category(organization=org1)
+        build = self._create_build(category=category)
+        
+        from openwisp_firmware_upgrader.admin import BatchUpgradeConfirmationForm
+        
+        # Test form with build - should only show groups from same organization
+        form = BatchUpgradeConfirmationForm(initial={"build": build})
+        group_queryset = form.fields["group"].queryset
+        
+        # Should include group1 (same org) but not group2 (different org)
+        self.assertIn(group1, group_queryset)
+        self.assertNotIn(group2, group_queryset)
+
+    def test_batch_upgrade_confirmation_form_group_queryset_shared_build(self, *args):
+        """Test BatchUpgradeConfirmationForm group queryset for shared builds."""
+        org1 = self._get_org()
+        org2 = self._create_org(name="Org 2", slug="org2")
+        
+        # Create groups for different organizations
+        group1 = self._create_device_group(name="Group Org1", organization=org1)
+        group2 = self._create_device_group(name="Group Org2", organization=org2)
+        
+        # Create shared build (organization=None)
+        category = self._create_category(organization=None)
+        build = self._create_build(category=category)
+        
+        from openwisp_firmware_upgrader.admin import BatchUpgradeConfirmationForm
+        
+        # Test form with shared build - should show all groups
+        form = BatchUpgradeConfirmationForm(initial={"build": build})
+        group_queryset = form.fields["group"].queryset
+        
+        # Should include both groups for shared builds
+        self.assertIn(group1, group_queryset)
+        self.assertIn(group2, group_queryset)
 
 
 del TestConfigAdmin
