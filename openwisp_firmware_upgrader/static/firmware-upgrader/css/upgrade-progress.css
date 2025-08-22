@@ -1,0 +1,54 @@
+.field-status .readonly {
+  min-height: 25px;
+  display: flex;
+  align-items: center;
+}
+
+.upgrade-status-container {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.upgrade-progress-bar {
+  width: 300px;
+  height: 12px;
+  background-color: #d9d9d9;
+  border-radius: 4px;
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: middle;
+  border: 1px solid #ccc;
+}
+
+.upgrade-progress-fill {
+  height: 100%;
+  background-color: #70bf2b;
+  transition: width 0.5s ease;
+  border-radius: 2px;
+  position: relative;
+}
+
+.upgrade-progress-fill.success {
+  background-color: #70bf2b;
+}
+
+.upgrade-progress-fill.failed {
+  background-color: #dd4646;
+}
+
+.upgrade-progress-fill.aborted {
+  background-color: #464646;
+}
+
+.upgrade-progress-fill.in-progress {
+  background-color: #70bf2b;
+}
+
+.upgrade-progress-text {
+  color: #000;
+  font-weight: normal;
+  font-size: 12px;
+  display: inline-block;
+  vertical-align: middle;
+}

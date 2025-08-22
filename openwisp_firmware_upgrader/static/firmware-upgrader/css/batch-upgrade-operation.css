@@ -1,0 +1,142 @@
+.upgrade-operations-title {
+  font-size: 22px;
+  font-weight: 300;
+  color: #333;
+  margin: 0;
+  padding: 0;
+}
+
+.search-section {
+  background: #f8f8f8;
+  padding: 20px;
+}
+
+.search-form {
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  width: 20px;
+  height: 20px;
+  color: #333;
+  margin-right: 15px;
+  font-size: 16px;
+}
+
+.search-input {
+  width: 300px;
+  padding: 10px 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+}
+
+.search-button {
+  padding: 10px 20px;
+  background: #333;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 15px;
+}
+
+/* Filter clear styles */
+.filter-clear-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: normal;
+}
+
+.filter-clear-link {
+  color: #666;
+  text-decoration: none;
+}
+
+.filter-clear-link:hover {
+  color: #333;
+}
+
+.results-container {
+  background: #fff;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.results-table thead tr {
+  background: #f8f9fa;
+}
+
+.results-table th {
+  padding: 12px 20px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.results-table td {
+  padding: 15px 20px;
+  color: #1f1f1f;
+}
+
+.results-table tr.row1 {
+  background-color: #fff;
+}
+
+.results-table tr.row2 {
+  background-color: #f9f9f9;
+}
+
+.results-table tr:not(:last-child) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.device-link {
+  color: #df5d43 !important;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.empty-results {
+  padding: 40px;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.pagination {
+  padding: 15px 20px;
+  text-align: right;
+  border-top: 2px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.pagination a {
+  color: #333;
+  text-decoration: none;
+  margin: 0 5px;
+}
+
+.pagination .current-page {
+  margin: 0 10px;
+  color: #666;
+}
+
+.paginator {
+  font-size: 14px;
+  color: #7a7a7a;
+  padding: 10px 20px;
+  border-bottom: 1px solid #e9ecef;
+  margin: 0;
+}
