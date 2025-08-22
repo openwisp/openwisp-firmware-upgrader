@@ -497,7 +497,9 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
     @staticmethod
     def dry_run(build, group=None):
-        related_device_fw = build._find_related_device_firmwares(select_devices=True, group=group)
+        related_device_fw = build._find_related_device_firmwares(
+            select_devices=True, group=group
+        )
         firmwareless_devices = build._find_firmwareless_devices(group=group)
         return {
             "device_firmwares": related_device_fw,
@@ -528,7 +530,9 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         # for each image, find related "firmwareless"
         # devices and perform upgrade one by one
         for image in self.build.firmwareimage_set.all():
-            devices = self.build._find_firmwareless_devices(image.boards, group=self.group)
+            devices = self.build._find_firmwareless_devices(
+                image.boards, group=self.group
+            )
             for device in devices:
                 DeviceFirmware = load_model("DeviceFirmware")
                 device_fw = DeviceFirmware(device=device, image=image)

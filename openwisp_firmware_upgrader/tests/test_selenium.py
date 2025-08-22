@@ -1,5 +1,5 @@
-from unittest.mock import patch
 from time import sleep
+from unittest.mock import patch
 
 import swapper
 from django.contrib.auth import get_user_model

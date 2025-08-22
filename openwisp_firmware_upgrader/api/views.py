@@ -90,7 +90,9 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         group = None
         if group_id:
             try:
-                group = swapper.load_model("config", "DeviceGroup").objects.get(pk=group_id)
+                group = swapper.load_model("config", "DeviceGroup").objects.get(
+                    pk=group_id
+                )
             except:
                 pass
         instance = self.get_object()
@@ -107,7 +109,9 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         group = None
         if group_id:
             try:
-                group = swapper.load_model("config", "DeviceGroup").objects.get(pk=group_id)
+                group = swapper.load_model("config", "DeviceGroup").objects.get(
+                    pk=group_id
+                )
             except:
                 pass
         data = BatchUpgradeOperation.dry_run(build=self.instance, group=group)

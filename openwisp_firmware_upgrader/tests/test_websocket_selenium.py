@@ -35,6 +35,7 @@ class TestRealTimeWebsockets(
     ChannelsLiveServerTestCase,
 ):
     """Test real-time websocket functionality with Selenium"""
+
     config_app_label = "config"
     firmware_app_label = "firmware_upgrader"
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"

@@ -436,62 +436,94 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     def test_batch_upgrade_with_group_filtering(self, *args):
         """Test complete batch upgrade workflow with group filtering."""
         UpgradeOperation.objects.all().delete()
-        
+
         org = self._get_org()
         category = self._create_category(organization=org)
-        
+
         build1 = self._create_build(category=category, version="1.0")
         build2 = self._create_build(category=category, version="2.0")
-        
+
         image1 = self._create_firmware_image(build=build1)
         image2 = self._create_firmware_image(build=build2)
-        
+
         group1 = self._create_device_group(name="Group 1", organization=org)
         group2 = self._create_device_group(name="Group 2", organization=org)
-        
-        device1 = self._create_device(name="Device1", organization=org, group=group1, model=image1.boards[0], mac_address="00:11:22:33:55:31")
-        device2 = self._create_device(name="Device2", organization=org, group=group2, model=image1.boards[0], mac_address="00:11:22:33:55:32")
-        device3 = self._create_device(name="Device3", organization=org, group=None, model=image1.boards[0], mac_address="00:11:22:33:55:33")
-        
+
+        device1 = self._create_device(
+            name="Device1",
+            organization=org,
+            group=group1,
+            model=image1.boards[0],
+            mac_address="00:11:22:33:55:31",
+        )
+        device2 = self._create_device(
+            name="Device2",
+            organization=org,
+            group=group2,
+            model=image1.boards[0],
+            mac_address="00:11:22:33:55:32",
+        )
+        device3 = self._create_device(
+            name="Device3",
+            organization=org,
+            group=None,
+            model=image1.boards[0],
+            mac_address="00:11:22:33:55:33",
+        )
+
         # Create configs and connections
         self._create_config(device=device1)
         self._create_config(device=device2)
         self._create_config(device=device3)
-                
+
         unique_id = str(uuid.uuid4())[:8]
-        credentials = self._create_credentials(name=f"test-creds-{unique_id}", organization=None, auto_add=True)
-        
+        credentials = self._create_credentials(
+            name=f"test-creds-{unique_id}", organization=None, auto_add=True
+        )
+
         for device in [device1, device2, device3]:
-            if not DeviceConnection.objects.filter(device=device, credentials=credentials).exists():
+            if not DeviceConnection.objects.filter(
+                device=device, credentials=credentials
+            ).exists():
                 self._create_device_connection(device=device, credentials=credentials)
-        
-        with mock.patch('openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation'):
+
+        with mock.patch(
+            "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation"
+        ):
             DeviceFirmware.objects.create(device=device1, image=image1, installed=True)
             DeviceFirmware.objects.create(device=device2, image=image1, installed=True)
             DeviceFirmware.objects.create(device=device3, image=image1, installed=True)
-        
+
         # Create firmwareless device in group1
-        device4 = self._create_device(name="Device4", organization=org, group=group1, model=image2.boards[0], mac_address="00:11:22:33:55:34")
+        device4 = self._create_device(
+            name="Device4",
+            organization=org,
+            group=group1,
+            model=image2.boards[0],
+            mac_address="00:11:22:33:55:34",
+        )
         self._create_config(device=device4)
-        if not DeviceConnection.objects.filter(device=device4, credentials=credentials).exists():
+        if not DeviceConnection.objects.filter(
+            device=device4, credentials=credentials
+        ).exists():
             self._create_device_connection(device=device4, credentials=credentials)
-        
+
         # Test batch upgrade with group1 filter
         self.assertEqual(UpgradeOperation.objects.count(), 0)
         batch = build2.batch_upgrade(firmwareless=True, group=group1)
-        
+
         self.assertEqual(batch.group, group1)
-        
+
         upgrade_ops = UpgradeOperation.objects.all()
         upgraded_devices = [op.device.name for op in upgrade_ops]
-        
+
         self.assertIn("Device1", upgraded_devices)
         self.assertIn("Device4", upgraded_devices)
         self.assertNotIn("Device2", upgraded_devices)
         self.assertNotIn("Device3", upgraded_devices)
-        
+
         self.assertEqual(len(upgrade_ops), 2)
-        
+
         batch.refresh_from_db()
         self.assertEqual(batch.status, "success")
 
@@ -503,8 +535,10 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
         with self.subTest("Device doesn't define os"):
             d1 = self._create_device_with_connection(
-                name="test-no-os", os="", model=image1a.boards[0], 
-                mac_address="00:11:22:33:99:01"
+                name="test-no-os",
+                os="",
+                model=image1a.boards[0],
+                mac_address="00:11:22:33:99:01",
             )
             self.assertEqual(DeviceConnection.objects.count(), 1)
             self.assertEqual(Device.objects.count(), 1)
@@ -514,8 +548,10 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
         with self.subTest("Device doesn't define model"):
             d1 = self._create_device_with_connection(
-                name="test-no-model", os=self.os, model="",
-                mac_address="00:11:22:33:99:02"
+                name="test-no-model",
+                os=self.os,
+                model="",
+                mac_address="00:11:22:33:99:02",
             )
             self.assertEqual(DeviceConnection.objects.count(), 1)
             self.assertEqual(Device.objects.count(), 1)
@@ -528,8 +564,10 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
         with self.subTest("Build doesn't define os"):
             d1 = self._create_device_with_connection(
-                name="test-no-build-os", model=image1a.boards[0], os=self.os,
-                mac_address="00:11:22:33:99:03"
+                name="test-no-build-os",
+                model=image1a.boards[0],
+                os=self.os,
+                mac_address="00:11:22:33:99:03",
             )
             self.assertEqual(DeviceConnection.objects.count(), 1)
             self.assertEqual(Device.objects.count(), 1)
@@ -543,8 +581,10 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         build1 = self._create_build(category=category, version="0.1", os=self.os)
         image1a = self._create_firmware_image(build=build1, type=self.image_type)
         self._create_device_with_connection(
-            name="test-fw-created", os=self.os, model=image1a.boards[0],
-            mac_address="00:11:22:33:99:10"
+            name="test-fw-created",
+            os=self.os,
+            model=image1a.boards[0],
+            mac_address="00:11:22:33:99:10",
         )
         self.assertEqual(Device.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)
@@ -572,33 +612,35 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         """Test group validation in BatchUpgradeOperation."""
         org1 = self._get_org()
         org2 = self._create_org(name="Org 2", slug="org2")
-        
+
         category = self._create_category(organization=org1)
         build = self._create_build(category=category)
-        
+
         group_org1 = self._create_device_group(name="Group Org1", organization=org1)
         group_org2 = self._create_device_group(name="Group Org2", organization=org2)
-        
+
         batch1 = BatchUpgradeOperation(build=build, group=group_org1)
         batch1.full_clean()
-        
+
         batch2 = BatchUpgradeOperation(build=build, group=group_org2)
         with self.assertRaises(ValidationError) as cm:
             batch2.full_clean()
         self.assertIn("group", cm.exception.message_dict)
-        self.assertIn("organization of the group", str(cm.exception.message_dict["group"][0]))
-        
+        self.assertIn(
+            "organization of the group", str(cm.exception.message_dict["group"][0])
+        )
+
         batch3 = BatchUpgradeOperation(build=build, group=None)
         batch3.full_clean()
-        
+
     def test_batch_upgrade_operation_group_validation_shared_build(self):
         """Test group validation for shared builds (organization=None)."""
         category = self._create_category(organization=None)  # Shared category
         build = self._create_build(category=category)
-        
+
         org1 = self._get_org()
         group = self._create_device_group(name="Any Group", organization=org1)
-        
+
         batch = BatchUpgradeOperation(build=build, group=group)
         batch.full_clean()
 
@@ -608,38 +650,60 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         category = self._create_category(organization=org)
         build = self._create_build(category=category)
         image = self._create_firmware_image(build=build)
-        
+
         group1 = self._create_device_group(name="Group 1", organization=org)
         group2 = self._create_device_group(name="Group 2", organization=org)
-        
+
         # Create devices in different groups
-        device1 = self._create_device(name="Device1", organization=org, group=group1, model=image.boards[0], mac_address="00:11:22:33:55:01")
-        device2 = self._create_device(name="Device2", organization=org, group=group2, model=image.boards[0], mac_address="00:11:22:33:55:02")
-        device3 = self._create_device(name="Device3", organization=org, group=None, model=image.boards[0], mac_address="00:11:22:33:55:03")  # No group
-        
+        device1 = self._create_device(
+            name="Device1",
+            organization=org,
+            group=group1,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:01",
+        )
+        device2 = self._create_device(
+            name="Device2",
+            organization=org,
+            group=group2,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:02",
+        )
+        device3 = self._create_device(
+            name="Device3",
+            organization=org,
+            group=None,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:03",
+        )  # No group
+
         self._create_config(device=device1)
         self._create_config(device=device2)
         self._create_config(device=device3)
-        
+
         unique_id = str(uuid.uuid4())[:8]
-        credentials = self._create_credentials(name=f"test-creds-{unique_id}", organization=None, auto_add=True)
-        
+        credentials = self._create_credentials(
+            name=f"test-creds-{unique_id}", organization=None, auto_add=True
+        )
+
         for device in [device1, device2, device3]:
-            if not DeviceConnection.objects.filter(device=device, credentials=credentials).exists():
+            if not DeviceConnection.objects.filter(
+                device=device, credentials=credentials
+            ).exists():
                 self._create_device_connection(device=device, credentials=credentials)
-        
+
         result = BatchUpgradeOperation.dry_run(build=build)
         device_names = [d.name for d in result["devices"]]
         self.assertIn("Device1", device_names)
         self.assertIn("Device2", device_names)
         self.assertIn("Device3", device_names)
-        
+
         result = BatchUpgradeOperation.dry_run(build=build, group=group1)
         device_names = [d.name for d in result["devices"]]
         self.assertIn("Device1", device_names)
         self.assertNotIn("Device2", device_names)
         self.assertNotIn("Device3", device_names)
-        
+
         result = BatchUpgradeOperation.dry_run(build=build, group=group2)
         device_names = [d.name for d in result["devices"]]
         self.assertNotIn("Device1", device_names)
@@ -650,49 +714,77 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         """Test _find_related_device_firmwares with group filtering."""
         org = self._get_org()
         category = self._create_category(organization=org)
-        
+
         build1 = self._create_build(category=category, version="1.0")
         build2 = self._create_build(category=category, version="2.0")
-        
+
         image1 = self._create_firmware_image(build=build1)
         image2 = self._create_firmware_image(build=build2)
-        
+
         group1 = self._create_device_group(name="Group 1", organization=org)
         group2 = self._create_device_group(name="Group 2", organization=org)
-        
-        device1 = self._create_device(name="Device1", organization=org, group=group1, model=image1.boards[0], mac_address="00:11:22:33:55:11")
-        device2 = self._create_device(name="Device2", organization=org, group=group2, model=image1.boards[0], mac_address="00:11:22:33:55:12")
-        device3 = self._create_device(name="Device3", organization=org, group=None, model=image1.boards[0], mac_address="00:11:22:33:55:13")
-        
+
+        device1 = self._create_device(
+            name="Device1",
+            organization=org,
+            group=group1,
+            model=image1.boards[0],
+            mac_address="00:11:22:33:55:11",
+        )
+        device2 = self._create_device(
+            name="Device2",
+            organization=org,
+            group=group2,
+            model=image1.boards[0],
+            mac_address="00:11:22:33:55:12",
+        )
+        device3 = self._create_device(
+            name="Device3",
+            organization=org,
+            group=None,
+            model=image1.boards[0],
+            mac_address="00:11:22:33:55:13",
+        )
+
         self._create_config(device=device1)
         self._create_config(device=device2)
         self._create_config(device=device3)
-        
+
         unique_id = str(uuid.uuid4())[:8]
-        credentials = self._create_credentials(name=f"test-creds-{unique_id}", organization=None, auto_add=True)
-        
+        credentials = self._create_credentials(
+            name=f"test-creds-{unique_id}", organization=None, auto_add=True
+        )
+
         for device in [device1, device2, device3]:
-            if not DeviceConnection.objects.filter(device=device, credentials=credentials).exists():
+            if not DeviceConnection.objects.filter(
+                device=device, credentials=credentials
+            ).exists():
                 self._create_device_connection(device=device, credentials=credentials)
-        
-        with mock.patch('openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation'):
+
+        with mock.patch(
+            "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation"
+        ):
             DeviceFirmware.objects.create(device=device1, image=image1, installed=True)
             DeviceFirmware.objects.create(device=device2, image=image1, installed=True)
             DeviceFirmware.objects.create(device=device3, image=image1, installed=True)
-        
+
         related = build2._find_related_device_firmwares(select_devices=True)
         device_names = [df.device.name for df in related]
         self.assertIn("Device1", device_names)
         self.assertIn("Device2", device_names)
         self.assertIn("Device3", device_names)
-        
-        related = build2._find_related_device_firmwares(select_devices=True, group=group1)
+
+        related = build2._find_related_device_firmwares(
+            select_devices=True, group=group1
+        )
         device_names = [df.device.name for df in related]
         self.assertIn("Device1", device_names)
         self.assertNotIn("Device2", device_names)
         self.assertNotIn("Device3", device_names)
-        
-        related = build2._find_related_device_firmwares(select_devices=True, group=group2)
+
+        related = build2._find_related_device_firmwares(
+            select_devices=True, group=group2
+        )
         device_names = [df.device.name for df in related]
         self.assertNotIn("Device1", device_names)
         self.assertIn("Device2", device_names)
@@ -704,37 +796,59 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         category = self._create_category(organization=org)
         build = self._create_build(category=category)
         image = self._create_firmware_image(build=build)
-        
+
         group1 = self._create_device_group(name="Group 1", organization=org)
         group2 = self._create_device_group(name="Group 2", organization=org)
-        
-        device1 = self._create_device(name="Device1", organization=org, group=group1, model=image.boards[0], mac_address="00:11:22:33:55:21")
-        device2 = self._create_device(name="Device2", organization=org, group=group2, model=image.boards[0], mac_address="00:11:22:33:55:22")
-        device3 = self._create_device(name="Device3", organization=org, group=None, model=image.boards[0], mac_address="00:11:22:33:55:23")
-        
+
+        device1 = self._create_device(
+            name="Device1",
+            organization=org,
+            group=group1,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:21",
+        )
+        device2 = self._create_device(
+            name="Device2",
+            organization=org,
+            group=group2,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:22",
+        )
+        device3 = self._create_device(
+            name="Device3",
+            organization=org,
+            group=None,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:23",
+        )
+
         self._create_config(device=device1)
         self._create_config(device=device2)
         self._create_config(device=device3)
-        
+
         unique_id = str(uuid.uuid4())[:8]
-        credentials = self._create_credentials(name=f"test-creds-{unique_id}", organization=None, auto_add=True)
-        
+        credentials = self._create_credentials(
+            name=f"test-creds-{unique_id}", organization=None, auto_add=True
+        )
+
         for device in [device1, device2, device3]:
-            if not DeviceConnection.objects.filter(device=device, credentials=credentials).exists():
+            if not DeviceConnection.objects.filter(
+                device=device, credentials=credentials
+            ).exists():
                 self._create_device_connection(device=device, credentials=credentials)
-        
+
         devices = build._find_firmwareless_devices()
         device_names = [d.name for d in devices]
         self.assertIn("Device1", device_names)
         self.assertIn("Device2", device_names)
         self.assertIn("Device3", device_names)
-        
+
         devices = build._find_firmwareless_devices(group=group1)
         device_names = [d.name for d in devices]
         self.assertIn("Device1", device_names)
         self.assertNotIn("Device2", device_names)
         self.assertNotIn("Device3", device_names)
-        
+
         devices = build._find_firmwareless_devices(group=group2)
         device_names = [d.name for d in devices]
         self.assertNotIn("Device1", device_names)

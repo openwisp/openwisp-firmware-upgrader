@@ -109,13 +109,13 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
     class Meta:
         model = BatchUpgradeOperation
         fields = ("build", "group", "upgrade_options")
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Set the appropriate queryset for group field based on the build's organization
         if self.initial.get("build"):
             build = self.initial["build"]
-            if hasattr(build, 'category') and build.category.organization:
+            if hasattr(build, "category") and build.category.organization:
                 self.fields["group"].queryset = swapper.load_model(
                     "config", "DeviceGroup"
                 ).objects.filter(organization=build.category.organization)
@@ -189,14 +189,20 @@ class BuildAdmin(BaseAdmin):
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
             form = BatchUpgradeConfirmationForm(
-                data={"upgrade_options": upgrade_options, "build": build, "group": group_id}
+                data={
+                    "upgrade_options": upgrade_options,
+                    "build": build,
+                    "group": group_id,
+                }
             )
             form.full_clean()
             if not form.errors:
                 upgrade_options = form.cleaned_data["upgrade_options"]
                 group = form.cleaned_data.get("group")
                 batch = build.batch_upgrade(
-                    firmwareless=upgrade_all, upgrade_options=upgrade_options, group=group
+                    firmwareless=upgrade_all,
+                    upgrade_options=upgrade_options,
+                    group=group,
                 )
                 text = _(
                     "You can track the progress of this mass upgrade operation "
@@ -212,7 +218,9 @@ class BuildAdmin(BaseAdmin):
         group = None
         if group_id:
             try:
-                group = swapper.load_model("config", "DeviceGroup").objects.get(pk=group_id)
+                group = swapper.load_model("config", "DeviceGroup").objects.get(
+                    pk=group_id
+                )
             except:
                 pass
         result = BatchUpgradeOperation.dry_run(build=build, group=group)

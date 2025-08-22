@@ -340,93 +340,98 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         env = self._create_upgrade_env()
         build = env["build2"]
         org = build.category.organization
-        
+
         group1 = self._create_device_group(name="Group 1", organization=org)
         group2 = self._create_device_group(name="Group 2", organization=org)
-        
+
         env["d1"].group = group1
         env["d1"].save()
-        env["d2"].group = group2  
+        env["d2"].group = group2
         env["d2"].save()
-        
+
         image2a = env["image2a"]
         device3 = self._create_device(
-            name="Device3", organization=org, group=group1, model=image2a.boards[0],
-            mac_address="00:11:22:33:66:03"
+            name="Device3",
+            organization=org,
+            group=group1,
+            model=image2a.boards[0],
+            mac_address="00:11:22:33:66:03",
         )
         self._create_config(device=device3)
         credentials = self._get_credentials(organization=None, auto_add=True)
         self._create_device_connection(device=device3, credentials=credentials)
-        
+
         url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
-        
+
         with self.subTest("Test POST with group filter"):
             r = self.client.post(url, {"upgrade_all": "true", "group": group1.pk})
             self.assertEqual(r.status_code, 201)
-            
+
             batch = BatchUpgradeOperation.objects.first()
             self.assertIsNotNone(batch)
             self.assertEqual(batch.group, group1)
-            
-            with mock.patch('openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay') as mock_task:
+
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay"
+            ) as mock_task:
                 batch.upgrade(firmwareless=True)
-            
+
             upgrade_ops = batch.upgradeoperation_set.all()
             upgraded_device_names = [op.device.name for op in upgrade_ops]
-            
+
             self.assertEqual(len(upgraded_device_names), 2)
             self.assertIn("device1", upgraded_device_names)  # env["d1"] name
             self.assertIn("Device3", upgraded_device_names)
             self.assertNotIn("device2", upgraded_device_names)
-        
+
         BatchUpgradeOperation.objects.all().delete()
         UpgradeOperation.objects.all().delete()
-        
+
         with self.subTest("Test POST with invalid group"):
             r = self.client.post(url, {"upgrade_all": "true", "group": "99999"})
             self.assertEqual(r.status_code, 201)
-            
+
             batch = BatchUpgradeOperation.objects.first()
             self.assertIsNotNone(batch)
             self.assertIsNone(batch.group)  # Invalid group should be ignored
-        
+
         BatchUpgradeOperation.objects.all().delete()
         UpgradeOperation.objects.all().delete()
-        
+
         with self.subTest("Test GET with group filter"):
             r = self.client.get(url, {"group": group1.pk})
             self.assertEqual(r.status_code, 200)
-            
+
             device_ids = r.data["devices"]
             device_fw_ids = r.data["device_firmwares"]
-            
+
             self.assertTrue(len(device_ids) > 0 or len(device_fw_ids) > 0)
-            
+
             if device_fw_ids:
                 device_fws = DeviceFirmware.objects.filter(pk__in=device_fw_ids)
                 device_fw_names = [df.device.name for df in device_fws]
                 self.assertIn("device1", device_fw_names)
-            
+
             if device_ids:
                 devices = Device.objects.filter(pk__in=device_ids)
                 device_names = [d.name for d in devices]
                 self.assertIn("Device3", device_names)
-            
+
         with self.subTest("Test GET without group filter"):
             r = self.client.get(url)
             self.assertEqual(r.status_code, 200)
-            
+
             device_ids = r.data["devices"]
             device_fw_ids = r.data["device_firmwares"]
-            
+
             self.assertTrue(len(device_ids) > 0 or len(device_fw_ids) > 0)
-            
+
             if device_fw_ids:
                 device_fws = DeviceFirmware.objects.filter(pk__in=device_fw_ids)
                 device_fw_names = [df.device.name for df in device_fws]
                 self.assertIn("device1", device_fw_names)
                 self.assertIn("device2", device_fw_names)
-            
+
             if device_ids:
                 devices = Device.objects.filter(pk__in=device_ids)
                 device_names = [d.name for d in devices]
@@ -436,12 +441,12 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         """Test batch upgrade API group permission validation."""
         org1 = self._get_org()
         org2 = self._create_org(name="Org 2", slug="org2")
-        
+
         category = self._create_category(organization=org1)
         build = self._create_build(category=category)
-        
+
         group_org2 = self._create_device_group(name="Group Org2", organization=org2)
-        
+
         url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
 
         with self.assertRaises(ValidationError) as cm:
