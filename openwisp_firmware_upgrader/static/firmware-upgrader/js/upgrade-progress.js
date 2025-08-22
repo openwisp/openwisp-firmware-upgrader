@@ -16,10 +16,7 @@ django.jQuery(function ($) {
 
     // Determine the host to use for WebSocket connection
     let wsHost = null;
-    if (
-      typeof owControllerApiHost !== "undefined" &&
-      owControllerApiHost.host
-    ) {
+    if (typeof owControllerApiHost !== "undefined" && owControllerApiHost.host) {
       wsHost = owControllerApiHost.host;
     } else {
       wsHost = window.location.host;
@@ -293,14 +290,9 @@ function getProgressPercentage(status, operationProgress = null) {
 function calculateProgressFromLogLength(logContent = "") {
   if (!logContent) return 0;
 
-  const logLines = logContent
-    .split("\n")
-    .filter((line) => line.trim().length > 0);
+  const logLines = logContent.split("\n").filter((line) => line.trim().length > 0);
   const estimatedTotalSteps = 20;
-  const currentProgress = Math.min(
-    95,
-    (logLines.length / estimatedTotalSteps) * 100,
-  );
+  const currentProgress = Math.min(95, (logLines.length / estimatedTotalSteps) * 100);
 
   return Math.max(5, currentProgress);
 }
@@ -339,9 +331,7 @@ function updateUpgradeOperationLog(logData) {
         currentLog = logElement.text().replace(/\s*$/, "");
       }
 
-      let newLog = currentLog
-        ? currentLog + "\n" + logData.content
-        : logData.content;
+      let newLog = currentLog ? currentLog + "\n" + logData.content : logData.content;
 
       // Store accumulated content in memory
       accumulatedLogContent.set(operationId, newLog);
@@ -376,10 +366,7 @@ function updateUpgradeOperationStatus(statusData) {
       statusField.find(".upgrade-status-container span").text() ||
       statusField.text().trim();
 
-    if (
-      currentStatusText === "in progress" ||
-      currentStatusText === "in-progress"
-    ) {
+    if (currentStatusText === "in progress" || currentStatusText === "in-progress") {
       // Get current log content for progress calculation
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
