@@ -18,8 +18,8 @@ DATABASES = {
     }
 }
 
-SPATIALITE_LIBRARY_PATH = "mod_spatialite.so"
 
+SPATIALITE_LIBRARY_PATH = "mod_spatialite.so"
 SECRET_KEY = "fn)t*+$)ugeyip6-#txyy$5wf2ervc0d2n#h)qb)y5@ly$t*@w"
 
 INSTALLED_APPS = [
@@ -106,6 +106,17 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# Use Redis channel layer for testing (more realistic)
+if TESTING:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [("127.0.0.1", 6379)],
+            },
+        },
+    }
 
 
 TIME_ZONE = "Europe/Rome"
