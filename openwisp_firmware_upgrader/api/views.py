@@ -11,6 +11,7 @@ from rest_framework.utils.serializer_helpers import ReturnDict
 from openwisp_firmware_upgrader import private_storage
 from openwisp_users.api.mixins import FilterByOrganizationManaged
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
+from openwisp_users.api.permissions import DjangoModelPermissions
 
 from ..swapper import load_model
 from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
@@ -186,6 +187,7 @@ class FirmwareImageDownloadView(FirmwareImageMixin, generics.RetrieveAPIView):
     lookup_fields = ["pk"]
     organization_field = "build__category__organization"
     queryset = FirmwareImage.objects.none()
+    permission_classes = [DjangoModelPermissions]
 
     def retrieve(self, request, *args, **kwargs):
         return private_storage.views.firmware_image_download(

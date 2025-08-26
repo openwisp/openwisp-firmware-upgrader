@@ -83,3 +83,17 @@ def create_all_device_firmwares(self, firmware_image_id):
     queryset = Device.objects.filter(os=fw_image.build.os)
     for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)
+
+
+@shared_task(base=OpenwispCeleryTask)
+def delete_firmware_files(files_to_delete):
+    """
+    Celery task to delete firmware image files and their parent directories if empty.
+
+    Args:
+        files_to_delete (list[str]): A list of file paths (relative to the storage backend)
+                                     that should be deleted.
+    """
+    FirmwareImage = load_model("FirmwareImage")
+    for file_path in files_to_delete:
+        FirmwareImage._remove_file(file_path)
