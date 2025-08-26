@@ -7,8 +7,9 @@ from openwisp_utils.api.apps import ApiAppConfig
 from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
-from .websockets import DeviceUpgradeProgressPublisher, UpgradeProgressPublisher
 from .signals import firmware_upgrader_log_updated
+from .websockets import DeviceUpgradeProgressPublisher, UpgradeProgressPublisher
+
 
 class FirmwareUpdaterConfig(ApiAppConfig):
     name = "openwisp_firmware_upgrader"
