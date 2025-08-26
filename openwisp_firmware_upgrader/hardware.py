@@ -76,6 +76,20 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {"label": "MikroTik wAP ac", "boards": ("MikroTik wAP ac",)},
             ),
             (
+                "ramips-mt7621-mikrotik_routerboard-m33g-squashfs-sysupgrade.bin",
+                {
+                    "label": "MikroTik RouterBOARD M33G",
+                    "boards": ("MikroTik RouterBOARD M33G",),
+                },
+            ),
+            (
+                "ath79-generic-netgear_wndap360-squashfs-sysupgrade.bin",
+                {
+                    "label": "Netgear WNDAP360",
+                    "boards": ("Netgear WNDAP360",),
+                },
+            ),
+            (
                 "brcm2708-bcm2709-rpi-2-ext4-sysupgrade.img.gz",
                 {
                     "label": "Raspberry Pi 2 Model B",
@@ -159,29 +173,29 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 "ar71xx-generic-cpe210-220-v1-squashfs-sysupgrade.bin",
                 {
-                    "label": "TP-LINK CPE210 v3 (OpenWrt 19.07 and earlier)",
-                    "boards": ("TP-LINK CPE210 v1", "TP-LINK CPE220 v1"),
+                    "label": "TP-Link CPE210 v1 (OpenWrt 19.07 and earlier)",
+                    "boards": ("TP-Link CPE210 v1", "TP-LINK CPE220 v1"),
                 },
             ),
             (
                 "ath79-generic-tplink_cpe210-v2-squashfs-sysupgrade.bin",
                 {
-                    "label": "TP-LINK CPE210 v2 (OpenWrt 19.07 and later)",
-                    "boards": ("TP-LINK CPE210 v2",),
+                    "label": "TP-Link CPE210 v2",
+                    "boards": ("TP-Link CPE210 v2",),
                 },
             ),
             (
                 "ath79-generic-tplink_cpe210-v3-squashfs-sysupgrade.bin",
                 {
-                    "label": "TP-LINK CPE210 v3 (OpenWrt 19.07 and later)",
-                    "boards": ("TP-LINK CPE210 v3",),
+                    "label": "TP-Link CPE210 v3",
+                    "boards": ("TP-Link CPE210 v3",),
                 },
             ),
             (
                 "ath79-generic-tplink_cpe510-v3-squashfs-sysupgrade.bin",
                 {
-                    "label": "TP-LINK CPE510 v3 (OpenWrt 19.07 and later)",
-                    "boards": ("TP-LINK CPE510 v3",),
+                    "label": "TP-Link CPE510 v3",
+                    "boards": ("TP-Link CPE510 v3",),
                 },
             ),
             (
@@ -269,7 +283,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                "octeon-erlite-squashfs-sysupgrade.tar",
+                "octeon-generic-ubnt_edgerouter-lite-squashfs-sysupgrade.tar",
                 {
                     "label": "Ubiquiti EdgeRouter Lite",
                     "boards": ("Ubiquiti EdgeRouter Lite",),
@@ -289,6 +303,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     "label": "Ubiquiti Nanostation Loco M (OpenWrt 19.07 and later)",
                     "boards": ("Ubiquiti Nanostation Loco M",),
+                },
+            ),
+            (
+                "ath79-tiny-ubnt_nanostation-loco-m-squashfs-sysupgrade.bin",
+                {
+                    "label": "Ubiquiti Nanostation Loco M (OpenWrt, ath79-tiny)",
+                    "boards": ("Ubiquiti Nanostation Loco M (XM)",),
                 },
             ),
             # Nanostation Loco M XW ATH79
@@ -340,6 +361,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     "boards": ("Ubiquiti Nanostation M",),
                 },
             ),
+            (
+                "ath79-tiny-ubnt_nanostation-m-squashfs-sysupgrade.bin",
+                {
+                    "label": "Ubiquiti Nanostation M (OpenWrt ath79-tiny)",
+                    "boards": ("Ubiquiti Nanostation M (XM)",),
+                },
+            ),
             # Bullet XW AR71XX
             (
                 "ar71xx-generic-ubnt-bullet-m-xw-squashfs-sysupgrade.bin",
@@ -368,9 +396,16 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     "boards": ("Ubiquiti Picostation M",),
                 },
             ),
+            (
+                "ath79-tiny-ubnt_picostation-m-squashfs-sysupgrade.bin",
+                {
+                    "label": "Ubiquiti Picostation M (OpenWrt, ath79-tiny)",
+                    "boards": ("Picostation M (XM)",),
+                },
+            ),
             # Ubiquiti Unifi
             (
-                "ath79-generic-ubnt_unifi-squashfs-sysupgrade.bin",
+                "ath79-generic-ubnt_unifi-ap-squashfs-sysupgrade.bin",
                 {
                     "label": "Ubiquiti UniFi (OpenWRT 19.07 and later)",
                     "boards": ("Ubiquiti UniFi", "Ubiquiti UniFi AP"),
@@ -520,9 +555,16 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                "x86-64-generic-squashfs-combined-efi.img.gz",
+                {
+                    "label": "Generic x86/64 (UEFI)",
+                    "boards": ("x86_64_efi",),
+                },
+            ),
+            (
                 "x86-64-generic-squashfs-combined.img.gz",
                 {
-                    "label": "Generic x86/64 (QEMU/KVM)",
+                    "label": "Generic x86/64 (BIOS)",
                     "boards": (
                         "x86_64",
                         "PC Engines APU2",
@@ -539,14 +581,14 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                "x86-generic-combined-squashfs.img.gz",
+                "x86-generic-generic-squashfs-combined.img.gz",
                 {
                     "label": "Generic x86/32 bit",
                     "boards": ("x86",),
                 },
             ),
             (
-                "x86-geode-combined-squashfs.img.gz",
+                "x86-geode-generic-squashfs-combined.img.gz",
                 {
                     "label": "x86 Geode(TM) Integrated Processor by AMD",
                     "boards": ("Geode(TM) Integrated Processor by AMD PCS", "Alix 2D2"),

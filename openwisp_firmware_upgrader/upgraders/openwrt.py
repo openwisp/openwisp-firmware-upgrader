@@ -183,11 +183,12 @@ class OpenWrt(object):
         # does not match the device UUID in the database:
         # it's most probably not the right device!
         if device_uuid != config_uuid:
-            message = _(
-                'Device UUID mismatch: expected "{expected}", '
-                'found "{found}" in device configuration'
+            self.log(
+                _(
+                    "Device UUID mismatch: expected {expected}, "
+                    "found {found} in device configuration"
+                ).format(expected=device_uuid, found=config_uuid)
             )
-            self.log(str(message).format(expected=device_uuid, found=config_uuid))
             raise UpgradeAborted()
         self.log(_("Device identity verified successfully"))
         self.upgrade_operation.update_progress(15)
@@ -240,7 +241,7 @@ class OpenWrt(object):
                 "than the available memory on the system ({free_memory_mib} MiB).\n"
                 "For this reason the upgrade procedure will try to free up "
                 "memory by stopping non critical services.\n"
-                "WARNING: it is recommended to reboot the device is the upgrade "
+                "WARNING: it is recommended to reboot the device if the upgrade "
                 "fails unexpectedly because these services will not be restarted "
                 "automatically.\n"
                 "NOTE: The reboot can be avoided if the status of the upgrade becomes "

@@ -1,6 +1,7 @@
 import io
 from contextlib import redirect_stdout
 from unittest import mock
+from unittest.mock import MagicMock, patch
 
 import swapper
 from celery.exceptions import Retry
@@ -310,6 +311,176 @@ class TestModels(TestUpgraderMixin, TestCase):
         FirmwareImage.objects.get(pk=device_fw.image.pk).delete()
         self.assertEqual(UpgradeOperation.objects.get(pk=uo.pk).image, None)
 
+    def test_delete_firmware_image_file(self):
+        file_storage_backend = FirmwareImage.file.field.storage
+
+        with self.subTest("Test deleting object deletes file"):
+            image = self._create_firmware_image()
+            file_name = image.file.name
+            image.delete()
+            self.assertEqual(file_storage_backend.exists(file_name), False)
+
+        with self.subTest("Test deleting object with a deleted file"):
+            image = self._create_firmware_image()
+            file_name = image.file.name
+            # Delete the file from the storage backend before
+            # deleting the object
+            file_storage_backend.delete(file_name)
+            self.assertNotEqual(image.file, None)
+            image.delete()
+
+    @patch("django.db.transaction.on_commit")
+    @patch.object(FirmwareImage, "objects")
+    def test_schedule_firmware_file_deletion_with_files(
+        self, mock_fw_image_manager, mock_on_commit
+    ):
+        mock_image1 = MagicMock()
+        mock_image1.file.name = "build/123/image1.bin"
+        mock_image2 = MagicMock()
+        mock_image2.file.name = "build/123/image2.bin"
+        mocked_qs_result = MagicMock()
+        mocked_qs_result.iterator.return_value = [mock_image1, mock_image2]
+        mock_fw_image_manager.filter.return_value = mocked_qs_result
+        FirmwareImage.schedule_firmware_file_deletion(build__id=123)
+        mock_fw_image_manager.filter.assert_called_once_with(build__id=123)
+        mock_on_commit.assert_called_once()
+        # The actual partial function call is complex to test directly,
+        # but we can verify it was called with the right pattern
+        call_args = mock_on_commit.call_args[0][0]
+        self.assertIsNotNone(call_args)
+
+    @patch("django.db.transaction.on_commit")
+    @patch.object(FirmwareImage, "objects")
+    def test_schedule_firmware_file_deletion_no_files(
+        self, mock_fw_image_manager, mock_on_commit
+    ):
+        mocked_qs_result = MagicMock()
+        mocked_qs_result.iterator.return_value = []
+        mock_fw_image_manager.filter.return_value = mocked_qs_result
+        FirmwareImage.schedule_firmware_file_deletion(build__id=123)
+        mock_on_commit.assert_not_called()
+
+    @patch("django.db.transaction.on_commit")
+    @patch.object(FirmwareImage, "objects")
+    def test_schedule_firmware_file_deletion_files_without_names(
+        self, mock_fw_image_manager, mock_on_commit
+    ):
+        mock_image1 = MagicMock()
+        mock_image1.file.name = "build/123/image1.bin"
+        mock_image2 = MagicMock()
+        mock_image2.file.name = None  # No file name
+        mock_image3 = MagicMock()
+        mock_image3.file.name = ""  # Empty file name
+        mocked_qs_result = MagicMock()
+        mocked_qs_result.iterator.return_value = [
+            mock_image1,
+            mock_image2,
+            mock_image3,
+        ]
+        mock_fw_image_manager.filter.return_value = mocked_qs_result
+        FirmwareImage.schedule_firmware_file_deletion(category__id=456)
+        mock_fw_image_manager.filter.assert_called_once_with(category__id=456)
+        # Should still call transaction.on_commit because image1 has a valid file name
+        mock_on_commit.assert_called_once()
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_success(self, mock_storage, mock_logger):
+        mock_storage.listdir.return_value = ([], [])  # Empty directory
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)
+        mock_storage.delete.assert_any_call("build/123/firmware.bin")
+        mock_storage.delete.assert_any_call("build/123")
+        mock_logger.info.assert_any_call(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        mock_logger.info.assert_any_call("Deleted empty directory: %s", "build/123")
+        self.assertEqual(mock_storage.delete.call_count, 2)
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_non_empty_directory(self, mock_storage, mock_logger):
+        mock_storage.listdir.return_value = (["subdir"], ["other_file.bin"])
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)
+        mock_storage.delete.assert_called_once_with("build/123/firmware.bin")
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        mock_logger.debug.assert_called_once_with(
+            "Directory %s is not empty, skipping deletion", "build/123"
+        )
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_file_deletion_failure(self, mock_storage, mock_logger):
+        mock_storage.delete.side_effect = Exception("Storage error")
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertFalse(result)
+        mock_storage.delete.assert_called_once_with("build/123/firmware.bin")
+        mock_logger.error.assert_called_once_with(
+            "Error deleting firmware file %s: %s",
+            "build/123/firmware.bin",
+            "Storage error",
+        )
+        mock_logger.info.assert_not_called()
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_directory_listing_failure(self, mock_storage, mock_logger):
+        mock_storage.listdir.side_effect = Exception("Directory access error")
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)  # File deletion succeeded, directory cleanup failed
+        mock_storage.delete.assert_called_once_with("build/123/firmware.bin")
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        mock_logger.error.assert_called_once_with(
+            "Could not delete directory %s: %s", "build/123", "Directory access error"
+        )
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_directory_not_found(self, mock_storage, mock_logger):
+        mock_storage.listdir.side_effect = FileNotFoundError("Directory not found")
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)  # File deletion succeeded
+        mock_storage.delete.assert_called_once_with("build/123/firmware.bin")
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        # Expecting debug, not error
+        mock_logger.debug.assert_called_once_with(
+            "Directory %s already removed", "build/123"
+        )
+        mock_logger.error.assert_not_called()
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_directory_deletion_failure(self, mock_storage, mock_logger):
+        mock_storage.listdir.return_value = ([], [])  # Empty directory
+        mock_storage.delete.side_effect = [None, Exception("Directory deletion error")]
+        result = FirmwareImage._remove_file("build/123/firmware.bin")
+        self.assertTrue(result)  # File deletion succeeded, directory cleanup failed
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "build/123/firmware.bin"
+        )
+        mock_logger.error.assert_called_once_with(
+            "Could not delete directory %s: %s", "build/123", "Directory deletion error"
+        )
+
+    @patch("openwisp_firmware_upgrader.base.models.logger")
+    @patch.object(FirmwareImage.file.field, "storage")
+    def test_remove_file_root_directory(self, mock_storage, mock_logger):
+        result = FirmwareImage._remove_file("firmware.bin")
+        self.assertTrue(result)
+        mock_storage.delete.assert_called_once_with("firmware.bin")
+        # Expecting directory cleanup is skipped
+        mock_storage.listdir.assert_not_called()
+        mock_logger.info.assert_called_once_with(
+            "Deleted firmware file: %s", "firmware.bin"
+        )
+
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
@@ -492,3 +663,39 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             file_storage_backend.delete(file_name)
             self.assertNotEqual(image.file, None)
             image.delete()
+
+    def test_delete_firmware_files_on_build_delete(self):
+        """Test that firmware files are deleted when a build is deleted"""
+        file_storage_backend = FirmwareImage.file.field.storage
+        build = self._create_build()
+        image = self._create_firmware_image(build=build)
+        file_name = image.file.name
+        # Delete the build
+        build.delete()
+        # Check that the file was deleted
+        self.assertEqual(file_storage_backend.exists(file_name), False)
+
+    def test_delete_firmware_files_on_category_delete(self):
+        """Test that firmware files are deleted when a category is deleted"""
+        file_storage_backend = FirmwareImage.file.field.storage
+        category = self._create_category()
+        build = self._create_build(category=category)
+        image = self._create_firmware_image(build=build)
+        file_name = image.file.name
+        # Delete the category
+        category.delete()
+        # Check that the file was deleted
+        self.assertEqual(file_storage_backend.exists(file_name), False)
+
+    def test_delete_firmware_files_on_organization_delete(self):
+        """Test that firmware files are deleted when an organization is deleted"""
+        file_storage_backend = FirmwareImage.file.field.storage
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category)
+        image = self._create_firmware_image(build=build)
+        file_name = image.file.name
+        # Delete the organization
+        org.delete()
+        # Check that the file was deleted
+        self.assertEqual(file_storage_backend.exists(file_name), False)
