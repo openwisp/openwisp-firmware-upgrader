@@ -74,7 +74,8 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
       (statusText.includes("progress") ||
         statusText === "success" ||
         statusText === "failed" ||
-        statusText === "aborted")
+        statusText === "aborted" ||
+        statusText === "cancelled")
     ) {
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -191,7 +192,8 @@ function updateUpgradeOperationDisplay(operation) {
   if (
     operation.status === "success" ||
     operation.status === "failed" ||
-    operation.status === "aborted"
+    operation.status === "aborted" ||
+    operation.status === "cancelled"
   ) {
     accumulatedLogContent.delete(operation.id);
   }
@@ -236,6 +238,23 @@ function updateStatusWithProgressBar(statusField, operation) {
       </div>
       <span class="upgrade-progress-text">${progressPercentage}%</span>
     `;
+
+    const canCancel = progressPercentage < 60;
+    const cancelButtonClass = canCancel
+      ? "upgrade-cancel-btn"
+      : "upgrade-cancel-btn disabled";
+    const cancelButtonTitle = canCancel
+      ? "Cancel upgrade"
+      : "Cannot cancel - firmware flashing in progress";
+
+    statusHtml += `
+      <button class="${cancelButtonClass}" 
+              data-operation-id="${operation.id}" 
+              title="${cancelButtonTitle}"
+              ${!canCancel ? "disabled" : ""}>
+        Cancel
+      </button>
+    `;
   } else if (status === "success") {
     statusHtml += `
       <div class="upgrade-progress-bar">
@@ -243,7 +262,11 @@ function updateStatusWithProgressBar(statusField, operation) {
       </div>
       <span class="upgrade-progress-text">100%</span>
     `;
-  } else if (status === "failed" || status === "aborted") {
+  } else if (
+    status === "failed" ||
+    status === "aborted" ||
+    status === "cancelled"
+  ) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill ${status}" style="width: 100%"></div>
@@ -259,6 +282,15 @@ function updateStatusWithProgressBar(statusField, operation) {
   }
 
   statusContainer.html(statusHtml);
+
+  statusContainer
+    .find(".upgrade-cancel-btn:not(.disabled)")
+    .off("click")
+    .on("click", function (e) {
+      e.preventDefault();
+      const operationId = $(this).data("operation-id");
+      showCancelConfirmationModal(operationId);
+    });
 }
 
 function getProgressPercentage(status, operationProgress = null) {
@@ -302,7 +334,8 @@ function updateUpgradeOperationLog(logData) {
       currentStatusText === "in-progress" ||
       currentStatusText === "success" ||
       currentStatusText === "failed" ||
-      currentStatusText === "aborted"
+      currentStatusText === "aborted" ||
+      currentStatusText === "cancelled"
     ) {
       let operationFieldset = $(this).closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -416,4 +449,108 @@ function getWebSocketProtocol() {
 function getFormattedDateTimeString(dateTimeString) {
   let dateTime = new Date(dateTimeString);
   return dateTime.toLocaleString();
+}
+
+function showCancelConfirmationModal(operationId) {
+  const $ = django.jQuery;
+
+  // Create modal if it doesn't exist
+  if ($("#ow-cancel-confirmation-modal").length === 0) {
+    createCancelConfirmationModal($);
+  }
+
+  // Set the operation ID and show the modal
+  $("#ow-cancel-confirmation-modal").data("operation-id", operationId);
+  $("#ow-cancel-confirmation-modal").removeClass("ow-hide");
+}
+
+function createCancelConfirmationModal($) {
+  const modalHtml = `
+    <div id="ow-cancel-confirmation-modal" class="ow-overlay ow-overlay-notification ow-overlay-inner ow-hide">
+      <div class="ow-dialog-notification ow-cancel-confirmation-dialog">
+        <span class="ow-dialog-close ow-dialog-close-x">&times;</span>
+        <div class="ow-cancel-confirmation-header">
+          <h2 class="ow-cancel-confirmation-title">STOP UPGRADE OPERATION</h2>
+        </div>
+        <div class="ow-cancel-confirmation-content">
+          <p>Are you sure you want to cancel this upgrade operation?</p>
+        </div>
+        <div class="ow-dialog-buttons ow-cancel-confirmation-buttons">
+          <button class="ow-cancel-btn-confirm button default danger-btn">
+            Yes
+          </button>
+          <button class="ow-dialog-close button default">
+            No
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  $("body").append(modalHtml);
+
+  // Close modal handlers
+  $("#ow-cancel-confirmation-modal .ow-dialog-close").on("click", function () {
+    $("#ow-cancel-confirmation-modal").addClass("ow-hide");
+  });
+
+  // Confirm cancellation handler
+  $("#ow-cancel-confirmation-modal .ow-cancel-btn-confirm").on(
+    "click",
+    function () {
+      const operationId = $("#ow-cancel-confirmation-modal").data(
+        "operation-id",
+      );
+      $("#ow-cancel-confirmation-modal").addClass("ow-hide");
+      cancelUpgradeOperation(operationId);
+    },
+  );
+
+  // Close on escape key
+  $(document).on("keyup", function (e) {
+    if (e.keyCode === 27 && $("#ow-cancel-confirmation-modal").is(":visible")) {
+      $("#ow-cancel-confirmation-modal").addClass("ow-hide");
+    }
+  });
+
+  // Close on overlay click (outside dialog)
+  $("#ow-cancel-confirmation-modal").on("click", function (e) {
+    if (e.target === this) {
+      $(this).addClass("ow-hide");
+    }
+  });
+}
+
+function cancelUpgradeOperation(operationId) {
+  const $ = django.jQuery;
+
+  const csrfToken = $("[name=csrfmiddlewaretoken]").val();
+
+  $.ajax({
+    url: `/api/v1/firmware-upgrader/upgrade-operation/${operationId}/cancel/`,
+    type: "POST",
+    headers: {
+      "X-CSRFToken": csrfToken,
+    },
+    success: function (response) {
+      if (typeof django.contrib !== "undefined" && django.contrib.messages) {
+        django.contrib.messages.success(
+          "Upgrade operation cancelled successfully.",
+        );
+      }
+    },
+    error: function (xhr, status, error) {
+      let errorMessage = "Failed to cancel upgrade operation.";
+
+      if (xhr.responseJSON && xhr.responseJSON.error) {
+        errorMessage = xhr.responseJSON.error;
+      }
+
+      if (typeof django.contrib !== "undefined" && django.contrib.messages) {
+        django.contrib.messages.error(errorMessage);
+      } else {
+        console.error(errorMessage);
+      }
+    },
+  });
 }
