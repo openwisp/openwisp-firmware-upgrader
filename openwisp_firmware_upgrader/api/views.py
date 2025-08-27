@@ -352,22 +352,25 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     lookup_field = "pk"  # Use singular form
     organization_field = "device__organization"
 
-    # Constants for better maintainability
-    CANCELLABLE_STATUS = "in-progress"
-    MAX_CANCELLABLE_PROGRESS = 65
+    CANCELLABLE_STATUS = UpgradeOperation._CANCELLABLE_STATUS
+    MAX_CANCELLABLE_PROGRESS = UpgradeOperation._MAX_CANCELLABLE_PROGRESS
 
     def post(self, request, pk):
         """Cancel an upgrade operation if conditions are met."""
         try:
             operation = self.get_object()
             self._validate_cancellation(operation)
-            operation.cancel()
+            try:
+                operation.cancel()
+            except ValueError as e:
+                # Surface model-level validation errors as 404 (same contract as _validate_cancellation)
+                return self._error_response(str(e), status.HTTP_404_NOT_FOUND)
 
             logger.info(
-                f"Upgrade operation {pk} canceled successfully by user {request.user}"
+                f"Upgrade operation {pk} cancelled successfully by user {request.user}"
             )
             return Response(
-                {"message": "Upgrade operation canceled successfully"},
+                {"message": "Upgrade operation cancelled successfully"},
                 status=status.HTTP_200_OK,
             )
 
@@ -385,7 +388,7 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
             )
 
     def _validate_cancellation(self, operation):
-        """Validate if the operation can be canceled."""
+        """Validate if the operation can be cancelled."""
         if operation.status != self.CANCELLABLE_STATUS:
             raise ValidationError(
                 f"Cannot cancel operation with status: {operation.status}"

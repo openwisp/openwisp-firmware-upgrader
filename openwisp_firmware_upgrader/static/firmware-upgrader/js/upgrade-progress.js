@@ -549,7 +549,7 @@ function cancelUpgradeOperation(operationId) {
       if (typeof django.contrib !== "undefined" && django.contrib.messages) {
         django.contrib.messages.error(errorMessage);
       } else {
-        alert(errorMessage);
+        console.error(errorMessage);
       }
     },
   });

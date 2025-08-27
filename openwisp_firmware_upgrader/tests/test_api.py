@@ -1854,7 +1854,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
 
         operation.refresh_from_db()
         self.assertEqual(operation.status, "cancelled")
-        self.assertIn("canceled by user", operation.log)
+        self.assertIn("cancelled by user", operation.log)
 
     def test_cancel_upgrade_after_reflashing(self):
         """Test cancellation when upgrade has progressed too far"""
@@ -1885,6 +1885,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         response = self.client.post(url)
         self.assertEqual(response.status_code, 404)
         self.assertIn("not found", response.data["error"])
+
 
 class TestFirmwareDownloadPermissions(
     FirmwareDownloadPermissionTestMixin, TestAPIUpgraderMixin, TestCase

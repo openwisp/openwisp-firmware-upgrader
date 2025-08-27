@@ -858,37 +858,27 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
 
-        # Test actual cancellation
-        with patch("openwisp_firmware_upgrader.base.models.current_app") as mock_app:
-            mock_control = mock_app.control
-            mock_inspect = mock_control.inspect.return_value
-            mock_inspect.active.return_value = {}
+        # Open modal again and confirm (main UI flow)
+        cancel_button = WebDriverWait(self.web_driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
+        )
+        self.web_driver.execute_script("arguments[0].click();", cancel_button)
 
-            # Click cancel button again
-            cancel_button = WebDriverWait(self.web_driver, 20).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
-            )
-            self.web_driver.execute_script("arguments[0].click();", cancel_button)
+        WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
+        )
 
-            # Wait for modal to appear again
-            WebDriverWait(self.web_driver, 30).until(
-                EC.visibility_of_element_located(
-                    (By.ID, "ow-cancel-confirmation-modal")
+        yes_button = WebDriverWait(self.web_driver, 10).until(
+            EC.element_to_be_clickable(
+                (
+                    By.CSS_SELECTOR,
+                    "#ow-cancel-confirmation-modal .ow-cancel-btn-confirm",
                 )
             )
+        )
+        self.web_driver.execute_script("arguments[0].click();", yes_button)
 
-            # Click Yes to confirm cancellation
-            yes_button = WebDriverWait(self.web_driver, 10).until(
-                EC.element_to_be_clickable(
-                    (
-                        By.CSS_SELECTOR,
-                        "#ow-cancel-confirmation-modal .ow-cancel-btn-confirm",
-                    )
-                )
-            )
-            self.web_driver.execute_script("arguments[0].click();", yes_button)
-
-        # Verify operation was cancelled
-        operation.cancel()
-        self.assertEqual(operation.status, "cancelled")
-        self.assertIn("canceled by user", operation.log)
+        # Modal should close after confirming
+        WebDriverWait(self.web_driver, 10).until(
+            EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
+        )

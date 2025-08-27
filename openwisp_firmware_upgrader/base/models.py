@@ -656,6 +656,9 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
 
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
+
+    _CANCELLABLE_STATUS = "in-progress"
+    _MAX_CANCELLABLE_PROGRESS = 65
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
@@ -710,10 +713,10 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     def cancel(self):
         """Cancel the upgrade operation if conditions are met."""
         # Validate cancellation conditions
-        if self.status != "in-progress":
+        if self.status != self._CANCELLABLE_STATUS:
             raise ValueError(f"Cannot cancel operation with status: {self.status}")
 
-        if self.progress >= 65:
+        if self.progress >= self._MAX_CANCELLABLE_PROGRESS:
             raise ValueError(
                 "Cannot cancel upgrade: firmware reflashing has already started"
             )
@@ -723,7 +726,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
         # Update status and save
         self.status = "cancelled"
-        self.log_line("Upgrade operation canceled by user")
+        self.log_line("Upgrade operation cancelled by user", save=False)
         self._restart_services_after_cancellation()
         self.save()
 
@@ -757,7 +760,10 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 upgrader = OpenWrt(self, conn)
                 if upgrader.connect():
                     upgrader._start_non_critical_services()
-                    self.log_line("Non-critical services restarted after cancellation")
+                    # Log without saving; cancel() will perform a single save at the end
+                    self.log_line(
+                        "Non-critical services restarted after cancellation", save=False
+                    )
                     upgrader.disconnect()
         except Exception as e:
             self.log_line(
@@ -774,6 +780,9 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         self.log_line(f"Max retries exceeded. Upgrade failed: {cause}.", save=False)
 
     def upgrade(self, recoverable=True):
+        # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
+        if self.status != "in-progress":
+            return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:
             conn = DeviceConnection.get_working_connection(self.device)
