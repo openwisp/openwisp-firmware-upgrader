@@ -23,7 +23,7 @@ from ..settings import OPENWRT_SETTINGS
 class OpenWrt(object):
     CHECKSUM_FILE = "/etc/openwisp/firmware_checksum"
     REMOTE_UPLOAD_DIR = "/tmp"
-    RECONNECT_DELAY = OPENWRT_SETTINGS.get("reconnect_delay", 180)
+    RECONNECT_DELAY = OPENWRT_SETTINGS.get("reconnect_delay", 30)
     RECONNECT_RETRY_DELAY = OPENWRT_SETTINGS.get("reconnect_retry_delay", 20)
     RECONNECT_MAX_RETRIES = OPENWRT_SETTINGS.get("reconnect_max_retries", 35)
     UPGRADE_TIMEOUT = OPENWRT_SETTINGS.get("upgrade_timeout", 90)
