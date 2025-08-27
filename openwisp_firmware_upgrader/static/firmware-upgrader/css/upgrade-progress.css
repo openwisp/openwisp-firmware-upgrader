@@ -38,7 +38,7 @@
 }
 
 .upgrade-progress-fill.aborted {
-  background-color: #efb80b;
+  background-color: #464646;
 }
 
 .upgrade-progress-fill.cancelled {

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from copy import deepcopy
 
@@ -22,6 +23,10 @@ def _convert_lazy_translations(obj):
 
 
 class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
+    """
+    WebSocket consumer that streams progress updates for a single upgrade operation.
+    """
+
     async def connect(self):
         self.operation_id = self.scope["url_route"]["kwargs"]["operation_id"]
         self.group_name = f"upgrade_{self.operation_id}"
@@ -38,6 +43,10 @@ class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
 
 class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
+    """
+    WebSocket consumer that streams progress updates for a batch upgrade operation.
+    """
+
     async def connect(self):
         self.batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
         self.group_name = f"batch_upgrade_{self.batch_id}"
@@ -84,7 +93,8 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
             self.pk_ = self.scope["url_route"]["kwargs"]["pk"]
             self.group_name = f"firmware_upgrader.device-{self.pk_}"
 
-        except (AssertionError, KeyError):
+        except (AssertionError, KeyError) as e:
+            logger.error(f"Error in websocket connect: {e}")
             await self.close()
         else:
             try:
@@ -187,6 +197,10 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
 
 class UpgradeProgressPublisher:
+    """
+    Helper to publish WebSocket messages for a single upgrade operation.
+    """
+
     def __init__(self, operation_id):
         self.operation_id = operation_id
         self.channel_layer = get_channel_layer()
@@ -214,6 +228,35 @@ class UpgradeProgressPublisher:
 
     def publish_error(self, error_message):
         self.publish_progress({"type": "error", "message": error_message})
+
+    @classmethod
+    def handle_upgrade_operation_log_updated(cls, sender, instance, line, **kwargs):
+        """
+        Handle log line events by publishing to WebSocket channels.
+        """
+        try:
+            # Publish to operation-specific channel
+            publisher = cls(instance.pk)
+            publisher.publish_progress(
+                {"type": "log", "content": line, "status": instance.status}
+            )
+
+            # Publish to device-specific channel for real-time UI updates
+            device_publisher = DeviceUpgradeProgressPublisher(
+                instance.device.pk, instance.pk
+            )
+            device_publisher.publish_log(line, instance.status)
+
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(
+                f"Failed to connect to channel layer for upgrade operation {instance.pk}: {e}",
+                exc_info=True,
+            )
+        except RuntimeError as e:
+            logger.error(
+                f"Runtime error in WebSocket publishing for upgrade operation {instance.pk}: {e}",
+                exc_info=True,
+            )
 
 
 class DeviceUpgradeProgressPublisher:
@@ -251,7 +294,12 @@ class DeviceUpgradeProgressPublisher:
                     {"type": "upgrade_progress", "data": data},
                 )
 
-        async_to_sync(_send_messages)()
+        # Check if we're already in an async context
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(_send_messages())
+        except RuntimeError:
+            async_to_sync(_send_messages)()
 
     def publish_operation_update(self, operation_data):
         """Publish complete operation update"""
@@ -266,8 +314,61 @@ class DeviceUpgradeProgressPublisher:
     def publish_error(self, error_message):
         self.publish_progress({"type": "error", "message": error_message})
 
+    @classmethod
+    def handle_upgrade_operation_post_save(cls, sender, instance, created, **kwargs):
+        """
+        Handle UpgradeOperation post_save events by publishing status updates to WebSocket channels.
+        """
+        # Only publish updates for existing operations
+        if created:
+            return
+
+        try:
+            # Publish status update to operation-specific channel
+            publisher = UpgradeProgressPublisher(instance.pk)
+            publisher.publish_progress({"type": "status", "status": instance.status})
+
+            # Publish complete operation update to device-specific channel
+            device_publisher = cls(instance.device.pk, instance.pk)
+            device_publisher.publish_operation_update(
+                {
+                    "id": str(instance.pk),
+                    "device": str(instance.device.pk),
+                    "status": instance.status,
+                    "log": instance.log,
+                    "progress": getattr(
+                        instance, "progress", 0
+                    ),  # Include progress field
+                    "image": (
+                        str(getattr(instance.image, "pk", None))
+                        if getattr(instance.image, "pk", None)
+                        else None
+                    ),
+                    "modified": (
+                        instance.modified.isoformat() if instance.modified else None
+                    ),
+                    "created": (
+                        instance.created.isoformat() if instance.created else None
+                    ),
+                }
+            )
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(
+                f"Failed to connect to channel layer for upgrade operation {instance.pk}: {e}",
+                exc_info=True,
+            )
+        except RuntimeError as e:
+            logger.error(
+                f"Runtime error in WebSocket publishing for upgrade operation {instance.pk}: {e}",
+                exc_info=True,
+            )
+
 
 class BatchUpgradeProgressPublisher:
+    """
+    Helper to publish WebSocket messages for a batch upgrade operation.
+    """
+
     def __init__(self, batch_id):
         self.batch_id = batch_id
         self.channel_layer = get_channel_layer()
