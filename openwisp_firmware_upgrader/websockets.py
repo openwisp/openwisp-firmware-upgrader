@@ -23,6 +23,10 @@ def _convert_lazy_translations(obj):
 
 
 class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
+    """
+    WebSocket consumer that streams progress updates for a single upgrade operation.
+    """
+
     async def connect(self):
         self.operation_id = self.scope["url_route"]["kwargs"]["operation_id"]
         self.group_name = f"upgrade_{self.operation_id}"
@@ -39,6 +43,10 @@ class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
 
 class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
+    """
+    WebSocket consumer that streams progress updates for a batch upgrade operation.
+    """
+
     async def connect(self):
         self.batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
         self.group_name = f"batch_upgrade_{self.batch_id}"
@@ -188,6 +196,10 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
 
 class UpgradeProgressPublisher:
+    """
+    Helper to publish WebSocket messages for a single upgrade operation.
+    """
+
     def __init__(self, operation_id):
         self.operation_id = operation_id
         self.channel_layer = get_channel_layer()
@@ -217,7 +229,7 @@ class UpgradeProgressPublisher:
         self.publish_progress({"type": "error", "message": error_message})
 
     @classmethod
-    def handle_firmware_upgrader_log_updated(cls, sender, instance, line, **kwargs):
+    def handle_upgrade_operation_log_updated(cls, sender, instance, line, **kwargs):
         """
         Handle log line events by publishing to WebSocket channels.
         """
@@ -302,7 +314,7 @@ class DeviceUpgradeProgressPublisher:
         self.publish_progress({"type": "error", "message": error_message})
 
     @classmethod
-    def handle_upgrade_operation_saved(cls, sender, instance, created, **kwargs):
+    def handle_upgrade_operation_post_save(cls, sender, instance, created, **kwargs):
         """
         Handle UpgradeOperation post_save events by publishing status updates to WebSocket channels.
         """
@@ -352,6 +364,10 @@ class DeviceUpgradeProgressPublisher:
 
 
 class BatchUpgradeProgressPublisher:
+    """
+    Helper to publish WebSocket messages for a batch upgrade operation.
+    """
+
     def __init__(self, batch_id):
         self.batch_id = batch_id
         self.channel_layer = get_channel_layer()
