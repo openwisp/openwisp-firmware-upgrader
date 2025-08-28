@@ -6,6 +6,7 @@ from pathlib import Path
 import jsonschema
 import swapper
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -30,6 +31,7 @@ from ..hardware import (
     FIRMWARE_IMAGE_TYPE_CHOICES,
     REVERSE_FIRMWARE_IMAGE_MAP,
 )
+from ..signals import firmware_upgrader_log_updated
 from ..swapper import get_model_name, load_model
 from ..tasks import (
     batch_upgrade_operation,
@@ -652,6 +654,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
     )
     log = models.TextField(blank=True)
+    progress = models.IntegerField(
+        default=0,
+        validators=[
+            MinValueValidator(0),
+            MaxValueValidator(100),
+        ],
+    )
     batch = models.ForeignKey(
         get_model_name("BatchUpgradeOperation"),
         on_delete=models.CASCADE,
@@ -668,6 +677,14 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         else:
             self.log = line
         logger.info(f"# {line}")
+        if save:
+            self.save()
+        firmware_upgrader_log_updated.send(
+            sender=self.__class__, instance=self, line=line
+        )
+
+    def update_progress(self, progress, save=True):
+        self.progress = max(0, min(100, progress))
         if save:
             self.save()
 
@@ -738,6 +755,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # means the device was aleady flashed previously with the same image
         except UpgradeNotNeeded:
             self.status = "success"
+            self.update_progress(100, save=False)
             installed = True
         # this exception is raised when the test of the image fails,
         # meaning the image file is corrupted or not apt for flashing
@@ -767,6 +785,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         else:
             installed = True
             self.status = "success"
+            self.update_progress(100, save=False)
         self.save()
         # if the firmware has been successfully installed,
         # or if it was already installed
@@ -776,12 +795,12 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.device.devicefirmware.save(upgrade=False)
 
     def save(self, *args, **kwargs):
-        result = super().save(*args, **kwargs)
+        super().save(*args, **kwargs)
         # when an operation is completed
         # trigger an update on the batch operation
         if self.batch and self.status != "in-progress":
             self.batch.update()
-        return result
+        return self
 
     @property
     def upgrader_schema(self):
