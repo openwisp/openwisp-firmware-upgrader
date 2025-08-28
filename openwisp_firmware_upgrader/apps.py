@@ -7,6 +7,8 @@ from openwisp_utils.api.apps import ApiAppConfig
 from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
+from .signals import firmware_upgrader_log_updated
+from .websockets import DeviceUpgradeProgressPublisher, UpgradeProgressPublisher
 
 
 class FirmwareUpdaterConfig(ApiAppConfig):
@@ -26,6 +28,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         super().ready(*args, **kwargs)
         self.register_menu_groups()
         self.connect_device_signals()
+        self.connect_upgrade_signals()
         self.connect_delete_signals()
 
     def register_menu_groups(self):
@@ -61,6 +64,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         DeviceConnection = load_model("connection", "DeviceConnection")
         DeviceFirmware = load_model("firmware_upgrader", "DeviceFirmware")
         FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
+
         post_save.connect(
             DeviceFirmware.auto_add_device_firmware_to_device,
             sender=DeviceConnection,
@@ -70,6 +74,19 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             DeviceFirmware.auto_create_device_firmwares,
             sender=FirmwareImage,
             dispatch_uid="firmware_image.auto_add_device_firmwares",
+        )
+
+    def connect_upgrade_signals(self):
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+
+        post_save.connect(
+            DeviceUpgradeProgressPublisher.handle_upgrade_operation_post_save,
+            sender=UpgradeOperation,
+            dispatch_uid="upgrade_operation.websocket_publish",
+        )
+        firmware_upgrader_log_updated.connect(
+            UpgradeProgressPublisher.handle_upgrade_operation_log_updated,
+            dispatch_uid="firmware_upgrader.log_websocket_publish",
         )
 
     def connect_delete_signals(self):
