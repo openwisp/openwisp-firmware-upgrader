@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core.exceptions import ValidationError
+from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -44,6 +45,7 @@ Category = load_model("Category")
 Build = load_model("Build")
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+Organization = swapper.load_model("openwisp_users", "Organization")
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -254,6 +256,10 @@ class UpgradeOperationInline(admin.StackedInline):
 
 
 class ReadonlyUpgradeOptionsMixin:
+
+    class Media:
+        css = {"all": ["firmware-upgrader/css/upgrade-options.css"]}
+
     @admin.display(description=_("Upgrade options"))
     def readonly_upgrade_options(self, obj):
         upgrader_schema = obj.upgrader_schema
@@ -272,6 +278,22 @@ class ReadonlyUpgradeOptionsMixin:
         )
 
 
+@admin.register(UpgradeOperation)
+class UpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
+    list_display = ["device", "status", "image", "modified"]
+    list_filter = ["status"]
+    search_fields = ["device__name"]
+    readonly_fields = ["device", "image", "status", "log", "modified"]
+    ordering = ["-modified"]
+    fields = ["device", "image", "status", "log", "modified"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(BatchUpgradeOperation)
 class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
     list_display = ["build", "organization", "status", "created", "modified"]
@@ -282,7 +304,6 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     ]
     list_select_related = ["build__category__organization"]
     ordering = ["-created"]
-    inlines = [UpgradeOperationInline]
     multitenant_parent = "build__category"
     fields = [
         "build",
@@ -303,15 +324,140 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "aborted_rate",
         "readonly_upgrade_options",
     ]
+    change_form_template = (
+        "admin/firmware_upgrader/batch_upgrade_operation_change_form.html"
+    )
+    device_upgrades_per_page = 20
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related(
+            "upgradeoperation_set__device", "upgradeoperation_set__image"
+        )
+
+    def get_upgrade_operations(self, obj):
+        return obj.upgradeoperation_set.all().select_related("device", "image")
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["title"] = _("Mass upgrade operations")
+        return super().changelist_view(request, extra_context)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        extra_context = extra_context or {}
+        obj = self.get_object(request, object_id)
+        if obj:
+            # Get upgrade operations with search and filtering
+            upgrades_qs = self.get_upgrade_operations(obj)
+
+            # Handle search
+            search_query = request.GET.get("q", "")
+            if search_query:
+                upgrades_qs = upgrades_qs.filter(device__name__icontains=search_query)
+
+            # Get current filter values
+            current_status = request.GET.get("status", "")
+            current_org = request.GET.get("organization", "")
+
+            # Apply filters to queryset
+            if current_status:
+                upgrades_qs = upgrades_qs.filter(status=current_status)
+            if current_org:
+                upgrades_qs = upgrades_qs.filter(device__organization_id=current_org)
+
+            # Create filter specs for the template
+            filter_specs = []
+
+            # Status filter
+            status_choices = [
+                {
+                    "display": _("All"),
+                    "selected": not current_status,
+                    "query_string": "?",
+                },
+                {
+                    "display": _("idle"),
+                    "selected": current_status == "idle",
+                    "query_string": "?status=idle",
+                },
+                {
+                    "display": _("in progress"),
+                    "selected": current_status == "in-progress",
+                    "query_string": "?status=in-progress",
+                },
+                {
+                    "display": _("completed successfully"),
+                    "selected": current_status == "success",
+                    "query_string": "?status=success",
+                },
+                {
+                    "display": _("completed with some failures"),
+                    "selected": current_status == "failed",
+                    "query_string": "?status=failed",
+                },
+            ]
+
+            class StatusFilter:
+                title = _("status")
+                choices = status_choices
+
+            filter_specs.append(StatusFilter())
+
+            # Organization filter
+            org_choices = [
+                {"display": _("All"), "selected": not current_org, "query_string": "?"}
+            ]
+            for org in Organization.objects.all().order_by("name"):
+                org_choices.append(
+                    {
+                        "display": org.name,
+                        "selected": current_org == str(org.id),
+                        "query_string": f"?organization={org.id}",
+                    }
+                )
+
+            class OrganizationFilter:
+                title = _("organization")
+                choices = org_choices
+
+            filter_specs.append(OrganizationFilter())
+
+            # Pagination
+            paginator = Paginator(
+                upgrades_qs.order_by("id"), self.device_upgrades_per_page
+            )
+            page_number = request.GET.get("page", 1)
+            try:
+                page_obj = paginator.page(page_number)
+            except InvalidPage:
+                page_obj = paginator.page(1)
+
+            # Get the app label for URL construction
+            upgrade_operation_app_label = load_model("UpgradeOperation")._meta.app_label
+
+            extra_context.update(
+                {
+                    "upgrade_operations": page_obj.object_list,
+                    "page_obj": page_obj,
+                    "paginator": paginator,
+                    "filter_specs": filter_specs,
+                    "has_active_filters": any(
+                        request.GET.get(param) for param in ["status", "organization"]
+                    ),
+                    "upgrade_operation_app_label": upgrade_operation_app_label,
+                }
+            )
+
+        return super().change_view(request, object_id, extra_context)
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        return fields + self.__class__.readonly_fields
 
     def organization(self, obj):
         return obj.build.category.organization
 
     organization.short_description = _("organization")
-
-    def get_readonly_fields(self, request, obj):
-        fields = super().get_readonly_fields(request, obj)
-        return fields + self.__class__.readonly_fields
 
     def completed(self, obj):
         return obj.progress_report
@@ -415,6 +561,17 @@ class DeviceFirmwareInline(
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
     sortable_options = {"disabled": True}
 
+    class Media:
+        js = [
+            "connection/js/lib/reconnecting-websocket.min.js",
+            "firmware-upgrader/js/upgrade-progress.js",
+        ]
+        css = {
+            "all": [
+                "firmware-upgrader/css/upgrade-progress.css",
+            ]
+        }
+
     def _get_conditional_queryset(self, request, obj, select_related=False):
         return bool(obj)
 
@@ -458,6 +615,18 @@ class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperation
         "modified",
     ]
     readonly_fields = fields
+
+    class Media:
+        js = [
+            "connection/js/lib/reconnecting-websocket.min.js",
+            "firmware-upgrader/js/upgrade-progress.js",
+        ]
+        css = {
+            "all": [
+                "firmware-upgrader/css/upgrade-progress.css",
+                "firmware-upgrader/css/upgrade-options.css",
+            ]
+        }
 
     def get_queryset(self, request, select_related=True):
         """
