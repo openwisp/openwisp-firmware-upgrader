@@ -1,8 +1,8 @@
 import os
 import sys
 
-TESTING = "test" in sys.argv
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TESTING = "test" in sys.argv
 
 DEBUG = True
 
@@ -12,11 +12,16 @@ DATABASES = {
     "default": {
         "ENGINE": "openwisp_utils.db.backends.spatialite",
         "NAME": "openwisp-firmware-upgrader.db",
-        "TEST": {
-            "NAME": "test_openwisp2",
-        },
     }
 }
+
+if TESTING and not any(
+    tag in sys.argv
+    for tag in ("--exclude-tag=no_parallel", "--exclude-tag=selenium_tests")
+):
+    DATABASES["default"]["TEST"] = {
+        "NAME": os.path.join(BASE_DIR, "openwisp-firmware-upgrader-tests.db"),
+    }
 
 SPATIALITE_LIBRARY_PATH = "mod_spatialite.so"
 
