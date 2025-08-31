@@ -578,8 +578,12 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self.upgrade_operations.count()
 
     @property
+    def completed_operations(self):
+        return self.upgrade_operations.exclude(status="in-progress").count()
+
+    @property
     def progress_report(self):
-        completed = self.upgrade_operations.exclude(status="in-progress").count()
+        completed = self.completed_operations
         return _(f"{completed} out of {self.total_operations}")
 
     @property
@@ -781,7 +785,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 # even if the reconnection failed,
                 # the firmware image has been flashed
                 installed = True
-        # if no exception has been raised, the upgrade was successful
         else:
             installed = True
             self.status = "success"

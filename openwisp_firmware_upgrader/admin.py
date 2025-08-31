@@ -285,6 +285,7 @@ class UpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
     readonly_fields = ["device", "image", "status", "log", "modified"]
     ordering = ["-modified"]
     fields = ["device", "image", "status", "log", "modified"]
+    change_form_template = "admin/firmware_upgrader/upgrade_operation_change_form.html"
 
     def has_add_permission(self, request):
         return False

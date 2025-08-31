@@ -6,8 +6,40 @@
 <link rel="stylesheet" type="text/css" href="{% static "admin/css/changelists.css" %}">
 <link rel="stylesheet" type="text/css" href="{% static "admin/css/ow-filters.css" %}">
 <link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/batch-upgrade-operation.css" %}">
+<link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/upgrade-progress.css" %}">
 <script src="{% static "admin/js/ow-filter.js" %}"></script>
-<script type="text/javascript" src="{% static 'admin/js/jquery.init.js' %}"></script>
+<script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
+<script>
+  // Configuration for WebSocket connection
+  var owControllerApiHost = {
+    host: '{{ request.get_host }}'
+  };
+</script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-upgrade-progress.js' %}"></script>
+<script>
+django.jQuery(function($) {
+  // Add main progress bar to status field
+  setTimeout(function() {
+    var statusField = $('.field-status .readonly');
+    if (statusField.length && !statusField.find('.batch-main-progress').length) {
+      var total = {{ original.total_operations }};
+      var completed = {{ original.completed_operations }};
+      var percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+      var status = '{{ original.status }}';
+      var progressHtml = `
+        <div class="batch-main-progress">
+          <div class="upgrade-progress-bar">
+            <div class="upgrade-progress-fill ${status}" style="width: ${percentage}%"></div>
+          </div>
+          <span class="upgrade-progress-text">${percentage}%</span>
+        </div>
+      `;
+      
+      statusField.append(progressHtml);
+    }
+  }, 100);
+});
+</script>
 {% endblock %}
 
 {% block content %}
@@ -116,7 +148,9 @@
             {{ operation.device.name }}
           </a>
         </td>
-        <td>{{ operation.get_status_display }}</td>
+        <td class="status-cell" data-operation-id="{{ operation.id }}">
+          <div class="status-content">{{ operation.get_status_display }}</div>
+        </td>
         <td>
           {% if operation.image %}
           {{ operation.image }}
