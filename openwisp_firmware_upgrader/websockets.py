@@ -23,6 +23,9 @@ def _convert_lazy_translations(obj):
 
 
 class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
+    """
+    WebSocket consumer that streams progress updates for a single upgrade operation.
+    """
     def _is_user_authenticated(self):
         try:
             assert self.scope["user"].is_authenticated is True
@@ -126,6 +129,9 @@ class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
 
 class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
+    """
+    WebSocket consumer that streams progress updates for a batch upgrade operation.
+    """
     def _is_user_authenticated(self):
         try:
             assert self.scope["user"].is_authenticated is True
@@ -384,6 +390,10 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
 
 class UpgradeProgressPublisher:
+    """
+    Helper to publish WebSocket messages for a single upgrade operation.
+    """
+
     def __init__(self, operation_id):
         self.operation_id = operation_id
         self.channel_layer = get_channel_layer()
@@ -413,7 +423,7 @@ class UpgradeProgressPublisher:
         self.publish_progress({"type": "error", "message": error_message})
 
     @classmethod
-    def handle_firmware_upgrader_log_updated(cls, sender, instance, line, **kwargs):
+    def handle_upgrade_operation_log_updated(cls, sender, instance, line, **kwargs):
         """
         Handle log line events by publishing to WebSocket channels.
         """
@@ -498,7 +508,7 @@ class DeviceUpgradeProgressPublisher:
         self.publish_progress({"type": "error", "message": error_message})
 
     @classmethod
-    def handle_upgrade_operation_saved(cls, sender, instance, created, **kwargs):
+    def handle_upgrade_operation_post_save(cls, sender, instance, created, **kwargs):
         """
         Handle UpgradeOperation post_save events by publishing status updates to WebSocket channels.
         """

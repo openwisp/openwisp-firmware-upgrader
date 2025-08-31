@@ -785,6 +785,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 # even if the reconnection failed,
                 # the firmware image has been flashed
                 installed = True
+        # if no exception has been raised, the upgrade was successful
         else:
             installed = True
             self.status = "success"

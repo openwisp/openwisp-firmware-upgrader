@@ -85,7 +85,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
 
         post_save.connect(
-            DeviceUpgradeProgressPublisher.handle_upgrade_operation_saved,
+            DeviceUpgradeProgressPublisher.handle_upgrade_operation_post_save,
             sender=UpgradeOperation,
             dispatch_uid="upgrade_operation.websocket_publish",
         )
@@ -95,7 +95,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             dispatch_uid="batch_upgrade_operation.websocket_publish",
         )
         firmware_upgrader_log_updated.connect(
-            UpgradeProgressPublisher.handle_firmware_upgrader_log_updated,
+            UpgradeProgressPublisher.handle_upgrade_operation_log_updated,
             dispatch_uid="firmware_upgrader.log_websocket_publish",
         )
 
