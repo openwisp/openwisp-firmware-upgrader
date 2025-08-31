@@ -23,32 +23,228 @@ def _convert_lazy_translations(obj):
 
 
 class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
-    async def connect(self):
-        self.operation_id = self.scope["url_route"]["kwargs"]["operation_id"]
-        self.group_name = f"upgrade_{self.operation_id}"
+    def _is_user_authenticated(self):
+        try:
+            assert self.scope["user"].is_authenticated is True
+        except (KeyError, AssertionError):
+            return False
+        else:
+            return True
 
-        # Join room group
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
+    def is_user_authorized(self):
+        user = self.scope["user"]
+        is_authorized = user.is_superuser or user.is_staff
+        return is_authorized
+
+    async def connect(self):
+        try:
+            auth_result = self._is_user_authenticated()
+            if not auth_result:
+                return
+
+            if not self.is_user_authorized():
+                await self.close()
+                return
+
+            self.operation_id = self.scope["url_route"]["kwargs"]["operation_id"]
+            self.group_name = f"upgrade_{self.operation_id}"
+
+        except (AssertionError, KeyError) as e:
+            logger.error(f"Error in operation websocket connect: {e}")
+            await self.close()
+        else:
+            try:
+                await self.channel_layer.group_add(self.group_name, self.channel_name)
+            except (ConnectionError, TimeoutError) as e:
+                logger.error(f"Failed to add channel to group {self.group_name}: {e}")
+                await self.close()
+                return
+            except RuntimeError as e:
+                logger.error(
+                    f"Channel layer error when joining group {self.group_name}: {e}"
+                )
+                await self.close()
+                return
+
+            await self.accept()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        try:
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        except AttributeError:
+            return
+
+    async def receive_json(self, content):
+        """Handle incoming messages from the client"""
+        message_type = content.get("type")
+
+        if message_type == "request_current_state":
+            await self._handle_current_operation_state_request(content)
+        else:
+            logger.warning(f"Unknown message type received: {message_type}")
+
+    async def _handle_current_operation_state_request(self, content):
+        """Handle request for current state of the operation"""
+        try:
+            from .models import UpgradeOperation
+
+            # Get the operation using sync_to_async
+            get_operation = sync_to_async(
+                lambda: UpgradeOperation.objects.filter(pk=self.operation_id).first()
+            )
+
+            operation = await get_operation()
+
+            if operation:
+                # Send operation update
+                await self.send_json(
+                    {
+                        "type": "operation_update",
+                        "operation": {
+                            "id": str(operation.pk),
+                            "status": operation.status,
+                            "log": operation.log or "",
+                            "progress": getattr(operation, "progress", 0),
+                            "modified": (
+                                operation.modified.isoformat()
+                                if operation.modified
+                                else None
+                            ),
+                        },
+                    }
+                )
+
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(
+                f"Failed to connect to channel layer during operation state request: {e}"
+            )
+        except RuntimeError as e:
+            logger.error(f"Runtime error during operation state request: {e}")
 
     async def upgrade_progress(self, event):
         await self.send_json(event["data"])
 
 
 class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
-    async def connect(self):
-        self.batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
-        self.group_name = f"batch_upgrade_{self.batch_id}"
+    def _is_user_authenticated(self):
+        try:
+            assert self.scope["user"].is_authenticated is True
+        except (KeyError, AssertionError):
+            return False
+        else:
+            return True
 
-        # Join room group
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
+    def is_user_authorized(self):
+        user = self.scope["user"]
+        is_authorized = user.is_superuser or user.is_staff
+        return is_authorized
+
+    async def connect(self):
+        try:
+            auth_result = self._is_user_authenticated()
+            if not auth_result:
+                return
+
+            if not self.is_user_authorized():
+                await self.close()
+                return
+
+            self.batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
+            self.group_name = f"batch_upgrade_{self.batch_id}"
+
+        except (AssertionError, KeyError) as e:
+            logger.error(f"Error in batch websocket connect: {e}")
+            await self.close()
+        else:
+            try:
+                await self.channel_layer.group_add(self.group_name, self.channel_name)
+            except (ConnectionError, TimeoutError) as e:
+                logger.error(f"Failed to add channel to group {self.group_name}: {e}")
+                await self.close()
+                return
+            except RuntimeError as e:
+                logger.error(
+                    f"Channel layer error when joining group {self.group_name}: {e}"
+                )
+                await self.close()
+                return
+
+            await self.accept()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        try:
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        except AttributeError:
+            return
+
+    async def receive_json(self, content):
+        """Handle incoming messages from the client"""
+        message_type = content.get("type")
+
+        if message_type == "request_current_state":
+            await self._handle_current_batch_state_request(content)
+        else:
+            logger.warning(f"Unknown message type received: {message_type}")
+
+    async def _handle_current_batch_state_request(self, content):
+        """Handle request for current state of batch upgrade operations"""
+        try:
+            from .models import BatchUpgradeOperation
+
+            # Get the batch operation and its upgrade operations
+            get_batch_operations = sync_to_async(
+                lambda: BatchUpgradeOperation.objects.filter(pk=self.batch_id)
+                .prefetch_related("upgradeoperation_set")
+                .first()
+            )
+
+            batch_operation = await get_batch_operations()
+
+            if batch_operation:
+                # Send batch status
+                total_operations = await sync_to_async(
+                    batch_operation.upgrade_operations.count
+                )()
+                completed_operations = await sync_to_async(
+                    batch_operation.upgrade_operations.exclude(
+                        status="in-progress"
+                    ).count
+                )()
+
+                await self.send_json(
+                    {
+                        "type": "batch_status",
+                        "status": batch_operation.status,
+                        "completed": completed_operations,
+                        "total": total_operations,
+                    }
+                )
+
+                # Send individual operation progress
+                operations_list = await sync_to_async(list)(
+                    batch_operation.upgrade_operations.all()
+                )
+                for operation in operations_list:
+                    await self.send_json(
+                        {
+                            "type": "operation_progress",
+                            "operation_id": str(operation.pk),
+                            "status": operation.status,
+                            "progress": getattr(operation, "progress", 0),
+                            "modified": (
+                                operation.modified.isoformat()
+                                if operation.modified
+                                else None
+                            ),
+                        }
+                    )
+
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(
+                f"Failed to connect to channel layer during batch state request: {e}"
+            )
+        except RuntimeError as e:
+            logger.error(f"Runtime error during batch state request: {e}")
 
     async def batch_upgrade_progress(self, event):
         await self.send_json(event["data"])
@@ -339,6 +535,28 @@ class DeviceUpgradeProgressPublisher:
                     ),
                 }
             )
+
+            # Publish to batch upgrade channel if this operation belongs to a batch
+            if hasattr(instance, "batch") and instance.batch:
+                batch_publisher = BatchUpgradeProgressPublisher(instance.batch.pk)
+
+                # Prepare device information
+                device_info = {
+                    "device_id": instance.device.pk,
+                    "device_name": instance.device.name,
+                    "image_name": str(instance.image) if instance.image else None,
+                }
+
+                batch_publisher.publish_operation_progress(
+                    str(instance.pk),
+                    instance.status,
+                    getattr(instance, "progress", 0),
+                    instance.modified,
+                    device_info,
+                )
+
+                # Update batch status if needed
+                batch_publisher.update_batch_status(instance.batch)
         except (ConnectionError, TimeoutError) as e:
             logger.error(
                 f"Failed to connect to channel layer for upgrade operation {instance.pk}: {e}",
@@ -371,15 +589,28 @@ class BatchUpgradeProgressPublisher:
 
         async_to_sync(_send_message)()
 
-    def publish_operation_progress(self, operation_id, status, progress):
-        self.publish_progress(
-            {
-                "type": "operation_progress",
-                "operation_id": operation_id,
-                "status": status,
-                "progress": progress,
-            }
-        )
+    def publish_operation_progress(
+        self, operation_id, status, progress, modified=None, device_info=None
+    ):
+        progress_data = {
+            "type": "operation_progress",
+            "operation_id": operation_id,
+            "status": status,
+            "progress": progress,
+            "modified": modified.isoformat() if modified else None,
+        }
+
+        # Add device information if available
+        if device_info:
+            progress_data.update(
+                {
+                    "device_id": str(device_info.get("device_id", "")),
+                    "device_name": device_info.get("device_name", ""),
+                    "image_name": device_info.get("image_name", ""),
+                }
+            )
+
+        self.publish_progress(progress_data)
 
     def publish_batch_status(self, status, completed, total):
         self.publish_progress(
@@ -390,3 +621,61 @@ class BatchUpgradeProgressPublisher:
                 "total": total,
             }
         )
+
+    def update_batch_status(self, batch_instance):
+        """Update and publish batch status based on current operations"""
+        batch_instance.refresh_from_db()
+
+        if hasattr(batch_instance, "_upgrade_operations"):
+            delattr(batch_instance, "_upgrade_operations")
+
+        operations = batch_instance.upgradeoperation_set
+        total_operations = operations.count()
+        in_progress_operations = operations.filter(status="in-progress").count()
+        completed_operations = operations.exclude(status="in-progress").count()
+        failed_operations = operations.filter(status="failed").count()
+        successful_operations = operations.filter(status="success").count()
+
+        # Determine overall batch status
+        if in_progress_operations > 0:
+            batch_status = "in-progress"
+        elif failed_operations > 0:
+            batch_status = "failed"
+        elif (
+            successful_operations > 0
+            and completed_operations == total_operations
+            and total_operations > 0
+        ):
+            batch_status = "success"
+        else:
+            batch_status = batch_instance.status
+
+        # Update the batch instance status if needed
+        if batch_instance.status != batch_status:
+            batch_instance.status = batch_status
+            batch_instance.save(update_fields=["status"])
+
+        self.publish_batch_status(batch_status, completed_operations, total_operations)
+
+    @classmethod
+    def handle_batch_upgrade_operation_saved(cls, sender, instance, created, **kwargs):
+        """
+        Handle BatchUpgradeOperation post_save events by publishing status updates to WebSocket channels.
+        """
+        # Only publish updates for existing operations
+        if created:
+            return
+
+        try:
+            batch_publisher = cls(instance.pk)
+            batch_publisher.update_batch_status(instance)
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(
+                f"Failed to connect to channel layer for batch upgrade operation {instance.pk}: {e}",
+                exc_info=True,
+            )
+        except RuntimeError as e:
+            logger.error(
+                f"Runtime error in WebSocket publishing for batch upgrade operation {instance.pk}: {e}",
+                exc_info=True,
+            )

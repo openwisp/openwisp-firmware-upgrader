@@ -1,0 +1,40 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/upgrade-progress.css" %}">
+<script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
+<script>
+  // Configuration for WebSocket connection
+  var owControllerApiHost = {
+    host: '{{ request.get_host }}'
+  };
+</script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-progress.js' %}"></script>
+<script>
+django.jQuery(function($) {
+  // Add progress bar to status field
+  setTimeout(function() {
+    var statusField = $('.field-status .readonly');
+    if (statusField.length && !statusField.find('.upgrade-status-container').length) {
+      var status = '{{ original.status }}';
+      var progress = {{ original.progress|default:0 }};
+      var progressPercentage = progress > 0 ? progress : (status === 'success' ? 100 : 5);
+      
+      var progressHtml = `
+        <div class="upgrade-status-container">
+          <span class="upgrade-status-${status.replace(/\s+/g, '-')}">${status}</span>
+          <div class="upgrade-progress-bar">
+            <div class="upgrade-progress-fill ${status}" style="width: ${progressPercentage}%"></div>
+          </div>
+          <span class="upgrade-progress-text">${progressPercentage}%</span>
+        </div>
+      `;
+      
+      statusField.html(progressHtml);
+    }
+  }, 100);
+});
+</script>
+{% endblock %}

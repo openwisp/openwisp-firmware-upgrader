@@ -8,7 +8,11 @@ from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
 from .signals import firmware_upgrader_log_updated
-from .websockets import DeviceUpgradeProgressPublisher, UpgradeProgressPublisher
+from .websockets import (
+    BatchUpgradeProgressPublisher,
+    DeviceUpgradeProgressPublisher,
+    UpgradeProgressPublisher,
+)
 
 
 class FirmwareUpdaterConfig(ApiAppConfig):
@@ -78,11 +82,17 @@ class FirmwareUpdaterConfig(ApiAppConfig):
 
     def connect_upgrade_signals(self):
         UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+        BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
 
         post_save.connect(
             DeviceUpgradeProgressPublisher.handle_upgrade_operation_saved,
             sender=UpgradeOperation,
             dispatch_uid="upgrade_operation.websocket_publish",
+        )
+        post_save.connect(
+            BatchUpgradeProgressPublisher.handle_batch_upgrade_operation_saved,
+            sender=BatchUpgradeOperation,
+            dispatch_uid="batch_upgrade_operation.websocket_publish",
         )
         firmware_upgrader_log_updated.connect(
             UpgradeProgressPublisher.handle_firmware_upgrader_log_updated,
