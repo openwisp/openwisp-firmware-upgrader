@@ -512,8 +512,8 @@ class DeviceUpgradeProgressPublisher:
         """
         Handle UpgradeOperation post_save events by publishing status updates to WebSocket channels.
         """
-        # Only publish updates for existing operations
-        if created:
+        # Skip created operations unless they belong to a batch (for real-time batch updates)
+        if created and not (hasattr(instance, 'batch') and instance.batch):
             return
 
         try:
@@ -565,8 +565,9 @@ class DeviceUpgradeProgressPublisher:
                     device_info,
                 )
 
-                # Update batch status if needed
-                batch_publisher.update_batch_status(instance.batch)
+                # For newly created operations, also update batch status to show new device count
+                if created:
+                    batch_publisher.update_batch_status(instance.batch)
         except (ConnectionError, TimeoutError) as e:
             logger.error(
                 f"Failed to connect to channel layer for upgrade operation {instance.pk}: {e}",
@@ -650,26 +651,9 @@ class BatchUpgradeProgressPublisher:
         failed_operations = operations.filter(status="failed").count()
         successful_operations = operations.filter(status="success").count()
 
-        # Determine overall batch status
-        if in_progress_operations > 0:
-            batch_status = "in-progress"
-        elif failed_operations > 0:
-            batch_status = "failed"
-        elif (
-            successful_operations > 0
-            and completed_operations == total_operations
-            and total_operations > 0
-        ):
-            batch_status = "success"
-        else:
-            batch_status = batch_instance.status
-
-        # Update the batch instance status if needed
-        if batch_instance.status != batch_status:
-            batch_instance.status = batch_status
-            batch_instance.save(update_fields=["status"])
-
-        self.publish_batch_status(batch_status, completed_operations, total_operations)
+        # Publish the current status from the database
+        current_batch_status = batch_instance.status
+        self.publish_batch_status(current_batch_status, completed_operations, total_operations)
 
     @classmethod
     def handle_batch_upgrade_operation_saved(cls, sender, instance, created, **kwargs):
