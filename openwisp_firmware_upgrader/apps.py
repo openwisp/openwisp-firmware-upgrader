@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_delete
 from django.utils.translation import gettext_lazy as _
 from swapper import get_model_name, load_model
 
@@ -7,7 +7,8 @@ from openwisp_utils.api.apps import ApiAppConfig
 from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
-from .receivers import handle_upgrade_operation_saved
+from .signals import firmware_upgrader_log_updated
+from .websockets import DeviceUpgradeProgressPublisher, UpgradeProgressPublisher
 
 
 class FirmwareUpdaterConfig(ApiAppConfig):
@@ -27,6 +28,8 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         super().ready(*args, **kwargs)
         self.register_menu_groups()
         self.connect_device_signals()
+        self.connect_upgrade_signals()
+        self.connect_delete_signals()
 
     def register_menu_groups(self):
         register_menu_group(
@@ -61,7 +64,6 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         DeviceConnection = load_model("connection", "DeviceConnection")
         DeviceFirmware = load_model("firmware_upgrader", "DeviceFirmware")
         FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
-        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
 
         post_save.connect(
             DeviceFirmware.auto_add_device_firmware_to_device,
@@ -73,10 +75,44 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             sender=FirmwareImage,
             dispatch_uid="firmware_image.auto_add_device_firmwares",
         )
+
+    def connect_upgrade_signals(self):
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+
         post_save.connect(
-            handle_upgrade_operation_saved,
+            DeviceUpgradeProgressPublisher.handle_upgrade_operation_post_save,
             sender=UpgradeOperation,
             dispatch_uid="upgrade_operation.websocket_publish",
+        )
+        firmware_upgrader_log_updated.connect(
+            UpgradeProgressPublisher.handle_upgrade_operation_log_updated,
+            dispatch_uid="firmware_upgrader.log_websocket_publish",
+        )
+
+    def connect_delete_signals(self):
+        """
+        Connect signals for handling firmware file deletion
+        when related models are deleted.
+        """
+        Build = load_model("firmware_upgrader", "Build")
+        Category = load_model("firmware_upgrader", "Category")
+        Organization = load_model("openwisp_users", "Organization")
+        FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
+
+        pre_delete.connect(
+            FirmwareImage.build_pre_delete_handler,
+            sender=Build,
+            dispatch_uid="build.pre_delete.firmware_files",
+        )
+        pre_delete.connect(
+            FirmwareImage.category_pre_delete_handler,
+            sender=Category,
+            dispatch_uid="category.pre_delete.firmware_files",
+        )
+        pre_delete.connect(
+            FirmwareImage.organization_pre_delete_handler,
+            sender=Organization,
+            dispatch_uid="organization.pre_delete.firmware_files",
         )
 
 

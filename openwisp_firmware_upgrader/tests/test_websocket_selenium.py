@@ -42,7 +42,6 @@ class TestRealTimeWebsockets(
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
     browser = "firefox"
     maxDiff = None
-    retry_max = 1
 
     def setUp(self):
         org = self._get_org()

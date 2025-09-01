@@ -1,6 +1,7 @@
 import logging
-import os
 from decimal import Decimal
+from functools import partial
+from pathlib import Path
 
 import jsonschema
 import swapper
@@ -164,7 +165,7 @@ class AbstractBuild(TimeStampedEditableModel):
         batch.full_clean()
         batch.save()
         transaction.on_commit(
-            lambda: batch_upgrade_operation.delay(batch.pk, firmwareless)
+            partial(batch_upgrade_operation.delay, batch.pk, firmwareless)
         )
         return batch
 
@@ -258,22 +259,38 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     def delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
-        self._remove_file()
+        self._remove_file(self.file.name)
 
-    def _remove_file(self):
-        firmware_filename = self.file.name
-        self.file.storage.delete(firmware_filename)
-        # Delete the file directory
-        dir = os.path.split(firmware_filename)[0]
-        if dir:
-            try:
-                self.file.storage.delete(dir)
-            except OSError as error:
-                # A build can have multiple firmware images,
-                # therefore, deleting directory might not be
-                # always feasible.
-                if "Directory not empty" not in str(error):
-                    raise error
+    @classmethod
+    def _remove_file(cls, file_path):
+        """
+        Deletes a file and cleans up its parent directory if empty.
+        Handles corner cases gracefully and logs accordingly.
+        """
+        storage = cls.file.field.storage
+        try:
+            storage.delete(file_path)
+            logger.info("Deleted firmware file: %s", file_path)
+        except Exception as e:
+            logger.error("Error deleting firmware file %s: %s", file_path, str(e))
+            return False
+        # Delete the directory if empty
+        try:
+            dir_path = str(Path(file_path).parent)
+            if not dir or dir_path == ".":
+                return True
+            dirs, files = storage.listdir(dir_path)
+            if dirs or files:
+                logger.debug("Directory %s is not empty, skipping deletion", dir_path)
+                return True
+            storage.delete(dir_path)
+        except FileNotFoundError:
+            logger.debug("Directory %s already removed", dir_path)
+        except Exception as error:
+            logger.error("Could not delete directory %s: %s", dir_path, str(error))
+        else:
+            logger.info("Deleted empty directory: %s", dir_path)
+        return True
 
     def _clean_type(self):
         """
@@ -284,6 +301,48 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         filename = self.file.name
         # removes leading prefix
         self.type = "-".join(filename.split("-")[1:])
+
+    @classmethod
+    def build_pre_delete_handler(cls, sender, instance, **kwargs):
+        """
+        Triggers deletion of firmware image files when a Build is deleted.
+        """
+        cls.schedule_firmware_file_deletion(build=instance)
+
+    @classmethod
+    def category_pre_delete_handler(cls, sender, instance, **kwargs):
+        """
+        Triggers deletion of firmware image files when a Category is deleted.
+        """
+        cls.schedule_firmware_file_deletion(build__category=instance)
+
+    @classmethod
+    def organization_pre_delete_handler(cls, sender, instance, **kwargs):
+        """
+        Triggers deletion of firmware image files when an Organization is deleted.
+        """
+        cls.schedule_firmware_file_deletion(build__category__organization=instance)
+
+    @classmethod
+    def schedule_firmware_file_deletion(cls, **filter_kwargs):
+        """
+        Schedules the deletion of firmware image files in the background.
+
+        Args:
+            **filter_kwargs: Django ORM filter arguments
+        """
+        # Avoid circular import
+        from ..tasks import delete_firmware_files
+
+        files_to_delete = []
+        # Get all firmware images matching the filter criteria
+        queryset = cls.objects.filter(**filter_kwargs)
+        for image in queryset.iterator():
+            if image.file and image.file.name:
+                files_to_delete.append(image.file.name)
+        if files_to_delete:
+            # Schedule file deletion after transaction is committed
+            transaction.on_commit(partial(delete_firmware_files.delay, files_to_delete))
 
 
 class AbstractDeviceFirmware(TimeStampedEditableModel):
@@ -358,7 +417,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         operation.save()
         # launch ``upgrade_firmware`` in the background (celery)
         # once changes are committed to the database
-        transaction.on_commit(lambda: upgrade_firmware.delay(operation.pk))
+        transaction.on_commit(partial(upgrade_firmware.delay, operation.pk))
         return operation
 
     @classmethod
@@ -406,13 +465,13 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if instance.device.model not in REVERSE_FIRMWARE_IMAGE_MAP:
             return
 
-        transaction.on_commit(lambda: create_device_firmware.delay(instance.device.pk))
+        transaction.on_commit(partial(create_device_firmware.delay, instance.device.pk))
 
     @classmethod
     def auto_create_device_firmwares(cls, instance, created, **kwargs):
         if created:
             transaction.on_commit(
-                lambda: create_all_device_firmwares.delay(instance.pk)
+                partial(create_all_device_firmwares.delay, instance.pk)
             )
 
     @classmethod
