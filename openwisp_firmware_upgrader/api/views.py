@@ -88,7 +88,9 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         """
         upgrade_all = request.POST.get("upgrade_all") is not None
         group_id = request.POST.get("group")
+        location_id = request.POST.get("location")
         group = None
+        location = None
         if group_id:
             try:
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
@@ -96,8 +98,15 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 )
             except:
                 pass
+        if location_id:
+            try:
+                location = swapper.load_model("geo", "Location").objects.get(
+                    pk=location_id
+                )
+            except:
+                pass
         instance = self.get_object()
-        batch = instance.batch_upgrade(firmwareless=upgrade_all, group=group)
+        batch = instance.batch_upgrade(firmwareless=upgrade_all, group=group, location=location)
         return Response({"batch": str(batch.pk)}, status=201)
 
     def get(self, request, pk):
@@ -107,7 +116,9 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         """
         self.instance = self.get_object()
         group_id = request.GET.get("group")
+        location_id = request.GET.get("location")
         group = None
+        location = None
         if group_id:
             try:
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
@@ -115,7 +126,14 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 )
             except:
                 pass
-        data = BatchUpgradeOperation.dry_run(build=self.instance, group=group)
+        if location_id:
+            try:
+                location = swapper.load_model("geo", "Location").objects.get(
+                    pk=location_id
+                )
+            except:
+                pass
+        data = BatchUpgradeOperation.dry_run(build=self.instance, group=group, location=location)
         data["device_firmwares"] = [
             str(device_fw.pk) for device_fw in data["device_firmwares"]
         ]

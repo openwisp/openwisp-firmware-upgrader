@@ -45,6 +45,7 @@ Build = load_model("Build")
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Organization = swapper.load_model("openwisp_users", "Organization")
+Location = swapper.load_model("geo", "Location")
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -105,10 +106,16 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         help_text=_("Limit the upgrade to devices belonging to this group"),
         empty_label=_("All devices (no group filter)"),
     )
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.none(),
+        required=False,
+        help_text=_("Limit the upgrade to devices at this location"),
+        empty_label=_("All devices (no location filter)"),
+    )
 
     class Meta:
         model = BatchUpgradeOperation
-        fields = ("build", "group", "upgrade_options")
+        fields = ("build", "group", "location", "upgrade_options")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -119,16 +126,21 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
                 self.fields["group"].queryset = swapper.load_model(
                     "config", "DeviceGroup"
                 ).objects.filter(organization=build.category.organization)
+                self.fields["location"].queryset = Location.objects.filter(
+                    organization=build.category.organization
+                )
             else:
-                # For shared builds, allow all groups
+                # For shared builds, allow all groups and locations
                 self.fields["group"].queryset = swapper.load_model(
                     "config", "DeviceGroup"
                 ).objects.all()
+                self.fields["location"].queryset = Location.objects.all()
         else:
-            # If no build in initial, show all groups
+            # If no build in initial, show all groups and locations
             self.fields["group"].queryset = swapper.load_model(
                 "config", "DeviceGroup"
             ).objects.all()
+            self.fields["location"].queryset = Location.objects.all()
 
     @property
     def media(self):
@@ -184,6 +196,7 @@ class BuildAdmin(BaseAdmin):
         upgrade_related = request.POST.get("upgrade_related")
         upgrade_options = request.POST.get("upgrade_options")
         group_id = request.POST.get("group")
+        location_id = request.POST.get("location")
         form = BatchUpgradeConfirmationForm(initial={"build": queryset.first()})
         build = queryset.first()
         # upgrade has been confirmed
@@ -193,16 +206,19 @@ class BuildAdmin(BaseAdmin):
                     "upgrade_options": upgrade_options,
                     "build": build,
                     "group": group_id,
+                    "location": location_id,
                 }
             )
             form.full_clean()
             if not form.errors:
                 upgrade_options = form.cleaned_data["upgrade_options"]
                 group = form.cleaned_data.get("group")
+                location = form.cleaned_data.get("location")
                 batch = build.batch_upgrade(
                     firmwareless=upgrade_all,
                     upgrade_options=upgrade_options,
                     group=group,
+                    location=location,
                 )
                 text = _(
                     "You can track the progress of this mass upgrade operation "
@@ -216,6 +232,7 @@ class BuildAdmin(BaseAdmin):
                 return redirect(url)
         # upgrade needs to be confirmed
         group = None
+        location = None
         if group_id:
             try:
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
@@ -223,7 +240,12 @@ class BuildAdmin(BaseAdmin):
                 )
             except:
                 pass
-        result = BatchUpgradeOperation.dry_run(build=build, group=group)
+        if location_id:
+            try:
+                location = Location.objects.get(pk=location_id)
+            except:
+                pass
+        result = BatchUpgradeOperation.dry_run(build=build, group=group, location=location)
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
         title = _("Confirm mass upgrade operation")
@@ -343,13 +365,15 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "status",
         BuildCategoryFilter,
         ("group", admin.RelatedOnlyFieldListFilter),
+        ("location", admin.RelatedOnlyFieldListFilter),
     ]
-    list_select_related = ["build__category__organization", "group"]
+    list_select_related = ["build__category__organization", "group", "location"]
     ordering = ["-created"]
     multitenant_parent = "build__category"
     fields = [
         "build",
         "group",
+        "location",
         "status",
         "completed",
         "success_rate",
@@ -359,7 +383,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "created",
         "modified",
     ]
-    autocomplete_fields = ["build", "group"]
+    autocomplete_fields = ["build", "group", "location"]
     readonly_fields = [
         "completed",
         "success_rate",
