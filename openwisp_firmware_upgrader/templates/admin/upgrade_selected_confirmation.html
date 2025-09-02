@@ -52,7 +52,7 @@
     {{ form.build }}
     
     <fieldset class="module aligned">
-      <h2>{% trans "Upgrade Options" %}</h2>
+      <h2>{% trans "Upgrade Filters" %}</h2>
       
       <div class="form-row">
         <div>
@@ -60,6 +60,16 @@
           <div class="field-box">{{ form.group }}</div>
           {% if form.group.help_text %}
             <p class="help">{{ form.group.help_text }}</p>
+          {% endif %}
+        </div>
+      </div>
+      
+      <div class="form-row">
+        <div>
+          <div for="{{ form.location.id_for_label }}">{{ form.location.label }}:</div>
+          <div class="field-box">{{ form.location }}</div>
+          {% if form.location.help_text %}
+            <p class="help">{{ form.location.help_text }}</p>
           {% endif %}
         </div>
       </div>
