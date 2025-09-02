@@ -262,11 +262,7 @@ function updateStatusWithProgressBar(statusField, operation) {
       </div>
       <span class="upgrade-progress-text">100%</span>
     `;
-  } else if (
-    status === "failed" ||
-    status === "aborted" ||
-    status === "cancelled"
-  ) {
+  } else if (status === "failed" || status === "aborted" || status === "cancelled") {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill ${status}" style="width: 100%"></div>
@@ -306,14 +302,9 @@ function getProgressPercentage(status, operationProgress = null) {
 function calculateProgressFromLogLength(logContent = "") {
   if (!logContent) return 0;
 
-  const logLines = logContent
-    .split("\n")
-    .filter((line) => line.trim().length > 0);
+  const logLines = logContent.split("\n").filter((line) => line.trim().length > 0);
   const estimatedTotalSteps = 20;
-  const currentProgress = Math.min(
-    95,
-    (logLines.length / estimatedTotalSteps) * 100,
-  );
+  const currentProgress = Math.min(95, (logLines.length / estimatedTotalSteps) * 100);
 
   return Math.max(5, currentProgress);
 }
@@ -353,9 +344,7 @@ function updateUpgradeOperationLog(logData) {
         currentLog = logElement.text().replace(/\s*$/, "");
       }
 
-      let newLog = currentLog
-        ? currentLog + "\n" + logData.content
-        : logData.content;
+      let newLog = currentLog ? currentLog + "\n" + logData.content : logData.content;
 
       // Store accumulated content in memory
       accumulatedLogContent.set(operationId, newLog);
@@ -390,10 +379,7 @@ function updateUpgradeOperationStatus(statusData) {
       statusField.find(".upgrade-status-container span").text() ||
       statusField.text().trim();
 
-    if (
-      currentStatusText === "in progress" ||
-      currentStatusText === "in-progress"
-    ) {
+    if (currentStatusText === "in progress" || currentStatusText === "in-progress") {
       // Get current log content for progress calculation
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -495,16 +481,11 @@ function createCancelConfirmationModal($) {
   });
 
   // Confirm cancellation handler
-  $("#ow-cancel-confirmation-modal .ow-cancel-btn-confirm").on(
-    "click",
-    function () {
-      const operationId = $("#ow-cancel-confirmation-modal").data(
-        "operation-id",
-      );
-      $("#ow-cancel-confirmation-modal").addClass("ow-hide");
-      cancelUpgradeOperation(operationId);
-    },
-  );
+  $("#ow-cancel-confirmation-modal .ow-cancel-btn-confirm").on("click", function () {
+    const operationId = $("#ow-cancel-confirmation-modal").data("operation-id");
+    $("#ow-cancel-confirmation-modal").addClass("ow-hide");
+    cancelUpgradeOperation(operationId);
+  });
 
   // Close on escape key
   $(document).on("keyup", function (e) {
@@ -534,9 +515,7 @@ function cancelUpgradeOperation(operationId) {
     },
     success: function (response) {
       if (typeof django.contrib !== "undefined" && django.contrib.messages) {
-        django.contrib.messages.success(
-          "Upgrade operation cancelled successfully.",
-        );
+        django.contrib.messages.success("Upgrade operation cancelled successfully.");
       }
     },
     error: function (xhr, status, error) {
