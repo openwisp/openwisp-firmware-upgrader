@@ -234,18 +234,12 @@ class BuildAdmin(BaseAdmin):
         group = None
         location = None
         if group_id:
-            try:
-                group = swapper.load_model("config", "DeviceGroup").objects.get(
-                    pk=group_id
-                )
-            except:
-                pass
+            group = swapper.load_model("config", "DeviceGroup").objects.get(pk=group_id)
         if location_id:
-            try:
-                location = Location.objects.get(pk=location_id)
-            except:
-                pass
-        result = BatchUpgradeOperation.dry_run(build=build, group=group, location=location)
+            location = Location.objects.get(pk=location_id)
+        result = BatchUpgradeOperation.dry_run(
+            build=build, group=group, location=location
+        )
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
         title = _("Confirm mass upgrade operation")

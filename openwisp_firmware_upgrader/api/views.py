@@ -96,17 +96,19 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
                 )
-            except:
-                pass
+            except ValueError:
+                group = None
         if location_id:
             try:
                 location = swapper.load_model("geo", "Location").objects.get(
                     pk=location_id
                 )
-            except:
-                pass
+            except ValueError:
+                location = None
         instance = self.get_object()
-        batch = instance.batch_upgrade(firmwareless=upgrade_all, group=group, location=location)
+        batch = instance.batch_upgrade(
+            firmwareless=upgrade_all, group=group, location=location
+        )
         return Response({"batch": str(batch.pk)}, status=201)
 
     def get(self, request, pk):
@@ -124,16 +126,18 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
                 )
-            except:
-                pass
+            except ValueError:
+                group = None
         if location_id:
             try:
                 location = swapper.load_model("geo", "Location").objects.get(
                     pk=location_id
                 )
-            except:
-                pass
-        data = BatchUpgradeOperation.dry_run(build=self.instance, group=group, location=location)
+            except ValueError:
+                location = None
+        data = BatchUpgradeOperation.dry_run(
+            build=self.instance, group=group, location=location
+        )
         data["device_firmwares"] = [
             str(device_fw.pk) for device_fw in data["device_firmwares"]
         ]

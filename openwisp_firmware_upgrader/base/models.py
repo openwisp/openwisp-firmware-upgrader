@@ -157,7 +157,9 @@ class AbstractBuild(TimeStampedEditableModel):
                 }
             )
 
-    def batch_upgrade(self, firmwareless, upgrade_options=None, group=None, location=None):
+    def batch_upgrade(
+        self, firmwareless, upgrade_options=None, group=None, location=None
+    ):
         upgrade_options = upgrade_options or {}
         batch = load_model("BatchUpgradeOperation")(
             build=self, upgrade_options=upgrade_options, group=group, location=location
@@ -169,7 +171,9 @@ class AbstractBuild(TimeStampedEditableModel):
         )
         return batch
 
-    def _find_related_device_firmwares(self, select_devices=False, group=None, location=None):
+    def _find_related_device_firmwares(
+        self, select_devices=False, group=None, location=None
+    ):
         """
         Returns all the DeviceFirmware objects related to the firmware
         category of this build that have not been installed yet
@@ -580,7 +584,9 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         related_device_fw = build._find_related_device_firmwares(
             select_devices=True, group=group, location=location
         )
-        firmwareless_devices = build._find_firmwareless_devices(group=group, location=location)
+        firmwareless_devices = build._find_firmwareless_devices(
+            group=group, location=location
+        )
         return {
             "device_firmwares": related_device_fw,
             "devices": firmwareless_devices,
