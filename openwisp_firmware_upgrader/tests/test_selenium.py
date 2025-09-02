@@ -782,7 +782,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         """Test upgrade cancel modal functionality"""
         org, category, build1, build2, image1, image2, device = self._set_up_env()
 
-        operation = UpgradeOperation.objects.create(
+        UpgradeOperation.objects.create(
             device=device,
             image=image2,
             status="in-progress",
