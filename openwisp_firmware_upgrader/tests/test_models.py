@@ -972,6 +972,40 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(len(result_no_filter["device_firmwares"]), 1)  # device1
         self.assertEqual(len(result_no_filter["devices"]), 1)  # device2
 
+    def test_batch_upgrade_no_devices_with_filters(self):
+        """Test that batch_upgrade raises ValidationError when no devices match filters."""
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category, version="no-devices-test")
+        
+        # Create location but no devices at this location
+        location = Location.objects.create(
+            name="Empty Location",
+            address="456 Empty St",
+            organization=org
+        )
+        
+        # Create group but no devices in this group  
+        group = self._create_device_group(name="Empty Group", organization=org)
+        
+        with self.subTest("Test location filter with no devices"):
+            with self.assertRaises(ValidationError) as cm:
+                build.batch_upgrade(firmwareless=True, location=location)
+            self.assertIn("No devices found matching", str(cm.exception))
+            
+        with self.subTest("Test group filter with no devices"):
+            with self.assertRaises(ValidationError) as cm:
+                build.batch_upgrade(firmwareless=True, group=group)
+            self.assertIn("No devices found matching", str(cm.exception))
+            
+        with self.subTest("Test combined filters with no devices"):
+            with self.assertRaises(ValidationError) as cm:
+                build.batch_upgrade(firmwareless=True, group=group, location=location)
+            self.assertIn("No devices found matching", str(cm.exception))
+            
+        # Verify no BatchUpgradeOperation objects were created
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
     def test_device_fw_not_created_on_device_connection_save(self):
         org = self._get_org()
         category = self._get_category(organization=org)

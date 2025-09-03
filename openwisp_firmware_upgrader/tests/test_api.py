@@ -686,6 +686,46 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 200)
             # Should return all devices as if no filter applied
 
+    def test_api_batch_upgrade_no_devices_with_filters(self):
+        """Test API error handling when filters don't match any devices."""
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        org = self.org
+
+        # Create location and group but no devices matching them
+        location = Location.objects.create(
+            name="Empty Location",
+            address="456 Empty St",
+            organization=org
+        )
+        group = self._create_device_group(name="Empty Group", organization=org)
+
+        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
+
+        with self.subTest("Test POST with filters matching no devices"):
+            r = self.client.post(url, {
+                "upgrade_all": "true",
+                "location": location.pk,
+                "group": group.pk
+            })
+            # Should return 400 Bad Request
+            self.assertEqual(r.status_code, 400)
+            self.assertIn("No devices found matching", str(r.data["error"]))
+            
+            # No batch should be created
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+        with self.subTest("Test GET dry run with filters matching no devices"):
+            r = self.client.get(url, {
+                "location": location.pk, 
+                "group": group.pk
+            })
+            self.assertEqual(r.status_code, 200)
+            
+            # Should return empty results
+            self.assertEqual(len(r.data["device_firmwares"]), 0)
+            self.assertEqual(len(r.data["devices"]), 0)
+
 
 class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
     def _serialize_category(self, category):

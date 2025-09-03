@@ -8,6 +8,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.shortcuts import redirect
@@ -214,12 +215,19 @@ class BuildAdmin(BaseAdmin):
                 upgrade_options = form.cleaned_data["upgrade_options"]
                 group = form.cleaned_data.get("group")
                 location = form.cleaned_data.get("location")
-                batch = build.batch_upgrade(
-                    firmwareless=upgrade_all,
-                    upgrade_options=upgrade_options,
-                    group=group,
-                    location=location,
-                )
+                try:
+                    batch = build.batch_upgrade(
+                        firmwareless=upgrade_all,
+                        upgrade_options=upgrade_options,
+                        group=group,
+                        location=location,
+                    )
+                except ValidationError as e:
+                    self.message_user(request, str(e.messages[0]), messages.ERROR)
+                    # Redirect back to build changelist since no devices match filters
+                    return redirect(reverse(f"admin:{app_label}_build_changelist"))
+                
+                # Success message for when batch upgrade starts successfully
                 text = _(
                     "You can track the progress of this mass upgrade operation "
                     "in this page. Refresh the page from time to time to check "

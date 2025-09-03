@@ -106,9 +106,14 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
             except ValueError:
                 location = None
         instance = self.get_object()
-        batch = instance.batch_upgrade(
-            firmwareless=upgrade_all, group=group, location=location
-        )
+        try:
+            batch = instance.batch_upgrade(
+                firmwareless=upgrade_all, group=group, location=location
+            )
+        except ValidationError as e:
+            return Response(
+                {"error": str(e.messages[0])}, status=status.HTTP_400_BAD_REQUEST
+            )
         return Response({"batch": str(batch.pk)}, status=201)
 
     def get(self, request, pk):

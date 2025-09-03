@@ -1313,6 +1313,43 @@ class TestAdminTransaction(
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, location.name)
 
+    def test_batch_upgrade_no_devices_error_handling(self, *args):
+        """Test admin error handling when filters don't match any devices."""
+        self._login()
+
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category, version="error-test")
+        image = self._create_firmware_image(build=build)
+
+        # Create location and group but no devices matching both
+        location = Location.objects.create(
+            name="Empty Location",
+            address="456 Empty St",
+            organization=org
+        )
+        group = self._create_device_group(name="Empty Group", organization=org)
+
+        url = reverse(f"admin:{self.app_label}_build_changelist")
+        data = {
+            ACTION_CHECKBOX_NAME: [build.pk],
+            "action": "upgrade_selected",
+            "location": location.pk,
+            "group": group.pk,
+            "upgrade_all": "on",
+        }
+
+        with self.subTest("Test error message when no devices match filters"):
+            response = self.client.post(url, data, follow=True)
+            self.assertEqual(response.status_code, 200)
+            
+            # Should stay on confirmation page with error message
+            self.assertContains(response, "No devices found matching")
+            self.assertContains(response, "adjust your group and/or location filters")
+            
+            # No batch should be created
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
     def test_batch_upgrade_operation_list_location_filter(self, *args):
         """Test location filter in BatchUpgradeOperation list view."""
         self._login()
