@@ -6,6 +6,7 @@ from time import sleep
 
 import jsonschema
 from billiard import Process, Queue
+from celery import current_app
 from django.utils.translation import gettext_lazy as _
 
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
@@ -15,6 +16,7 @@ from ..exceptions import (
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
+    UpgradeCanceled,
     UpgradeNotNeeded,
 )
 from ..settings import OPENWRT_SETTINGS
@@ -170,8 +172,6 @@ class OpenWrt(object):
         )
         if exit_code == 1 or not output.strip():
             self.log(_("Could not read device UUID from configuration"))
-            self.upgrade_operation.status = "aborted"
-            self.upgrade_operation.save()
             raise UpgradeAborted()
         config_uuid = output.strip()
         # Convert to strict UUID format for comparison
@@ -203,7 +203,7 @@ class OpenWrt(object):
         checksum = self._test_checksum(image)
         self._check_cancellation()
         remote_path = self.get_remote_path(image)
-        self.upload(image.file, remote_path)
+        self.upload(image, remote_path)
         self._check_cancellation()
         self._test_image(remote_path)
         self._reflash(remote_path)
@@ -215,7 +215,7 @@ class OpenWrt(object):
         """
         self.upgrade_operation.refresh_from_db()
 
-        if self.upgrade_operation.status in ["aborted", "cancelled"]:
+        if self.upgrade_operation.status == "cancelled":
             self.log(_("Upgrade operation has been cancelled by user"))
 
             if self._non_critical_services_stopped:
@@ -223,7 +223,7 @@ class OpenWrt(object):
                 self._start_non_critical_services()
 
             self.disconnect()
-            raise UpgradeAborted("Upgrade cancelled by user")
+            raise UpgradeCanceled("Upgrade cancelled by user")
 
     def _test_connection(self):
         result = self.connect()
@@ -297,8 +297,6 @@ class OpenWrt(object):
             )
             self._start_non_critical_services()
             self.log(_("Non critical services started, aborting upgrade."))
-            self.upgrade_operation.status = "aborted"
-            self.upgrade_operation.save()
             raise UpgradeAborted()
 
     def _get_mib(self, value):
@@ -360,7 +358,7 @@ class OpenWrt(object):
 
     def get_remote_path(self, image):
         # discard directory info from image name
-        filename = image.file.name.split("/")[-1]
+        filename = image.name.split("/")[-1]
         return os.path.join(self.REMOTE_UPLOAD_DIR, filename)
 
     def get_upgrade_command(self, path):
@@ -386,8 +384,8 @@ class OpenWrt(object):
         the device, which indicates the upgrade has already been performed previously
         """
         # calculate firmware image checksum
-        checksum = sha256(image.file.read()).hexdigest()
-        image.file.seek(0)
+        checksum = sha256(image.read()).hexdigest()
+        image.seek(0)
         # test for presence of firmware checksum signature file
         output, exit_code = self.exec_command(
             f"test -f {self.CHECKSUM_FILE}", exit_codes=[0, 1]
@@ -432,8 +430,6 @@ class OpenWrt(object):
                 self.log(_("Starting non critical services again..."))
                 self._start_non_critical_services()
             self.disconnect()
-            self.upgrade_operation.status = "aborted"
-            self.upgrade_operation.save()
             raise UpgradeAborted()
         self.log(
             _(
@@ -562,3 +558,42 @@ class OpenWrt(object):
         raise ReconnectionFailed(
             "Giving up, device not reachable anymore after upgrade"
         )
+
+    def cancel(self):
+        """Cancel the upgrade operation by revoking Celery task and restarting services."""
+        # Revoke the associated Celery task if it exists
+        self._revoke_celery_task()
+
+        # Restart non-critical services if they were stopped
+        self._restart_services_after_cancellation()
+
+    def _revoke_celery_task(self):
+        """Revoke the associated Celery task if it exists."""
+        try:
+            active_tasks = current_app.control.inspect().active()
+            if not active_tasks:
+                return
+
+            for worker_tasks in active_tasks.values():
+                for task in worker_tasks:
+                    if (
+                        task.get("name")
+                        == "openwisp_firmware_upgrader.tasks.upgrade_firmware"
+                        and task.get("args")
+                        and len(task["args"]) > 0
+                        and str(task["args"][0]) == str(self.upgrade_operation.pk)
+                    ):
+                        current_app.control.revoke(task["id"], terminate=True)
+                        return  # Task found and revoked, exit early
+        except Exception as e:
+            self.log(f"Warning: Could not revoke Celery task: {e}")
+
+    def _restart_services_after_cancellation(self):
+        """Restart non-critical services if they were stopped during upgrade."""
+        try:
+            if self.connect():
+                self._start_non_critical_services()
+                self.log("Non-critical services restarted after cancellation")
+                self.disconnect()
+        except Exception as e:
+            self.log(f"Warning: Could not restart services after cancellation: {e}")

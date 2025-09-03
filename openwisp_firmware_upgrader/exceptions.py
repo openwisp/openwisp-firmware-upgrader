@@ -18,6 +18,12 @@ class UpgradeAborted(FirmwareUpgraderException):
     """
 
 
+class UpgradeCanceled(FirmwareUpgraderException):
+    """
+    Raised when the upgrade has been canceled by the user
+    """
+
+
 class ReconnectionFailed(FirmwareUpgraderException):
     """
     Raised when the reconnection after the upgrade fails

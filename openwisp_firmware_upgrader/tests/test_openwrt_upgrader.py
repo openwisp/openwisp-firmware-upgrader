@@ -16,7 +16,7 @@ from openwisp_controller.connection.connectors.openwrt.ssh import (
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_controller.connection.tests.utils import SshServer
 
-from ..exceptions import UpgradeAborted
+from ..exceptions import UpgradeCanceled
 from ..swapper import load_model, swapper_load_model
 from ..tasks import upgrade_firmware
 from ..upgraders.openwrt import OpenWrt
@@ -872,38 +872,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertTrue(device_fw.installed)
 
     @patch("scp.SCPClient.putfo")
-    def test_upgrade_aborted_exception(self, putfo):
-        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
-
-        ssh = device_conn.connector_instance
-        ssh.connect()
-
-        # We need to let some commands succeed (like UUID verification) but fail on the test image command
-        def selective_failing_exec_command(cmd, **kwargs):
-            if "uci get openwisp.http.uuid" in cmd:
-                # Return the device UUID for verification
-                return [str(upgrade_op.device.pk), 0]
-            elif "sysupgrade --test" in cmd:
-                # This is where we want the failure to occur
-                raise CommandFailedException("exit status 1")
-            else:
-                filtered_kwargs = {
-                    k: v for k, v in kwargs.items() if k != "raise_unexpected_exit"
-                }
-                return mocked_exec_upgrade_success(cmd, **filtered_kwargs)
-
-        ssh.exec_command = selective_failing_exec_command
-
-        upgrader = OpenWrt(upgrade_op, device_conn)
-
-        with self.assertRaises(UpgradeAborted):
-            upgrader.upgrade(upgrade_op.image)
-
-        upgrade_op.refresh_from_db()
-        self.assertEqual(upgrade_op.status, "aborted")
-        ssh.disconnect()
-
-    def test_upgrade_cancellation_early_stage(self):
+    def test_upgrade_cancellation_early_stage(self, mock_putfo):
         """Test cancellation during early stages of upgrade"""
         device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
 
@@ -924,14 +893,14 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                 mock_check_cancellation.called = True
                 return original_check_cancellation()
             else:
-                upgrade_op.status = "aborted"
+                upgrade_op.status = "cancelled"
                 upgrade_op.save()
                 return original_check_cancellation()
 
         upgrader._check_cancellation = mock_check_cancellation
 
-        with self.assertRaises(UpgradeAborted):
-            upgrader.upgrade(upgrade_op.image)
+        with self.assertRaises(UpgradeCanceled):
+            upgrader.upgrade(upgrade_op.image.file)
 
         ssh.disconnect()
 
@@ -954,12 +923,13 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         ssh.exec_command = mock_exec_command
         upgrader = OpenWrt(upgrade_op, device_conn)
         upgrader._stop_non_critical_services()
+        upgrader._non_critical_services_stopped = True
 
-        upgrade_op.status = "aborted"
+        upgrade_op.status = "cancelled"
         upgrade_op.save()
 
         # Check cancellation (should restart services)
-        with self.assertRaises(UpgradeAborted):
+        with self.assertRaises(UpgradeCanceled):
             upgrader._check_cancellation()
 
         # Verify services were restarted
@@ -983,17 +953,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op.save()
         upgrader._check_cancellation()
 
-        # Test that UpgradeAborted is raised when operation is aborted
-        upgrade_op.status = "aborted"
-        upgrade_op.save()
-
-        with self.assertRaises(UpgradeAborted):
-            upgrader._check_cancellation()
-
+        # Test that UpgradeCanceled is raised when operation is cancelled
         upgrade_op.status = "cancelled"
         upgrade_op.save()
 
-        with self.assertRaises(UpgradeAborted):
+        with self.assertRaises(UpgradeCanceled):
             upgrader._check_cancellation()
+
+        # Test that no exception is raised when operation is aborted
+        # (aborted is handled differently - it's set after UpgradeAborted is raised)
+        upgrade_op.status = "aborted"
+        upgrade_op.save()
+        upgrader._check_cancellation()
 
         ssh.disconnect()

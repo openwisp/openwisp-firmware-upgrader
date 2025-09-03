@@ -1,8 +1,9 @@
-from asyncio.log import logger
+import logging
 
 import swapper
 from django.core.exceptions import ValidationError
 from django.http import Http404
+from django.utils.translation import gettext_lazy as _
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, generics, pagination, serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -27,6 +28,8 @@ from .serializers import (
     FirmwareImageSerializer,
     UpgradeOperationSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 UpgradeOperation = load_model("UpgradeOperation")
@@ -349,7 +352,7 @@ class DeviceFirmwareDetailView(
 class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     queryset = UpgradeOperation.objects.all()
     serializer_class = serializers.Serializer
-    lookup_field = "pk"  # Use singular form
+    lookup_field = "pk"
     organization_field = "device__organization"
 
     CANCELLABLE_STATUS = UpgradeOperation._CANCELLABLE_STATUS
@@ -359,13 +362,14 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
         """Cancel an upgrade operation if conditions are met."""
         try:
             operation = self.get_object()
-            self._validate_cancellation(operation)
-            try:
-                operation.cancel()
-            except ValueError as e:
-                # Surface model-level validation errors as 404 (same contract as _validate_cancellation)
-                return self._error_response(str(e), status.HTTP_404_NOT_FOUND)
+        except Http404:
+            return self._error_response(
+                "Upgrade operation not found", status.HTTP_404_NOT_FOUND
+            )
 
+        try:
+            self._validate_cancellation(operation)
+            operation.cancel()
             logger.info(
                 f"Upgrade operation {pk} cancelled successfully by user {request.user}"
             )
@@ -374,12 +378,10 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
                 status=status.HTTP_200_OK,
             )
 
-        except Http404:
-            return self._error_response(
-                "Upgrade operation not found", status.HTTP_404_NOT_FOUND
-            )
         except ValidationError as e:
-            return self._error_response(str(e), status.HTTP_404_NOT_FOUND)
+            return self._error_response(str(e), status.HTTP_409_CONFLICT)
+        except ValueError as e:
+            return self._error_response(str(e), status.HTTP_409_CONFLICT)
         except Exception as e:
             logger.error(f"Failed to cancel upgrade operation {pk}: {str(e)}")
             return self._error_response(
@@ -388,15 +390,19 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
             )
 
     def _validate_cancellation(self, operation):
-        """Validate if the operation can be cancelled."""
+        """Check whether the operation can be cancelled."""
         if operation.status != self.CANCELLABLE_STATUS:
             raise ValidationError(
-                f"Cannot cancel operation with status: {operation.status}"
+                _("Cannot cancel operation with status: {status}").format(
+                    status=operation.status
+                )
             )
 
         if operation.progress >= self.MAX_CANCELLABLE_PROGRESS:
             raise ValidationError(
-                "Cannot cancel operation - firmware flashing has already started"
+                _(
+                    "Cannot cancel operation because the firmware image has already been flashed!"
+                )
             )
 
     def _error_response(self, message, status_code):

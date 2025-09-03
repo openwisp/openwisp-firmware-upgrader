@@ -244,15 +244,15 @@ function updateStatusWithProgressBar(statusField, operation) {
       ? "upgrade-cancel-btn"
       : "upgrade-cancel-btn disabled";
     const cancelButtonTitle = canCancel
-      ? "Cancel upgrade"
-      : "Cannot cancel - firmware flashing in progress";
+      ? gettext("Cancel upgrade")
+      : gettext("Cannot cancel - firmware flashing in progress");
 
     statusHtml += `
       <button class="${cancelButtonClass}" 
               data-operation-id="${operation.id}" 
               title="${cancelButtonTitle}"
               ${!canCancel ? "disabled" : ""}>
-        Cancel
+        ${gettext("Cancel")}
       </button>
     `;
   } else if (status === "success") {
@@ -456,17 +456,17 @@ function createCancelConfirmationModal($) {
       <div class="ow-dialog-notification ow-cancel-confirmation-dialog">
         <span class="ow-dialog-close ow-dialog-close-x">&times;</span>
         <div class="ow-cancel-confirmation-header">
-          <h2 class="ow-cancel-confirmation-title">STOP UPGRADE OPERATION</h2>
+          <h2 class="ow-cancel-confirmation-title">${gettext("Stop upgrade operation")}</h2>
         </div>
         <div class="ow-cancel-confirmation-content">
-          <p>Are you sure you want to cancel this upgrade operation?</p>
+          <p>${gettext("Are you sure you want to cancel this upgrade operation?")}</p>
         </div>
         <div class="ow-dialog-buttons ow-cancel-confirmation-buttons">
           <button class="ow-cancel-btn-confirm button default danger-btn">
-            Yes
+            ${gettext("Yes")}
           </button>
           <button class="ow-dialog-close button default">
-            No
+            ${gettext("No")}
           </button>
         </div>
       </div>
@@ -505,22 +505,32 @@ function createCancelConfirmationModal($) {
 function cancelUpgradeOperation(operationId) {
   const $ = django.jQuery;
 
-  const csrfToken = $("[name=csrfmiddlewaretoken]").val();
+  // Show loading overlay
+  $("#ow-loading").show();
 
   $.ajax({
     url: `/api/v1/firmware-upgrader/upgrade-operation/${operationId}/cancel/`,
     type: "POST",
     headers: {
-      "X-CSRFToken": csrfToken,
+      "X-CSRFToken": $('input[name="csrfmiddlewaretoken"]').val(),
     },
+    xhrFields: {
+      withCredentials: true,
+    },
+    crossDomain: true,
     success: function (response) {
+      $("#ow-loading").hide();
+
       if (typeof django.contrib !== "undefined" && django.contrib.messages) {
-        django.contrib.messages.success("Upgrade operation cancelled successfully.");
+        django.contrib.messages.success(
+          gettext("Upgrade operation cancelled successfully."),
+        );
       }
     },
     error: function (xhr, status, error) {
-      let errorMessage = "Failed to cancel upgrade operation.";
+      $("#ow-loading").hide();
 
+      let errorMessage = gettext("Failed to cancel upgrade operation.");
       if (xhr.responseJSON && xhr.responseJSON.error) {
         errorMessage = xhr.responseJSON.error;
       }

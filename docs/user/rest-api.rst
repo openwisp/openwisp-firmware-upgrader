@@ -299,6 +299,13 @@ Get Upgrade Operation Details
 
     GET /api/v1/firmware-upgrader/upgrade-operation/{id}
 
+Cancel Upgrade Operation
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/upgrade-operation/{id}/cancel/
+
 List Device Upgrade Operations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

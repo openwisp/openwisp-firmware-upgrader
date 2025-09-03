@@ -1872,8 +1872,8 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         )
 
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 404)
-        self.assertIn("firmware flashing has already started", response.data["error"])
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("firmware image has already been flashed", response.data["error"])
 
     def test_upgrade_operation_cancel_not_found(self):
         """Test cancellation of a non-existent operation"""

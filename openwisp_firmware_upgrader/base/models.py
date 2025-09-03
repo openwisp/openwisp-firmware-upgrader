@@ -5,7 +5,6 @@ from pathlib import Path
 
 import jsonschema
 import swapper
-from celery import current_app
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
@@ -25,6 +24,7 @@ from ..exceptions import (
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
+    UpgradeCanceled,
     UpgradeNotNeeded,
 )
 from ..hardware import (
@@ -40,7 +40,6 @@ from ..tasks import (
     create_device_firmware,
     upgrade_firmware,
 )
-from ..upgraders.openwrt import OpenWrt
 from ..utils import (
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
@@ -613,15 +612,6 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self.__get_rate(cancelled)
 
     @property
-    def aborted_and_cancelled_rate(self):
-        if not self.total_operations:
-            return 0
-        aborted_and_cancelled = self.upgrade_operations.filter(
-            status__in=["aborted", "cancelled"]
-        ).count()
-        return self.__get_rate(aborted_and_cancelled)
-
-    @property
     def upgrader_class(self):
         return self._get_upgrader_class()
 
@@ -711,7 +701,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.save()
 
     def cancel(self):
-        """Cancel the upgrade operation if conditions are met."""
+        """Cancels the upgrade operation if conditions are met."""
         # Validate cancellation conditions
         if self.status != self._CANCELLABLE_STATUS:
             raise ValueError(f"Cannot cancel operation with status: {self.status}")
@@ -721,54 +711,22 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 "Cannot cancel upgrade: firmware reflashing has already started"
             )
 
-        # Attempt to revoke Celery task
-        self._revoke_celery_task()
-
-        # Update status and save
-        self.status = "cancelled"
-        self.log_line("Upgrade operation cancelled by user", save=False)
-        self._restart_services_after_cancellation()
-        self.save()
-
-    def _revoke_celery_task(self):
-        """Revoke the associated Celery task if it exists."""
-        try:
-            active_tasks = current_app.control.inspect().active()
-            if not active_tasks:
-                return
-
-            for worker_tasks in active_tasks.values():
-                for task in worker_tasks:
-                    if (
-                        task.get("name")
-                        == "openwisp_firmware_upgrader.tasks.upgrade_firmware"
-                        and task.get("args")
-                        and len(task["args"]) > 0
-                        and str(task["args"][0]) == str(self.pk)
-                    ):
-                        current_app.control.revoke(task["id"], terminate=True)
-                        return  # Task found and revoked, exit early
-        except Exception as e:
-            self.log_line(f"Warning: Could not revoke Celery task: {e}")
-
-    def _restart_services_after_cancellation(self):
-        """Restart non-critical services if they were stopped during upgrade."""
+        # Delegate cancellation to the upgrader if available
         try:
             DeviceConnection = swapper.load_model("connection", "DeviceConnection")
             conn = DeviceConnection.get_working_connection(self.device)
             if conn:
-                upgrader = OpenWrt(self, conn)
-                if upgrader.connect():
-                    upgrader._start_non_critical_services()
-                    # Log without saving; cancel() will perform a single save at the end
-                    self.log_line(
-                        "Non-critical services restarted after cancellation", save=False
-                    )
-                    upgrader.disconnect()
+                upgrader_class = get_upgrader_class_from_device_connection(conn)
+                if upgrader_class:
+                    upgrader = upgrader_class(self, conn)
+                    upgrader.cancel()
         except Exception as e:
-            self.log_line(
-                f"Warning: Could not restart services after cancellation: {e}"
-            )
+            self.log_line(f"Warning during cancellation: {e}", save=False)
+
+        # Update status and save
+        self.status = "cancelled"
+        self.log_line("Upgrade operation cancelled by user", save=False)
+        self.save()
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
@@ -846,6 +804,9 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # meaning the image file is corrupted or not apt for flashing
         except UpgradeAborted:
             self.status = "aborted"
+        # this exception is raised when the upgrade is cancelled by the user
+        except UpgradeCanceled:
+            self.status = "cancelled"
         # raising this exception will cause celery to retry again
         # the upgrade according to its configuration
         except RecoverableFailure as e:

@@ -42,7 +42,7 @@
 }
 
 .upgrade-progress-fill.cancelled {
-  background-color: #efb80b;
+  background-color: #8b8b8b;
 }
 
 .upgrade-progress-fill.in-progress {
@@ -130,6 +130,7 @@
   font-weight: 600;
   color: #333;
   line-height: 1.3;
+  text-transform: uppercase;
 }
 
 .ow-cancel-confirmation-content {

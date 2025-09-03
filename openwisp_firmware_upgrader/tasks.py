@@ -28,9 +28,6 @@ def upgrade_firmware(self, operation_id):
     """
     try:
         operation = load_model("UpgradeOperation").objects.get(pk=operation_id)
-        # Skip if operation is no longer in progress (eg: cancelled, aborted, etc.)
-        if getattr(operation, "status", None) != "in-progress":
-            return
         recoverable = self.request.retries < self.max_retries
         operation.upgrade(recoverable=recoverable)
     except SoftTimeLimitExceeded:
