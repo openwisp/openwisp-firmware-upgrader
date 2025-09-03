@@ -890,7 +890,6 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         build2 = self._create_build(category=category, version="2.0")
 
         image1 = self._create_firmware_image(build=build1)
-        image2 = self._create_firmware_image(build=build2)
 
         group1 = self._create_device_group(name="Group 1", organization=org)
         group2 = self._create_device_group(name="Group 2", organization=org)

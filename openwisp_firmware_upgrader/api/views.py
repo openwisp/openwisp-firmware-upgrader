@@ -1,3 +1,5 @@
+import logging
+
 import swapper
 from django.core.exceptions import ValidationError
 from django.http import Http404
@@ -25,6 +27,8 @@ from .serializers import (
     FirmwareImageSerializer,
     UpgradeOperationSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 UpgradeOperation = load_model("UpgradeOperation")
@@ -94,8 +98,11 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
                 )
-            except:
-                pass
+            except (
+                ValueError,
+                swapper.load_model("config", "DeviceGroup").DoesNotExist,
+            ):
+                group = None
         instance = self.get_object()
         batch = instance.batch_upgrade(firmwareless=upgrade_all, group=group)
         return Response({"batch": str(batch.pk)}, status=201)
@@ -113,8 +120,11 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
                 )
-            except:
-                pass
+            except (
+                ValueError,
+                swapper.load_model("config", "DeviceGroup").DoesNotExist,
+            ):
+                group = None
         data = BatchUpgradeOperation.dry_run(build=self.instance, group=group)
         data["device_firmwares"] = [
             str(device_fw.pk) for device_fw in data["device_firmwares"]

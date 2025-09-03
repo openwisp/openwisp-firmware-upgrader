@@ -376,7 +376,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
 
             with mock.patch(
                 "openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay"
-            ) as mock_task:
+            ):
                 batch.upgrade(firmwareless=True)
 
             upgrade_ops = batch.upgradeoperation_set.all()
@@ -391,7 +391,13 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         UpgradeOperation.objects.all().delete()
 
         with self.subTest("Test POST with invalid group"):
-            r = self.client.post(url, {"upgrade_all": "true", "group": "99999"})
+            r = self.client.post(
+                url,
+                {
+                    "upgrade_all": "true",
+                    "group": "00000000-0000-0000-0000-000000000000",
+                },
+            )
             self.assertEqual(r.status_code, 201)
 
             batch = BatchUpgradeOperation.objects.first()
@@ -453,7 +459,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
 
         with self.assertRaises(ValidationError) as cm:
-            r = self.client.post(url, {"upgrade_all": "true", "group": group_org2.pk})
+            self.client.post(url, {"upgrade_all": "true", "group": group_org2.pk})
         self.assertIn("organization of the group", str(cm.exception))
 
     def test_build_upgradeable(self):

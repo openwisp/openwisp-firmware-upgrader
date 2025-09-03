@@ -4,6 +4,7 @@
 {% block extrahead %}
     {{ block.super }}
     {{ media }}
+    <link rel="stylesheet" type="text/css" href="{% static 'firmware-upgrader/css/upgrade-selected-confirmation.css' %}">
     <script type="text/javascript" src="{% static 'admin/js/cancel.js' %}"></script>
 {% endblock %}
 
@@ -25,22 +26,6 @@
   <p>{% blocktrans %}No devices to upgrade were found.
      Hint: Maybe they have been all already updated previously.{% endblocktrans %}</p>
   {% endif %}
-  {% if related_count %}
-  <h2>{% trans "Devices related to build" %} {{ build }} ({{ related_count }})</h2>
-  <ul>
-      {% for device_fw in related_device_fw %}
-      <li>{{ device_fw.device.name }}</li>
-      {% endfor %}
-  </ul>
-  {% endif %}
-  {% if firmwareless_count %}
-  <h2>{% trans "Devices which the system has never upgraded yet" %} ({{ firmwareless_count }})</h2>
-  <ul>
-      {% for device in firmwareless_devices %}
-      <li>{{ device.name }}</li>
-      {% endfor %}
-  </ul>
-  {% endif %}
 
   <form method="post">{% csrf_token %}
   <div>
@@ -52,7 +37,7 @@
     {{ form.build }}
     
     <fieldset class="module aligned">
-      <h2>{% trans "Upgrade Options" %}</h2>
+      <h2>{% trans "Upgrade Filters" %}</h2>
       
       <div class="form-row">
         <div>

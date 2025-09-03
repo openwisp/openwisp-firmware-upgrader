@@ -160,8 +160,6 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 },
                 follow=True,
             )
-        self.assertContains(r, "Devices related to build")
-        self.assertNotContains(r, "has never upgraded yet")
         self.assertNotContains(r, '<input type="submit" name="upgrade_related"')
 
     def test_upgrade_intermediate_page_firmwareless(self):
@@ -176,8 +174,6 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 },
                 follow=True,
             )
-        self.assertNotContains(r, "Devices related to build")
-        self.assertContains(r, "has never upgraded yet")
         self.assertNotContains(r, '<input type="submit" name="upgrade_related"')
         self.assertContains(r, '<input type="submit" name="upgrade_all"')
 

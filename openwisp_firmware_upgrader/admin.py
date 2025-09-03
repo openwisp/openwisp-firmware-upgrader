@@ -33,7 +33,7 @@ from .filters import (
 )
 from .swapper import load_model
 from .utils import get_upgrader_schema_for_device
-from .widgets import FirmwareSchemaWidget
+from .widgets import FirmwareSchemaWidget, GroupSelect2Widget
 
 logger = logging.getLogger(__name__)
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -103,6 +103,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         queryset=swapper.load_model("config", "DeviceGroup").objects.none(),
         required=False,
         help_text=_("Limit the upgrade to devices belonging to this group"),
+        widget=GroupSelect2Widget,
         empty_label=_("All devices (no group filter)"),
     )
 
@@ -112,6 +113,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         # Set the appropriate queryset for group field based on the build's organization
         if self.initial.get("build"):
             build = self.initial["build"]
@@ -221,8 +223,11 @@ class BuildAdmin(BaseAdmin):
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
                 )
-            except:
-                pass
+            except (
+                ValueError,
+                swapper.load_model("config", "DeviceGroup").DoesNotExist,
+            ):
+                group = None
         result = BatchUpgradeOperation.dry_run(build=build, group=group)
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
@@ -247,7 +252,7 @@ class BuildAdmin(BaseAdmin):
                 "build": build,
                 "opts": opts,
                 "action_checkbox_name": ACTION_CHECKBOX_NAME,
-                "media": self.media,
+                "media": self.media + form.media,
             }
         )
         request.current_app = self.admin_site.name
