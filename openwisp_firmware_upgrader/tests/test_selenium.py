@@ -360,12 +360,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 (By.CSS_SELECTOR, ".upgrade-status-container")
             )
         )
-
         # Wait for cancel button to be present and clickable
         cancel_button = WebDriverWait(self.web_driver, 2).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
         )
-
         # Verify cancel button properties
         self.assertTrue(cancel_button.is_displayed())
         self.assertEqual(cancel_button.text.strip(), "Cancel")

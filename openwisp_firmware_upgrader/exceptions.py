@@ -18,9 +18,9 @@ class UpgradeAborted(FirmwareUpgraderException):
     """
 
 
-class UpgradeCanceled(FirmwareUpgraderException):
+class UpgradeCancelled(FirmwareUpgraderException):
     """
-    Raised when the upgrade has been canceled by the user
+    Raised when the upgrade has been cancelled by the user
     """
 
 

@@ -16,7 +16,7 @@ from openwisp_controller.connection.connectors.openwrt.ssh import (
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_controller.connection.tests.utils import SshServer
 
-from ..exceptions import UpgradeCanceled
+from ..exceptions import UpgradeCancelled
 from ..swapper import load_model, swapper_load_model
 from ..tasks import upgrade_firmware
 from ..upgraders.openwrt import OpenWrt
@@ -899,7 +899,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
 
         upgrader._check_cancellation = mock_check_cancellation
 
-        with self.assertRaises(UpgradeCanceled):
+        with self.assertRaises(UpgradeCancelled):
             upgrader.upgrade(upgrade_op.image.file)
 
         ssh.disconnect()
@@ -929,7 +929,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op.save()
 
         # Check cancellation (should restart services)
-        with self.assertRaises(UpgradeCanceled):
+        with self.assertRaises(UpgradeCancelled):
             upgrader._check_cancellation()
 
         # Verify services were restarted
@@ -953,11 +953,11 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op.save()
         upgrader._check_cancellation()
 
-        # Test that UpgradeCanceled is raised when operation is cancelled
+        # Test that UpgradeCancelled is raised when operation is cancelled
         upgrade_op.status = "cancelled"
         upgrade_op.save()
 
-        with self.assertRaises(UpgradeCanceled):
+        with self.assertRaises(UpgradeCancelled):
             upgrader._check_cancellation()
 
         # Test that no exception is raised when operation is aborted

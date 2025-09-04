@@ -5,6 +5,8 @@ from django.core.exceptions import ValidationError
 from django.http import Http404
 from django.utils.translation import gettext_lazy as _
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import filters, generics, pagination, serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.request import clone_request
@@ -355,9 +357,37 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     lookup_field = "pk"
     organization_field = "device__organization"
 
-    CANCELLABLE_STATUS = UpgradeOperation._CANCELLABLE_STATUS
-    MAX_CANCELLABLE_PROGRESS = UpgradeOperation._MAX_CANCELLABLE_PROGRESS
-
+    @swagger_auto_schema(
+        operation_description=_("Cancel an upgrade operation"),
+        operation_summary=_("Cancel upgrade operation"),
+        responses={
+            200: openapi.Response(
+                description=_("Upgrade operation cancelled successfully"),
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "message": openapi.Schema(
+                            type=openapi.TYPE_STRING, description=_("Success message")
+                        )
+                    },
+                ),
+            ),
+            409: openapi.Response(
+                description=_("Operation cannot be cancelled"),
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "error": openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description=_(
+                                "Error message explaining why cancellation is not allowed"
+                            ),
+                        )
+                    },
+                ),
+            ),
+        },
+    )
     def post(self, request, pk):
         """Cancel an upgrade operation if conditions are met."""
         try:
@@ -366,20 +396,8 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
             return self._error_response(
                 "Upgrade operation not found", status.HTTP_404_NOT_FOUND
             )
-
         try:
-            self._validate_cancellation(operation)
             operation.cancel()
-            logger.info(
-                f"Upgrade operation {pk} cancelled successfully by user {request.user}"
-            )
-            return Response(
-                {"message": "Upgrade operation cancelled successfully"},
-                status=status.HTTP_200_OK,
-            )
-
-        except ValidationError as e:
-            return self._error_response(str(e), status.HTTP_409_CONFLICT)
         except ValueError as e:
             return self._error_response(str(e), status.HTTP_409_CONFLICT)
         except Exception as e:
@@ -388,21 +406,13 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
                 "Failed to cancel upgrade operation",
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-    def _validate_cancellation(self, operation):
-        """Check whether the operation can be cancelled."""
-        if operation.status != self.CANCELLABLE_STATUS:
-            raise ValidationError(
-                _("Cannot cancel operation with status: {status}").format(
-                    status=operation.status
-                )
+        else:
+            logger.info(
+                f"Upgrade operation {pk} cancelled successfully by user {request.user}"
             )
-
-        if operation.progress >= self.MAX_CANCELLABLE_PROGRESS:
-            raise ValidationError(
-                _(
-                    "Cannot cancel operation because the firmware image has already been flashed!"
-                )
+            return Response(
+                {"message": "Upgrade operation cancelled successfully"},
+                status=status.HTTP_200_OK,
             )
 
     def _error_response(self, message, status_code):

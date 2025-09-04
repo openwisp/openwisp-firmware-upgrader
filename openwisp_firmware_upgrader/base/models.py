@@ -24,7 +24,7 @@ from ..exceptions import (
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
-    UpgradeCanceled,
+    UpgradeCancelled,
     UpgradeNotNeeded,
 )
 from ..hardware import (
@@ -648,7 +648,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     _CANCELLABLE_STATUS = "in-progress"
-    _MAX_CANCELLABLE_PROGRESS = 65
+    _MAX_CANCELLABLE_PROGRESS = 70
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
@@ -710,23 +710,11 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             raise ValueError(
                 "Cannot cancel upgrade: firmware reflashing has already started"
             )
-
-        # Delegate cancellation to the upgrader if available
-        try:
-            DeviceConnection = swapper.load_model("connection", "DeviceConnection")
-            conn = DeviceConnection.get_working_connection(self.device)
-            if conn:
-                upgrader_class = get_upgrader_class_from_device_connection(conn)
-                if upgrader_class:
-                    upgrader = upgrader_class(self, conn)
-                    upgrader.cancel()
-        except Exception as e:
-            self.log_line(f"Warning during cancellation: {e}", save=False)
-
         # Update status and save
+        self.log_line("Upgrade operation has been cancelled by user", save=False)
         self.status = "cancelled"
-        self.log_line("Upgrade operation cancelled by user", save=False)
         self.save()
+        return
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
@@ -805,8 +793,8 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         except UpgradeAborted:
             self.status = "aborted"
         # this exception is raised when the upgrade is cancelled by the user
-        except UpgradeCanceled:
-            self.status = "cancelled"
+        except UpgradeCancelled:
+            pass
         # raising this exception will cause celery to retry again
         # the upgrade according to its configuration
         except RecoverableFailure as e:

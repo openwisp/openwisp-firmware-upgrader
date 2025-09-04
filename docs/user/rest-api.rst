@@ -306,6 +306,11 @@ Cancel Upgrade Operation
 
     POST /api/v1/firmware-upgrader/upgrade-operation/{id}/cancel/
 
+.. note::
+
+    This endpoint may return a 409 status code if the operation cannot be
+    canceled.
+
 List Device Upgrade Operations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

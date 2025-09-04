@@ -1842,7 +1842,6 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         operation = UpgradeOperation.objects.create(
             device=device, image=image, status="in-progress", progress=30
         )
-
         url = reverse(
             "upgrader:api_upgradeoperation_cancel",
             kwargs={"pk": operation.pk},
@@ -1873,7 +1872,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
 
         response = self.client.post(url)
         self.assertEqual(response.status_code, 409)
-        self.assertIn("firmware image has already been flashed", response.data["error"])
+        self.assertIn("firmware reflashing has already started", response.data["error"])
 
     def test_upgrade_operation_cancel_not_found(self):
         """Test cancellation of a non-existent operation"""
