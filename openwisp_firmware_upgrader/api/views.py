@@ -1,7 +1,12 @@
+import logging
+
 import swapper
 from django.core.exceptions import ValidationError
 from django.http import Http404
+from django.utils.translation import gettext_lazy as _
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import filters, generics, pagination, serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.request import clone_request
@@ -25,6 +30,8 @@ from .serializers import (
     FirmwareImageSerializer,
     UpgradeOperationSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 UpgradeOperation = load_model("UpgradeOperation")
@@ -344,6 +351,75 @@ class DeviceFirmwareDetailView(
                 raise
 
 
+class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
+    queryset = UpgradeOperation.objects.all()
+    serializer_class = serializers.Serializer
+    lookup_field = "pk"
+    organization_field = "device__organization"
+
+    @swagger_auto_schema(
+        operation_description=_("Cancel an upgrade operation"),
+        operation_summary=_("Cancel upgrade operation"),
+        responses={
+            200: openapi.Response(
+                description=_("Upgrade operation cancelled successfully"),
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "message": openapi.Schema(
+                            type=openapi.TYPE_STRING, description=_("Success message")
+                        )
+                    },
+                ),
+            ),
+            409: openapi.Response(
+                description=_("Operation cannot be cancelled"),
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "error": openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description=_(
+                                "Error message explaining why cancellation is not allowed"
+                            ),
+                        )
+                    },
+                ),
+            ),
+        },
+    )
+    def post(self, request, pk):
+        """Cancel an upgrade operation if conditions are met."""
+        try:
+            operation = self.get_object()
+        except Http404:
+            return self._error_response(
+                "Upgrade operation not found", status.HTTP_404_NOT_FOUND
+            )
+        try:
+            operation.cancel()
+        except ValueError as e:
+            return self._error_response(str(e), status.HTTP_409_CONFLICT)
+        except Exception as e:
+            logger.error(f"Failed to cancel upgrade operation {pk}: {str(e)}")
+            return self._error_response(
+                "Failed to cancel upgrade operation",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        else:
+            logger.info(
+                f"Upgrade operation {pk} cancelled successfully by user {request.user}"
+            )
+            return Response(
+                {"message": "Upgrade operation cancelled successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+    def _error_response(self, message, status_code):
+        """Helper method to create consistent error responses."""
+        return Response({"error": message}, status=status_code)
+
+
 build_list = BuildListView.as_view()
 build_detail = BuildDetailView.as_view()
 api_batch_upgrade = BuildBatchUpgradeView.as_view()
@@ -358,3 +434,4 @@ upgrade_operation_list = UpgradeOperationListView.as_view()
 upgrade_operation_detail = UpgradeOperationDetailView.as_view()
 device_upgrade_operation_list = DeviceUpgradeOperationListView.as_view()
 device_firmware_detail = DeviceFirmwareDetailView.as_view()
+upgrade_operation_cancel = UpgradeOperationCancelView.as_view()

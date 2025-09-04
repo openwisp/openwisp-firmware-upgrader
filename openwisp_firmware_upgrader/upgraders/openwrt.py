@@ -15,6 +15,7 @@ from ..exceptions import (
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
+    UpgradeCancelled,
     UpgradeNotNeeded,
 )
 from ..settings import OPENWRT_SETTINGS
@@ -195,13 +196,29 @@ class OpenWrt(object):
 
     def upgrade(self, image):
         self._test_connection()
+        self._check_cancellation()
         self._verify_device_uuid()
+        self._check_cancellation()
         checksum = self._test_checksum(image)
+        self._check_cancellation()
         remote_path = self.get_remote_path(image)
-        self.upload(image.file, remote_path)
+        self.upload(image, remote_path)
+        self._check_cancellation()
         self._test_image(remote_path)
         self._reflash(remote_path)
         self._write_checksum(checksum)
+
+    def _check_cancellation(self):
+        """
+        Check if the upgrade operation has been cancelled.
+        """
+        self.upgrade_operation.refresh_from_db()
+        if self.upgrade_operation.status == "cancelled":
+            if self._non_critical_services_stopped:
+                self.log(_("Restarting non-critical services..."))
+                self._start_non_critical_services()
+            self.disconnect()
+            raise UpgradeCancelled("Upgrade cancelled by user")
 
     def _test_connection(self):
         result = self.connect()
