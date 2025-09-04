@@ -213,12 +213,10 @@ class OpenWrt(object):
         Check if the upgrade operation has been cancelled.
         """
         self.upgrade_operation.refresh_from_db()
-
         if self.upgrade_operation.status == "cancelled":
             if self._non_critical_services_stopped:
                 self.log(_("Restarting non-critical services..."))
                 self._start_non_critical_services()
-
             self.disconnect()
             raise UpgradeCancelled("Upgrade cancelled by user")
 
