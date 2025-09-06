@@ -312,6 +312,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "success_rate",
         "failed_rate",
         "aborted_rate",
+        "cancelled_rate",
         "readonly_upgrade_options",
         "created",
         "modified",
@@ -322,6 +323,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "success_rate",
         "failed_rate",
         "aborted_rate",
+        "cancelled_rate",
         "readonly_upgrade_options",
     ]
     change_form_template = (
@@ -471,6 +473,9 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     def aborted_rate(self, obj):
         return self.__get_rate(obj.aborted_rate)
 
+    def cancelled_rate(self, obj):
+        return self.__get_rate(obj.cancelled_rate)
+
     def __get_rate(self, value):
         if value:
             return f"{value}%"
@@ -480,6 +485,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     success_rate.short_description = _("success rate")
     failed_rate.short_description = _("failure rate")
     aborted_rate.short_description = _("abortion rate")
+    cancelled_rate.short_description = _("cancellation rate")
 
 
 class DeviceFirmwareForm(forms.ModelForm):
