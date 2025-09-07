@@ -8,7 +8,6 @@ from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.shortcuts import redirect
@@ -46,7 +45,6 @@ Build = load_model("Build")
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Organization = swapper.load_model("openwisp_users", "Organization")
-Location = swapper.load_model("geo", "Location")
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -108,16 +106,10 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         widget=GroupSelect2Widget,
         empty_label=_("All devices (no group filter)"),
     )
-    location = forms.ModelChoiceField(
-        queryset=Location.objects.none(),
-        required=False,
-        help_text=_("Limit the upgrade to devices at this location"),
-        empty_label=_("All devices (no location filter)"),
-    )
 
     class Meta:
         model = BatchUpgradeOperation
-        fields = ("build", "group", "location", "upgrade_options")
+        fields = ("build", "group", "upgrade_options")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -129,21 +121,16 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
                 self.fields["group"].queryset = swapper.load_model(
                     "config", "DeviceGroup"
                 ).objects.filter(organization=build.category.organization)
-                self.fields["location"].queryset = Location.objects.filter(
-                    organization=build.category.organization
-                )
             else:
-                # For shared builds, allow all groups and locations
+                # For shared builds, allow all groups
                 self.fields["group"].queryset = swapper.load_model(
                     "config", "DeviceGroup"
                 ).objects.all()
-                self.fields["location"].queryset = Location.objects.all()
         else:
-            # If no build in initial, show all groups and locations
+            # If no build in initial, show all groups
             self.fields["group"].queryset = swapper.load_model(
                 "config", "DeviceGroup"
             ).objects.all()
-            self.fields["location"].queryset = Location.objects.all()
 
     @property
     def media(self):
@@ -199,7 +186,6 @@ class BuildAdmin(BaseAdmin):
         upgrade_related = request.POST.get("upgrade_related")
         upgrade_options = request.POST.get("upgrade_options")
         group_id = request.POST.get("group")
-        location_id = request.POST.get("location")
         form = BatchUpgradeConfirmationForm(initial={"build": queryset.first()})
         build = queryset.first()
         # upgrade has been confirmed
@@ -209,27 +195,17 @@ class BuildAdmin(BaseAdmin):
                     "upgrade_options": upgrade_options,
                     "build": build,
                     "group": group_id,
-                    "location": location_id,
                 }
             )
             form.full_clean()
             if not form.errors:
                 upgrade_options = form.cleaned_data["upgrade_options"]
                 group = form.cleaned_data.get("group")
-                location = form.cleaned_data.get("location")
-                try:
-                    batch = build.batch_upgrade(
-                        firmwareless=upgrade_all,
-                        upgrade_options=upgrade_options,
-                        group=group,
-                        location=location,
-                    )
-                except ValidationError as e:
-                    self.message_user(request, str(e.messages[0]), messages.ERROR)
-                    # Redirect back to build changelist since no devices match filters
-                    return redirect(reverse(f"admin:{app_label}_build_changelist"))
-                
-                # Success message for when batch upgrade starts successfully
+                batch = build.batch_upgrade(
+                    firmwareless=upgrade_all,
+                    upgrade_options=upgrade_options,
+                    group=group,
+                )
                 text = _(
                     "You can track the progress of this mass upgrade operation "
                     "in this page. Refresh the page from time to time to check "
@@ -242,14 +218,7 @@ class BuildAdmin(BaseAdmin):
                 return redirect(url)
         # upgrade needs to be confirmed
         group = None
-        location = None
         if group_id:
-            group = swapper.load_model("config", "DeviceGroup").objects.get(pk=group_id)
-        if location_id:
-            location = Location.objects.get(pk=location_id)
-        result = BatchUpgradeOperation.dry_run(
-            build=build, group=group, location=location
-        )
             try:
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
@@ -379,15 +348,13 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "status",
         BuildCategoryFilter,
         ("group", admin.RelatedOnlyFieldListFilter),
-        ("location", admin.RelatedOnlyFieldListFilter),
     ]
-    list_select_related = ["build__category__organization", "group", "location"]
+    list_select_related = ["build__category__organization", "group"]
     ordering = ["-created"]
     multitenant_parent = "build__category"
     fields = [
         "build",
         "group",
-        "location",
         "status",
         "completed",
         "success_rate",
@@ -398,7 +365,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "created",
         "modified",
     ]
-    autocomplete_fields = ["build", "group", "location"]
+    autocomplete_fields = ["build", "group"]
     readonly_fields = [
         "completed",
         "success_rate",
