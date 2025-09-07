@@ -95,19 +95,37 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         """
         upgrade_all = request.POST.get("upgrade_all") is not None
         group_id = request.POST.get("group")
+        location_id = request.POST.get("location")
         group = None
+        location = None
         if group_id:
             try:
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
                 )
+            except ValueError:
+                group = None
+        if location_id:
+            try:
+                location = swapper.load_model("geo", "Location").objects.get(
+                    pk=location_id
+                )
+            except ValueError:
+                location = None
             except (
                 ValueError,
                 swapper.load_model("config", "DeviceGroup").DoesNotExist,
             ):
                 group = None
         instance = self.get_object()
-        batch = instance.batch_upgrade(firmwareless=upgrade_all, group=group)
+        try:
+            batch = instance.batch_upgrade(
+                firmwareless=upgrade_all, group=group, location=location
+            )
+        except ValidationError as e:
+            return Response(
+                {"error": str(e.messages[0])}, status=status.HTTP_400_BAD_REQUEST
+            )
         return Response({"batch": str(batch.pk)}, status=201)
 
     def get(self, request, pk):
@@ -117,12 +135,26 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         """
         self.instance = self.get_object()
         group_id = request.GET.get("group")
+        location_id = request.GET.get("location")
         group = None
+        location = None
         if group_id:
             try:
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
                 )
+            except ValueError:
+                group = None
+        if location_id:
+            try:
+                location = swapper.load_model("geo", "Location").objects.get(
+                    pk=location_id
+                )
+            except ValueError:
+                location = None
+        data = BatchUpgradeOperation.dry_run(
+            build=self.instance, group=group, location=location
+        )
             except (
                 ValueError,
                 swapper.load_model("config", "DeviceGroup").DoesNotExist,

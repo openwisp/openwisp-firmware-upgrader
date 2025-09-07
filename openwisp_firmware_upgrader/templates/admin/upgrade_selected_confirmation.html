@@ -51,6 +51,16 @@
       
       <div class="form-row">
         <div>
+          <div for="{{ form.location.id_for_label }}">{{ form.location.label }}:</div>
+          <div class="field-box">{{ form.location }}</div>
+          {% if form.location.help_text %}
+            <p class="help">{{ form.location.help_text }}</p>
+          {% endif %}
+        </div>
+      </div>
+      
+      <div class="form-row">
+        <div>
           {{ form.upgrade_options.label_tag }}
           {{ form.upgrade_options }}
         </div>

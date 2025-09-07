@@ -27,6 +27,8 @@ UpgradeOperation = load_model("UpgradeOperation")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Credentials = swapper.load_model("connection", "Credentials")
 Device = swapper.load_model("config", "Device")
+Location = swapper.load_model("geo", "Location")
+DeviceLocation = swapper.load_model("geo", "DeviceLocation")
 
 
 class TestModels(TestUpgraderMixin, TestCase):
@@ -697,6 +699,312 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
         batch.refresh_from_db()
         self.assertEqual(batch.status, "success")
+
+    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_batch_upgrade_with_location_filtering(self, *args):
+        """Test complete batch upgrade workflow with location filtering."""
+        UpgradeOperation.objects.all().delete()
+
+        org = self._get_org()
+        category = self._create_category(organization=org)
+
+        build1 = self._create_build(category=category, version="1.0")
+        build2 = self._create_build(category=category, version="2.0")
+
+        image1 = self._create_firmware_image(build=build1)
+        image2 = self._create_firmware_image(build=build2)
+
+        # Create locations
+        location1 = Location.objects.create(
+            name="Office Building A", address="123 Main St", organization=org
+        )
+        location2 = Location.objects.create(
+            name="Office Building B", address="456 Oak Ave", organization=org
+        )
+
+        # Create devices
+        device1 = self._create_device(
+            name="Device1",
+            organization=org,
+            model=image1.boards[0],
+            mac_address="00:11:22:33:55:41",
+        )
+        device2 = self._create_device(
+            name="Device2",
+            organization=org,
+            model=image1.boards[0],
+            mac_address="00:11:22:33:55:42",
+        )
+        device3 = self._create_device(
+            name="Device3",
+            organization=org,
+            model=image1.boards[0],
+            mac_address="00:11:22:33:55:43",
+        )
+
+        # Create device locations
+        DeviceLocation.objects.create(content_object=device1, location=location1)
+        DeviceLocation.objects.create(content_object=device2, location=location2)
+        # device3 has no location
+
+        # Create configs and connections
+        self._create_config(device=device1)
+        self._create_config(device=device2)
+        self._create_config(device=device3)
+
+        unique_id = str(uuid.uuid4())[:8]
+        credentials = self._create_credentials(
+            name=f"test-creds-{unique_id}", organization=None, auto_add=True
+        )
+
+        for device in [device1, device2, device3]:
+            if not DeviceConnection.objects.filter(
+                device=device, credentials=credentials
+            ).exists():
+                self._create_device_connection(device=device, credentials=credentials)
+
+        # Create device firmware objects
+        with mock.patch(
+            "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation"
+        ):
+            DeviceFirmware.objects.create(device=device1, image=image1, installed=True)
+            DeviceFirmware.objects.create(device=device2, image=image1, installed=True)
+            DeviceFirmware.objects.create(device=device3, image=image1, installed=True)
+
+        # Create firmwareless device at location1
+        device4 = self._create_device(
+            name="Device4",
+            organization=org,
+            model=image2.boards[0],
+            mac_address="00:11:22:33:55:44",
+        )
+        DeviceLocation.objects.create(content_object=device4, location=location1)
+        self._create_config(device=device4)
+        if not DeviceConnection.objects.filter(
+            device=device4, credentials=credentials
+        ).exists():
+            self._create_device_connection(device=device4, credentials=credentials)
+
+        # Test batch upgrade with location1 filter
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        batch = build2.batch_upgrade(firmwareless=True, location=location1)
+
+        self.assertEqual(batch.location, location1)
+
+        upgrade_ops = UpgradeOperation.objects.all()
+        upgraded_devices = [op.device.name for op in upgrade_ops]
+
+        # Only devices at location1 should be upgraded
+        self.assertIn("Device1", upgraded_devices)  # at location1
+        self.assertIn("Device4", upgraded_devices)  # at location1 (firmwareless)
+        self.assertNotIn("Device2", upgraded_devices)  # at location2
+        self.assertNotIn("Device3", upgraded_devices)  # no location
+
+        self.assertEqual(len(upgrade_ops), 2)
+
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "success")
+
+    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_batch_upgrade_with_group_and_location_filtering(self, *args):
+        """Test batch upgrade with both group and location filtering."""
+        UpgradeOperation.objects.all().delete()
+
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build2 = self._create_build(category=category, version="2.0")
+        image2 = self._create_firmware_image(build=build2)
+
+        # Create group and location
+        group1 = self._create_device_group(name="Group 1", organization=org)
+        location1 = Location.objects.create(
+            name="Office Building A", address="123 Main St", organization=org
+        )
+
+        # Create devices
+        device1 = self._create_device(
+            name="Device1-Group1-Loc1",
+            organization=org,
+            group=group1,
+            model=image2.boards[0],
+            mac_address="00:11:22:33:55:51",
+        )
+        device2 = self._create_device(
+            name="Device2-Group1-NoLoc",
+            organization=org,
+            group=group1,
+            model=image2.boards[0],
+            mac_address="00:11:22:33:55:52",
+        )
+        device3 = self._create_device(
+            name="Device3-NoGroup-Loc1",
+            organization=org,
+            group=None,
+            model=image2.boards[0],
+            mac_address="00:11:22:33:55:53",
+        )
+
+        # Set locations
+        DeviceLocation.objects.create(content_object=device1, location=location1)
+        DeviceLocation.objects.create(content_object=device3, location=location1)
+        # device2 has no location
+
+        # Create configs and connections
+        unique_id = str(uuid.uuid4())[:8]
+        credentials = self._create_credentials(
+            name=f"test-creds-{unique_id}", organization=None, auto_add=True
+        )
+        for device in [device1, device2, device3]:
+            self._create_config(device=device)
+            if not DeviceConnection.objects.filter(
+                device=device, credentials=credentials
+            ).exists():
+                self._create_device_connection(device=device, credentials=credentials)
+
+        # Test batch upgrade with both group1 and location1 filters
+        batch = build2.batch_upgrade(
+            firmwareless=True, group=group1, location=location1
+        )
+
+        self.assertEqual(batch.group, group1)
+        self.assertEqual(batch.location, location1)
+
+        upgrade_ops = UpgradeOperation.objects.all()
+        upgraded_devices = [op.device.name for op in upgrade_ops]
+
+        # Only device1 should be upgraded (in group1 AND at location1)
+        self.assertIn("Device1-Group1-Loc1", upgraded_devices)
+        self.assertNotIn("Device2-Group1-NoLoc", upgraded_devices)  # wrong location
+        self.assertNotIn("Device3-NoGroup-Loc1", upgraded_devices)  # wrong group
+
+        self.assertEqual(len(upgrade_ops), 1)
+
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "success")
+
+    def test_batch_upgrade_operation_location_validation(self):
+        """Test location organization validation in BatchUpgradeOperation."""
+        org1 = self._create_org(name="Org1")
+        org2 = self._create_org(name="Org2")
+
+        category1 = self._create_category(organization=org1)
+        build1 = self._create_build(category=category1)
+
+        location2 = Location.objects.create(
+            name="Wrong Org Location", address="456 Wrong St", organization=org2
+        )
+
+        # Should raise validation error for mismatched organizations
+        batch = BatchUpgradeOperation(build=build1, location=location2)
+
+        with self.assertRaises(ValidationError) as cm:
+            batch.full_clean()
+
+        self.assertIn("location", cm.exception.message_dict)
+        self.assertIn("organization", str(cm.exception.message_dict["location"]))
+
+    def test_batch_upgrade_operation_dry_run_with_location(self):
+        """Test dry_run method with location filtering."""
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category)
+        image = self._create_firmware_image(build=build)
+
+        # Create location
+        location = Location.objects.create(
+            name="Test Location", address="123 Test St", organization=org
+        )
+
+        # Create device
+        device1 = self._create_device(
+            name="Device1-WithLocation",
+            organization=org,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:61",
+        )
+
+        device2 = self._create_device(
+            name="Device2-WithLocation",
+            organization=org,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:62",
+        )
+
+        # Set location for device1 only
+        DeviceLocation.objects.create(content_object=device1, location=location)
+
+        # Create configs and connections so devices can be upgraded
+        self._create_config(device=device1)
+        self._create_config(device=device2)
+        credentials = self._create_credentials(
+            name="test-dry-run-creds", organization=None, auto_add=True
+        )
+        if not DeviceConnection.objects.filter(
+            device=device1, credentials=credentials
+        ).exists():
+            self._create_device_connection(device=device1, credentials=credentials)
+        if not DeviceConnection.objects.filter(
+            device=device2, credentials=credentials
+        ).exists():
+            self._create_device_connection(device=device2, credentials=credentials)
+
+        # Create device firmware for device1 (device2 is firmwareless)
+        with mock.patch(
+            "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation"
+        ):
+            DeviceFirmware.objects.create(device=device1, image=image, installed=False)
+
+        # Test dry_run with location filter
+        result = BatchUpgradeOperation.dry_run(build=build, location=location)
+
+        device_fw_devices = [df.device for df in result["device_firmwares"]]
+        self.assertIn(device1, device_fw_devices)
+        self.assertEqual(len(result["device_firmwares"]), 1)
+
+        # Firmwareless devices with location should be included
+        firmwareless_devices = list(result["devices"])
+        self.assertEqual(len(firmwareless_devices), 0)  # device2 has no location
+
+        # Test dry_run without location filter
+        result_no_filter = BatchUpgradeOperation.dry_run(build=build)
+        self.assertEqual(len(result_no_filter["device_firmwares"]), 1)  # device1
+        self.assertEqual(len(result_no_filter["devices"]), 1)  # device2
+
+    def test_batch_upgrade_no_devices_with_filters(self):
+        """Test that batch_upgrade raises ValidationError when no devices match filters."""
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category, version="no-devices-test")
+        
+        # Create location but no devices at this location
+        location = Location.objects.create(
+            name="Empty Location",
+            address="456 Empty St",
+            organization=org
+        )
+        
+        # Create group but no devices in this group  
+        group = self._create_device_group(name="Empty Group", organization=org)
+        
+        with self.subTest("Test location filter with no devices"):
+            with self.assertRaises(ValidationError) as cm:
+                build.batch_upgrade(firmwareless=True, location=location)
+            self.assertIn("No devices found matching", str(cm.exception))
+            
+        with self.subTest("Test group filter with no devices"):
+            with self.assertRaises(ValidationError) as cm:
+                build.batch_upgrade(firmwareless=True, group=group)
+            self.assertIn("No devices found matching", str(cm.exception))
+            
+        with self.subTest("Test combined filters with no devices"):
+            with self.assertRaises(ValidationError) as cm:
+                build.batch_upgrade(firmwareless=True, group=group, location=location)
+            self.assertIn("No devices found matching", str(cm.exception))
+            
+        # Verify no BatchUpgradeOperation objects were created
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
     def test_device_fw_not_created_on_device_connection_save(self):
         org = self._get_org()
