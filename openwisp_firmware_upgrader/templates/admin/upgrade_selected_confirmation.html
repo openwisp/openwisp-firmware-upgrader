@@ -4,6 +4,7 @@
 {% block extrahead %}
     {{ block.super }}
     {{ media }}
+    <link rel="stylesheet" type="text/css" href="{% static 'firmware-upgrader/css/upgrade-selected-confirmation.css' %}">
     <script type="text/javascript" src="{% static 'admin/js/cancel.js' %}"></script>
 {% endblock %}
 
@@ -25,22 +26,6 @@
   <p>{% blocktrans %}No devices to upgrade were found.
      Hint: Maybe they have been all already updated previously.{% endblocktrans %}</p>
   {% endif %}
-  {% if related_count %}
-  <h2>{% trans "Devices related to build" %} {{ build }} ({{ related_count }})</h2>
-  <ul>
-      {% for device_fw in related_device_fw %}
-      <li>{{ device_fw.device.name }}</li>
-      {% endfor %}
-  </ul>
-  {% endif %}
-  {% if firmwareless_count %}
-  <h2>{% trans "Devices which the system has never upgraded yet" %} ({{ firmwareless_count }})</h2>
-  <ul>
-      {% for device in firmwareless_devices %}
-      <li>{{ device.name }}</li>
-      {% endfor %}
-  </ul>
-  {% endif %}
 
   <form method="post">{% csrf_token %}
   <div>
@@ -48,8 +33,29 @@
   <input type="hidden" name="action" value="upgrade_selected">
   {% if firmwareless_count or related_count %}
   <div>{% if form.errors %}{{ form.errors }} {% endif %}</div>
-  <div class="form-row{% if form.errors.upgrade_options %} errors{% endif %}">
-    {{ form }}
+
+    {{ form.build }}
+    
+    <fieldset class="module aligned">
+      <h2>{% trans "Upgrade Filters" %}</h2>
+      
+      <div class="form-row">
+        <div>
+          <div for="{{ form.group.id_for_label }}">{{ form.group.label }}:</div>
+          <div class="field-box">{{ form.group }}</div>
+          {% if form.group.help_text %}
+            <p class="help">{{ form.group.help_text }}</p>
+          {% endif %}
+        </div>
+      </div>
+      
+      <div class="form-row">
+        <div>
+          {{ form.upgrade_options.label_tag }}
+          {{ form.upgrade_options }}
+        </div>
+      </div>
+    </fieldset>
   </div>
   <input type="submit" name="upgrade_all" value="{% trans "Upgrade all devices" %}">
   {% if firmwareless_count and related_count %}
