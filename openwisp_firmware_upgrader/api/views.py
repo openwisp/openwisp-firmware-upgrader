@@ -155,11 +155,6 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         data = BatchUpgradeOperation.dry_run(
             build=self.instance, group=group, location=location
         )
-            except (
-                ValueError,
-                swapper.load_model("config", "DeviceGroup").DoesNotExist,
-            ):
-                group = None
         data = BatchUpgradeOperation.dry_run(build=self.instance, group=group)
         data["device_firmwares"] = [
             str(device_fw.pk) for device_fw in data["device_firmwares"]

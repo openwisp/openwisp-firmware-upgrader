@@ -30,11 +30,15 @@ class FirmwareSchemaWidget(BaseJsonSchemaWidget):
 
 class GroupSelect2Widget(forms.Select):
 
-    def __init__(self, attrs=None):
+    def __init__(self, attrs=None, placeholder=None):
+        # Default placeholder for backward compatibility
+        if placeholder is None:
+            placeholder = _("Select a group")
+            
         default_attrs = {
             "class": "select2-input",
-            "data-dropdown-css-class": "ow2-autocomplete-dropdown",
-            "data-placeholder": _("Select a group"),
+            "data-dropdown-css-class": "ow2-autocomplete-dropdown", 
+            "data-placeholder": placeholder,
             "data-allow-clear": "true",
         }
         if attrs:

@@ -112,6 +112,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         queryset=Location.objects.none(),
         required=False,
         help_text=_("Limit the upgrade to devices at this location"),
+        widget=GroupSelect2Widget(placeholder=_("Select a location")),
         empty_label=_("All devices (no location filter)"),
     )
 
@@ -250,15 +251,6 @@ class BuildAdmin(BaseAdmin):
         result = BatchUpgradeOperation.dry_run(
             build=build, group=group, location=location
         )
-            try:
-                group = swapper.load_model("config", "DeviceGroup").objects.get(
-                    pk=group_id
-                )
-            except (
-                ValueError,
-                swapper.load_model("config", "DeviceGroup").DoesNotExist,
-            ):
-                group = None
         result = BatchUpgradeOperation.dry_run(build=build, group=group)
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
