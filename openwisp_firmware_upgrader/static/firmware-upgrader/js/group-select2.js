@@ -7,7 +7,7 @@
       dropdownCssClass: "ow2-autocomplete-dropdown",
       placeholder: "Select a group",
       allowClear: true,
-      width: "40px !important",
+      width: "resolve", // Let it calculate the width
       minimumInputLength: 0,
       language: {
         noResults: function () {
@@ -15,5 +15,11 @@
         },
       },
     });
+
+    $(".select2-input").next('.select2').find('.select2-selection').css({
+      'width': '222px',
+      'min-width': '222px'
+    });
+    
   });
 })(django.jQuery);
