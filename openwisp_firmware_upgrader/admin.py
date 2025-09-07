@@ -34,7 +34,7 @@ from .filters import (
 )
 from .swapper import load_model
 from .utils import get_upgrader_schema_for_device
-from .widgets import FirmwareSchemaWidget
+from .widgets import FirmwareSchemaWidget, GroupSelect2Widget
 
 logger = logging.getLogger(__name__)
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -105,6 +105,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         queryset=swapper.load_model("config", "DeviceGroup").objects.none(),
         required=False,
         help_text=_("Limit the upgrade to devices belonging to this group"),
+        widget=GroupSelect2Widget,
         empty_label=_("All devices (no group filter)"),
     )
     location = forms.ModelChoiceField(
@@ -120,6 +121,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         # Set the appropriate queryset for group field based on the build's organization
         if self.initial.get("build"):
             build = self.initial["build"]
@@ -248,6 +250,16 @@ class BuildAdmin(BaseAdmin):
         result = BatchUpgradeOperation.dry_run(
             build=build, group=group, location=location
         )
+            try:
+                group = swapper.load_model("config", "DeviceGroup").objects.get(
+                    pk=group_id
+                )
+            except (
+                ValueError,
+                swapper.load_model("config", "DeviceGroup").DoesNotExist,
+            ):
+                group = None
+        result = BatchUpgradeOperation.dry_run(build=build, group=group)
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
         title = _("Confirm mass upgrade operation")
@@ -271,7 +283,7 @@ class BuildAdmin(BaseAdmin):
                 "build": build,
                 "opts": opts,
                 "action_checkbox_name": ACTION_CHECKBOX_NAME,
-                "media": self.media,
+                "media": self.media + form.media,
             }
         )
         request.current_app = self.admin_site.name
@@ -381,6 +393,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "success_rate",
         "failed_rate",
         "aborted_rate",
+        "cancelled_rate",
         "readonly_upgrade_options",
         "created",
         "modified",
@@ -391,6 +404,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "success_rate",
         "failed_rate",
         "aborted_rate",
+        "cancelled_rate",
         "readonly_upgrade_options",
     ]
     change_form_template = (
@@ -540,6 +554,9 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     def aborted_rate(self, obj):
         return self.__get_rate(obj.aborted_rate)
 
+    def cancelled_rate(self, obj):
+        return self.__get_rate(obj.cancelled_rate)
+
     def __get_rate(self, value):
         if value:
             return f"{value}%"
@@ -549,6 +566,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     success_rate.short_description = _("success rate")
     failed_rate.short_description = _("failure rate")
     aborted_rate.short_description = _("abortion rate")
+    cancelled_rate.short_description = _("cancellation rate")
 
 
 class DeviceFirmwareForm(forms.ModelForm):

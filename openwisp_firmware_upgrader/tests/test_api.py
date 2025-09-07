@@ -2143,6 +2143,58 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403)
 
+    def test_upgrade_operation_cancel_success(self):
+        """Test successful cancellation of an upgrade operation"""
+        env = self._create_upgrade_env(upgrade_operation=True, organization=self.org)
+        device = env["d1"]
+        image = env["image2a"]
+
+        operation = UpgradeOperation.objects.create(
+            device=device, image=image, status="in-progress", progress=30
+        )
+        url = reverse(
+            "upgrader:api_upgradeoperation_cancel",
+            kwargs={"pk": operation.pk},
+        )
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("message", response.data)
+
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "cancelled")
+        self.assertIn("cancelled by user", operation.log)
+
+    def test_cancel_upgrade_after_reflashing(self):
+        """Test cancellation when upgrade has progressed too far"""
+        env = self._create_upgrade_env(upgrade_operation=True, organization=self.org)
+        device = env["d1"]
+        image = env["image2a"]
+
+        operation = UpgradeOperation.objects.create(
+            device=device, image=image, status="in-progress", progress=80
+        )
+
+        url = reverse(
+            "upgrader:api_upgradeoperation_cancel",
+            kwargs={"pk": operation.pk},
+        )
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("firmware reflashing has already started", response.data["error"])
+
+    def test_upgrade_operation_cancel_not_found(self):
+        """Test cancellation of a non-existent operation"""
+        url = reverse(
+            "upgrader:api_upgradeoperation_cancel",
+            kwargs={"pk": "00000000-0000-0000-0000-000000000000"},
+        )
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("not found", response.data["error"])
+
 
 class TestFirmwareDownloadPermissions(
     FirmwareDownloadPermissionTestMixin, TestAPIUpgraderMixin, TestCase
