@@ -14,6 +14,7 @@ from django.utils.timezone import localtime
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
 from openwisp_controller.connection import settings as conn_settings
 from openwisp_firmware_upgrader.admin import (
+    BatchUpgradeConfirmationForm,
     BuildAdmin,
     DeviceAdmin,
     DeviceFirmwareForm,
@@ -1142,21 +1143,15 @@ class TestAdminTransaction(
         """Test BatchUpgradeConfirmationForm group queryset filtering by organization."""
         org1 = self._get_org()
         org2 = self._create_org(name="Org 2", slug="org2")
-
         # Create groups for different organizations
         group1 = self._create_device_group(name="Group Org1", organization=org1)
         group2 = self._create_device_group(name="Group Org2", organization=org2)
-
         # Create build in org1
         category = self._create_category(organization=org1)
         build = self._create_build(category=category)
-
-        from openwisp_firmware_upgrader.admin import BatchUpgradeConfirmationForm
-
         # Test form with build - should only show groups from same organization
         form = BatchUpgradeConfirmationForm(initial={"build": build})
         group_queryset = form.fields["group"].queryset
-
         # Should include group1 (same org) but not group2 (different org)
         self.assertIn(group1, group_queryset)
         self.assertNotIn(group2, group_queryset)
@@ -1165,43 +1160,31 @@ class TestAdminTransaction(
         """Test BatchUpgradeConfirmationForm group queryset for shared builds."""
         org1 = self._get_org()
         org2 = self._create_org(name="Org 2", slug="org2")
-
         # Create groups for different organizations
         group1 = self._create_device_group(name="Group Org1", organization=org1)
         group2 = self._create_device_group(name="Group Org2", organization=org2)
-
         # Create shared build (organization=None)
         category = self._create_category(organization=None)
         build = self._create_build(category=category)
-
-        from openwisp_firmware_upgrader.admin import BatchUpgradeConfirmationForm
-
         # Test form with shared build - should show all groups
         form = BatchUpgradeConfirmationForm(initial={"build": build})
         group_queryset = form.fields["group"].queryset
-
         # Should include both groups for shared builds
         self.assertIn(group1, group_queryset)
         self.assertIn(group2, group_queryset)
 
     def test_batch_upgrade_confirmation_form_with_location(self, *args):
         """Test BatchUpgradeConfirmationForm includes location field."""
-        from openwisp_firmware_upgrader.admin import BatchUpgradeConfirmationForm
-
         org = self._get_org()
         category = self._create_category(organization=org)
         build = self._create_build(category=category)
-
         # Create location
         location = Location.objects.create(
             name="Test Location", address="123 Test St", organization=org
         )
-
         form = BatchUpgradeConfirmationForm(initial={"build": build})
-
         # Test that location field exists
         self.assertIn("location", form.fields)
-
         # Test location field properties
         location_field = form.fields["location"]
         self.assertFalse(location_field.required)
@@ -1214,17 +1197,14 @@ class TestAdminTransaction(
     def test_batch_upgrade_with_location_admin_action(self, *args):
         """Test mass upgrade admin action with location filtering."""
         self._login()
-
         org = self._get_org()
         category = self._create_category(organization=org)
         build = self._create_build(category=category)
         image = self._create_firmware_image(build=build)
-
         # Create location
         location = Location.objects.create(
             name="Test Location", address="123 Test St", organization=org
         )
-
         # Create devices
         device1 = self._create_device(
             name="Device1-WithLocation",
@@ -1238,10 +1218,8 @@ class TestAdminTransaction(
             model=image.boards[0],
             mac_address="00:11:22:33:55:72",
         )
-
         # Set location for device1 only
         DeviceLocation.objects.create(content_object=device1, location=location)
-
         # Create configs and connections
         self._create_config(device=device1)
         self._create_config(device=device2)
@@ -1254,7 +1232,6 @@ class TestAdminTransaction(
             device=device2, credentials=cred1
         ).exists():
             self._create_device_connection(device=device2, credentials=cred1)
-
         url = reverse(f"admin:{self.app_label}_build_changelist")
         data = {
             ACTION_CHECKBOX_NAME: [build.pk],
@@ -1262,12 +1239,10 @@ class TestAdminTransaction(
             "location": location.pk,
             "upgrade_related": "on",
         }
-
         with self.subTest("Test upgrade confirmation page with location"):
             response = self.client.post(url, data, follow=True)
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, location.name)
-
         # Submit the actual upgrade with location filter
         data.update(
             {
@@ -1275,12 +1250,10 @@ class TestAdminTransaction(
                 "location": location.pk,
             }
         )
-
         with self.subTest("Test actual batch upgrade with location"):
             with mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"):
                 response = self.client.post(url, data, follow=True)
                 self.assertEqual(response.status_code, 200)
-
             # Check that batch was created with location
             batch = BatchUpgradeOperation.objects.first()
             self.assertIsNotNone(batch)
@@ -1289,21 +1262,16 @@ class TestAdminTransaction(
     def test_batch_upgrade_operation_admin_location_field(self, *args):
         """Test location field in BatchUpgradeOperationAdmin."""
         self._login()
-
         org = self._get_org()
         category = self._create_category(organization=org)
         build = self._create_build(category=category)
-
         location = Location.objects.create(
             name="Test Location", address="123 Test St", organization=org
         )
-
         batch = BatchUpgradeOperation.objects.create(build=build, location=location)
-
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
         )
-
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, location.name)
@@ -1327,7 +1295,6 @@ class TestAdminTransaction(
             "group": group.pk,
             "upgrade_all": "on",
         }
-
         with self.subTest("Test error message when no devices match filters"):
             response = self.client.post(url, data, follow=True)
             self.assertEqual(response.status_code, 200)
@@ -1351,7 +1318,6 @@ class TestAdminTransaction(
         location2 = Location.objects.create(
             name="Location 2", address="456 Oak Ave", organization=org
         )
-
         # Create batch operations with different locations
         batch1 = BatchUpgradeOperation.objects.create(build=build, location=location1)
         batch2 = BatchUpgradeOperation.objects.create(build=build, location=location2)
