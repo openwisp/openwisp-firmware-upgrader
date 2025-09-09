@@ -39,9 +39,9 @@
     <fieldset class="module aligned">
       <h2>{% trans "Upgrade Filters" %}</h2>
       
-      <div class="form-row">
+      <div class="form-row-filters">
         <div>
-          <div for="{{ form.group.id_for_label }}">{{ form.group.label }}:</div>
+          <div class="form-row-label" for="{{ form.group.id_for_label }}">{{ form.group.label }}:</div>
           <div class="field-box">{{ form.group }}</div>
           {% if form.group.help_text %}
             <p class="help">{{ form.group.help_text }}</p>
@@ -49,9 +49,9 @@
         </div>
       </div>
       
-      <div class="form-row">
+      <div class="form-row-filters">
         <div>
-          <div for="{{ form.location.id_for_label }}">{{ form.location.label }}:</div>
+          <div class="form-row-label" for="{{ form.location.id_for_label }}">{{ form.location.label }}:</div>
           <div class="field-box">{{ form.location }}</div>
           {% if form.location.help_text %}
             <p class="help">{{ form.location.help_text }}</p>

@@ -1205,7 +1205,6 @@ class TestAdminTransaction(
         # Test location field properties
         location_field = form.fields["location"]
         self.assertFalse(location_field.required)
-        self.assertEqual(location_field.empty_label, "All devices (no location filter)")
         self.assertIn("location", location_field.help_text)
 
         # Test location queryset is filtered by organization

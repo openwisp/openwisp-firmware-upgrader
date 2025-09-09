@@ -47,6 +47,7 @@ Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Organization = swapper.load_model("openwisp_users", "Organization")
 Location = swapper.load_model("geo", "Location")
+DeviceGroup = swapper.load_model("config", "DeviceGroup")
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -102,17 +103,15 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         widget=forms.HiddenInput(), required=False, queryset=Build.objects.all()
     )
     group = forms.ModelChoiceField(
-        queryset=swapper.load_model("config", "DeviceGroup").objects.none(),
+        queryset=DeviceGroup.objects.none(),
         required=False,
         help_text=_("Limit the upgrade to devices belonging to this group"),
         widget=GroupSelect2Widget,
-        empty_label=_("All devices (no group filter)"),
     )
     location = forms.ModelChoiceField(
         queryset=Location.objects.none(),
         required=False,
         help_text=_("Limit the upgrade to devices at this location"),
-        empty_label=_("All devices (no location filter)"),
         widget=forms.Select(
             attrs={
                 "class": "select2-input",

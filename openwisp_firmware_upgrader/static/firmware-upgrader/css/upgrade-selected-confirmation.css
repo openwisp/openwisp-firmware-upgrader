@@ -10,6 +10,12 @@ form .errorlist {
 .errorlist ul li {
   visibility: visible;
 }
+.form-row-label {
+  margin-bottom: 10px !important;
+}
+.form-row-filters {
+  padding: 10px;
+}
 #ow-loading {
   display: flex;
 }
