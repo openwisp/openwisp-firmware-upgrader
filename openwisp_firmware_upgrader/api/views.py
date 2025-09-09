@@ -103,20 +103,18 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
                 )
-            except ValueError:
+            except (
+                ValueError,
+                swapper.load_model("config", "DeviceGroup").DoesNotExist,
+            ):
                 group = None
         if location_id:
             try:
                 location = swapper.load_model("geo", "Location").objects.get(
                     pk=location_id
                 )
-            except ValueError:
+            except (ValueError, swapper.load_model("geo", "Location").DoesNotExist):
                 location = None
-            except (
-                ValueError,
-                swapper.load_model("config", "DeviceGroup").DoesNotExist,
-            ):
-                group = None
         instance = self.get_object()
         try:
             batch = instance.batch_upgrade(
@@ -143,14 +141,17 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 group = swapper.load_model("config", "DeviceGroup").objects.get(
                     pk=group_id
                 )
-            except ValueError:
+            except (
+                ValueError,
+                swapper.load_model("config", "DeviceGroup").DoesNotExist,
+            ):
                 group = None
         if location_id:
             try:
                 location = swapper.load_model("geo", "Location").objects.get(
                     pk=location_id
                 )
-            except ValueError:
+            except (ValueError, swapper.load_model("geo", "Location").DoesNotExist):
                 location = None
         data = BatchUpgradeOperation.dry_run(
             build=self.instance, group=group, location=location

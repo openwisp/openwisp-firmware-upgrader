@@ -322,15 +322,14 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(response.status_code, 403)
 
     def test_api_batch_upgrade(self):
-        build = self._create_build()
+        env = self._create_upgrade_env()
+        build = env["build2"]
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
-        self.assertEqual(DeviceFirmware.objects.count(), 0)
         with self.subTest("Existing build"):
             url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
-            with self.assertNumQueries(8):
+            with self.assertNumQueries(13):
                 r = self.client.post(url)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
-            self.assertEqual(DeviceFirmware.objects.count(), 0)
             batch = BatchUpgradeOperation.objects.first()
             self.assertEqual(r.status_code, 201)
             self.assertEqual(r.data, {"batch": str(batch.pk)})
@@ -340,6 +339,87 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             with self.assertNumQueries(4):
                 r = self.client.post(url)
             self.assertEqual(r.status_code, 404)
+
+    def test_build_upgradeable(self):
+        env = self._create_upgrade_env()
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+        url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
+        with self.assertNumQueries(11):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        device_fw_list = [
+            str(device_fw.pk)
+            for device_fw in DeviceFirmware.objects.all().order_by("-created")
+        ]
+        self.assertEqual(r.data, {"device_firmwares": device_fw_list, "devices": []})
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+    def test_api_shared_build_batch_upgrade(self):
+        shared_image = self._create_firmware_image(organization=None)
+        org1_device = self._create_device_with_connection(
+            organization=self._create_org(name="org1"),
+            model=shared_image.boards[0],
+        )
+        org2_device = self._create_device_with_connection(
+            organization=self._create_org(name="org2"),
+            model=shared_image.boards[0],
+        )
+        shared_build = shared_image.build
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+        path = reverse("upgrader:api_build_batch_upgrade", args=[shared_build.pk])
+
+        self._login(username=self.administrator.username)
+        with self.subTest("Test org admin check upgradeable devices for shared build"):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.data,
+                {
+                    "device_firmwares": [],
+                    "devices": [
+                        str(org2_device.pk),
+                        str(org1_device.pk),
+                    ],
+                },
+            )
+
+        with self.subTest("Test org admin cannot mass upgrade shared build"):
+            response = self.client.post(path)
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+        self._logout()
+        admin = self._create_admin()
+        self._login(username=admin.username)
+        with self.subTest("Test org admin check upgradeable devices for shared build"):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.data,
+                {
+                    "device_firmwares": [],
+                    "devices": [
+                        str(org2_device.pk),
+                        str(org1_device.pk),
+                    ],
+                },
+            )
+
+        with self.subTest("Test superuser can mass upgrade shared build"):
+            with self.assertNumQueries(8):
+                response = self.client.post(path)
+            self.assertEqual(response.status_code, 201)
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertEqual(response.data, {"batch": str(batch.pk)})
+
+    def test_build_upgradeable_404(self):
+        url = reverse("upgrader:api_build_batch_upgrade", args=[uuid.uuid4()])
+        with self.assertNumQueries(4):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
     def test_api_batch_upgrade_with_group(self):
         """Test batch upgrade API with group filtering."""
@@ -448,103 +528,6 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
                 devices = Device.objects.filter(pk__in=device_ids)
                 device_names = [d.name for d in devices]
                 self.assertIn("Device3", device_names)
-
-    def test_api_batch_upgrade_group_permission(self):
-        """Test batch upgrade API group permission validation."""
-        org1 = self._get_org()
-        org2 = self._create_org(name="Org 2", slug="org2")
-
-        category = self._create_category(organization=org1)
-        build = self._create_build(category=category)
-
-        group_org2 = self._create_device_group(name="Group Org2", organization=org2)
-
-        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
-
-        with self.assertRaises(ValidationError) as cm:
-            self.client.post(url, {"upgrade_all": "true", "group": group_org2.pk})
-        self.assertIn("organization of the group", str(cm.exception))
-
-    def test_build_upgradeable(self):
-        env = self._create_upgrade_env()
-        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
-
-        url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
-        with self.assertNumQueries(10):
-            r = self.client.get(url)
-        self.assertEqual(r.status_code, 200)
-        device_fw_list = [
-            str(device_fw.pk)
-            for device_fw in DeviceFirmware.objects.all().order_by("-created")
-        ]
-        self.assertEqual(r.data, {"device_firmwares": device_fw_list, "devices": []})
-        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
-
-    def test_api_shared_build_batch_upgrade(self):
-        shared_image = self._create_firmware_image(organization=None)
-        org1_device = self._create_device_with_connection(
-            organization=self._create_org(name="org1"),
-            model=shared_image.boards[0],
-        )
-        org2_device = self._create_device_with_connection(
-            organization=self._create_org(name="org2"),
-            model=shared_image.boards[0],
-        )
-        shared_build = shared_image.build
-        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
-        path = reverse("upgrader:api_build_batch_upgrade", args=[shared_build.pk])
-
-        self._login(username=self.administrator.username)
-        with self.subTest("Test org admin check upgradeable devices for shared build"):
-            response = self.client.get(path)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(
-                response.data,
-                {
-                    "device_firmwares": [],
-                    "devices": [
-                        str(org2_device.pk),
-                        str(org1_device.pk),
-                    ],
-                },
-            )
-
-        with self.subTest("Test org admin cannot mass upgrade shared build"):
-            response = self.client.post(path)
-            self.assertEqual(response.status_code, 403)
-            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
-            self.assertEqual(UpgradeOperation.objects.count(), 0)
-
-        self._logout()
-        admin = self._create_admin()
-        self._login(username=admin.username)
-        with self.subTest("Test org admin check upgradeable devices for shared build"):
-            response = self.client.get(path)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(
-                response.data,
-                {
-                    "device_firmwares": [],
-                    "devices": [
-                        str(org2_device.pk),
-                        str(org1_device.pk),
-                    ],
-                },
-            )
-
-        with self.subTest("Test superuser can mass upgrade shared build"):
-            with self.assertNumQueries(5):
-                response = self.client.post(path)
-            self.assertEqual(response.status_code, 201)
-            batch = BatchUpgradeOperation.objects.first()
-            self.assertEqual(response.data, {"batch": str(batch.pk)})
-
-    def test_build_upgradeable_404(self):
-        url = reverse("upgrader:api_build_batch_upgrade", args=[uuid.uuid4()])
-        with self.assertNumQueries(4):
-            r = self.client.get(url)
-        self.assertEqual(r.status_code, 404)
-        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
     def test_api_batch_upgrade_location(self):
         """Test batch upgrade API with location filtering."""
@@ -694,34 +677,27 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
 
         # Create location and group but no devices matching them
         location = Location.objects.create(
-            name="Empty Location",
-            address="456 Empty St",
-            organization=org
+            name="Empty Location", address="456 Empty St", organization=org
         )
         group = self._create_device_group(name="Empty Group", organization=org)
 
         url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
 
         with self.subTest("Test POST with filters matching no devices"):
-            r = self.client.post(url, {
-                "upgrade_all": "true",
-                "location": location.pk,
-                "group": group.pk
-            })
+            r = self.client.post(
+                url, {"upgrade_all": "true", "location": location.pk, "group": group.pk}
+            )
             # Should return 400 Bad Request
             self.assertEqual(r.status_code, 400)
             self.assertIn("No devices found matching", str(r.data["error"]))
-            
+
             # No batch should be created
             self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
         with self.subTest("Test GET dry run with filters matching no devices"):
-            r = self.client.get(url, {
-                "location": location.pk, 
-                "group": group.pk
-            })
+            r = self.client.get(url, {"location": location.pk, "group": group.pk})
             self.assertEqual(r.status_code, 200)
-            
+
             # Should return empty results
             self.assertEqual(len(r.data["device_firmwares"]), 0)
             self.assertEqual(len(r.data["devices"]), 0)

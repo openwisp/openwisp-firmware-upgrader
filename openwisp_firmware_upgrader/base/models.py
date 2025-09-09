@@ -162,14 +162,16 @@ class AbstractBuild(TimeStampedEditableModel):
         self, firmwareless, upgrade_options=None, group=None, location=None
     ):
         upgrade_options = upgrade_options or {}
-        
+
         # Check if there are any devices to upgrade with the given filters
         dry_run_result = load_model("BatchUpgradeOperation").dry_run(
             build=self, group=group, location=location
         )
-        
+
         # If no devices match the filters, don't start the upgrade
-        total_devices = len(dry_run_result["device_firmwares"]) + len(dry_run_result["devices"])
+        total_devices = len(dry_run_result["device_firmwares"]) + len(
+            dry_run_result["devices"]
+        )
         if total_devices == 0:
             raise ValidationError(
                 _(
@@ -177,7 +179,7 @@ class AbstractBuild(TimeStampedEditableModel):
                     "Please adjust your group and/or location filters."
                 )
             )
-        
+
         batch = load_model("BatchUpgradeOperation")(
             build=self, upgrade_options=upgrade_options, group=group, location=location
         )
@@ -889,6 +891,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 # even if the reconnection failed,
                 # the firmware image has been flashed
                 installed = True
+        # if no exception has been raised, the upgrade was successful
         else:
             installed = True
             self.status = "success"

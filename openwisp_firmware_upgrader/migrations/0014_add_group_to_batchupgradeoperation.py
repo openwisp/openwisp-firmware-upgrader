@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("firmware_upgrader", "0013_alter_upgradeoperation_progress"),
+        ("firmware_upgrader", "0013_alter_upgradeoperation_status"),
         migrations.swappable_dependency(settings.CONFIG_DEVICEGROUP_MODEL),
     ]
 

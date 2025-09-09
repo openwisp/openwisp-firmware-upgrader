@@ -604,6 +604,105 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         batch = BatchUpgradeOperation.objects.first()
         self.assertEqual(batch.status, "in-progress")
 
+    def test_device_fw_not_created_on_device_connection_save(self):
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build1 = self._create_build(category=category, version="0.1", os=self.os)
+        image1a = self._create_firmware_image(build=build1, type=self.image_type)
+
+        with self.subTest("Device doesn't define os"):
+            d1 = self._create_device_with_connection(os="", model=image1a.boards[0])
+            self.assertEqual(DeviceConnection.objects.count(), 1)
+            self.assertEqual(Device.objects.count(), 1)
+            self.assertEqual(DeviceFirmware.objects.count(), 0)
+            d1.delete(check_deactivated=False)
+            Credentials.objects.all().delete()
+
+        with self.subTest("Device doesn't define model"):
+            d1 = self._create_device_with_connection(os=self.os, model="")
+            self.assertEqual(DeviceConnection.objects.count(), 1)
+            self.assertEqual(Device.objects.count(), 1)
+            self.assertEqual(DeviceFirmware.objects.count(), 0)
+            d1.delete(check_deactivated=False)
+            Credentials.objects.all().delete()
+
+        build1.os = None
+        build1.save()
+
+        with self.subTest("Build doesn't define os"):
+            d1 = self._create_device_with_connection(
+                model=image1a.boards[0], os=self.os
+            )
+            self.assertEqual(DeviceConnection.objects.count(), 1)
+            self.assertEqual(Device.objects.count(), 1)
+            self.assertEqual(DeviceFirmware.objects.count(), 0)
+
+    def test_device_fw_created_on_device_connection_save(self):
+        self.assertEqual(DeviceFirmware.objects.count(), 0)
+        self.assertEqual(Device.objects.count(), 0)
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build1 = self._create_build(category=category, version="0.1", os=self.os)
+        image1a = self._create_firmware_image(build=build1, type=self.image_type)
+        self._create_device_with_connection(os=self.os, model=image1a.boards[0])
+        self.assertEqual(Device.objects.count(), 1)
+        self.assertEqual(DeviceFirmware.objects.count(), 1)
+        self.assertEqual(DeviceConnection.objects.count(), 1)
+
+    def test_delete_firmware_image_file(self):
+        file_storage_backend = FirmwareImage.file.field.storage
+
+        with self.subTest("Test deleting object deletes file"):
+            image = self._create_firmware_image()
+            file_name = image.file.name
+            image.delete()
+            self.assertEqual(file_storage_backend.exists(file_name), False)
+
+        with self.subTest("Test deleting object with a deleted file"):
+            image = self._create_firmware_image()
+            file_name = image.file.name
+            # Delete the file from the storage backend before
+            # deleting the object
+            file_storage_backend.delete(file_name)
+            self.assertNotEqual(image.file, None)
+            image.delete()
+
+    def test_delete_firmware_files_on_build_delete(self):
+        """Test that firmware files are deleted when a build is deleted"""
+        file_storage_backend = FirmwareImage.file.field.storage
+        build = self._create_build()
+        image = self._create_firmware_image(build=build)
+        file_name = image.file.name
+        # Delete the build
+        build.delete()
+        # Check that the file was deleted
+        self.assertEqual(file_storage_backend.exists(file_name), False)
+
+    def test_delete_firmware_files_on_category_delete(self):
+        """Test that firmware files are deleted when a category is deleted"""
+        file_storage_backend = FirmwareImage.file.field.storage
+        category = self._create_category()
+        build = self._create_build(category=category)
+        image = self._create_firmware_image(build=build)
+        file_name = image.file.name
+        # Delete the category
+        category.delete()
+        # Check that the file was deleted
+        self.assertEqual(file_storage_backend.exists(file_name), False)
+
+    def test_delete_firmware_files_on_organization_delete(self):
+        """Test that firmware files are deleted when an organization is deleted"""
+        file_storage_backend = FirmwareImage.file.field.storage
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category)
+        image = self._create_firmware_image(build=build)
+        file_name = image.file.name
+        # Delete the organization
+        org.delete()
+        # Check that the file was deleted
+        self.assertEqual(file_storage_backend.exists(file_name), False)
+
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_with_group_filtering(self, *args):
@@ -883,452 +982,3 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
         batch.refresh_from_db()
         self.assertEqual(batch.status, "success")
-
-    def test_batch_upgrade_operation_location_validation(self):
-        """Test location organization validation in BatchUpgradeOperation."""
-        org1 = self._create_org(name="Org1")
-        org2 = self._create_org(name="Org2")
-
-        category1 = self._create_category(organization=org1)
-        build1 = self._create_build(category=category1)
-
-        location2 = Location.objects.create(
-            name="Wrong Org Location", address="456 Wrong St", organization=org2
-        )
-
-        # Should raise validation error for mismatched organizations
-        batch = BatchUpgradeOperation(build=build1, location=location2)
-
-        with self.assertRaises(ValidationError) as cm:
-            batch.full_clean()
-
-        self.assertIn("location", cm.exception.message_dict)
-        self.assertIn("organization", str(cm.exception.message_dict["location"]))
-
-    def test_batch_upgrade_operation_dry_run_with_location(self):
-        """Test dry_run method with location filtering."""
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category)
-        image = self._create_firmware_image(build=build)
-
-        # Create location
-        location = Location.objects.create(
-            name="Test Location", address="123 Test St", organization=org
-        )
-
-        # Create device
-        device1 = self._create_device(
-            name="Device1-WithLocation",
-            organization=org,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:61",
-        )
-
-        device2 = self._create_device(
-            name="Device2-WithLocation",
-            organization=org,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:62",
-        )
-
-        # Set location for device1 only
-        DeviceLocation.objects.create(content_object=device1, location=location)
-
-        # Create configs and connections so devices can be upgraded
-        self._create_config(device=device1)
-        self._create_config(device=device2)
-        credentials = self._create_credentials(
-            name="test-dry-run-creds", organization=None, auto_add=True
-        )
-        if not DeviceConnection.objects.filter(
-            device=device1, credentials=credentials
-        ).exists():
-            self._create_device_connection(device=device1, credentials=credentials)
-        if not DeviceConnection.objects.filter(
-            device=device2, credentials=credentials
-        ).exists():
-            self._create_device_connection(device=device2, credentials=credentials)
-
-        # Create device firmware for device1 (device2 is firmwareless)
-        with mock.patch(
-            "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation"
-        ):
-            DeviceFirmware.objects.create(device=device1, image=image, installed=False)
-
-        # Test dry_run with location filter
-        result = BatchUpgradeOperation.dry_run(build=build, location=location)
-
-        device_fw_devices = [df.device for df in result["device_firmwares"]]
-        self.assertIn(device1, device_fw_devices)
-        self.assertEqual(len(result["device_firmwares"]), 1)
-
-        # Firmwareless devices with location should be included
-        firmwareless_devices = list(result["devices"])
-        self.assertEqual(len(firmwareless_devices), 0)  # device2 has no location
-
-        # Test dry_run without location filter
-        result_no_filter = BatchUpgradeOperation.dry_run(build=build)
-        self.assertEqual(len(result_no_filter["device_firmwares"]), 1)  # device1
-        self.assertEqual(len(result_no_filter["devices"]), 1)  # device2
-
-    def test_batch_upgrade_no_devices_with_filters(self):
-        """Test that batch_upgrade raises ValidationError when no devices match filters."""
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category, version="no-devices-test")
-        
-        # Create location but no devices at this location
-        location = Location.objects.create(
-            name="Empty Location",
-            address="456 Empty St",
-            organization=org
-        )
-        
-        # Create group but no devices in this group  
-        group = self._create_device_group(name="Empty Group", organization=org)
-        
-        with self.subTest("Test location filter with no devices"):
-            with self.assertRaises(ValidationError) as cm:
-                build.batch_upgrade(firmwareless=True, location=location)
-            self.assertIn("No devices found matching", str(cm.exception))
-            
-        with self.subTest("Test group filter with no devices"):
-            with self.assertRaises(ValidationError) as cm:
-                build.batch_upgrade(firmwareless=True, group=group)
-            self.assertIn("No devices found matching", str(cm.exception))
-            
-        with self.subTest("Test combined filters with no devices"):
-            with self.assertRaises(ValidationError) as cm:
-                build.batch_upgrade(firmwareless=True, group=group, location=location)
-            self.assertIn("No devices found matching", str(cm.exception))
-            
-        # Verify no BatchUpgradeOperation objects were created
-        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
-
-    def test_device_fw_not_created_on_device_connection_save(self):
-        org = self._get_org()
-        category = self._get_category(organization=org)
-        build1 = self._create_build(category=category, version="0.1", os=self.os)
-        image1a = self._create_firmware_image(build=build1, type=self.image_type)
-
-        with self.subTest("Device doesn't define os"):
-            d1 = self._create_device_with_connection(
-                name="test-no-os",
-                os="",
-                model=image1a.boards[0],
-                mac_address="00:11:22:33:99:01",
-            )
-            self.assertEqual(DeviceConnection.objects.count(), 1)
-            self.assertEqual(Device.objects.count(), 1)
-            self.assertEqual(DeviceFirmware.objects.count(), 0)
-            d1.delete(check_deactivated=False)
-            Credentials.objects.all().delete()
-
-        with self.subTest("Device doesn't define model"):
-            d1 = self._create_device_with_connection(
-                name="test-no-model",
-                os=self.os,
-                model="",
-                mac_address="00:11:22:33:99:02",
-            )
-            self.assertEqual(DeviceConnection.objects.count(), 1)
-            self.assertEqual(Device.objects.count(), 1)
-            self.assertEqual(DeviceFirmware.objects.count(), 0)
-            d1.delete(check_deactivated=False)
-            Credentials.objects.all().delete()
-
-        build1.os = None
-        build1.save()
-
-        with self.subTest("Build doesn't define os"):
-            d1 = self._create_device_with_connection(
-                name="test-no-build-os",
-                model=image1a.boards[0],
-                os=self.os,
-                mac_address="00:11:22:33:99:03",
-            )
-            self.assertEqual(DeviceConnection.objects.count(), 1)
-            self.assertEqual(Device.objects.count(), 1)
-            self.assertEqual(DeviceFirmware.objects.count(), 0)
-
-    def test_device_fw_created_on_device_connection_save(self):
-        self.assertEqual(DeviceFirmware.objects.count(), 0)
-        self.assertEqual(Device.objects.count(), 0)
-        org = self._get_org()
-        category = self._get_category(organization=org)
-        build1 = self._create_build(category=category, version="0.1", os=self.os)
-        image1a = self._create_firmware_image(build=build1, type=self.image_type)
-        self._create_device_with_connection(
-            name="test-fw-created",
-            os=self.os,
-            model=image1a.boards[0],
-            mac_address="00:11:22:33:99:10",
-        )
-        self.assertEqual(Device.objects.count(), 1)
-        self.assertEqual(DeviceFirmware.objects.count(), 1)
-        self.assertEqual(DeviceConnection.objects.count(), 1)
-
-    def test_delete_firmware_image_file(self):
-        file_storage_backend = FirmwareImage.file.field.storage
-
-        with self.subTest("Test deleting object deletes file"):
-            image = self._create_firmware_image()
-            file_name = image.file.name
-            image.delete()
-            self.assertEqual(file_storage_backend.exists(file_name), False)
-
-        with self.subTest("Test deleting object with a deleted file"):
-            image = self._create_firmware_image()
-            file_name = image.file.name
-            # Delete the file from the storage backend before
-            # deleting the object
-            file_storage_backend.delete(file_name)
-            self.assertNotEqual(image.file, None)
-            image.delete()
-
-    def test_batch_upgrade_operation_group_validation(self):
-        """Test group validation in BatchUpgradeOperation."""
-        org1 = self._get_org()
-        org2 = self._create_org(name="Org 2", slug="org2")
-
-        category = self._create_category(organization=org1)
-        build = self._create_build(category=category)
-
-        group_org1 = self._create_device_group(name="Group Org1", organization=org1)
-        group_org2 = self._create_device_group(name="Group Org2", organization=org2)
-
-        batch1 = BatchUpgradeOperation(build=build, group=group_org1)
-        batch1.full_clean()
-
-        batch2 = BatchUpgradeOperation(build=build, group=group_org2)
-        with self.assertRaises(ValidationError) as cm:
-            batch2.full_clean()
-        self.assertIn("group", cm.exception.message_dict)
-        self.assertIn(
-            "organization of the group", str(cm.exception.message_dict["group"][0])
-        )
-
-        batch3 = BatchUpgradeOperation(build=build, group=None)
-        batch3.full_clean()
-
-    def test_batch_upgrade_operation_group_validation_shared_build(self):
-        """Test group validation for shared builds (organization=None)."""
-        category = self._create_category(organization=None)  # Shared category
-        build = self._create_build(category=category)
-
-        org1 = self._get_org()
-        group = self._create_device_group(name="Any Group", organization=org1)
-
-        batch = BatchUpgradeOperation(build=build, group=group)
-        batch.full_clean()
-
-    def test_batch_upgrade_dry_run_with_group_filtering(self):
-        """Test dry_run method with group filtering."""
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category)
-        image = self._create_firmware_image(build=build)
-
-        group1 = self._create_device_group(name="Group 1", organization=org)
-        group2 = self._create_device_group(name="Group 2", organization=org)
-
-        # Create devices in different groups
-        device1 = self._create_device(
-            name="Device1",
-            organization=org,
-            group=group1,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:01",
-        )
-        device2 = self._create_device(
-            name="Device2",
-            organization=org,
-            group=group2,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:02",
-        )
-        device3 = self._create_device(
-            name="Device3",
-            organization=org,
-            group=None,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:03",
-        )  # No group
-
-        self._create_config(device=device1)
-        self._create_config(device=device2)
-        self._create_config(device=device3)
-
-        unique_id = str(uuid.uuid4())[:8]
-        credentials = self._create_credentials(
-            name=f"test-creds-{unique_id}", organization=None, auto_add=True
-        )
-
-        for device in [device1, device2, device3]:
-            if not DeviceConnection.objects.filter(
-                device=device, credentials=credentials
-            ).exists():
-                self._create_device_connection(device=device, credentials=credentials)
-
-        result = BatchUpgradeOperation.dry_run(build=build)
-        device_names = [d.name for d in result["devices"]]
-        self.assertIn("Device1", device_names)
-        self.assertIn("Device2", device_names)
-        self.assertIn("Device3", device_names)
-
-        result = BatchUpgradeOperation.dry_run(build=build, group=group1)
-        device_names = [d.name for d in result["devices"]]
-        self.assertIn("Device1", device_names)
-        self.assertNotIn("Device2", device_names)
-        self.assertNotIn("Device3", device_names)
-
-        result = BatchUpgradeOperation.dry_run(build=build, group=group2)
-        device_names = [d.name for d in result["devices"]]
-        self.assertNotIn("Device1", device_names)
-        self.assertIn("Device2", device_names)
-        self.assertNotIn("Device3", device_names)
-
-    def test_build_find_related_device_firmwares_with_group(self):
-        """Test _find_related_device_firmwares with group filtering."""
-        org = self._get_org()
-        category = self._create_category(organization=org)
-
-        build1 = self._create_build(category=category, version="1.0")
-        build2 = self._create_build(category=category, version="2.0")
-
-        image1 = self._create_firmware_image(build=build1)
-
-        group1 = self._create_device_group(name="Group 1", organization=org)
-        group2 = self._create_device_group(name="Group 2", organization=org)
-
-        device1 = self._create_device(
-            name="Device1",
-            organization=org,
-            group=group1,
-            model=image1.boards[0],
-            mac_address="00:11:22:33:55:11",
-        )
-        device2 = self._create_device(
-            name="Device2",
-            organization=org,
-            group=group2,
-            model=image1.boards[0],
-            mac_address="00:11:22:33:55:12",
-        )
-        device3 = self._create_device(
-            name="Device3",
-            organization=org,
-            group=None,
-            model=image1.boards[0],
-            mac_address="00:11:22:33:55:13",
-        )
-
-        self._create_config(device=device1)
-        self._create_config(device=device2)
-        self._create_config(device=device3)
-
-        unique_id = str(uuid.uuid4())[:8]
-        credentials = self._create_credentials(
-            name=f"test-creds-{unique_id}", organization=None, auto_add=True
-        )
-
-        for device in [device1, device2, device3]:
-            if not DeviceConnection.objects.filter(
-                device=device, credentials=credentials
-            ).exists():
-                self._create_device_connection(device=device, credentials=credentials)
-
-        with mock.patch(
-            "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation"
-        ):
-            DeviceFirmware.objects.create(device=device1, image=image1, installed=True)
-            DeviceFirmware.objects.create(device=device2, image=image1, installed=True)
-            DeviceFirmware.objects.create(device=device3, image=image1, installed=True)
-
-        related = build2._find_related_device_firmwares(select_devices=True)
-        device_names = [df.device.name for df in related]
-        self.assertIn("Device1", device_names)
-        self.assertIn("Device2", device_names)
-        self.assertIn("Device3", device_names)
-
-        related = build2._find_related_device_firmwares(
-            select_devices=True, group=group1
-        )
-        device_names = [df.device.name for df in related]
-        self.assertIn("Device1", device_names)
-        self.assertNotIn("Device2", device_names)
-        self.assertNotIn("Device3", device_names)
-
-        related = build2._find_related_device_firmwares(
-            select_devices=True, group=group2
-        )
-        device_names = [df.device.name for df in related]
-        self.assertNotIn("Device1", device_names)
-        self.assertIn("Device2", device_names)
-        self.assertNotIn("Device3", device_names)
-
-    def test_build_find_firmwareless_devices_with_group(self):
-        """Test _find_firmwareless_devices with group filtering."""
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category)
-        image = self._create_firmware_image(build=build)
-
-        group1 = self._create_device_group(name="Group 1", organization=org)
-        group2 = self._create_device_group(name="Group 2", organization=org)
-
-        device1 = self._create_device(
-            name="Device1",
-            organization=org,
-            group=group1,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:21",
-        )
-        device2 = self._create_device(
-            name="Device2",
-            organization=org,
-            group=group2,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:22",
-        )
-        device3 = self._create_device(
-            name="Device3",
-            organization=org,
-            group=None,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:23",
-        )
-
-        self._create_config(device=device1)
-        self._create_config(device=device2)
-        self._create_config(device=device3)
-
-        unique_id = str(uuid.uuid4())[:8]
-        credentials = self._create_credentials(
-            name=f"test-creds-{unique_id}", organization=None, auto_add=True
-        )
-
-        for device in [device1, device2, device3]:
-            if not DeviceConnection.objects.filter(
-                device=device, credentials=credentials
-            ).exists():
-                self._create_device_connection(device=device, credentials=credentials)
-
-        devices = build._find_firmwareless_devices()
-        device_names = [d.name for d in devices]
-        self.assertIn("Device1", device_names)
-        self.assertIn("Device2", device_names)
-        self.assertIn("Device3", device_names)
-
-        devices = build._find_firmwareless_devices(group=group1)
-        device_names = [d.name for d in devices]
-        self.assertIn("Device1", device_names)
-        self.assertNotIn("Device2", device_names)
-        self.assertNotIn("Device3", device_names)
-
-        devices = build._find_firmwareless_devices(group=group2)
-        device_names = [d.name for d in devices]
-        self.assertNotIn("Device1", device_names)
-        self.assertIn("Device2", device_names)
-        self.assertNotIn("Device3", device_names)

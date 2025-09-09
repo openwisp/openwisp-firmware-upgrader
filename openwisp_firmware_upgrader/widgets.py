@@ -34,10 +34,10 @@ class GroupSelect2Widget(forms.Select):
         # Default placeholder for backward compatibility
         if placeholder is None:
             placeholder = _("Select a group")
-            
+
         default_attrs = {
             "class": "select2-input",
-            "data-dropdown-css-class": "ow2-autocomplete-dropdown", 
+            "data-dropdown-css-class": "ow2-autocomplete-dropdown",
             "data-placeholder": placeholder,
             "data-allow-clear": "true",
         }

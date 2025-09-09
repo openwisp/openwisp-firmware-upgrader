@@ -112,8 +112,15 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         queryset=Location.objects.none(),
         required=False,
         help_text=_("Limit the upgrade to devices at this location"),
-        widget=GroupSelect2Widget(placeholder=_("Select a location")),
         empty_label=_("All devices (no location filter)"),
+        widget=forms.Select(
+            attrs={
+                "class": "select2-input",
+                "data-dropdown-css-class": "ow2-autocomplete-dropdown",
+                "data-placeholder": _("Select a location"),
+                "data-allow-clear": "true",
+            }
+        ),
     )
 
     class Meta:
@@ -149,9 +156,19 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
     @property
     def media(self):
         js = [
+            "admin/js/vendor/jquery/jquery.min.js",
+            "admin/js/vendor/select2/select2.full.min.js",
+            "firmware-upgrader/js/group-select2.js",
             "firmware-upgrader/js/upgrade-selected-confirmation.js",
         ]
-        css = {"all": ["firmware-upgrader/css/upgrade-selected-confirmation.css"]}
+        css = {
+            "all": [
+                "admin/css/vendor/select2/select2.min.css",
+                "admin/css/autocomplete.css",
+                "admin/css/ow-auto-filter.css",
+                "firmware-upgrader/css/upgrade-selected-confirmation.css",
+            ]
+        }
         return super().media + forms.Media(js=js, css=css)
 
 
@@ -229,7 +246,7 @@ class BuildAdmin(BaseAdmin):
                     self.message_user(request, str(e.messages[0]), messages.ERROR)
                     # Redirect back to build changelist since no devices match filters
                     return redirect(reverse(f"admin:{app_label}_build_changelist"))
-                
+
                 # Success message for when batch upgrade starts successfully
                 text = _(
                     "You can track the progress of this mass upgrade operation "

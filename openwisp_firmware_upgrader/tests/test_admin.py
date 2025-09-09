@@ -154,7 +154,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(16):
+        with self.assertNumQueries(17):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -168,7 +168,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(15):
+        with self.assertNumQueries(16):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -1320,9 +1320,7 @@ class TestAdminTransaction(
 
         # Create location and group but no devices matching both
         location = Location.objects.create(
-            name="Empty Location",
-            address="456 Empty St",
-            organization=org
+            name="Empty Location", address="456 Empty St", organization=org
         )
         group = self._create_device_group(name="Empty Group", organization=org)
 
@@ -1338,11 +1336,11 @@ class TestAdminTransaction(
         with self.subTest("Test error message when no devices match filters"):
             response = self.client.post(url, data, follow=True)
             self.assertEqual(response.status_code, 200)
-            
+
             # Should stay on confirmation page with error message
             self.assertContains(response, "No devices found matching")
             self.assertContains(response, "adjust your group and/or location filters")
-            
+
             # No batch should be created
             self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
