@@ -108,7 +108,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                "openwrt-24.10.2-ramips-mt7621-tplink_archer-ax23-v1-squashfs-sysupgrade.bin",
+                "ramips-mt7621-tplink_archer-ax23-v1-squashfs-sysupgrade.bin",
                 {
                     "label": "TP-Link Archer AX23 v1",
                     "boards": ("TP-Link Archer AX23 v1",),
