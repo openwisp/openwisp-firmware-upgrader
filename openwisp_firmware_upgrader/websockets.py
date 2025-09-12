@@ -337,6 +337,7 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                             "success",
                             "failed",
                             "aborted",
+                            "cancelled",
                         ],
                     )
                     .order_by("-modified")[:5]

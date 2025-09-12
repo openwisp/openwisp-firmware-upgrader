@@ -24,6 +24,7 @@ from ..exceptions import (
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
+    UpgradeCancelled,
     UpgradeNotNeeded,
 )
 from ..hardware import (
@@ -608,6 +609,13 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self.__get_rate(aborted)
 
     @property
+    def cancelled_rate(self):
+        if not self.total_operations:
+            return 0
+        cancelled = self.upgrade_operations.filter(status="cancelled").count()
+        return self.__get_rate(cancelled)
+
+    @property
     def upgrader_class(self):
         return self._get_upgrader_class()
 
@@ -642,11 +650,15 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
 
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
+
+    _CANCELLABLE_STATUS = "in-progress"
+    _MAX_CANCELLABLE_PROGRESS = 70
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
         ("failed", _("failed")),
         ("aborted", _("aborted")),
+        ("cancelled", _("cancelled")),
     )
     device = models.ForeignKey(
         swapper.get_model_name("config", "Device"), on_delete=models.CASCADE
@@ -692,6 +704,22 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         if save:
             self.save()
 
+    def cancel(self):
+        """Cancels the upgrade operation if conditions are met."""
+        # Validate cancellation conditions
+        if self.status != self._CANCELLABLE_STATUS:
+            raise ValueError(f"Cannot cancel operation with status: {self.status}")
+
+        if self.progress >= self._MAX_CANCELLABLE_PROGRESS:
+            raise ValueError(
+                "Cannot cancel upgrade: firmware reflashing has already started"
+            )
+        # Update status and save
+        self.log_line("Upgrade operation has been cancelled by user", save=False)
+        self.status = "cancelled"
+        self.save()
+        return
+
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
         if recoverable:
@@ -702,6 +730,9 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         self.log_line(f"Max retries exceeded. Upgrade failed: {cause}.", save=False)
 
     def upgrade(self, recoverable=True):
+        # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
+        if self.status != "in-progress":
+            return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:
             conn = DeviceConnection.get_working_connection(self.device)
@@ -765,6 +796,9 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # meaning the image file is corrupted or not apt for flashing
         except UpgradeAborted:
             self.status = "aborted"
+        # this exception is raised when the upgrade is cancelled by the user
+        except UpgradeCancelled:
+            pass
         # raising this exception will cause celery to retry again
         # the upgrade according to its configuration
         except RecoverableFailure as e:
