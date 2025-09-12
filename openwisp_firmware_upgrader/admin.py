@@ -149,9 +149,10 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
     def media(self):
         js = [
             "admin/js/vendor/jquery/jquery.min.js",
+            "admin/js/jquery.init.js",
             "admin/js/vendor/select2/select2.full.min.js",
-            "firmware-upgrader/js/mass-upgrade-select2.js",
             "firmware-upgrader/js/upgrade-selected-confirmation.js",
+            "firmware-upgrader/js/mass-upgrade-select2.js",
         ]
         css = {
             "all": [

@@ -116,7 +116,6 @@
 {% block footer %}
   {{ block.super }}
   <script>
-      var firmwareUpgraderSchema = {{ firmware_upgrader_schema | safe }}
+    var firmwareUpgraderSchema = {{ firmware_upgrader_schema | safe }}
   </script>
-  {{ form.media }}
 {% endblock footer %}
