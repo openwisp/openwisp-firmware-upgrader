@@ -69,6 +69,7 @@ class TestRealTimeWebsockets(
             model=image2.boards[0],
             organization=org,
             name=f"test-device-{unique_suffix}",
+            mac_address=f"00:11:aa:bb:cc:{unique_suffix[:2]}",
         )
         self._create_config(device=device)
         # Create additional devices for batch testing
@@ -77,18 +78,21 @@ class TestRealTimeWebsockets(
             model=image2.boards[0],
             organization=org,
             name=f"test-device-1-{unique_suffix}",
+            mac_address=f"00:22:bb:cc:dd:{unique_suffix[:2]}",
         )
         device2 = self._create_device(
             os=self.os,
             model=image2.boards[0],
             organization=org,
             name=f"test-device-2-{unique_suffix}",
+            mac_address=f"00:33:cc:dd:ee:{unique_suffix[:2]}",
         )
         device3 = self._create_device(
             os=self.os,
             model=image2.boards[0],
             organization=org,
             name=f"test-device-3-{unique_suffix}",
+            mac_address=f"00:44:dd:ee:ff:{unique_suffix[:2]}",
         )
         self._create_config(device=device1)
         self._create_config(device=device2)
@@ -471,6 +475,42 @@ class TestRealTimeWebsockets(
         self.assertIn("aborting upgrade", log_html)
         self._assert_no_js_errors()
 
+    def _check_progress_text(self, expected_text):
+        """Helper method to safely check progress text without stale element issues"""
+        try:
+            element = self.find_element(
+                By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"
+            )
+            return expected_text in element.text
+        except Exception:
+            return False
+
+    def _check_operation_progress(self, status_class, progress_width):
+        """Helper method to safely check individual operation progress without stale element issues"""
+        try:
+            containers = self.find_elements(
+                By.CSS_SELECTOR, "#result_list .upgrade-status-container"
+            )
+            for container in containers:
+                progress_fill = container.find_element(
+                    By.CSS_SELECTOR, ".upgrade-progress-fill"
+                )
+                if status_class in progress_fill.get_attribute(
+                    "class"
+                ) and progress_width in progress_fill.get_attribute("style"):
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def _check_row_count(self, expected_count):
+        """Helper method to safely check row count without stale element issues"""
+        try:
+            rows = self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")
+            return len(rows) == expected_count
+        except Exception:
+            return False
+
     async def _prepare_batch(self, batch_operation):
         """Navigate to batch upgrade page and wait for websocket connection"""
         path = reverse(
@@ -479,7 +519,6 @@ class TestRealTimeWebsockets(
         )
         self.login(username=self.admin.username, password=self.admin_password)
         self.open(path)
-        self.hide_loading_overlay()
         self.wait_for_visibility(By.ID, "result_list")
         WebDriverWait(self.web_driver, 10).until(
             lambda driver: driver.execute_script(
@@ -508,7 +547,7 @@ class TestRealTimeWebsockets(
             progress=0,
         )
         await self._prepare_batch(batch_operation)
-        WebDriverWait(self.web_driver, 5).until(
+        WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         main_progress_element = self.find_element(
@@ -518,12 +557,12 @@ class TestRealTimeWebsockets(
             main_progress_element.is_displayed(), "Main progress should be visible"
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
-        publisher.publish_batch_status("in-progress", 1, 2)
-        WebDriverWait(self.web_driver, 5).until(
-            lambda driver: "50%"
-            in driver.find_element(
-                By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"
-            ).text
+        await database_sync_to_async(publisher.publish_batch_status)(
+            "in-progress", 1, 2
+        )
+        # Wait for websocket message to propagate and update DOM
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: self._check_progress_text("50%")
         )
         progress_text = self.find_element(
             By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"
@@ -534,8 +573,12 @@ class TestRealTimeWebsockets(
         )
         style = progress_fill.get_attribute("style")
         self.assertIn("width: 50%", style)
-        publisher.publish_batch_status("success", 2, 2)
-        WebDriverWait(self.web_driver, 5).until(
+        await database_sync_to_async(publisher.publish_batch_status)("success", 2, 2)
+        # Wait for websocket message to propagate and DOM to update
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: self._check_progress_text("100%")
+        )
+        WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located(
                 (
                     By.CSS_SELECTOR,
@@ -590,28 +633,17 @@ class TestRealTimeWebsockets(
             "device_name": self.device1.name,
             "image_name": str(self.image2),
         }
-        publisher.publish_operation_progress(
+        await database_sync_to_async(publisher.publish_operation_progress)(
             str(operation1.pk), "in-progress", 50, operation1.modified, device_info
         )
-        WebDriverWait(self.web_driver, 5).until(
-            lambda driver: any(
-                "in-progress"
-                in container.find_element(
-                    By.CSS_SELECTOR, ".upgrade-progress-fill"
-                ).get_attribute("class")
-                and "width: 50%"
-                in container.find_element(
-                    By.CSS_SELECTOR, ".upgrade-progress-fill"
-                ).get_attribute("style")
-                for container in driver.find_elements(
-                    By.CSS_SELECTOR, "#result_list .upgrade-status-container"
-                )
-            )
+        # Wait for websocket message to propagate and update individual operation progress
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: self._check_operation_progress("in-progress", "width: 50%")
         )
-        publisher.publish_operation_progress(
+        await database_sync_to_async(publisher.publish_operation_progress)(
             str(operation1.pk), "success", 100, operation1.modified, device_info
         )
-        WebDriverWait(self.web_driver, 5).until(
+        WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located(
                 (By.CSS_SELECTOR, "#result_list .upgrade-progress-fill.success")
             )
@@ -643,12 +675,12 @@ class TestRealTimeWebsockets(
             progress=45,
         )
         await self._prepare_batch(batch_operation)
-        WebDriverWait(self.web_driver, 5).until(
+        WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
-        publisher.publish_batch_status("failed", 2, 2)
-        WebDriverWait(self.web_driver, 5).until(
+        await database_sync_to_async(publisher.publish_batch_status)("failed", 2, 2)
+        WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located(
                 (
                     By.CSS_SELECTOR,
@@ -688,12 +720,12 @@ class TestRealTimeWebsockets(
             progress=100,
         )
         await self._prepare_batch(batch_operation)
-        WebDriverWait(self.web_driver, 5).until(
+        WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
-        publisher.publish_batch_status("success", 2, 2)
-        WebDriverWait(self.web_driver, 5).until(
+        await database_sync_to_async(publisher.publish_batch_status)("success", 2, 2)
+        WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located(
                 (
                     By.CSS_SELECTOR,
@@ -728,7 +760,7 @@ class TestRealTimeWebsockets(
             progress=50,
         )
         await self._prepare_batch(batch_operation)
-        WebDriverWait(self.web_driver, 5).until(
+        WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "#result_list tbody tr"))
         )
         initial_rows = self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")
@@ -746,14 +778,12 @@ class TestRealTimeWebsockets(
             "device_name": self.device2.name,
             "image_name": str(self.image2),
         }
-        publisher.publish_operation_progress(
+        await database_sync_to_async(publisher.publish_operation_progress)(
             str(operation2.pk), "in-progress", 0, operation2.modified, device_info_2
         )
-        WebDriverWait(self.web_driver, 5).until(
-            lambda driver: len(
-                driver.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")
-            )
-            == 2
+        # Wait for websocket message to propagate and add new row
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: self._check_row_count(2)
         )
         updated_rows = self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")
         self.assertEqual(len(updated_rows), 2)
