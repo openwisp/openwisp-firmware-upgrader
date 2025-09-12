@@ -26,7 +26,8 @@
   {% if related_count or firmwareless_count %}
     <p class="intro">
       {% blocktrans %}
-      Are you sure you want to proceed with the mass upgrade operation for {{ build }} ?
+        Are you sure you want to proceed with the
+        mass upgrade operation for <b>{{ build }}</b>?
       {% endblocktrans %}
     </p>
   {% elif not related_count and not firmwareless_count %}
