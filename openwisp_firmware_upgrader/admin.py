@@ -253,6 +253,7 @@ class BuildAdmin(BaseAdmin):
         result = BatchUpgradeOperation.dry_run(
             build=build, group=group, location=location
         )
+        result = BatchUpgradeOperation.dry_run(build=build)
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
         title = _("Confirm mass upgrade operation")

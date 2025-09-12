@@ -57,6 +57,5 @@ class MassUpgradeSelect2Widget(forms.Select):
                     "admin/css/autocomplete.css",
                     "admin/css/ow-auto-filter.css",
                 ]
-            },
-            js=[],
+            }
         )
