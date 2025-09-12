@@ -18,26 +18,10 @@
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-upgrade-progress.js' %}"></script>
 <script>
 django.jQuery(function($) {
-  // Add main progress bar to status field
-  setTimeout(function() {
-    var statusField = $('.field-status .readonly');
+  var statusField = $('.field-status .readonly');
     if (statusField.length && !statusField.find('.batch-main-progress').length) {
-      var total = {{ original.total_operations }};
-      var completed = {{ original.completed_operations }};
-      var percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-      var status = '{{ original.status }}';
-      var progressHtml = `
-        <div class="batch-main-progress">
-          <div class="upgrade-progress-bar">
-            <div class="upgrade-progress-fill ${status}" style="width: ${percentage}%"></div>
-          </div>
-          <span class="upgrade-progress-text">${percentage}%</span>
-        </div>
-      `;
-      
-      statusField.append(progressHtml);
+      statusField.append('<div class="batch-main-progress"></div>');
     }
-  }, 100);
 });
 </script>
 {% endblock %}

@@ -70,6 +70,7 @@ class TestFirmwareUpgradeSockets(TestCase):
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
+        communicator.scope["user"] = self.user
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -120,6 +121,9 @@ class TestFirmwareUpgradeSockets(TestCase):
 
         await communicator.disconnect()
 
+    @override_settings(
+        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    )
     async def test_batch_upgrade_progress_consumer_connection(self):
         """Test BatchUpgradeProgressConsumer connection and functionality."""
         batch_id = str(uuid4())
@@ -130,6 +134,7 @@ class TestFirmwareUpgradeSockets(TestCase):
             f"/ws/firmware-upgrader/batch-upgrade-operation/{batch_id}/",
         )
         communicator.scope["url_route"] = {"kwargs": {"batch_id": batch_id}}
+        communicator.scope["user"] = self.user
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -500,6 +505,7 @@ class TestFirmwareUpgradeSockets(TestCase):
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
+        communicator.scope["user"] = self.user
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -522,6 +528,9 @@ class TestFirmwareUpgradeSockets(TestCase):
 
         await communicator.disconnect()
 
+    @override_settings(
+        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    )
     async def test_websocket_disconnect_handling(self):
         """Test WebSocket disconnect handling."""
         operation_id = str(uuid4())
@@ -532,6 +541,7 @@ class TestFirmwareUpgradeSockets(TestCase):
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
+        communicator.scope["user"] = self.user
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -622,6 +632,9 @@ class TestFirmwareUpgradeSockets(TestCase):
             except RuntimeError:
                 pass
 
+    @override_settings(
+        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    )
     async def test_websocket_message_formatting(self):
         """Test WebSocket message formatting and structure."""
         operation_id = str(uuid4())
@@ -632,6 +645,7 @@ class TestFirmwareUpgradeSockets(TestCase):
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
+        communicator.scope["user"] = self.user
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
@@ -672,12 +686,14 @@ class TestFirmwareUpgradeSockets(TestCase):
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
         communicator1.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
+        communicator1.scope["user"] = self.user
 
         communicator2 = WebsocketCommunicator(
             UpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
         communicator2.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
+        communicator2.scope["user"] = self.staff_user
 
         connected1, _ = await communicator1.connect()
         connected2, _ = await communicator2.connect()
@@ -758,6 +774,9 @@ class TestFirmwareUpgradeSockets(TestCase):
         self.assertTrue(connected)
         await communicator.disconnect()
 
+    @override_settings(
+        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    )
     async def test_websocket_message_serialization(self):
         """Test WebSocket message serialization with complex data."""
         operation_id = str(uuid4())
@@ -768,6 +787,7 @@ class TestFirmwareUpgradeSockets(TestCase):
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
+        communicator.scope["user"] = self.user
 
         connected, _ = await communicator.connect()
         self.assertTrue(connected)

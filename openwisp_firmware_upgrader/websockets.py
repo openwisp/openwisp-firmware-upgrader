@@ -6,6 +6,7 @@ from asgiref.sync import async_to_sync, sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.layers import get_channel_layer
 from django.utils import timezone
+from swapper import load_model
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
     """
     WebSocket consumer that streams progress updates for a single upgrade operation.
     """
+
     def _is_user_authenticated(self):
         try:
             assert self.scope["user"].is_authenticated is True
@@ -68,7 +70,6 @@ class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                 )
                 await self.close()
                 return
-
             await self.accept()
 
     async def disconnect(self, close_code):
@@ -88,16 +89,13 @@ class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
     async def _handle_current_operation_state_request(self, content):
         """Handle request for current state of the operation"""
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
         try:
-            from .models import UpgradeOperation
-
             # Get the operation using sync_to_async
             get_operation = sync_to_async(
                 lambda: UpgradeOperation.objects.filter(pk=self.operation_id).first()
             )
-
             operation = await get_operation()
-
             if operation:
                 # Send operation update
                 await self.send_json(
@@ -116,7 +114,6 @@ class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                         },
                     }
                 )
-
         except (ConnectionError, TimeoutError) as e:
             logger.error(
                 f"Failed to connect to channel layer during operation state request: {e}"
@@ -132,6 +129,7 @@ class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
     """
     WebSocket consumer that streams progress updates for a batch upgrade operation.
     """
+
     def _is_user_authenticated(self):
         try:
             assert self.scope["user"].is_authenticated is True
@@ -150,11 +148,9 @@ class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
             auth_result = self._is_user_authenticated()
             if not auth_result:
                 return
-
             if not self.is_user_authorized():
                 await self.close()
                 return
-
             self.batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
             self.group_name = f"batch_upgrade_{self.batch_id}"
 
@@ -194,18 +190,15 @@ class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
     async def _handle_current_batch_state_request(self, content):
         """Handle request for current state of batch upgrade operations"""
+        BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
         try:
-            from .models import BatchUpgradeOperation
-
             # Get the batch operation and its upgrade operations
             get_batch_operations = sync_to_async(
                 lambda: BatchUpgradeOperation.objects.filter(pk=self.batch_id)
                 .prefetch_related("upgradeoperation_set")
                 .first()
             )
-
             batch_operation = await get_batch_operations()
-
             if batch_operation:
                 # Send batch status
                 total_operations = await sync_to_async(
@@ -216,7 +209,6 @@ class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                         status="in-progress"
                     ).count
                 )()
-
                 await self.send_json(
                     {
                         "type": "batch_status",
@@ -225,7 +217,6 @@ class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                         "total": total_operations,
                     }
                 )
-
                 # Send individual operation progress
                 operations_list = await sync_to_async(list)(
                     batch_operation.upgrade_operations.all()
@@ -244,7 +235,6 @@ class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                             ),
                         }
                     )
-
         except (ConnectionError, TimeoutError) as e:
             logger.error(
                 f"Failed to connect to channel layer during batch state request: {e}"
@@ -283,7 +273,6 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
             if not self.is_user_authorized():
                 await self.close()
                 return
-
             self.pk_ = self.scope["url_route"]["kwargs"]["pk"]
             self.group_name = f"firmware_upgrader.device-{self.pk_}"
 
@@ -303,7 +292,6 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                 )
                 await self.close()
                 return
-
             await self.accept()
 
     async def disconnect(self, close_code):
@@ -315,7 +303,6 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
     async def receive_json(self, content):
         """Handle incoming messages from the client"""
         message_type = content.get("type")
-
         if message_type == "request_current_state":
             await self._handle_current_state_request(content)
         else:
@@ -323,9 +310,8 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
 
     async def _handle_current_state_request(self, content):
         """Handle request for current state of in-progress operations"""
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
         try:
-            from .models import UpgradeOperation
-
             # Get recent operations (including recently completed) for this device using sync_to_async
             get_operations = sync_to_async(
                 lambda: list(
@@ -344,9 +330,7 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                     .values("id", "status", "log", "progress", "modified", "created")
                 )
             )
-
             operations = await get_operations()
-
             # Send current state for each in-progress operation
             for operation in operations:
                 operation_data = {
@@ -365,7 +349,6 @@ class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
                         else None
                     ),
                 }
-
                 # Send as operation update
                 await self.send_json(
                     {
@@ -434,7 +417,6 @@ class UpgradeProgressPublisher:
             publisher.publish_progress(
                 {"type": "log", "content": line, "status": instance.status}
             )
-
             # Publish to device-specific channel for real-time UI updates
             device_publisher = DeviceUpgradeProgressPublisher(
                 instance.device.pk, instance.pk
@@ -470,7 +452,6 @@ class DeviceUpgradeProgressPublisher:
     def publish_progress(self, data):
         """Publish to device-specific channel"""
         data = _convert_lazy_translations(data)
-
         message = {
             "type": "send_update",
             "model": "UpgradeOperation",
@@ -480,7 +461,6 @@ class DeviceUpgradeProgressPublisher:
         async def _send_messages():
             # Send to device-specific channel
             await self.channel_layer.group_send(self.device_group_name, message)
-
             # Also send to operation-specific channel if available
             if hasattr(self, "operation_group_name"):
                 await self.channel_layer.group_send(
@@ -514,14 +494,12 @@ class DeviceUpgradeProgressPublisher:
         Handle UpgradeOperation post_save events by publishing status updates to WebSocket channels.
         """
         # Only publish updates for existing operations
-        if created:
+        if created and not (hasattr(instance, "batch") and instance.batch):
             return
-
         try:
             # Publish status update to operation-specific channel
             publisher = UpgradeProgressPublisher(instance.pk)
             publisher.publish_progress({"type": "status", "status": instance.status})
-
             # Publish complete operation update to device-specific channel
             device_publisher = cls(instance.device.pk, instance.pk)
             device_publisher.publish_operation_update(
@@ -550,14 +528,12 @@ class DeviceUpgradeProgressPublisher:
             # Publish to batch upgrade channel if this operation belongs to a batch
             if hasattr(instance, "batch") and instance.batch:
                 batch_publisher = BatchUpgradeProgressPublisher(instance.batch.pk)
-
                 # Prepare device information
                 device_info = {
                     "device_id": instance.device.pk,
                     "device_name": instance.device.name,
                     "image_name": str(instance.image) if instance.image else None,
                 }
-
                 batch_publisher.publish_operation_progress(
                     str(instance.pk),
                     instance.status,
@@ -565,9 +541,10 @@ class DeviceUpgradeProgressPublisher:
                     instance.modified,
                     device_info,
                 )
-
                 # Update batch status if needed
                 batch_publisher.update_batch_status(instance.batch)
+                if created:
+                    batch_publisher.update_batch_status(instance.batch)
         except (ConnectionError, TimeoutError) as e:
             logger.error(
                 f"Failed to connect to channel layer for upgrade operation {instance.pk}: {e}",
@@ -614,7 +591,6 @@ class BatchUpgradeProgressPublisher:
             "progress": progress,
             "modified": modified.isoformat() if modified else None,
         }
-
         # Add device information if available
         if device_info:
             progress_data.update(
@@ -624,7 +600,6 @@ class BatchUpgradeProgressPublisher:
                     "image_name": device_info.get("image_name", ""),
                 }
             )
-
         self.publish_progress(progress_data)
 
     def publish_batch_status(self, status, completed, total):
@@ -640,37 +615,16 @@ class BatchUpgradeProgressPublisher:
     def update_batch_status(self, batch_instance):
         """Update and publish batch status based on current operations"""
         batch_instance.refresh_from_db()
-
         if hasattr(batch_instance, "_upgrade_operations"):
             delattr(batch_instance, "_upgrade_operations")
-
         operations = batch_instance.upgradeoperation_set
         total_operations = operations.count()
-        in_progress_operations = operations.filter(status="in-progress").count()
         completed_operations = operations.exclude(status="in-progress").count()
-        failed_operations = operations.filter(status="failed").count()
-        successful_operations = operations.filter(status="success").count()
-
-        # Determine overall batch status
-        if in_progress_operations > 0:
-            batch_status = "in-progress"
-        elif failed_operations > 0:
-            batch_status = "failed"
-        elif (
-            successful_operations > 0
-            and completed_operations == total_operations
-            and total_operations > 0
-        ):
-            batch_status = "success"
-        else:
-            batch_status = batch_instance.status
-
-        # Update the batch instance status if needed
-        if batch_instance.status != batch_status:
-            batch_instance.status = batch_status
-            batch_instance.save(update_fields=["status"])
-
-        self.publish_batch_status(batch_status, completed_operations, total_operations)
+        # Publish the current status from the database
+        current_batch_status = batch_instance.status
+        self.publish_batch_status(
+            current_batch_status, completed_operations, total_operations
+        )
 
     @classmethod
     def handle_batch_upgrade_operation_saved(cls, sender, instance, created, **kwargs):
@@ -680,7 +634,6 @@ class BatchUpgradeProgressPublisher:
         # Only publish updates for existing operations
         if created:
             return
-
         try:
             batch_publisher = cls(instance.pk)
             batch_publisher.update_batch_status(instance)

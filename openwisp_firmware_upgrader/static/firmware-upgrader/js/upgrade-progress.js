@@ -382,14 +382,9 @@ function getProgressPercentage(status, operationProgress = null) {
 function calculateProgressFromLogLength(logContent = "") {
   if (!logContent) return 0;
 
-  const logLines = logContent
-    .split("\n")
-    .filter((line) => line.trim().length > 0);
+  const logLines = logContent.split("\n").filter((line) => line.trim().length > 0);
   const estimatedTotalSteps = 20;
-  const currentProgress = Math.min(
-    95,
-    (logLines.length / estimatedTotalSteps) * 100,
-  );
+  const currentProgress = Math.min(95, (logLines.length / estimatedTotalSteps) * 100);
 
   return Math.max(5, currentProgress);
 }
@@ -429,9 +424,7 @@ function updateUpgradeOperationLog(logData) {
         currentLog = logElement.text().replace(/\s*$/, "");
       }
 
-      let newLog = currentLog
-        ? currentLog + "\n" + logData.content
-        : logData.content;
+      let newLog = currentLog ? currentLog + "\n" + logData.content : logData.content;
 
       // Store accumulated content in memory
       accumulatedLogContent.set(operationId, newLog);
@@ -466,10 +459,7 @@ function updateUpgradeOperationStatus(statusData) {
       statusField.find(".upgrade-status-container span").text() ||
       statusField.text().trim();
 
-    if (
-      currentStatusText === "in progress" ||
-      currentStatusText === "in-progress"
-    ) {
+    if (currentStatusText === "in progress" || currentStatusText === "in-progress") {
       // Get current log content for progress calculation
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -515,9 +505,7 @@ function updateSingleUpgradeOperationDisplay(operation) {
   }
 
   if (operation.modified) {
-    $(".field-modified .readonly").html(
-      getFormattedDateTimeString(operation.modified),
-    );
+    $(".field-modified .readonly").html(getFormattedDateTimeString(operation.modified));
   }
 }
 
@@ -572,11 +560,8 @@ function updateSingleUpgradeOperationLog(logData) {
   let logElement = $(".field-log .readonly");
   let shouldScroll = isScrolledToBottom(logElement);
 
-  let currentLog =
-    singleOperationLogContent || logElement.text().replace(/\s*$/, "");
-  let newLog = currentLog
-    ? currentLog + "\n" + logData.content
-    : logData.content;
+  let currentLog = singleOperationLogContent || logElement.text().replace(/\s*$/, "");
+  let newLog = currentLog ? currentLog + "\n" + logData.content : logData.content;
 
   singleOperationLogContent = newLog;
   logElement.html(formatLogForDisplay(newLog));
@@ -662,9 +647,7 @@ function getWebSocketUrl(pageType, pageId, wsHost) {
 
 function getOperationIdFromUrl() {
   try {
-    let matches = window.location.pathname.match(
-      /\/upgradeoperation\/([^\/]+)\//,
-    );
+    let matches = window.location.pathname.match(/\/upgradeoperation\/([^\/]+)\//);
     return matches && matches[1] ? matches[1] : null;
   } catch (error) {
     console.error("Error extracting operation ID from URL:", error);

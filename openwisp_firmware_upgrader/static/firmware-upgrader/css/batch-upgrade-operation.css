@@ -200,6 +200,18 @@
   background-color: #dc3545;
 }
 
+.batch-progress-fill.aborted {
+  background-color: #6c757d;
+}
+
+.batch-progress-fill.cancelled {
+  background-color: #8b8b8b;
+}
+
+.batch-progress-fill.partial-success {
+  background-color: #fc9240;
+}
+
 .status-cell {
   width: 200px;
   min-width: 200px;
@@ -244,6 +256,10 @@
   background-color: #6c757d;
 }
 
+.upgrade-status-container .upgrade-progress-fill.cancelled {
+  background-color: #8b8b8b;
+}
+
 .upgrade-status-container span {
   font-size: 12px;
   font-weight: 500;
@@ -269,6 +285,10 @@
 
 .upgrade-status-aborted {
   color: #6c757d;
+}
+
+.upgrade-status-cancelled {
+  color: #8b8b8b;
 }
 
 .upgrade-status-idle {
@@ -312,6 +332,18 @@
 
 .batch-main-progress .upgrade-progress-fill.failed {
   background-color: #dc3545;
+}
+
+.batch-main-progress .upgrade-progress-fill.aborted {
+  background-color: #6c757d;
+}
+
+.batch-main-progress .upgrade-progress-fill.cancelled {
+  background-color: #8b8b8b;
+}
+
+.batch-main-progress .upgrade-progress-fill.partial-success {
+  background-color: #ff9800;
 }
 
 .batch-main-progress .upgrade-progress-text {
