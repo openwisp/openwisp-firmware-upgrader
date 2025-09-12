@@ -28,7 +28,10 @@ class FirmwareSchemaWidget(BaseJsonSchemaWidget):
         )
 
 
-class GroupSelect2Widget(forms.Select):
+class MassUpgradeSelect2Widget(forms.Select):
+    """
+    Custom Select2 widget for mass upgrade operations (groups and locations).
+    """
 
     def __init__(self, attrs=None, placeholder=None):
         # Default placeholder for backward compatibility
@@ -58,6 +61,6 @@ class GroupSelect2Widget(forms.Select):
             js=[
                 "admin/js/vendor/jquery/jquery.min.js",
                 "admin/js/vendor/select2/select2.full.min.js",
-                "firmware-upgrader/js/group-select2.js",
+                "firmware-upgrader/js/mass-upgrade-select2.js",
             ],
         )

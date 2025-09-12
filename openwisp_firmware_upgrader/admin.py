@@ -34,7 +34,7 @@ from .filters import (
 )
 from .swapper import load_model
 from .utils import get_upgrader_schema_for_device
-from .widgets import FirmwareSchemaWidget, GroupSelect2Widget
+from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
 
 logger = logging.getLogger(__name__)
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -106,20 +106,13 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         queryset=DeviceGroup.objects.none(),
         required=False,
         help_text=_("Limit the upgrade to devices belonging to this group"),
-        widget=GroupSelect2Widget,
+        widget=MassUpgradeSelect2Widget(placeholder=_("Select a group")),
     )
     location = forms.ModelChoiceField(
         queryset=Location.objects.none(),
         required=False,
         help_text=_("Limit the upgrade to devices at this location"),
-        widget=forms.Select(
-            attrs={
-                "class": "select2-input",
-                "data-dropdown-css-class": "ow2-autocomplete-dropdown",
-                "data-placeholder": _("Select a location"),
-                "data-allow-clear": "true",
-            }
-        ),
+        widget=MassUpgradeSelect2Widget(placeholder=_("Select a location")),
     )
 
     class Meta:
@@ -157,7 +150,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         js = [
             "admin/js/vendor/jquery/jquery.min.js",
             "admin/js/vendor/select2/select2.full.min.js",
-            "firmware-upgrader/js/group-select2.js",
+            "firmware-upgrader/js/mass-upgrade-select2.js",
             "firmware-upgrader/js/upgrade-selected-confirmation.js",
         ]
         css = {
@@ -241,22 +234,21 @@ class BuildAdmin(BaseAdmin):
                         group=group,
                         location=location,
                     )
+                    # Success message for when batch upgrade starts successfully
+                    text = _(
+                        "You can track the progress of this mass upgrade operation "
+                        "in this page. Refresh the page from time to time to check "
+                        "its progress."
+                    )
+                    self.message_user(request, mark_safe(text), messages.SUCCESS)
+                    url = reverse(
+                        f"admin:{app_label}_batchupgradeoperation_change",
+                        args=[batch.pk],
+                    )
+                    return redirect(url)
                 except ValidationError as e:
                     self.message_user(request, str(e.messages[0]), messages.ERROR)
-                    # Redirect back to build changelist since no devices match filters
-                    return redirect(reverse(f"admin:{app_label}_build_changelist"))
 
-                # Success message for when batch upgrade starts successfully
-                text = _(
-                    "You can track the progress of this mass upgrade operation "
-                    "in this page. Refresh the page from time to time to check "
-                    "its progress."
-                )
-                self.message_user(request, mark_safe(text), messages.SUCCESS)
-                url = reverse(
-                    f"admin:{app_label}_batchupgradeoperation_change", args=[batch.pk]
-                )
-                return redirect(url)
         # upgrade needs to be confirmed
         group = None
         location = None

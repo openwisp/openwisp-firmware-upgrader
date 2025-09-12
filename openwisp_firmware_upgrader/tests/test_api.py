@@ -666,7 +666,6 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
                 url, {"location": "00000000-0000-0000-0000-000000000000"}
             )
             self.assertEqual(r.status_code, 200)
-            # Should return all devices as if no filter applied
 
     def test_api_batch_upgrade_no_devices_with_filters(self):
         """Test API error handling when filters don't match any devices."""

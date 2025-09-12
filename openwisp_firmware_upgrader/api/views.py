@@ -40,6 +40,8 @@ Category = load_model("Category")
 FirmwareImage = load_model("FirmwareImage")
 DeviceFirmware = load_model("DeviceFirmware")
 Device = swapper.load_model("config", "Device")
+DeviceGroup = swapper.load_model("config", "DeviceGroup")
+Location = swapper.load_model("geo", "Location")
 
 
 class ListViewPagination(pagination.PageNumberPagination):
@@ -105,15 +107,13 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 )
             except (
                 ValueError,
-                swapper.load_model("config", "DeviceGroup").DoesNotExist,
+                DeviceGroup.DoesNotExist,
             ):
                 group = None
         if location_id:
             try:
-                location = swapper.load_model("geo", "Location").objects.get(
-                    pk=location_id
-                )
-            except (ValueError, swapper.load_model("geo", "Location").DoesNotExist):
+                location = Location.objects.get(pk=location_id)
+            except (ValueError, Location.DoesNotExist):
                 location = None
         instance = self.get_object()
         try:
@@ -138,20 +138,16 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         location = None
         if group_id:
             try:
-                group = swapper.load_model("config", "DeviceGroup").objects.get(
-                    pk=group_id
-                )
+                group = DeviceGroup.objects.get(pk=group_id)
             except (
                 ValueError,
-                swapper.load_model("config", "DeviceGroup").DoesNotExist,
+                DeviceGroup.DoesNotExist,
             ):
                 group = None
         if location_id:
             try:
-                location = swapper.load_model("geo", "Location").objects.get(
-                    pk=location_id
-                )
-            except (ValueError, swapper.load_model("geo", "Location").DoesNotExist):
+                location = Location.objects.get(pk=location_id)
+            except (ValueError, Location.DoesNotExist):
                 location = None
         data = BatchUpgradeOperation.dry_run(
             build=self.instance, group=group, location=location

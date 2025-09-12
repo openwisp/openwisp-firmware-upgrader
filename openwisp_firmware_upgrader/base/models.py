@@ -559,26 +559,32 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
     def clean(self):
         super().clean()
-        if self.group and self.build.category.organization:
-            if self.group.organization != self.build.category.organization:
-                raise ValidationError(
-                    {
-                        "group": _(
-                            "The organization of the group doesn't match "
-                            "the organization of the build category"
-                        )
-                    }
-                )
-        if self.location and self.build.category.organization:
-            if self.location.organization != self.build.category.organization:
-                raise ValidationError(
-                    {
-                        "location": _(
-                            "The organization of the location doesn't match "
-                            "the organization of the build category"
-                        )
-                    }
-                )
+        if (
+            self.group
+            and self.build.category.organization
+            and self.group.organization != self.build.category.organization
+        ):
+            raise ValidationError(
+                {
+                    "group": _(
+                        "The organization of the group doesn't match "
+                        "the organization of the build category"
+                    )
+                }
+            )
+        if (
+            self.location
+            and self.build.category.organization
+            and self.location.organization != self.build.category.organization
+        ):
+            raise ValidationError(
+                {
+                    "location": _(
+                        "The organization of the location doesn't match "
+                        "the organization of the build category"
+                    )
+                }
+            )
 
     def update(self):
         operations = self.upgradeoperation_set
