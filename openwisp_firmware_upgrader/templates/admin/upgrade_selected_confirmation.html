@@ -115,6 +115,9 @@
 
 {% block footer %}
   {{ block.super }}
+  <script type="text/javascript" src="{% static 'admin/js/vendor/select2/select2.full.min.js' %}" defer></script>
+  <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-selected-confirmation.js' %}" defer></script>
+  <script type="text/javascript" src="{% static 'firmware-upgrader/js/mass-upgrade-select2.js' %}" defer></script>
   <script>
     var firmwareUpgraderSchema = {{ firmware_upgrader_schema | safe }}
   </script>

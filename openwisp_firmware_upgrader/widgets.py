@@ -58,9 +58,5 @@ class MassUpgradeSelect2Widget(forms.Select):
                     "admin/css/ow-auto-filter.css",
                 ]
             },
-            js=[
-                "admin/js/vendor/jquery/jquery.min.js",
-                "admin/js/vendor/select2/select2.full.min.js",
-                "firmware-upgrader/js/mass-upgrade-select2.js",
-            ],
+            js=[],
         )

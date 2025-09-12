@@ -147,13 +147,6 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
     @property
     def media(self):
-        js = [
-            "admin/js/vendor/jquery/jquery.min.js",
-            "admin/js/jquery.init.js",
-            "admin/js/vendor/select2/select2.full.min.js",
-            "firmware-upgrader/js/upgrade-selected-confirmation.js",
-            "firmware-upgrader/js/mass-upgrade-select2.js",
-        ]
         css = {
             "all": [
                 "admin/css/vendor/select2/select2.min.css",
@@ -162,7 +155,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
                 "firmware-upgrader/css/upgrade-selected-confirmation.css",
             ]
         }
-        return super().media + forms.Media(js=js, css=css)
+        return super().media + forms.Media(css=css)
 
 
 @admin.register(load_model("Build"))
@@ -260,7 +253,6 @@ class BuildAdmin(BaseAdmin):
         result = BatchUpgradeOperation.dry_run(
             build=build, group=group, location=location
         )
-        result = BatchUpgradeOperation.dry_run(build=build, group=group)
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
         title = _("Confirm mass upgrade operation")
