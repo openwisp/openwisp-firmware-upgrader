@@ -483,7 +483,8 @@ class TestRealTimeWebsockets(
         self.wait_for_visibility(By.ID, "result_list")
         WebDriverWait(self.web_driver, 10).until(
             lambda driver: driver.execute_script(
-                "return window.batchUpgradeProgressWebSocket && window.batchUpgradeProgressWebSocket.readyState === 1;"
+                "return window.batchUpgradeProgressWebSocket && "
+                "window.batchUpgradeProgressWebSocket.readyState === 1;"
             )
         )
 
@@ -492,14 +493,14 @@ class TestRealTimeWebsockets(
         batch_operation = await database_sync_to_async(
             BatchUpgradeOperation.objects.create
         )(build=self.build2, status="in-progress")
-        operation1 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device1,
             image=self.image2,
             batch=batch_operation,
             status="in-progress",
             progress=25,
         )
-        operation2 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device2,
             image=self.image2,
             batch=batch_operation,
@@ -566,7 +567,7 @@ class TestRealTimeWebsockets(
             status="in-progress",
             progress=10,
         )
-        operation2 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device2,
             image=self.image2,
             batch=batch_operation,
@@ -627,14 +628,14 @@ class TestRealTimeWebsockets(
         batch_operation = await database_sync_to_async(
             BatchUpgradeOperation.objects.create
         )(build=self.build2, status="in-progress")
-        operation1 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device1,
             image=self.image2,
             batch=batch_operation,
             status="success",
             progress=100,
         )
-        operation2 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device2,
             image=self.image2,
             batch=batch_operation,
@@ -672,14 +673,14 @@ class TestRealTimeWebsockets(
         batch_operation = await database_sync_to_async(
             BatchUpgradeOperation.objects.create
         )(build=self.build2, status="in-progress")
-        operation1 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device1,
             image=self.image2,
             batch=batch_operation,
             status="success",
             progress=100,
         )
-        operation2 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device2,
             image=self.image2,
             batch=batch_operation,
@@ -719,7 +720,7 @@ class TestRealTimeWebsockets(
         batch_operation = await database_sync_to_async(
             BatchUpgradeOperation.objects.create
         )(build=self.build2, status="in-progress")
-        operation1 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device1,
             image=self.image2,
             batch=batch_operation,
