@@ -178,8 +178,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 },
                 follow=True,
             )
-        self.assertNotContains(r, '<input type="submit" name="upgrade_related"')
-        self.assertContains(r, '<input type="submit" name="upgrade_all"')
+        self.assertNotContains(
+            r,
+            'name="upgrade_related"',
+        )
+        self.assertContains(r, 'name="upgrade_all"')
 
     def test_view_device_administrator(self):
         device_fw = self._create_device_firmware()
