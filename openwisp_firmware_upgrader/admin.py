@@ -242,17 +242,6 @@ class BuildAdmin(BaseAdmin):
                     return redirect(url)
                 except ValidationError as e:
                     self.message_user(request, str(e.messages[0]), messages.ERROR)
-
-        # upgrade needs to be confirmed
-        group = None
-        location = None
-        if group_id:
-            group = swapper.load_model("config", "DeviceGroup").objects.get(pk=group_id)
-        if location_id:
-            location = Location.objects.get(pk=location_id)
-        result = BatchUpgradeOperation.dry_run(
-            build=build, group=group, location=location
-        )
         result = BatchUpgradeOperation.dry_run(build=build)
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]

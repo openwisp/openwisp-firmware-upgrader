@@ -152,7 +152,6 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         data = BatchUpgradeOperation.dry_run(
             build=self.instance, group=group, location=location
         )
-        data = BatchUpgradeOperation.dry_run(build=self.instance, group=group)
         data["device_firmwares"] = [
             str(device_fw.pk) for device_fw in data["device_firmwares"]
         ]

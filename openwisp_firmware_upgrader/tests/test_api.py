@@ -344,7 +344,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
         url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
-        with self.assertNumQueries(11):
+        with self.assertNumQueries(10):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 200)
         device_fw_list = [
