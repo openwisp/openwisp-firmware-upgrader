@@ -67,7 +67,6 @@ class TestRealTimeWebsockets(
             os=self.os, model=image2.boards[0], organization=org
         )
         self._create_config(device=device)
-
         # Store references for tests
         self.org = org
         self.category = category
@@ -302,7 +301,6 @@ class TestRealTimeWebsockets(
             By.CSS_SELECTOR, ".field-log .readonly"
         ).get_attribute("innerHTML")
         self.assertIn("Starting upgrade process", initial_log)
-
         # Update operation log
         new_log_line = "Device identity verified successfully"
         operation.log = f"{operation.log}\n{new_log_line}"

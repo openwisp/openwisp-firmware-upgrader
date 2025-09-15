@@ -210,6 +210,25 @@ Upgrades all the devices related to the specified build ID.
 
     POST /api/v1/firmware-upgrader/build/{id}/upgrade/
 
+**Optional Parameters**
+
+The batch upgrade operation accepts the following optional parameters in
+the request body:
+
+- ``group`` (Device group ID): limit the upgrade to devices belonging to a
+  specific group
+- ``location`` (Location ID): limit the upgrade to devices at a specific
+  geographic location
+
+Example with filters:
+
+.. code-block:: json
+
+    {
+        "group": "group-uuid",
+        "location": "location-uuid"
+    }
+
 Dry-run Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -222,6 +241,22 @@ exists for a device which would be upgraded.
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/build/{id}/upgrade/
+
+**Optional Query Parameters**
+
+The dry-run batch upgrade operation accepts the following optional query
+parameters:
+
+- ``group`` (Device group ID): limit the preview to devices belonging to a
+  specific group
+- ``location`` (Location ID): limit the preview to devices at a specific
+  geographic location
+
+Example with filters:
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/{id}/upgrade/?group={group_id}&location={location_id}
 
 List Firmware Categories
 ~~~~~~~~~~~~~~~~~~~~~~~~
