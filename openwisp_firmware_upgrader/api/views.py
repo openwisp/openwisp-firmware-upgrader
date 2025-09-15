@@ -40,6 +40,8 @@ Category = load_model("Category")
 FirmwareImage = load_model("FirmwareImage")
 DeviceFirmware = load_model("DeviceFirmware")
 Device = swapper.load_model("config", "Device")
+DeviceGroup = swapper.load_model("config", "DeviceGroup")
+Location = swapper.load_model("geo", "Location")
 
 
 class ListViewPagination(pagination.PageNumberPagination):
@@ -94,8 +96,34 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         Upgrades all the devices related to the specified build ID.
         """
         upgrade_all = request.POST.get("upgrade_all") is not None
+        group_id = request.POST.get("group")
+        location_id = request.POST.get("location")
+        group = None
+        location = None
+        if group_id:
+            try:
+                group = swapper.load_model("config", "DeviceGroup").objects.get(
+                    pk=group_id
+                )
+            except (
+                ValueError,
+                DeviceGroup.DoesNotExist,
+            ):
+                group = None
+        if location_id:
+            try:
+                location = Location.objects.get(pk=location_id)
+            except (ValueError, Location.DoesNotExist):
+                location = None
         instance = self.get_object()
-        batch = instance.batch_upgrade(firmwareless=upgrade_all)
+        try:
+            batch = instance.batch_upgrade(
+                firmwareless=upgrade_all, group=group, location=location
+            )
+        except ValidationError as e:
+            return Response(
+                {"error": str(e.messages[0])}, status=status.HTTP_400_BAD_REQUEST
+            )
         return Response({"batch": str(batch.pk)}, status=201)
 
     def get(self, request, pk):
@@ -104,7 +132,26 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         which would be upgraded if POST is used.
         """
         self.instance = self.get_object()
-        data = BatchUpgradeOperation.dry_run(build=self.instance)
+        group_id = request.GET.get("group")
+        location_id = request.GET.get("location")
+        group = None
+        location = None
+        if group_id:
+            try:
+                group = DeviceGroup.objects.get(pk=group_id)
+            except (
+                ValueError,
+                DeviceGroup.DoesNotExist,
+            ):
+                group = None
+        if location_id:
+            try:
+                location = Location.objects.get(pk=location_id)
+            except (ValueError, Location.DoesNotExist):
+                location = None
+        data = BatchUpgradeOperation.dry_run(
+            build=self.instance, group=group, location=location
+        )
         data["device_firmwares"] = [
             str(device_fw.pk) for device_fw in data["device_firmwares"]
         ]

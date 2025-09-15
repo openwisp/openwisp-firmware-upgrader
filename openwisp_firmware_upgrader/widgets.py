@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from openwisp_controller.config.widgets import JsonSchemaWidget as BaseJsonSchemaWidget
 
@@ -24,4 +25,37 @@ class FirmwareSchemaWidget(BaseJsonSchemaWidget):
     def media(self):
         return super().media + forms.Media(
             css={"all": ["firmware-upgrader/css/upgrade-options.css"]}
+        )
+
+
+class MassUpgradeSelect2Widget(forms.Select):
+    """
+    Custom Select2 widget for mass upgrade operations (groups and locations).
+    """
+
+    def __init__(self, attrs=None, placeholder=None):
+        # Default placeholder for backward compatibility
+        if placeholder is None:
+            placeholder = _("Select a group")
+
+        default_attrs = {
+            "class": "select2-input",
+            "data-dropdown-css-class": "ow2-autocomplete-dropdown",
+            "data-placeholder": placeholder,
+            "data-allow-clear": "true",
+        }
+        if attrs:
+            default_attrs.update(attrs)
+        super().__init__(attrs=default_attrs)
+
+    @property
+    def media(self):
+        return forms.Media(
+            css={
+                "all": [
+                    "admin/css/vendor/select2/select2.min.css",
+                    "admin/css/autocomplete.css",
+                    "admin/css/ow-auto-filter.css",
+                ]
+            }
         )
