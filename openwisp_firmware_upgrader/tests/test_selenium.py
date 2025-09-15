@@ -57,6 +57,17 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         select_element = self.find_element(By.ID, "id_devicefirmware-0-image")
         return Select(select_element)
 
+    def _assert_no_js_errors(self):
+        browser_logs = []
+        for log in self.get_browser_logs():
+            # ignore if not console-api
+            if log.get("source") != "console-api":
+                continue
+            else:
+                print(log)
+                browser_logs.append(log)
+        self.assertEqual(browser_logs, [])
+
     @capture_any_output()
     def test_restoring_deleted_device(self):
         org = self._get_org()
@@ -430,4 +441,26 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         # Modal should close after confirming
         WebDriverWait(self.web_driver, 10).until(
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
+        )
+
+    def test_mass_upgrade_confirmation_page_widgets(self):
+        """Test mass upgrade confirmation page loads without JS errors and Select2 widgets are initialized"""
+        _, _, _, build2, _, _, _ = self._set_up_env()
+        self.login()
+        self.open(
+            reverse(f"admin:{self.firmware_app_label}_build_change", args=[build2.id])
+        )
+        self.find_element(
+            by=By.CSS_SELECTOR,
+            value='.title-wrapper .object-tools form button[type="submit"]',
+        ).click()
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located((By.ID, "id_group"))
+        )
+        self._assert_no_js_errors()
+        self.find_element(By.CSS_SELECTOR, ".select2-container")
+        self.assertTrue(
+            len(self.web_driver.find_elements(By.CSS_SELECTOR, ".select2-container"))
+            >= 2,
+            "Both group and location Select2 widgets are initialized",
         )
