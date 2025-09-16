@@ -334,7 +334,6 @@ class TestRealTimeWebsockets(
             By.CSS_SELECTOR, ".field-log .readonly"
         ).get_attribute("innerHTML")
         self.assertIn("Starting upgrade process", initial_log)
-
         # Update operation log
         new_log_line = "Device identity verified successfully"
         operation.log = f"{operation.log}\n{new_log_line}"
