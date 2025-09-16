@@ -579,12 +579,8 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self.upgrade_operations.count()
 
     @property
-    def completed_operations(self):
-        return self.upgrade_operations.exclude(status="in-progress").count()
-
-    @property
     def progress_report(self):
-        completed = self.completed_operations
+        completed = self.upgrade_operations.exclude(status="in-progress").count()
         return _(f"{completed} out of {self.total_operations}")
 
     @property

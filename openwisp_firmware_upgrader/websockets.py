@@ -11,21 +11,9 @@ from swapper import load_model
 logger = logging.getLogger(__name__)
 
 
-def _convert_lazy_translations(obj):
-    """Recursively convert Django lazy translation objects to strings for JSON serialization."""
-    if isinstance(obj, dict):
-        return {key: _convert_lazy_translations(value) for key, value in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return type(obj)(_convert_lazy_translations(item) for item in obj)
-    elif hasattr(obj, "__str__") and hasattr(obj, "_proxy____cast"):
-        return str(obj)
-    else:
-        return obj
-
-
-class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
+class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
     """
-    WebSocket consumer that streams progress updates for a single upgrade operation.
+    Base websocket consumer with authentication and authorization methods.
     """
 
     def _is_user_authenticated(self):
@@ -40,6 +28,23 @@ class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
         user = self.scope["user"]
         is_authorized = user.is_superuser or user.is_staff
         return is_authorized
+
+def _convert_lazy_translations(obj):
+    """Recursively convert Django lazy translation objects to strings for JSON serialization."""
+    if isinstance(obj, dict):
+        return {key: _convert_lazy_translations(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(_convert_lazy_translations(item) for item in obj)
+    elif hasattr(obj, "__str__") and hasattr(obj, "_proxy____cast"):
+        return str(obj)
+    else:
+        return obj
+
+
+class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
+    """
+    WebSocket consumer that streams progress updates for a single upgrade operation.
+    """
 
     async def connect(self):
         try:
@@ -125,23 +130,10 @@ class UpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event["data"])
 
 
-class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
+class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
     """
     WebSocket consumer that streams progress updates for a batch upgrade operation.
     """
-
-    def _is_user_authenticated(self):
-        try:
-            assert self.scope["user"].is_authenticated is True
-        except (KeyError, AssertionError):
-            return False
-        else:
-            return True
-
-    def is_user_authorized(self):
-        user = self.scope["user"]
-        is_authorized = user.is_superuser or user.is_staff
-        return is_authorized
 
     async def connect(self):
         try:
@@ -246,23 +238,10 @@ class BatchUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event["data"])
 
 
-class DeviceUpgradeProgressConsumer(AsyncJsonWebsocketConsumer):
+class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
     """
     Device-specific upgrade progress consumer for firmware upgrade progress
     """
-
-    def _is_user_authenticated(self):
-        try:
-            assert self.scope["user"].is_authenticated is True
-        except (KeyError, AssertionError):
-            return False
-        else:
-            return True
-
-    def is_user_authorized(self):
-        user = self.scope["user"]
-        is_authorized = user.is_superuser or user.is_staff
-        return is_authorized
 
     async def connect(self):
         try:

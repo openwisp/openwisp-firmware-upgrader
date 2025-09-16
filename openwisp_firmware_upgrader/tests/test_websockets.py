@@ -18,7 +18,6 @@ from ..websockets import (
 
 User = get_user_model()
 
-
 class TestFirmwareUpgradeSockets(TestCase):
     """Test WebSocket consumers and publishers for firmware upgrade progress."""
 
@@ -63,7 +62,6 @@ class TestFirmwareUpgradeSockets(TestCase):
     async def test_upgrade_progress_consumer_connection(self):
         """Test UpgradeProgressConsumer connection"""
         operation_id = str(uuid4())
-
         # Create a WebSocket connection
         communicator = WebsocketCommunicator(
             UpgradeProgressConsumer.as_asgi(),
@@ -71,15 +69,12 @@ class TestFirmwareUpgradeSockets(TestCase):
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
         communicator.scope["user"] = self.user
-
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
-
         # Test receiving messages
         channel_layer = get_channel_layer()
         if channel_layer is not None:
             group_name = f"upgrade_{operation_id}"
-
             # Send status message
             await channel_layer.group_send(
                 group_name,
@@ -88,11 +83,9 @@ class TestFirmwareUpgradeSockets(TestCase):
                     "data": {"type": "status", "status": "in-progress"},
                 },
             )
-
             response = await communicator.receive_json_from()
             self.assertEqual(response["type"], "status")
             self.assertEqual(response["status"], "in-progress")
-
             # Send log message
             await channel_layer.group_send(
                 group_name,
@@ -101,11 +94,9 @@ class TestFirmwareUpgradeSockets(TestCase):
                     "data": {"type": "log", "content": "Test log message"},
                 },
             )
-
             response = await communicator.receive_json_from()
             self.assertEqual(response["type"], "log")
             self.assertEqual(response["content"], "Test log message")
-
             # Send error message
             await channel_layer.group_send(
                 group_name,
@@ -114,20 +105,14 @@ class TestFirmwareUpgradeSockets(TestCase):
                     "data": {"type": "error", "message": "Test error"},
                 },
             )
-
             response = await communicator.receive_json_from()
             self.assertEqual(response["type"], "error")
             self.assertEqual(response["message"], "Test error")
-
         await communicator.disconnect()
 
-    @override_settings(
-        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
-    )
     async def test_batch_upgrade_progress_consumer_connection(self):
         """Test BatchUpgradeProgressConsumer connection and functionality."""
         batch_id = str(uuid4())
-
         # Create a WebSocket connection
         communicator = WebsocketCommunicator(
             BatchUpgradeProgressConsumer.as_asgi(),
@@ -135,15 +120,12 @@ class TestFirmwareUpgradeSockets(TestCase):
         )
         communicator.scope["url_route"] = {"kwargs": {"batch_id": batch_id}}
         communicator.scope["user"] = self.user
-
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
-
         # Test receiving messages
         channel_layer = get_channel_layer()
         if channel_layer is not None:
             group_name = f"batch_upgrade_{batch_id}"
-
             # Send batch status message
             await channel_layer.group_send(
                 group_name,
@@ -157,13 +139,11 @@ class TestFirmwareUpgradeSockets(TestCase):
                     },
                 },
             )
-
             response = await communicator.receive_json_from()
             self.assertEqual(response["type"], "batch_status")
             self.assertEqual(response["status"], "in-progress")
             self.assertEqual(response["completed"], 0)
             self.assertEqual(response["total"], 2)
-
             # Send operation progress message
             await channel_layer.group_send(
                 group_name,
@@ -177,13 +157,11 @@ class TestFirmwareUpgradeSockets(TestCase):
                     },
                 },
             )
-
             response = await communicator.receive_json_from()
             self.assertEqual(response["type"], "operation_progress")
             self.assertEqual(response["operation_id"], "op1")
             self.assertEqual(response["status"], "in-progress")
             self.assertEqual(response["progress"], 50)
-
         await communicator.disconnect()
 
     async def test_device_upgrade_progress_consumer_connection_authenticated(self):
@@ -197,14 +175,11 @@ class TestFirmwareUpgradeSockets(TestCase):
         )
         communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
         communicator.scope["user"] = self.user
-
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
-
         # Test receiving messages
         channel_layer = get_channel_layer()
         group_name = f"firmware_upgrader.device-{device_id}"
-
         # Send operation update message
         await channel_layer.group_send(
             group_name,
@@ -221,12 +196,10 @@ class TestFirmwareUpgradeSockets(TestCase):
                 },
             },
         )
-
         response = await communicator.receive_json_from()
         self.assertEqual(response["model"], "UpgradeOperation")
         self.assertEqual(response["data"]["type"], "operation_update")
         self.assertEqual(response["data"]["operation"]["id"], "test-op-id")
-
         await communicator.disconnect()
 
     async def test_device_upgrade_progress_consumer_connection_unauthenticated(self):
@@ -263,7 +236,6 @@ class TestFirmwareUpgradeSockets(TestCase):
     async def test_device_upgrade_progress_consumer_current_state_request(self):
         """Test DeviceUpgradeProgressConsumer current state request functionality."""
         device_id = str(uuid4())
-
         # Create a WebSocket connection
         communicator = WebsocketCommunicator(
             DeviceUpgradeProgressConsumer.as_asgi(),
@@ -271,13 +243,10 @@ class TestFirmwareUpgradeSockets(TestCase):
         )
         communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
         communicator.scope["user"] = self.user
-
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
-
         # Send current state request
         await communicator.send_json_to({"type": "request_current_state"})
-
         test_operations = [
             {
                 "id": "op1",
@@ -294,24 +263,19 @@ class TestFirmwareUpgradeSockets(TestCase):
                 "created": timezone.now(),
             },
         ]
-
         with patch(
             "openwisp_firmware_upgrader.websockets.sync_to_async"
         ) as mock_sync_to_async:
             mock_sync_to_async.return_value = AsyncMock(return_value=test_operations)
-
             # The consumer should send current state for each operation
             response1 = await communicator.receive_json_from()
             response2 = await communicator.receive_json_from()
-
             self.assertEqual(response1["model"], "UpgradeOperation")
             self.assertEqual(response1["data"]["type"], "operation_update")
             self.assertEqual(response1["data"]["operation"]["id"], "op1")
-
             self.assertEqual(response2["model"], "UpgradeOperation")
             self.assertEqual(response2["data"]["type"], "operation_update")
             self.assertEqual(response2["data"]["operation"]["id"], "op2")
-
         await communicator.disconnect()
 
     async def test_device_upgrade_progress_consumer_unknown_message(self):
@@ -337,48 +301,40 @@ class TestFirmwareUpgradeSockets(TestCase):
         """Test UpgradeProgressPublisher functionality."""
         operation_id = str(uuid4())
         publisher = UpgradeProgressPublisher(operation_id)
-
         # Test publishing progress
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
             test_data = {"type": "test", "data": "test_value"}
             publisher.publish_progress(test_data)
-
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[0], f"upgrade_{operation_id}")
             self.assertEqual(call_args[1]["type"], "upgrade_progress")
             self.assertEqual(call_args[1]["data"]["type"], "test")
             self.assertEqual(call_args[1]["data"]["data"], "test_value")
             self.assertIn("timestamp", call_args[1]["data"])
-
         # Test publishing log
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
             publisher.publish_log("Test log line", "in-progress")
-
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[1]["data"]["type"], "log")
             self.assertEqual(call_args[1]["data"]["content"], "Test log line")
             self.assertEqual(call_args[1]["data"]["status"], "in-progress")
-
         # Test publishing status
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
             publisher.publish_status("success")
-
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[1]["data"]["type"], "status")
             self.assertEqual(call_args[1]["data"]["status"], "success")
-
         # Test publishing error
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
             publisher.publish_error("Test error message")
-
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[1]["data"]["type"], "error")
             self.assertEqual(call_args[1]["data"]["message"], "Test error message")
@@ -388,24 +344,20 @@ class TestFirmwareUpgradeSockets(TestCase):
         device_id = str(uuid4())
         operation_id = str(uuid4())
         publisher = DeviceUpgradeProgressPublisher(device_id, operation_id)
-
         # Test publishing progress
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
             test_data = {"type": "test", "data": "test_value"}
             publisher.publish_progress(test_data)
-
             # Should be called twice - once for device channel, once for operation channel
             self.assertEqual(mock_group_send.call_count, 2)
-
             # Check device channel call
             device_call = mock_group_send.call_args_list[0]
             self.assertEqual(device_call[0][0], f"firmware_upgrader.device-{device_id}")
             self.assertEqual(device_call[0][1]["type"], "send_update")
             self.assertEqual(device_call[0][1]["model"], "UpgradeOperation")
             self.assertEqual(device_call[0][1]["data"]["type"], "test")
-
             # Check operation channel call
             operation_call = mock_group_send.call_args_list[1]
             self.assertEqual(operation_call[0][0], f"upgrade_{operation_id}")
@@ -418,20 +370,17 @@ class TestFirmwareUpgradeSockets(TestCase):
         ) as mock_group_send:
             operation_data = {"id": "op1", "status": "success"}
             publisher.publish_operation_update(operation_data)
-
             call_args = mock_group_send.call_args_list[0][0]
             self.assertEqual(call_args[1]["data"]["type"], "operation_update")
             self.assertEqual(call_args[1]["data"]["operation"]["id"], "op1")
 
         # Test publishing without operation_id
         publisher_no_op = DeviceUpgradeProgressPublisher(device_id)
-
         with patch.object(
             publisher_no_op.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
             test_data = {"type": "test", "data": "test_value"}
             publisher_no_op.publish_progress(test_data)
-
             # Should only be called once for device channel
             self.assertEqual(mock_group_send.call_count, 1)
 
@@ -439,39 +388,33 @@ class TestFirmwareUpgradeSockets(TestCase):
         """Test BatchUpgradeProgressPublisher functionality."""
         batch_id = str(uuid4())
         publisher = BatchUpgradeProgressPublisher(batch_id)
-
         # Test publishing progress
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
             test_data = {"type": "test", "data": "test_value"}
             publisher.publish_progress(test_data)
-
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[0], f"batch_upgrade_{batch_id}")
             self.assertEqual(call_args[1]["type"], "batch_upgrade_progress")
             self.assertEqual(call_args[1]["data"]["type"], "test")
             self.assertEqual(call_args[1]["data"]["data"], "test_value")
             self.assertIn("timestamp", call_args[1]["data"])
-
         # Test publishing operation progress
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
             publisher.publish_operation_progress("op1", "in-progress", 75)
-
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[1]["data"]["type"], "operation_progress")
             self.assertEqual(call_args[1]["data"]["operation_id"], "op1")
             self.assertEqual(call_args[1]["data"]["status"], "in-progress")
             self.assertEqual(call_args[1]["data"]["progress"], 75)
-
         # Test publishing batch status
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
             publisher.publish_batch_status("success", 5, 10)
-
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[1]["data"]["type"], "batch_status")
             self.assertEqual(call_args[1]["data"]["status"], "success")
@@ -506,10 +449,8 @@ class TestFirmwareUpgradeSockets(TestCase):
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
         communicator.scope["user"] = self.user
-
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
-
         # Test receiving messages with in-memory channel layer
         channel_layer = get_channel_layer()
         group_name = f"upgrade_{operation_id}"
@@ -521,11 +462,9 @@ class TestFirmwareUpgradeSockets(TestCase):
                 "data": {"type": "status", "status": "success"},
             },
         )
-
         response = await communicator.receive_json_from()
         self.assertEqual(response["type"], "status")
         self.assertEqual(response["status"], "success")
-
         await communicator.disconnect()
 
     @override_settings(
@@ -534,7 +473,6 @@ class TestFirmwareUpgradeSockets(TestCase):
     async def test_websocket_disconnect_handling(self):
         """Test WebSocket disconnect handling."""
         operation_id = str(uuid4())
-
         # Create a WebSocket connection
         communicator = WebsocketCommunicator(
             UpgradeProgressConsumer.as_asgi(),
@@ -542,10 +480,8 @@ class TestFirmwareUpgradeSockets(TestCase):
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
         communicator.scope["user"] = self.user
-
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
-
         # Test disconnect
         await communicator.disconnect()
 
@@ -632,9 +568,6 @@ class TestFirmwareUpgradeSockets(TestCase):
             except RuntimeError:
                 pass
 
-    @override_settings(
-        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
-    )
     async def test_websocket_message_formatting(self):
         """Test WebSocket message formatting and structure."""
         operation_id = str(uuid4())
@@ -646,10 +579,8 @@ class TestFirmwareUpgradeSockets(TestCase):
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
         communicator.scope["user"] = self.user
-
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
-
         # Test message with timestamp
         channel_layer = get_channel_layer()
         group_name = f"upgrade_{operation_id}"
@@ -665,17 +596,12 @@ class TestFirmwareUpgradeSockets(TestCase):
                 },
             },
         )
-
         response = await communicator.receive_json_from()
         self.assertEqual(response["type"], "status")
         self.assertEqual(response["status"], "success")
         self.assertIn("timestamp", response)
-
         await communicator.disconnect()
 
-    @override_settings(
-        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
-    )
     async def test_multiple_websocket_connections(self):
         """Test multiple WebSocket connections to the same operation."""
         operation_id = str(uuid4())
@@ -699,7 +625,6 @@ class TestFirmwareUpgradeSockets(TestCase):
         connected2, _ = await communicator2.connect()
         self.assertTrue(connected1)
         self.assertTrue(connected2)
-
         # Send message to group
         channel_layer = get_channel_layer()
         group_name = f"upgrade_{operation_id}"
@@ -711,16 +636,13 @@ class TestFirmwareUpgradeSockets(TestCase):
                 "data": {"type": "status", "status": "success"},
             },
         )
-
         # Both connections should receive the message
         response1 = await communicator1.receive_json_from()
         response2 = await communicator2.receive_json_from()
-
         self.assertEqual(response1["type"], "status")
         self.assertEqual(response1["status"], "success")
         self.assertEqual(response2["type"], "status")
         self.assertEqual(response2["status"], "success")
-
         await communicator1.disconnect()
         await communicator2.disconnect()
 
@@ -788,7 +710,6 @@ class TestFirmwareUpgradeSockets(TestCase):
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
         communicator.scope["user"] = self.user
-
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
 
@@ -806,7 +727,6 @@ class TestFirmwareUpgradeSockets(TestCase):
             },
             "array": ["item1", "item2"],
         }
-
         await channel_layer.group_send(
             group_name,
             {
@@ -814,7 +734,6 @@ class TestFirmwareUpgradeSockets(TestCase):
                 "data": complex_data,
             },
         )
-
         response = await communicator.receive_json_from()
         self.assertEqual(response["type"], "complex_update")
         self.assertEqual(response["nested"]["list"], [1, 2, 3])
@@ -822,5 +741,4 @@ class TestFirmwareUpgradeSockets(TestCase):
         self.assertTrue(response["nested"]["boolean"])
         self.assertIsNone(response["nested"]["null"])
         self.assertEqual(response["array"], ["item1", "item2"])
-
         await communicator.disconnect()
