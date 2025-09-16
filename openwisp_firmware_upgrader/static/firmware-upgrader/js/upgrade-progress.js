@@ -495,7 +495,8 @@ function updateSingleUpgradeOperationDisplay(operation) {
   if (
     operation.status === "success" ||
     operation.status === "failed" ||
-    operation.status === "aborted"
+    operation.status === "aborted" ||
+    operation.status === "cancelled"
   ) {
     singleOperationLogContent = "";
   }
@@ -536,6 +537,12 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
         <div class="upgrade-progress-fill success" style="width: 100%"></div>
       </div>
       <span class="upgrade-progress-text">100%</span>
+    `;
+  } else if (status === "cancelled") {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill cancelled" style="width: 100%"></div>
+      </div>
     `;
   } else if (status === "failed" || status === "aborted") {
     statusHtml += `

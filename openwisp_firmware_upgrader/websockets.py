@@ -29,6 +29,7 @@ class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
         is_authorized = user.is_superuser or user.is_staff
         return is_authorized
 
+
 def _convert_lazy_translations(obj):
     """Recursively convert Django lazy translation objects to strings for JSON serialization."""
     if isinstance(obj, dict):
@@ -598,12 +599,34 @@ class BatchUpgradeProgressPublisher:
             delattr(batch_instance, "_upgrade_operations")
         operations = batch_instance.upgradeoperation_set
         total_operations = operations.count()
+        in_progress_operations = operations.filter(status="in-progress").count()
         completed_operations = operations.exclude(status="in-progress").count()
-        # Publish the current status from the database
-        current_batch_status = batch_instance.status
-        self.publish_batch_status(
-            current_batch_status, completed_operations, total_operations
-        )
+        successful_operations = operations.filter(status="success").count()
+        failed_operations = operations.filter(status="failed").count()
+        cancelled_operations = operations.filter(status="cancelled").count()
+        aborted_operations = operations.filter(status="aborted").count()
+
+        # Determine overall batch status based on individual operation statuses
+        if in_progress_operations > 0:
+            batch_status = "in-progress"
+        elif cancelled_operations > 0:
+            batch_status = "cancelled"
+        elif failed_operations > 0 or aborted_operations > 0:
+            batch_status = "failed"
+        elif (
+            successful_operations > 0
+            and completed_operations == total_operations
+            and total_operations > 0
+        ):
+            batch_status = "success"
+        else:
+            batch_status = batch_instance.status
+
+        if batch_instance.status != batch_status:
+            batch_instance.status = batch_status
+            batch_instance.save(update_fields=["status"])
+
+        self.publish_batch_status(batch_status, completed_operations, total_operations)
 
     @classmethod
     def handle_batch_upgrade_operation_saved(cls, sender, instance, created, **kwargs):

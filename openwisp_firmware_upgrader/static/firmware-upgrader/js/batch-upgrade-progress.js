@@ -63,6 +63,7 @@ function initializeExistingBatchUpgradeOperations($, isRetry = false) {
         statusText === "success" ||
         statusText === "completed successfully" ||
         statusText === "completed with some failures" ||
+        statusText === "completed with some cancellations" ||
         statusText === "failed" ||
         statusText === "aborted" ||
         statusText === "cancelled")
@@ -149,6 +150,10 @@ function updateBatchProgress(data) {
       progressPercentage = 100;
       statusClass = "completed-successfully";
       showPercentageText = true;
+    } else if (data.status === "cancelled") {
+      progressPercentage = 100;
+      statusClass = "cancelled";
+      showPercentageText = false;
     } else if (data.status === "failed") {
       let successfulOpsCount = $("#result_list tbody tr").filter(function () {
         let statusText = $(this).find(".status-cell .status-content").text().trim();
@@ -204,6 +209,8 @@ function updateBatchProgress(data) {
     let displayStatus = data.status;
     if (data.status === "success") {
       displayStatus = "completed successfully";
+    } else if (data.status === "cancelled") {
+      displayStatus = "completed with some cancellations";
     } else if (data.status === "failed") {
       displayStatus = "completed with some failures";
     } else if (data.status === "in-progress") {
@@ -392,6 +399,9 @@ function initializeMainProgressBar($) {
       if (currentStatusText === "completed successfully") {
         statusClass = "completed-successfully";
         showPercentageText = true;
+      } else if (currentStatusText === "completed with some cancellations") {
+        statusClass = "cancelled";
+        showPercentageText = false;
       } else if (currentStatusText === "completed with some failures") {
         statusClass = "partial-success";
         showPercentageText = false;

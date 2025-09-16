@@ -18,6 +18,7 @@ from ..websockets import (
 
 User = get_user_model()
 
+
 class TestFirmwareUpgradeSockets(TestCase):
     """Test WebSocket consumers and publishers for firmware upgrade progress."""
 
