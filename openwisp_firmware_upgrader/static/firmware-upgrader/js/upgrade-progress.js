@@ -531,6 +531,23 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
       </div>
       <span class="upgrade-progress-text">${progressPercentage}%</span>
     `;
+
+    const canCancel = progressPercentage < 60;
+    const cancelButtonClass = canCancel
+      ? "upgrade-cancel-btn"
+      : "upgrade-cancel-btn disabled";
+    const cancelButtonTitle = canCancel
+      ? gettext("Cancel upgrade")
+      : gettext("Cannot cancel - firmware flashing in progress");
+
+    statusHtml += `
+      <button class="${cancelButtonClass}" 
+              data-operation-id="${operation.id}" 
+              title="${cancelButtonTitle}"
+              ${!canCancel ? "disabled" : ""}>
+        ${gettext("Cancel")}
+      </button>
+    `;
   } else if (status === "success") {
     statusHtml += `
       <div class="upgrade-progress-bar">
@@ -560,6 +577,15 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
   }
 
   statusContainer.html(statusHtml);
+
+  statusContainer
+    .find(".upgrade-cancel-btn:not(.disabled)")
+    .off("click")
+    .on("click", function (e) {
+      e.preventDefault();
+      const operationId = $(this).data("operation-id");
+      showCancelConfirmationModal(operationId);
+    });
 }
 
 function updateSingleUpgradeOperationLog(logData) {
