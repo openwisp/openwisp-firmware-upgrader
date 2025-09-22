@@ -114,11 +114,38 @@ firmware image is selected we just have to hit save, then a new tab will
 appear in the device page which allows us to see what's going on during
 the upgrade.
 
-Right now, the update of the upgrade information is not asynchronous yet,
-so you will have to reload the page periodically to find new information.
-This will be addressed in a future release.
+The firmware upgrade process now features a realtime progress bar that
+automatically updates to show the current status of the upgrade operation
+without requiring page reloads.
 
-5. Performing Mass Upgrades
+5. Canceling a Firmware Upgrade
+-------------------------------
+
+If you need to cancel a firmware upgrade that is currently in progress on
+a specific device, you can do so from the device's firmware upgrade page.
+
+To cancel an ongoing upgrade:
+
+- Navigate to the device details page
+- Go to the "Firmware" tab
+- If an upgrade is in progress, you will see a "Cancel Upgrade" button
+- Click the "Cancel Upgrade" button to stop the upgrade process
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/cancel-device-upgrade.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/cancel-device-upgrade.gif
+
+Cancellation is only possible during the early stages of the upgrade
+process. Once the firmware flashing begins, the cancel button will be
+disabled and the upgrade cannot be stopped, as interrupting the flashing
+process could corrupt the device.
+
+The system automatically prevents cancellation during critical phases to
+ensure device safety.
+
+Once canceled, the upgrade status will be updated to show that the
+operation was canceled, and you can attempt a new upgrade if needed.
+
+6. Performing Mass Upgrades
 ---------------------------
 
 Before proceeding, please ensure the following preconditions are met:
@@ -156,6 +183,6 @@ either confirm the operation or cancel.
 Once the operation is confirmed you will be redirected to a page in which
 you can monitor the progress of the upgrade operations.
 
-Right now, the update of the upgrade information is not asynchronous yet,
-so you will have to reload the page periodically to find new information.
-This will be addressed in a future release.
+The mass upgrade operation now features a realtime progress bar that
+automatically updates to show the current status of all upgrade operations
+without requiring page reloads.
