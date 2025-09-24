@@ -110,13 +110,10 @@ then go to the "Firmware" tab.
 If you correctly filled **OS identifier** in step 2, you should have a
 situation similar to the one above: in this example, the device is using
 version ``1.0`` and we want to upgrade it to version ``2.0``, once the new
-firmware image is selected we just have to hit save, then a new tab will
-appear in the device page which allows us to see what's going on during
-the upgrade.
-
-The firmware upgrade process now features a realtime progress bar that
-automatically updates to show the current status of the upgrade operation
-without requiring page reloads.
+firmware image is selected we just have to hit save, then a new tab
+"Recent Firmware Upgrades" will appear in the device page which allows us
+to observe in real time what's going on during the upgrade without
+requiring page reloads.
 
 5. Canceling a Firmware Upgrade
 -------------------------------
@@ -181,8 +178,4 @@ After reviewing the selection and setting any desired filters, you can
 either confirm the operation or cancel.
 
 Once the operation is confirmed you will be redirected to a page in which
-you can monitor the progress of the upgrade operations.
-
-The mass upgrade operation now features a realtime progress bar that
-automatically updates to show the current status of all upgrade operations
-without requiring page reloads.
+you can monitor the progress of the upgrade operations in real time.
