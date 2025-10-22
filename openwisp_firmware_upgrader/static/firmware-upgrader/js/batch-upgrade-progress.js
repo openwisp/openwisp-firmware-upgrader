@@ -59,14 +59,8 @@ function initializeExistingBatchUpgradeOperations($, isRetry = false) {
     }
     if (
       statusText &&
-      (statusText.includes("progress") ||
-        statusText === "success" ||
-        statusText === "completed successfully" ||
-        statusText === "completed with some failures" ||
-        statusText === "completed with some cancellations" ||
-        statusText === "failed" ||
-        statusText === "aborted" ||
-        statusText === "cancelled")
+      (FW_STATUS_HELPERS.includesProgress(statusText) ||
+        ALL_VALID_FW_STATUSES.has(statusText))
     ) {
       let operationId = statusCell.attr("data-operation-id") || "unknown";
 
@@ -146,18 +140,18 @@ function updateBatchProgress(data) {
     let statusClass = (data.status || "").replace(/\s+/g, "-");
     let showPercentageText = true;
 
-    if (data.status === "success") {
+    if (data.status === FW_UPGRADE_STATUS.SUCCESS) {
       progressPercentage = 100;
-      statusClass = "completed-successfully";
+      statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
       showPercentageText = true;
-    } else if (data.status === "cancelled") {
+    } else if (data.status === FW_UPGRADE_STATUS.CANCELLED) {
       progressPercentage = 100;
-      statusClass = "cancelled";
+      statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
       showPercentageText = false;
-    } else if (data.status === "failed") {
+    } else if (data.status === FW_UPGRADE_STATUS.FAILED) {
       let successfulOpsCount = $("#result_list tbody tr").filter(function () {
         let statusText = $(this).find(".status-cell .status-content").text().trim();
-        return statusText === "success" || statusText === "completed successfully";
+        return FW_STATUS_GROUPS.SUCCESS.has(statusText);
       }).length;
 
       // Also check individual operation containers for success
@@ -175,12 +169,12 @@ function updateBatchProgress(data) {
       if (successfulOpsCount > 0) {
         // Some operations succeeded - partial success (orange)
         progressPercentage = 100;
-        statusClass = "partial-success";
+        statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
         showPercentageText = false;
       } else {
         // All operations failed - total failure (red)
         progressPercentage = 100;
-        statusClass = "failed";
+        statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
         showPercentageText = false;
       }
     }
@@ -207,14 +201,14 @@ function updateBatchProgress(data) {
   let statusField = $(".field-status .readonly");
   if (statusField.length > 0 && data.status) {
     let displayStatus = data.status;
-    if (data.status === "success") {
-      displayStatus = "completed successfully";
-    } else if (data.status === "cancelled") {
-      displayStatus = "completed with some cancellations";
-    } else if (data.status === "failed") {
-      displayStatus = "completed with some failures";
-    } else if (data.status === "in-progress") {
-      displayStatus = "in progress";
+    if (data.status === FW_UPGRADE_STATUS.SUCCESS) {
+      displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY;
+    } else if (data.status === FW_UPGRADE_STATUS.CANCELLED) {
+      displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_CANCELLATIONS;
+    } else if (data.status === FW_UPGRADE_STATUS.FAILED) {
+      displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_FAILURES;
+    } else if (data.status === FW_UPGRADE_STATUS.IN_PROGRESS) {
+      displayStatus = FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS;
     }
 
     let progressBar = statusField.find(".batch-main-progress");
@@ -316,23 +310,23 @@ function updateBatchStatusWithProgressBar(statusCell, operation) {
   let statusContainer = statusCell.find(".upgrade-status-container");
   let statusHtml = "";
 
-  if (status === "in-progress" || status === "in progress") {
+  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
     statusHtml = `<div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill in-progress" style="width: ${progressPercentage}%"></div>
       </div>`;
-  } else if (status === "success" || status === "completed successfully") {
+  } else if (FW_STATUS_GROUPS.SUCCESS.has(status)) {
     statusHtml = `<div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill success" style="width: 100%"></div>
       </div>`;
-  } else if (status === "failed") {
+  } else if (status === FW_UPGRADE_STATUS.FAILED) {
     statusHtml = `<div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill failed" style="width: 100%"></div>
       </div>`;
-  } else if (status === "aborted") {
+  } else if (status === FW_UPGRADE_STATUS.ABORTED) {
     statusHtml = `<div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill aborted" style="width: 100%"></div>
       </div>`;
-  } else if (status === "cancelled") {
+  } else if (status === FW_UPGRADE_STATUS.CANCELLED) {
     statusHtml = `<div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill cancelled" style="width: 100%"></div>
       </div>`;
@@ -348,13 +342,7 @@ function getBatchProgressPercentage(status, operationProgress = null) {
   if (operationProgress !== null && operationProgress !== undefined) {
     return Math.min(100, Math.max(5, operationProgress));
   }
-  if (
-    status === "completed successfully" ||
-    status === "success" ||
-    status === "failed" ||
-    status === "aborted" ||
-    status === "cancelled"
-  ) {
+  if (FW_STATUS_HELPERS.isCompleted(status)) {
     return 100;
   }
   return 5;
@@ -396,21 +384,25 @@ function initializeMainProgressBar($) {
       let statusClass = "";
       let showPercentageText = true;
 
-      if (currentStatusText === "completed successfully") {
-        statusClass = "completed-successfully";
+      if (currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY) {
+        statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
         showPercentageText = true;
-      } else if (currentStatusText === "completed with some cancellations") {
-        statusClass = "cancelled";
+      } else if (
+        currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_CANCELLATIONS
+      ) {
+        statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
         showPercentageText = false;
-      } else if (currentStatusText === "completed with some failures") {
-        statusClass = "partial-success";
+      } else if (
+        currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_FAILURES
+      ) {
+        statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
         showPercentageText = false;
-      } else if (currentStatusText === "in progress") {
-        statusClass = "in-progress";
+      } else if (currentStatusText === FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS) {
+        statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
         showPercentageText = true;
         progressPercentage = 0;
       } else {
-        statusClass = "failed";
+        statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
         showPercentageText = false;
       }
 

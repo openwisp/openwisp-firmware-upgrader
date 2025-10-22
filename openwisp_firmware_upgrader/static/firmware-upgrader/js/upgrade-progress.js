@@ -87,11 +87,8 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
 
     if (
       statusText &&
-      (statusText.includes("progress") ||
-        statusText === "success" ||
-        statusText === "failed" ||
-        statusText === "aborted" ||
-        statusText === "cancelled")
+      (FW_STATUS_HELPERS.includesProgress(statusText) ||
+        ALL_VALID_FW_STATUSES.has(statusText))
     ) {
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -269,12 +266,7 @@ function updateUpgradeOperationDisplay(operation) {
   let shouldScroll = isScrolledToBottom(logElement);
 
   logElement.html(formatLogForDisplay(operation.log));
-  if (
-    operation.status === "success" ||
-    operation.status === "failed" ||
-    operation.status === "aborted" ||
-    operation.status === "cancelled"
-  ) {
+  if (FW_STATUS_HELPERS.isCompleted(operation.status)) {
     accumulatedLogContent.delete(operation.id);
   }
 
@@ -311,7 +303,7 @@ function updateStatusWithProgressBar(statusField, operation) {
   `;
 
   // Add progress bar for all statuses
-  if (status === "in-progress" || status === "in progress") {
+  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill in-progress" style="width: ${progressPercentage}%"></div>
@@ -335,14 +327,14 @@ function updateStatusWithProgressBar(statusField, operation) {
         ${gettext("Cancel")}
       </button>
     `;
-  } else if (status === "success") {
+  } else if (status === FW_UPGRADE_STATUS.SUCCESS) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill success" style="width: 100%"></div>
       </div>
       <span class="upgrade-progress-text">100%</span>
     `;
-  } else if (status === "failed" || status === "aborted" || status === "cancelled") {
+  } else if (FW_STATUS_GROUPS.FAILURE.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill ${status}" style="width: 100%"></div>
@@ -373,7 +365,7 @@ function getProgressPercentage(status, operationProgress = null) {
   if (operationProgress !== null && operationProgress !== undefined) {
     return Math.min(100, Math.max(5, operationProgress));
   }
-  if (status === "success") {
+  if (status === FW_UPGRADE_STATUS.SUCCESS) {
     return 100;
   }
   return 5;
@@ -401,12 +393,8 @@ function updateUpgradeOperationLog(logData) {
 
     // Update logs for in-progress operations and recently completed operations
     if (
-      currentStatusText === "in progress" ||
-      currentStatusText === "in-progress" ||
-      currentStatusText === "success" ||
-      currentStatusText === "failed" ||
-      currentStatusText === "aborted" ||
-      currentStatusText === "cancelled"
+      FW_STATUS_GROUPS.IN_PROGRESS.has(currentStatusText) ||
+      FW_STATUS_HELPERS.isCompleted(currentStatusText)
     ) {
       let operationFieldset = $(this).closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -459,7 +447,7 @@ function updateUpgradeOperationStatus(statusData) {
       statusField.find(".upgrade-status-container span").text() ||
       statusField.text().trim();
 
-    if (currentStatusText === "in progress" || currentStatusText === "in-progress") {
+    if (FW_STATUS_GROUPS.IN_PROGRESS.has(currentStatusText)) {
       // Get current log content for progress calculation
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -492,12 +480,7 @@ function updateSingleUpgradeOperationDisplay(operation) {
   let shouldScroll = isScrolledToBottom(logElement);
 
   logElement.html(formatLogForDisplay(operation.log));
-  if (
-    operation.status === "success" ||
-    operation.status === "failed" ||
-    operation.status === "aborted" ||
-    operation.status === "cancelled"
-  ) {
+  if (FW_STATUS_HELPERS.isCompleted(operation.status)) {
     singleOperationLogContent = "";
   }
 
@@ -524,7 +507,7 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
   let statusContainer = statusField.find(".upgrade-status-container");
   let statusHtml = `<span class="upgrade-status-${progressClass}">${status}</span>`;
 
-  if (status === "in-progress" || status === "in progress") {
+  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill in-progress" style="width: ${progressPercentage}%"></div>
@@ -548,20 +531,23 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
         ${gettext("Cancel")}
       </button>
     `;
-  } else if (status === "success") {
+  } else if (status === FW_UPGRADE_STATUS.SUCCESS) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill success" style="width: 100%"></div>
       </div>
       <span class="upgrade-progress-text">100%</span>
     `;
-  } else if (status === "cancelled") {
+  } else if (status === FW_UPGRADE_STATUS.CANCELLED) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill cancelled" style="width: 100%"></div>
       </div>
     `;
-  } else if (status === "failed" || status === "aborted") {
+  } else if (
+    status === FW_UPGRADE_STATUS.FAILED ||
+    status === FW_UPGRADE_STATUS.ABORTED
+  ) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill ${status}" style="width: 100%"></div>

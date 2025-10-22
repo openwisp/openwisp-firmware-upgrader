@@ -15,6 +15,7 @@
     host: '{{ request.get_host }}'
   };
 </script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/firmware-upgrade-constants.js' %}"></script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-upgrade-progress.js' %}"></script>
 <script>
 django.jQuery(function($) {

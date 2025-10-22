@@ -82,6 +82,9 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
         try:
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
         except AttributeError:
+            logger.error(
+                f"Attribute error when discarding channel {self.channel_name} from group {self.group_name}"
+            )
             return
 
     async def receive_json(self, content):
