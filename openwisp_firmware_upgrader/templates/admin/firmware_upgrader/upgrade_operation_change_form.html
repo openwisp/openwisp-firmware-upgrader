@@ -1,0 +1,16 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/upgrade-progress.css" %}">
+<script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
+<script>
+  // Configuration for WebSocket connection
+  var owControllerApiHost = {
+    host: '{{ request.get_host }}'
+  };
+</script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/firmware-upgrade-constants.js' %}"></script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-progress.js' %}"></script>
+{% endblock %}
