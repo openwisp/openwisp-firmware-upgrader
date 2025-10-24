@@ -1,10 +1,46 @@
 Changelog
 =========
 
-Version 1.2.0 [Unreleased]
+Version 1.2.0 [2025-10-24]
 --------------------------
 
-Work in progress.
+Features
+~~~~~~~~
+
+- Added device recognition mechanism `#165
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/165>`_.
+- Allowed system-wide shared category `#204
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/204>`_.
+
+Changes
+~~~~~~~
+
+Other changes
++++++++++++++
+
+- Improved REST API for downloading firmware images `#69
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/69>`_.
+
+  Firmware downloads now use proper API URLs, respect user permissions,
+  and avoid redundant permission checks.
+
+Dependencies
+++++++++++++
+
+- Bumped ``openwisp-controller~=1.2.0``.
+- Added support for Django ``5.x``.
+- Added support for Python ``3.11``, ``3.12``, and ``3.13``.
+- Dropped support for Django ``3.2`` and ``4.1``.
+- Dropped support for Python ``3.8``.
+
+Bugfixes
+~~~~~~~~
+
+- Fixed firmware image deletion `#301
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/301>`_.
+
+  Firmware image files are now reliably removed from the filesystem when
+  the corresponding FirmwareImage object is deleted.
 
 Version 1.1.2 [2025-08-14]
 --------------------------
