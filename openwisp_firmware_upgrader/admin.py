@@ -628,6 +628,7 @@ class DeviceFirmwareInline(
     class Media:
         js = [
             "connection/js/lib/reconnecting-websocket.min.js",
+            "firmware-upgrader/js/firmware-upgrade-constants.js",
             "firmware-upgrader/js/upgrade-progress.js",
         ]
         css = {

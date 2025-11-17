@@ -87,42 +87,42 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             )
             return
 
+    @sync_to_async
+    def _get_upgrade_operation(self):
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+        return UpgradeOperation.objects.filter(pk=self.operation_id).first()
+
     async def receive_json(self, content):
         """Handle incoming messages from the client"""
         message_type = content.get("type")
-
-        if message_type == "request_current_state":
-            await self._handle_current_operation_state_request(content)
-        else:
-            logger.warning(f"Unknown message type received: {message_type}")
+        if not message_type:
+            logger.warning("Received message without type")
+            return
+        await self._handle_current_operation_state_request(content)
 
     async def _handle_current_operation_state_request(self, content):
         """Handle request for current state of the operation"""
-        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
         try:
-            # Get the operation using sync_to_async
-            get_operation = sync_to_async(
-                lambda: UpgradeOperation.objects.filter(pk=self.operation_id).first()
+            operation = await self._get_upgrade_operation()
+            if not operation:
+                return
+            # Send operation update
+            await self.send_json(
+                {
+                    "type": "operation_update",
+                    "operation": {
+                        "id": str(operation.pk),
+                        "status": operation.status,
+                        "log": operation.log or "",
+                        "progress": getattr(operation, "progress", 0),
+                        "modified": (
+                            operation.modified.isoformat()
+                            if operation.modified
+                            else None
+                        ),
+                    },
+                }
             )
-            operation = await get_operation()
-            if operation:
-                # Send operation update
-                await self.send_json(
-                    {
-                        "type": "operation_update",
-                        "operation": {
-                            "id": str(operation.pk),
-                            "status": operation.status,
-                            "log": operation.log or "",
-                            "progress": getattr(operation, "progress", 0),
-                            "modified": (
-                                operation.modified.isoformat()
-                                if operation.modified
-                                else None
-                            ),
-                        },
-                    }
-                )
         except (ConnectionError, TimeoutError) as e:
             logger.error(
                 f"Failed to connect to channel layer during operation state request: {e}"
@@ -178,23 +178,21 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
     async def receive_json(self, content):
         """Handle incoming messages from the client"""
         message_type = content.get("type")
-
-        if message_type == "request_current_state":
-            await self._handle_current_batch_state_request(content)
-        else:
+        if message_type != "request_current_state":
             logger.warning(f"Unknown message type received: {message_type}")
+            return
+        await self._handle_current_batch_state_request(content)
+
+    @sync_to_async
+    def _get_batch_upgrade_operation(self):
+        BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
+        return BatchUpgradeOperation.objects.filter(pk=self.batch_id).first()
 
     async def _handle_current_batch_state_request(self, content):
         """Handle request for current state of batch upgrade operations"""
-        BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
         try:
             # Get the batch operation and its upgrade operations
-            get_batch_operations = sync_to_async(
-                lambda: BatchUpgradeOperation.objects.filter(pk=self.batch_id)
-                .prefetch_related("upgradeoperation_set")
-                .first()
-            )
-            batch_operation = await get_batch_operations()
+            batch_operation = await self._get_batch_upgrade_operation()
             if batch_operation:
                 # Send batch status
                 total_operations = await sync_to_async(
