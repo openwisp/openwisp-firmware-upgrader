@@ -63,7 +63,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 "ipq40xx-chromium-google_wifi-squashfs-sysupgrade.bin",
                 {
                     "label": "Google WiFi (Gale)",
-		    "boards": ("Google WiFi (Gale)",),
+                    "boards": ("Google WiFi (Gale)",),
                 },
             ),
             (
