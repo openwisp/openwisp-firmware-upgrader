@@ -53,6 +53,20 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                "mpc85xx-p1020-extreme-networks_ws-ap3825i-squashfs-sysupgrade.bin",
+                {
+                    "label": "Extreme Networks WS-AP3825i",
+                    "boards": ("Extreme Networks WS-AP3825i",),
+                },
+            ),
+            (
+                "ipq40xx-chromium-google_wifi-squashfs-sysupgrade.bin",
+                {
+                    "label": "Google WiFi (Gale)",
+		    "boards": ("Google WiFi (Gale)",),
+                },
+            ),
+            (
                 "ath79-nand-glinet_gl-ar300m-nand-squashfs-sysupgrade.bin",
                 {
                     "label": "GL.iNet GL-AR300M (NAND)",
