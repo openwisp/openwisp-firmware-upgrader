@@ -67,6 +67,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                "realtek-rtl838x-engenius_ews2910p-squashfs-sysupgrade.bin"
+                {
+                    "label": "EnGenius EWS2910P",
+                    "boards": ("EnGenius EWS2910P",),
+                },
+            ),
+            (
                 "ath79-nand-glinet_gl-ar300m-nand-squashfs-sysupgrade.bin",
                 {
                     "label": "GL.iNet GL-AR300M (NAND)",
