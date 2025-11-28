@@ -27,11 +27,11 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 
 @tag("selenium_tests")
 class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
-    config_app_label = 'config'
-    firmware_app_label = 'firmware_upgrader'
-    os = 'OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d'
-    image_type = REVERSE_FIRMWARE_IMAGE_MAP['YunCore XD3200']
-    _mock_connect = 'openwisp_controller.connection.models.DeviceConnection.connect'
+    config_app_label = "config"
+    firmware_app_label = "firmware_upgrader"
+    os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
+    image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
+    _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
     def _set_up_env(self):
         org = self._get_org()
@@ -123,22 +123,22 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 self.find_element(
                     by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
                 ).click()
-                self.wait_for_visibility(By.CSS_SELECTOR, '#devicefirmware-group')
+                self.wait_for_visibility(By.CSS_SELECTOR, "#devicefirmware-group")
                 self.hide_loading_overlay()
 
             _, _, _, _, _, image, device = self._set_up_env()
             self.login()
             self.open(
-                '{}#devicefirmware-group'.format(
+                "{}#devicefirmware-group".format(
                     reverse(
-                        f'admin:{self.config_app_label}_device_change', args=[device.id]
+                        f"admin:{self.config_app_label}_device_change", args=[device.id]
                     )
                 )
             )
             self.hide_loading_overlay()
             # JSONSchema Editor should not be rendered without a change in the image field
             self.wait_for_invisibility(
-                By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
+                By.CSS_SELECTOR, "#devicefirmware-group .jsoneditor-wrapper"
             )
             image_select = self._get_device_firmware_dropdown_select()
             image_select.select_by_value(str(image.pk))
@@ -148,9 +148,9 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 '//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]/div/h3/span[4]/input',
             )
             # Select "None" image should hide JSONSchema Editor
-            image_select.select_by_value('')
+            image_select.select_by_value("")
             self.wait_for_invisibility(
-                By.CSS_SELECTOR, '#id_devicefirmware-0-upgrade_options_jsoneditor'
+                By.CSS_SELECTOR, "#id_devicefirmware-0-upgrade_options_jsoneditor"
             )
 
             # Select "build2" image
@@ -159,18 +159,18 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.find_element(
                 by=By.XPATH,
                 value='//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]'
-                '/div/div[2]/div/div/div[1]/div/div[1]/label/input',
+                "/div/div[2]/div/div/div[1]/div/div[1]/label/input",
             ).click()
             # Enable '-F' option
             self.find_element(
                 by=By.XPATH,
                 value='//*[@id="id_devicefirmware-0-upgrade_options_jsoneditor"]'
-                '/div/div[2]/div/div/div[7]/div/div[1]/label/input',
+                "/div/div[2]/div/div/div[7]/div/div[1]/label/input",
             ).click()
             save_device()
 
             # Delete DeviceFirmware
-            self.find_element(By.CSS_SELECTOR, '#id_devicefirmware-0-DELETE').click()
+            self.find_element(By.CSS_SELECTOR, "#id_devicefirmware-0-DELETE").click()
             save_device()
 
             # When adding firmware to the device for the first time,
@@ -181,12 +181,12 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             ).click()
             # JSONSchema Editor should not be rendered without a change in the image field
             self.wait_for_invisibility(
-                By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
+                By.CSS_SELECTOR, "#devicefirmware-group .jsoneditor-wrapper"
             )
             image_select = self._get_device_firmware_dropdown_select()
             image_select.select_by_index(1)
             self.wait_for_visibility(
-                By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
+                By.CSS_SELECTOR, "#devicefirmware-group .jsoneditor-wrapper"
             )
             save_device()
 
@@ -201,7 +201,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.login()
             self.open(
                 reverse(
-                    f'admin:{self.firmware_app_label}_build_change', args=[build2.id]
+                    f"admin:{self.firmware_app_label}_build_change", args=[build2.id]
                 )
             )
             # Launch mass upgrade operation
@@ -211,7 +211,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             ).click()
 
             # Ensure JSONSchema form is rendered
-            self.wait_for_visibility(By.CSS_SELECTOR, '.jsoneditor-wrapper')
+            self.wait_for_visibility(By.CSS_SELECTOR, ".jsoneditor-wrapper")
             # JSONSchema configuration editor should not be rendered
             self.wait_for_invisibility(
                 By.XPATH,
@@ -235,20 +235,20 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             ).click()
             try:
                 WebDriverWait(self.web_driver, 5).until(
-                    EC.url_contains('batchupgradeoperation')
+                    EC.url_contains("batchupgradeoperation")
                 )
             except TimeoutException:
-                self.fail('User was not redirected to Mass upgrade operations page')
+                self.fail("User was not redirected to Mass upgrade operations page")
             self.assertEqual(
                 BatchUpgradeOperation.objects.filter(
                     upgrade_options={
-                        'c': False,
-                        'o': False,
-                        'n': True,
-                        'u': False,
-                        'p': False,
-                        'k': False,
-                        'F': False,
+                        "c": False,
+                        "o": False,
+                        "n": True,
+                        "u": False,
+                        "p": False,
+                        "k": False,
+                        "F": False,
                     }
                 ).count(),
                 1,
@@ -256,13 +256,13 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.assertEqual(
                 UpgradeOperation.objects.filter(
                     upgrade_options={
-                        'c': False,
-                        'o': False,
-                        'n': True,
-                        'u': False,
-                        'p': False,
-                        'k': False,
-                        'F': False,
+                        "c": False,
+                        "o": False,
+                        "n": True,
+                        "u": False,
+                        "p": False,
+                        "k": False,
+                        "F": False,
                     }
                 ).count(),
                 1,
@@ -273,17 +273,17 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
         return_value=True,
     )
-    @patch.object(OpenWrt, 'SCHEMA', None)
+    @patch.object(OpenWrt, "SCHEMA", None)
     def test_upgrader_with_unsupported_upgrade_options(self, *args):
         with patch(self._mock_connect, return_value=True):
             org, category, build1, build2, image1, image2, device = self._set_up_env()
             self.login()
 
-            with self.subTest('Test DeviceFirmware'):
+            with self.subTest("Test DeviceFirmware"):
                 self.open(
-                    '{}#devicefirmware-group'.format(
+                    "{}#devicefirmware-group".format(
                         reverse(
-                            f'admin:{self.config_app_label}_device_change',
+                            f"admin:{self.config_app_label}_device_change",
                             args=[device.id],
                         )
                     )
@@ -294,7 +294,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 # Ensure JSONSchema editor is not rendered because
                 # the upgrader does not define a schema
                 self.wait_for_invisibility(
-                    By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
+                    By.CSS_SELECTOR, "#devicefirmware-group .jsoneditor-wrapper"
                 )
                 self.find_element(
                     by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
@@ -305,10 +305,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             DeviceFirmware.objects.all().delete()
             UpgradeOperation.objects.all().delete()
 
-            with self.subTest('Test BatchUpgradeOperation'):
+            with self.subTest("Test BatchUpgradeOperation"):
                 self.open(
                     reverse(
-                        f'admin:{self.firmware_app_label}_build_change',
+                        f"admin:{self.firmware_app_label}_build_change",
                         args=[build2.id],
                     )
                 )
@@ -320,7 +320,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 # Ensure JSONSchema editor is not rendered because
                 # the upgrader does not define a schema
                 self.wait_for_invisibility(
-                    By.CSS_SELECTOR, '#devicefirmware-group .jsoneditor-wrapper'
+                    By.CSS_SELECTOR, "#devicefirmware-group .jsoneditor-wrapper"
                 )
                 # Upgrade all devices
                 self.find_element(

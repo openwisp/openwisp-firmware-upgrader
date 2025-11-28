@@ -28,8 +28,8 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             device_fw = self._create_device_firmware(upgrade=True)
             self.assertEqual(UpgradeOperation.objects.count(), 1)
             uo = device_fw.image.upgradeoperation_set.first()
-            self.assertEqual(uo.status, 'failed')
-            self.assertIn('Operation timed out.', uo.log)
+            self.assertEqual(uo.status, "failed")
+            self.assertIn("Operation timed out.", uo.log)
 
     @mock.patch(_mock_upgrade, return_value=True)
     @mock.patch(
@@ -40,29 +40,29 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
     def test_batch_upgrade_timeout(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             env = self._create_upgrade_env()
-            batch = BatchUpgradeOperation.objects.create(build=env['build2'])
+            batch = BatchUpgradeOperation.objects.create(build=env["build2"])
             # will be executed synchronously due to CELERY_IS_EAGER = True
             tasks.batch_upgrade_operation.delay(batch_id=batch.pk, firmwareless=False)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
             batch = BatchUpgradeOperation.objects.first()
-            self.assertEqual(batch.status, 'failed')
+            self.assertEqual(batch.status, "failed")
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch('logging.Logger.warning')
+    @mock.patch("logging.Logger.warning")
     def test_upgrade_firmware_resilience(self, mocked_logger, *args):
         with mock.patch(self._mock_connect, return_value=True):
             upgrade_op_id = UpgradeOperation().id
             tasks.upgrade_firmware.run(upgrade_op_id)
             mocked_logger.assert_called_with(
-                f'The UpgradeOperation object with id {upgrade_op_id} has been deleted'
+                f"The UpgradeOperation object with id {upgrade_op_id} has been deleted"
             )
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch('logging.Logger.warning')
+    @mock.patch("logging.Logger.warning")
     def test_batch_upgrade_operation_resilience(self, mocked_logger, *args):
         with mock.patch(self._mock_connect, return_value=True):
             batch_id = BatchUpgradeOperation().id
             tasks.batch_upgrade_operation.run(batch_id=batch_id, firmwareless=False)
             mocked_logger.assert_called_with(
-                f'The BatchUpgradeOperation object with id {batch_id} has been deleted'
+                f"The BatchUpgradeOperation object with id {batch_id} has been deleted"
             )
