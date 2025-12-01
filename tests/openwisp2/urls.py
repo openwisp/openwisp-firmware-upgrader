@@ -14,8 +14,8 @@ from openwisp_controller.connection.api.urls import (
 )
 from openwisp_users.api.urls import get_api_urls
 
-from .sample_config import views as config_views
-from .sample_config.api import views as config_api_views
+# from .sample_config import views as config_views
+# from .sample_config.api import views as config_api_views
 from .sample_connection.api import views as connection_api_views
 
 redirect_view = RedirectView.as_view(url=reverse_lazy("admin:index"))
@@ -24,24 +24,24 @@ urlpatterns = []
 
 if os.environ.get("SAMPLE_APP", False):
     urlpatterns += [
-        path(
-            "controller/",
-            include(
-                (get_controller_urls(config_views), "controller"),
-                namespace="controller",
-            ),
-        ),
+        # path(
+        #     "controller/",
+        #     include(
+        #         (get_controller_urls(config_views), "controller"),
+        #         namespace="controller",
+        #     ),
+        # ),
         path(
             "",
             include(("openwisp_controller.config.urls", "config"), namespace="config"),
         ),
-        path(
-            "api/v1/",
-            include(
-                (get_config_api_urls(config_api_views), "config_api"),
-                namespace="config_api",
-            ),
-        ),
+        # path(
+        #     "api/v1/",
+        #     include(
+        #         (get_config_api_urls(config_api_views), "config_api"),
+        #         namespace="config_api",
+        #     ),
+        # ),
         path(
             "api/v1/",
             include(
