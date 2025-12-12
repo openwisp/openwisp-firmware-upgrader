@@ -344,12 +344,14 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
     list_display = ["device", "status", "image", "modified"]
     list_filter = ["status"]
     search_fields = ["device__name"]
-    readonly_fields = ["image", "status", "log", "readonly_upgrade_options", "modified"]
+    readonly_fields = ["image", "status", "log", "modified"]
     ordering = ["-modified"]
     fields = ["image", "status", "log", "readonly_upgrade_options", "modified"]
     change_form_template = "admin/firmware_upgrader/upgrade_operation_change_form.html"
 
     def get_readonly_fields(self, request, obj=None):
+        # Since "readonly_upgrade_options" is dynamically added, we need to
+        # override get_readonly_fields to include it.
         fields = super().get_readonly_fields(request, obj)
         return fields + ["readonly_upgrade_options"]
 

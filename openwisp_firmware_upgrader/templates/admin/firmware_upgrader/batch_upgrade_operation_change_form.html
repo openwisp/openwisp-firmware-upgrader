@@ -7,24 +7,6 @@
 <link rel="stylesheet" type="text/css" href="{% static "admin/css/ow-filters.css" %}">
 <link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/batch-upgrade-operation.css" %}">
 <link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/upgrade-progress.css" %}">
-<script src="{% static "admin/js/ow-filter.js" %}"></script>
-<script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
-<script>
-  // Configuration for WebSocket connection
-  var owControllerApiHost = {
-    host: '{{ request.get_host }}'
-  };
-</script>
-<script type="text/javascript" src="{% static 'firmware-upgrader/js/firmware-upgrade-constants.js' %}"></script>
-<script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-upgrade-progress.js' %}"></script>
-<script>
-django.jQuery(function($) {
-  var statusField = $('.field-status .readonly');
-    if (statusField.length && !statusField.find('.batch-main-progress').length) {
-      statusField.append('<div class="batch-main-progress"></div>');
-    }
-});
-</script>
 {% endblock %}
 
 {% block content %}
@@ -184,3 +166,24 @@ django.jQuery(function($) {
 </div>
 {% endblock %}
 
+{% block footer %}
+{{ block.super }}
+<script src="{% static "admin/js/ow-filter.js" %}"></script>
+<script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
+<script>
+  // Configuration for WebSocket connection
+  var owFirmwareUpgraderApiHost = {
+    host: '{{ request.get_host }}'
+  };
+</script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/firmware-upgrade-constants.js' %}"></script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-upgrade-progress.js' %}"></script>
+<script>
+django.jQuery(function($) {
+  var statusField = $('.field-status .readonly');
+    if (statusField.length && !statusField.find('.batch-main-progress').length) {
+      statusField.append('<div class="batch-main-progress"></div>');
+    }
+});
+</script>
+{% endblock %}

@@ -12,10 +12,10 @@ const FW_UPGRADE_STATUS = {
 
 // Display statuses
 const FW_UPGRADE_DISPLAY_STATUS = {
-  COMPLETED_SUCCESSFULLY: "completed successfully",
-  COMPLETED_WITH_FAILURES: "completed with some failures",
-  COMPLETED_WITH_CANCELLATIONS: "completed with some cancellations",
-  IN_PROGRESS: "in progress",
+  COMPLETED_SUCCESSFULLY: gettext("completed successfully"),
+  COMPLETED_WITH_FAILURES: gettext("completed with some failures"),
+  COMPLETED_WITH_CANCELLATIONS: gettext("completed with some cancellations"),
+  IN_PROGRESS: gettext("in progress"),
 };
 
 // CSS class names

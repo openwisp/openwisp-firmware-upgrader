@@ -5,6 +5,8 @@ from copy import deepcopy
 from asgiref.sync import async_to_sync, sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.layers import get_channel_layer
+from django.contrib.auth import get_permission_codename
+from django.db.models import Case, Count, IntegerField, Q, When
 from django.utils import timezone
 from swapper import load_model
 
@@ -24,10 +26,33 @@ class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
         else:
             return True
 
-    def is_user_authorized(self):
+    async def is_user_authorized(
+        self,
+        model=None,
+        object_id=None,
+        organization_field="organization_id",
+    ):
         user = self.scope["user"]
-        is_authorized = user.is_superuser or user.is_staff
-        return is_authorized
+        if user.is_superuser:
+            return True
+        return (
+            user.is_staff
+            and (
+                await user.ahas_perm(
+                    f"{model._meta.app_label}.{get_permission_codename('view', model._meta)}"
+                )
+                or await user.ahas_perm(
+                    f"{model._meta.app_label}.{get_permission_codename('change', model._meta)}"
+                )
+            )
+            and user.is_manager(
+                str(
+                    await model.objects.filter(pk=object_id)
+                    .values_list(organization_field, flat=True)
+                    .afirst()
+                )
+            )
+        )
 
 
 def _convert_lazy_translations(obj):
@@ -53,11 +78,16 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             if not auth_result:
                 return
 
-            if not self.is_user_authorized():
+            upgrade_operation_id = self.scope["url_route"]["kwargs"]["operation_id"]
+            if not await self.is_user_authorized(
+                model=load_model("firmware_upgrader", "UpgradeOperation"),
+                object_id=upgrade_operation_id,
+                organization_field="device__organization_id",
+            ):
                 await self.close()
                 return
 
-            self.operation_id = self.scope["url_route"]["kwargs"]["operation_id"]
+            self.operation_id = upgrade_operation_id
             self.group_name = f"upgrade_{self.operation_id}"
 
         except (AssertionError, KeyError) as e:
@@ -144,7 +174,12 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             auth_result = self._is_user_authenticated()
             if not auth_result:
                 return
-            if not self.is_user_authorized():
+            batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
+            if not await self.is_user_authorized(
+                model=load_model("firmware_upgrader", "BatchUpgradeOperation"),
+                object_id=batch_id,
+                organization_field="build__category__organization_id",
+            ):
                 await self.close()
                 return
             self.batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
@@ -251,10 +286,13 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             if not auth_result:
                 return
 
-            if not self.is_user_authorized():
+            device_id = self.scope["url_route"]["kwargs"]["pk"]
+            if not await self.is_user_authorized(
+                model=load_model("config", "Device"), object_id=device_id
+            ):
                 await self.close()
                 return
-            self.pk_ = self.scope["url_route"]["kwargs"]["pk"]
+            self.pk_ = device_id
             self.group_name = f"firmware_upgrader.device-{self.pk_}"
 
         except (AssertionError, KeyError) as e:
@@ -599,13 +637,37 @@ class BatchUpgradeProgressPublisher:
         if hasattr(batch_instance, "_upgrade_operations"):
             delattr(batch_instance, "_upgrade_operations")
         operations = batch_instance.upgradeoperation_set
-        total_operations = operations.count()
-        in_progress_operations = operations.filter(status="in-progress").count()
-        completed_operations = operations.exclude(status="in-progress").count()
-        successful_operations = operations.filter(status="success").count()
-        failed_operations = operations.filter(status="failed").count()
-        cancelled_operations = operations.filter(status="cancelled").count()
-        aborted_operations = operations.filter(status="aborted").count()
+        stats = operations.aggregate(
+            total_operations=Count("id"),
+            in_progress=Count(
+                Case(When(status="in-progress", then=1), output_field=IntegerField())
+            ),
+            completed=Count(
+                Case(
+                    When(~Q(status="in-progress"), then=1), output_field=IntegerField()
+                )
+            ),
+            successful=Count(
+                Case(When(status="success", then=1), output_field=IntegerField())
+            ),
+            failed=Count(
+                Case(When(status="failed", then=1), output_field=IntegerField())
+            ),
+            cancelled=Count(
+                Case(When(status="cancelled", then=1), output_field=IntegerField())
+            ),
+            aborted=Count(
+                Case(When(status="aborted", then=1), output_field=IntegerField())
+            ),
+        )
+
+        total_operations = stats["total_operations"]
+        in_progress_operations = stats["in_progress"]
+        completed_operations = stats["completed"]
+        successful_operations = stats["successful"]
+        failed_operations = stats["failed"]
+        cancelled_operations = stats["cancelled"]
+        aborted_operations = stats["aborted"]
 
         # Determine overall batch status based on individual operation statuses
         if in_progress_operations > 0:

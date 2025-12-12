@@ -22,7 +22,7 @@ django.jQuery(function ($) {
   }
 
   // Use the controller API host (always defined in change_form.html)
-  const wsHost = owControllerApiHost.host;
+  const wsHost = owFirmwareUpgraderApiHost.host;
   const wsUrl = getWebSocketUrl(pageType, pageId, wsHost);
 
   const upgradeProgressWebSocket = new ReconnectingWebSocket(wsUrl, null, {
@@ -320,8 +320,8 @@ function updateStatusWithProgressBar(statusField, operation) {
       : gettext("Cannot cancel - firmware flashing in progress");
 
     statusHtml += `
-      <button class="${cancelButtonClass}" 
-              data-operation-id="${operation.id}" 
+      <button class="${cancelButtonClass}"
+              data-operation-id="${operation.id}"
               title="${cancelButtonTitle}"
               ${!canCancel ? "disabled" : ""}>
         ${gettext("Cancel")}
@@ -524,8 +524,8 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
       : gettext("Cannot cancel - firmware flashing in progress");
 
     statusHtml += `
-      <button class="${cancelButtonClass}" 
-              data-operation-id="${operation.id}" 
+      <button class="${cancelButtonClass}"
+              data-operation-id="${operation.id}"
               title="${cancelButtonTitle}"
               ${!canCancel ? "disabled" : ""}>
         ${gettext("Cancel")}
@@ -635,7 +635,7 @@ function scrollToBottom(element) {
 
 function detectPageType() {
   // Check if it's a single upgrade operation page
-  if (window.location.pathname.includes("/upgradeoperation/")) {
+  if (document.getElementById("upgradeoperation_form")) {
     return "operation";
   }
   // Check if it's a device page (with upgrade operations)

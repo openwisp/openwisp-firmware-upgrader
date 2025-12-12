@@ -10,7 +10,7 @@ django.jQuery(function ($) {
   initializeExistingBatchUpgradeOperations($);
   initializeMainProgressBar($);
 
-  const wsHost = owControllerApiHost.host;
+  const wsHost = owFirmwareUpgraderApiHost.host;
   const wsUrl = `${getWebSocketProtocol()}${wsHost}/ws/firmware-upgrader/batch-upgrade-operation/${batchUpgradeId}/`;
 
   const batchUpgradeProgressWebSocket = new ReconnectingWebSocket(wsUrl, null, {
