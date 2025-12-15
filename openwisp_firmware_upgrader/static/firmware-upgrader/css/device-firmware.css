@@ -7,10 +7,11 @@
   padding: 0px;
 }
 #id_devicefirmware-0-upgrade_options_jsoneditor input[type="checkbox"] {
-  vertical-align: middle;
+  position: relative;
+  bottom: -1px;
 }
 #main #id_devicefirmware-0-upgrade_options_jsoneditor .form-row {
-  padding: 0px;
+  padding: 5px 0;
   border-bottom: none;
 }
 #devicefirmware-group .form-row.field-upgrade_options {
