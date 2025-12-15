@@ -167,21 +167,23 @@ class TestRealTimeWebsockets(
             progress_container.is_displayed(), "Progress container should be visible"
         )
 
-        progress_bar = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-bar")
-        self.assertTrue(progress_bar.is_displayed(), "Progress bar should be visible")
-
-        progress_fill = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-fill")
-        self.assertTrue(progress_fill.is_displayed(), "Progress fill should be visible")
-
-        progress_text = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-text")
-        self.assertTrue(progress_text.is_displayed(), "Progress text should be visible")
+        WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-bar"))
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, ".upgrade-progress-fill[style*='width: 25%']")
+            )
+        )
+        progress_text = WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, ".upgrade-progress-text")
+            )
+        )
 
         # Verify initial state
         initial_progress_text = progress_text.text
         self.assertEqual(initial_progress_text, "25%")
-
-        initial_style = progress_fill.get_attribute("style")
-        self.assertIn("width: 25%", initial_style)
 
         # Update operation to 75% progress
         operation.progress = 75
@@ -576,6 +578,14 @@ class TestRealTimeWebsockets(
                 )
             )
         )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".batch-main-progress .upgrade-progress-fill.completed-successfully[style*='width: 100%']",
+                )
+            )
+        )
         progress_fill = self.find_element(
             By.CSS_SELECTOR,
             ".batch-main-progress .upgrade-progress-fill.completed-successfully",
@@ -666,17 +676,14 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(publisher.publish_batch_status)(
             status="failed", total=2, completed=2
         )
-        progress_fill = WebDriverWait(self.web_driver, 10).until(
-            EC.presence_of_element_located(
+        WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located(
                 (
                     By.CSS_SELECTOR,
-                    ".batch-main-progress .upgrade-progress-fill.partial-success",
+                    ".batch-main-progress .upgrade-progress-fill.partial-success[style*='width: 100%']",
                 )
             )
         )
-        self.assertTrue(progress_fill.is_displayed())
-        style = progress_fill.get_attribute("style")
-        self.assertIn("width: 100%", style)
         status_field = self.find_element(By.CSS_SELECTOR, ".field-status .readonly")
         status_text = status_field.get_attribute("textContent").strip()
         self.assertIn("completed with some failures", status_text)
@@ -710,14 +717,13 @@ class TestRealTimeWebsockets(
             status="success", total=2, completed=2
         )
         progress_fill = WebDriverWait(self.web_driver, 10).until(
-            EC.presence_of_element_located(
+            EC.visibility_of_element_located(
                 (
                     By.CSS_SELECTOR,
                     ".batch-main-progress .upgrade-progress-fill.completed-successfully",
                 )
             )
         )
-        self.assertTrue(progress_fill.is_displayed())
         progress_text = self.find_element(
             By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"
         ).text
