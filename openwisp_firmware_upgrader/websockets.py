@@ -35,24 +35,26 @@ class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
         user = self.scope["user"]
         if user.is_superuser:
             return True
-        return (
-            user.is_staff
-            and (
-                await user.ahas_perm(
-                    f"{model._meta.app_label}.{get_permission_codename('view', model._meta)}"
+        return await sync_to_async(
+            lambda: (
+                user.is_staff
+                and (
+                    user.has_perm(
+                        f"{model._meta.app_label}.{get_permission_codename('change', model._meta)}"
+                    )
+                    or user.has_perm(
+                        f"{model._meta.app_label}.{get_permission_codename('view', model._meta)}"
+                    )
                 )
-                or await user.ahas_perm(
-                    f"{model._meta.app_label}.{get_permission_codename('change', model._meta)}"
+                and user.is_manager(
+                    str(
+                        model.objects.filter(pk=object_id)
+                        .values_list(organization_field, flat=True)
+                        .first()
+                    )
                 )
             )
-            and user.is_manager(
-                str(
-                    await model.objects.filter(pk=object_id)
-                    .values_list(organization_field, flat=True)
-                    .afirst()
-                )
-            )
-        )
+        )()
 
 
 def _convert_lazy_translations(obj):

@@ -1,11 +1,15 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import pytest
+from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.contrib.auth.models import Permission
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
+from swapper import load_model
 
 from ..websockets import (
     BatchUpgradeProgressConsumer,
@@ -15,63 +19,111 @@ from ..websockets import (
     UpgradeProgressConsumer,
     UpgradeProgressPublisher,
 )
+from .base import TestUpgraderMixin
 
 User = get_user_model()
+UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
+Device = load_model("config", "Device")
 
 
-class TestFirmwareUpgradeSockets(TestCase):
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
     """Test WebSocket consumers and publishers for firmware upgrade progress."""
 
-    @classmethod
-    def setUpTestData(cls):
-        # Create all users needed for tests synchronously
-        cls.user = User.objects.create_user(
-            username="testuser",
-            email="test@example.com",
-            password="testpass123",
-            is_staff=True,
-        )
-        cls.regular_user = User.objects.create_user(
-            username="regularuser",
-            email="regular@example.com",
-            password="testpass123",
-            is_staff=False,
-            is_superuser=False,
-        )
-        cls.superuser = User.objects.create_user(
-            username="superuser",
-            email="super@example.com",
-            password="testpass123",
-            is_staff=False,
-            is_superuser=True,
-        )
-        cls.staff_user = User.objects.create_user(
-            username="staffuser",
-            email="staff@example.com",
-            password="testpass123",
-            is_staff=True,
-            is_superuser=False,
-        )
+    _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
+    _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
     def setUp(self):
         super().setUp()
-        self.user = self.__class__.user
-        self.regular_user = self.__class__.regular_user
-        self.superuser = self.__class__.superuser
-        self.staff_user = self.__class__.staff_user
+        self.regular_user = self._create_user()
+        self.superuser = self._create_admin()
 
-    async def test_upgrade_progress_consumer_connection(self):
-        """Test UpgradeProgressConsumer connection"""
-        operation_id = str(uuid4())
-        # Create a WebSocket connection
+    async def tearDown(self):
+        return await sync_to_async(super().tearDown())
+
+    async def _create_test_device_with_upgrade(self):
+        """Helper to create a device with an upgrade operation."""
+        await sync_to_async(self._create_device_firmware)(upgrade=True)
+        upgrade_operation = await sync_to_async(
+            UpgradeOperation.objects.values("id", "device_id").first
+        )()
+        return str(upgrade_operation["id"]), str(upgrade_operation["device_id"])
+
+    async def _create_administrator(self, organizations=None, **kwargs):
+        organizations = organizations or [await sync_to_async(self._get_org)()]
+        administrator = await sync_to_async(super()._create_administrator)(
+            organizations, **kwargs
+        )
+        perms = await sync_to_async(list)(
+            Permission.objects.filter(
+                codename__in=[
+                    f"change_{Device._meta.model_name}",
+                    f"change_{UpgradeOperation._meta.model_name}",
+                ]
+            ).values_list("pk", flat=True)
+        )
+        await sync_to_async(administrator.user_permissions.add)(*perms)
+        return administrator
+
+    async def _get_upgrade_progress_communicator(self, operation_id, user=None):
+        """
+        Helper method to create and connect a WebSocket communicator
+        for UpgradeProgressConsumer.
+        """
+        if user is None:
+            user = self.superuser
         communicator = WebsocketCommunicator(
             UpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
         communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
-        communicator.scope["user"] = self.user
+        communicator.scope["user"] = user
         connected, _ = await communicator.connect()
-        self.assertTrue(connected)
+        assert connected is True
+        return communicator
+
+    async def _get_batch_upgrade_progress_communicator(self, batch_id, user=None):
+        """
+        Helper method to create and connect a WebSocket communicator
+        for BatchUpgradeProgressConsumer.
+        """
+        if user is None:
+            user = self.superuser
+        communicator = WebsocketCommunicator(
+            BatchUpgradeProgressConsumer.as_asgi(),
+            f"/ws/firmware-upgrader/batch-upgrade-operation/{batch_id}/",
+        )
+        communicator.scope["url_route"] = {"kwargs": {"batch_id": batch_id}}
+        communicator.scope["user"] = user
+        connected, _ = await communicator.connect()
+        assert connected is True
+        return communicator
+
+    async def _get_device_upgrade_progress_communicator(self, device_id, user=None):
+        """
+        Helper method to create and connect a WebSocket communicator
+        for DeviceUpgradeProgressConsumer.
+        """
+        if user is None:
+            user = self.superuser
+        communicator = WebsocketCommunicator(
+            DeviceUpgradeProgressConsumer.as_asgi(),
+            f"/ws/firmware-upgrader/device/{device_id}/",
+        )
+        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
+        communicator.scope["user"] = user
+        connected, _ = await communicator.connect()
+        assert connected is True
+        return communicator
+
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_upgrade_progress_consumer_connection(self, *args):
+        """Test UpgradeProgressConsumer connection"""
+        operation_id, _ = await self._create_test_device_with_upgrade()
+        communicator = await self._get_upgrade_progress_communicator(operation_id)
         # Test receiving messages
         channel_layer = get_channel_layer()
         if channel_layer is not None:
@@ -113,16 +165,10 @@ class TestFirmwareUpgradeSockets(TestCase):
 
     async def test_batch_upgrade_progress_consumer_connection(self):
         """Test BatchUpgradeProgressConsumer connection and functionality."""
-        batch_id = str(uuid4())
-        # Create a WebSocket connection
-        communicator = WebsocketCommunicator(
-            BatchUpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/batch-upgrade-operation/{batch_id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"batch_id": batch_id}}
-        communicator.scope["user"] = self.user
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
+        build = await sync_to_async(self._get_build)()
+        batch = await sync_to_async(BatchUpgradeOperation.objects.create)(build=build)
+        batch_id = str(batch.pk)
+        communicator = await self._get_batch_upgrade_progress_communicator(batch_id)
         # Test receiving messages
         channel_layer = get_channel_layer()
         if channel_layer is not None:
@@ -165,19 +211,14 @@ class TestFirmwareUpgradeSockets(TestCase):
             self.assertEqual(response["progress"], 50)
         await communicator.disconnect()
 
-    async def test_device_upgrade_progress_consumer_connection_authenticated(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_device_upgrade_progress_consumer_connection_authenticated(
+        self, *args
+    ):
         """Test DeviceUpgradeProgressConsumer with authenticated user."""
-        device_id = str(uuid4())
-
-        # Create a WebSocket connection with authenticated user
-        communicator = WebsocketCommunicator(
-            DeviceUpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/device/{device_id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
-        communicator.scope["user"] = self.user
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
+        _, device_id = await self._create_test_device_with_upgrade()
+        communicator = await self._get_device_upgrade_progress_communicator(device_id)
         # Test receiving messages
         channel_layer = get_channel_layer()
         group_name = f"firmware_upgrader.device-{device_id}"
@@ -203,25 +244,34 @@ class TestFirmwareUpgradeSockets(TestCase):
         self.assertEqual(response["data"]["operation"]["id"], "test-op-id")
         await communicator.disconnect()
 
-    async def test_device_upgrade_progress_consumer_connection_unauthenticated(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_device_upgrade_progress_consumer_connection_unauthenticated(
+        self, *args
+    ):
         """Test DeviceUpgradeProgressConsumer with unauthenticated user."""
-        device_id = str(uuid4())
+        _, device_id = await self._create_test_device_with_upgrade()
+        unauthenticated_user = MagicMock(is_authenticated=False)
         communicator = WebsocketCommunicator(
             DeviceUpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/device/{device_id}/",
         )
         communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
-        communicator.scope["user"] = MagicMock(is_authenticated=False)
+        communicator.scope["user"] = unauthenticated_user
         try:
             connected, _ = await communicator.connect()
-            self.assertFalse(connected)
+            self.assertEqual(connected, False)
         except Exception:
             # If connection is forcibly closed then treat it as failed connection
             pass
 
-    async def test_device_upgrade_progress_consumer_connection_unauthorized(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_device_upgrade_progress_consumer_connection_unauthorized(
+        self, *args
+    ):
         """Test DeviceUpgradeProgressConsumer with unauthorized user."""
-        device_id = str(uuid4())
+        _, device_id = await self._create_test_device_with_upgrade()
         communicator = WebsocketCommunicator(
             DeviceUpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/device/{device_id}/",
@@ -230,22 +280,16 @@ class TestFirmwareUpgradeSockets(TestCase):
         communicator.scope["user"] = self.regular_user
         try:
             connected, _ = await communicator.connect()
-            self.assertFalse(connected)
+            self.assertEqual(connected, False)
         except Exception:
             pass
 
-    async def test_device_upgrade_progress_consumer_current_state_request(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_device_upgrade_progress_consumer_current_state_request(self, *args):
         """Test DeviceUpgradeProgressConsumer current state request functionality."""
-        device_id = str(uuid4())
-        # Create a WebSocket connection
-        communicator = WebsocketCommunicator(
-            DeviceUpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/device/{device_id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
-        communicator.scope["user"] = self.user
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
+        _, device_id = await self._create_test_device_with_upgrade()
+        communicator = await self._get_device_upgrade_progress_communicator(device_id)
         # Send current state request
         await communicator.send_json_to({"type": "request_current_state"})
         test_operations = [
@@ -279,17 +323,12 @@ class TestFirmwareUpgradeSockets(TestCase):
             self.assertEqual(response2["data"]["operation"]["id"], "op2")
         await communicator.disconnect()
 
-    async def test_device_upgrade_progress_consumer_unknown_message(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_device_upgrade_progress_consumer_unknown_message(self, *args):
         """Test DeviceUpgradeProgressConsumer handling of unknown message types."""
-        device_id = str(uuid4())
-        communicator = WebsocketCommunicator(
-            DeviceUpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/device/{device_id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
-        communicator.scope["user"] = self.user
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
+        _, device_id = await self._create_test_device_with_upgrade()
+        communicator = await self._get_device_upgrade_progress_communicator(device_id)
         # Patch the logger at the correct import path
         with patch("openwisp_firmware_upgrader.websockets.logger") as mock_logger:
             await communicator.send_json_to({"type": "unknown_message_type"})
@@ -432,26 +471,22 @@ class TestFirmwareUpgradeSockets(TestCase):
         communicator.scope["url_route"] = {"kwargs": {}}
         try:
             connected, _ = await communicator.connect()
-            self.assertFalse(connected)
+            self.assertEqual(connected, False)
         except (KeyError, Exception):
             pass
 
     @override_settings(
         CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
     )
-    async def test_websocket_with_inmemory_channel_layer(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_websocket_with_inmemory_channel_layer(self, *args):
         """Test WebSocket functionality with in-memory channel layer."""
-        operation_id = str(uuid4())
+        operation_id, _ = await self._create_test_device_with_upgrade()
 
-        # Create a WebSocket connection
-        communicator = WebsocketCommunicator(
-            UpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
+        communicator = await self._get_upgrade_progress_communicator(
+            operation_id, user=self.superuser
         )
-        communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
-        communicator.scope["user"] = self.user
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
         # Test receiving messages with in-memory channel layer
         channel_layer = get_channel_layer()
         group_name = f"upgrade_{operation_id}"
@@ -471,24 +506,22 @@ class TestFirmwareUpgradeSockets(TestCase):
     @override_settings(
         CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
     )
-    async def test_websocket_disconnect_handling(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_websocket_disconnect_handling(self, *args):
         """Test WebSocket disconnect handling."""
-        operation_id = str(uuid4())
-        # Create a WebSocket connection
-        communicator = WebsocketCommunicator(
-            UpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
+        operation_id, _ = await self._create_test_device_with_upgrade()
+        communicator = await self._get_upgrade_progress_communicator(
+            operation_id, user=self.superuser
         )
-        communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
-        communicator.scope["user"] = self.user
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
         # Test disconnect
         await communicator.disconnect()
 
-    async def test_device_upgrade_progress_consumer_channel_layer_errors(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_device_upgrade_progress_consumer_channel_layer_errors(self, *args):
         """Test DeviceUpgradeProgressConsumer channel layer error handling."""
-        device_id = str(uuid4())
+        _, device_id = await self._create_test_device_with_upgrade()
         with patch.object(
             DeviceUpgradeProgressConsumer, "channel_layer", create=True
         ) as mock_channel_layer:
@@ -500,7 +533,7 @@ class TestFirmwareUpgradeSockets(TestCase):
                 f"/ws/firmware-upgrader/device/{device_id}/",
             )
             communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
-            communicator.scope["user"] = self.user
+            communicator.scope["user"] = self.superuser
             try:
                 await communicator.connect()
             except Exception:
@@ -514,32 +547,33 @@ class TestFirmwareUpgradeSockets(TestCase):
                 f"/ws/firmware-upgrader/device/{device_id}/",
             )
             communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
-            communicator.scope["user"] = self.user
+            communicator.scope["user"] = self.superuser
             try:
                 await communicator.connect()
             except Exception:
                 pass
 
-    async def test_device_upgrade_progress_consumer_disconnect_error_handling(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_device_upgrade_progress_consumer_disconnect_error_handling(
+        self, *args
+    ):
         """Test DeviceUpgradeProgressConsumer disconnect error handling."""
-        device_id = str(uuid4())
+        _, device_id = await self._create_test_device_with_upgrade()
         with patch.object(
             DeviceUpgradeProgressConsumer, "channel_layer", create=True
         ) as mock_channel_layer:
             mock_channel_layer.group_discard.side_effect = AttributeError(
                 "No channel layer"
             )
-            communicator = WebsocketCommunicator(
-                DeviceUpgradeProgressConsumer.as_asgi(),
-                f"/ws/firmware-upgrader/device/{device_id}/",
+            communicator = await self._get_device_upgrade_progress_communicator(
+                device_id
             )
-            communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
-            communicator.scope["user"] = self.user
-            connected, _ = await communicator.connect()
-            self.assertTrue(connected)
             await communicator.disconnect()
 
-    def test_publisher_channel_layer_errors(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    def test_publisher_channel_layer_errors(self, *args):
         """Test publisher error handling when channel layer is unavailable."""
         operation_id = str(uuid4())
         device_id = str(uuid4())
@@ -569,19 +603,14 @@ class TestFirmwareUpgradeSockets(TestCase):
             except RuntimeError:
                 pass
 
-    async def test_websocket_message_formatting(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_websocket_message_formatting(self, *args):
         """Test WebSocket message formatting and structure."""
-        operation_id = str(uuid4())
-
-        # Create a WebSocket connection
-        communicator = WebsocketCommunicator(
-            UpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
+        operation_id, _ = await self._create_test_device_with_upgrade()
+        communicator = await self._get_upgrade_progress_communicator(
+            operation_id, user=self.superuser
         )
-        communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
-        communicator.scope["user"] = self.user
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
         # Test message with timestamp
         channel_layer = get_channel_layer()
         group_name = f"upgrade_{operation_id}"
@@ -603,29 +632,20 @@ class TestFirmwareUpgradeSockets(TestCase):
         self.assertIn("timestamp", response)
         await communicator.disconnect()
 
-    async def test_multiple_websocket_connections(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_multiple_websocket_connections(self, *args):
         """Test multiple WebSocket connections to the same operation."""
-        operation_id = str(uuid4())
+        org_manager = await self._create_administrator()
+        operation_id, _ = await self._create_test_device_with_upgrade()
 
-        # Create multiple WebSocket connections
-        communicator1 = WebsocketCommunicator(
-            UpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
+        # Create multiple WebSocket connections using helper method
+        communicator1 = await self._get_upgrade_progress_communicator(
+            operation_id, user=self.superuser
         )
-        communicator1.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
-        communicator1.scope["user"] = self.user
-
-        communicator2 = WebsocketCommunicator(
-            UpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
+        communicator2 = await self._get_upgrade_progress_communicator(
+            operation_id, user=org_manager
         )
-        communicator2.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
-        communicator2.scope["user"] = self.staff_user
-
-        connected1, _ = await communicator1.connect()
-        connected2, _ = await communicator2.connect()
-        self.assertTrue(connected1)
-        self.assertTrue(connected2)
         # Send message to group
         channel_layer = get_channel_layer()
         group_name = f"upgrade_{operation_id}"
@@ -647,9 +667,11 @@ class TestFirmwareUpgradeSockets(TestCase):
         await communicator1.disconnect()
         await communicator2.disconnect()
 
-    async def test_websocket_authentication_edge_cases(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_websocket_authentication_edge_cases(self, *args):
         """Test WebSocket authentication edge cases."""
-        device_id = str(uuid4())
+        _, device_id = await self._create_test_device_with_upgrade()
         communicator = WebsocketCommunicator(
             DeviceUpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/device/{device_id}/",
@@ -658,7 +680,7 @@ class TestFirmwareUpgradeSockets(TestCase):
         # Don't set user in scope
         try:
             connected, _ = await communicator.connect()
-            self.assertFalse(connected)
+            self.assertEqual(connected, False)
         except Exception:
             pass
         communicator = WebsocketCommunicator(
@@ -669,50 +691,38 @@ class TestFirmwareUpgradeSockets(TestCase):
         communicator.scope["user"] = MagicMock(is_authenticated=False)
         try:
             connected, _ = await communicator.connect()
-            self.assertFalse(connected)
+            self.assertEqual(connected, False)
         except Exception:
             pass
 
-    async def test_websocket_authorization_edge_cases(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_websocket_authorization_edge_cases(self, *args):
         """Test WebSocket authorization edge cases."""
-        device_id = str(uuid4())
-        # Test with superuser
-        communicator = WebsocketCommunicator(
-            DeviceUpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/device/{device_id}/",
+        org_manager = await self._create_administrator()
+        _, device_id = await self._create_test_device_with_upgrade()
+        # Test with superuser using helper method
+        communicator = await self._get_device_upgrade_progress_communicator(
+            device_id, user=self.superuser
         )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
-        communicator.scope["user"] = self.superuser
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
         await communicator.disconnect()
-        # Test with staff user (not superuser)
-        communicator = WebsocketCommunicator(
-            DeviceUpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/device/{device_id}/",
+        # Test with staff user (not superuser) using helper method
+        communicator = await self._get_device_upgrade_progress_communicator(
+            device_id, user=org_manager
         )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
-        communicator.scope["user"] = self.staff_user
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
         await communicator.disconnect()
 
     @override_settings(
         CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
     )
-    async def test_websocket_message_serialization(self):
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_websocket_message_serialization(self, *args):
         """Test WebSocket message serialization with complex data."""
-        operation_id = str(uuid4())
-
-        # Create a WebSocket connection
-        communicator = WebsocketCommunicator(
-            UpgradeProgressConsumer.as_asgi(),
-            f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
+        operation_id, _ = await self._create_test_device_with_upgrade()
+        communicator = await self._get_upgrade_progress_communicator(
+            operation_id, user=self.superuser
         )
-        communicator.scope["url_route"] = {"kwargs": {"operation_id": operation_id}}
-        communicator.scope["user"] = self.user
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
 
         # Test complex message structure
         channel_layer = get_channel_layer()
@@ -739,7 +749,7 @@ class TestFirmwareUpgradeSockets(TestCase):
         self.assertEqual(response["type"], "complex_update")
         self.assertEqual(response["nested"]["list"], [1, 2, 3])
         self.assertEqual(response["nested"]["dict"]["key"], "value")
-        self.assertTrue(response["nested"]["boolean"])
+        self.assertEqual(response["nested"]["boolean"], True)
         self.assertIsNone(response["nested"]["null"])
         self.assertEqual(response["array"], ["item1", "item2"])
         await communicator.disconnect()

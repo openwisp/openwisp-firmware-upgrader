@@ -582,7 +582,8 @@ class TestRealTimeWebsockets(
             EC.presence_of_element_located(
                 (
                     By.CSS_SELECTOR,
-                    ".batch-main-progress .upgrade-progress-fill.completed-successfully[style*='width: 100%']",
+                    ".batch-main-progress"
+                    " .upgrade-progress-fill.completed-successfully[style*='width: 100%']",
                 )
             )
         )
@@ -716,7 +717,7 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(publisher.publish_batch_status)(
             status="success", total=2, completed=2
         )
-        progress_fill = WebDriverWait(self.web_driver, 10).until(
+        WebDriverWait(self.web_driver, 10).until(
             EC.visibility_of_element_located(
                 (
                     By.CSS_SELECTOR,
