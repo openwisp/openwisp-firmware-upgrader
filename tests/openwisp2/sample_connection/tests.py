@@ -1,3 +1,7 @@
+from django.urls import reverse
+from swapper import load_model
+
+from openwisp_controller.connection import settings as conn_settings
 from openwisp_controller.connection.tests.test_admin import (
     TestCommandInlines as BaseTestCommandInlines,
 )
@@ -47,9 +51,6 @@ class TestTasks(BaseTestTasks):
 class TestSsh(BaseTestSsh):
     pass
 
-import os
-from django.urls import reverse
-from swapper import load_model
 
 Notification = load_model("openwisp_notifications", "Notification")
 
@@ -61,9 +62,7 @@ class TestNotifications(BaseTestNotifications):
         self, exp_level, exp_type, exp_verb, exp_message, exp_email_subject
     ):
         n = Notification.objects.first()
-        config_app = (
-            "config"
-        )
+        config_app = "config"
         device_url_path = reverse(f"admin:{config_app}_device_change", args=[self.d.id])
         exp_target_link = f"https://example.com{device_url_path}"
 
@@ -75,17 +74,15 @@ class TestNotifications(BaseTestNotifications):
         self.assertIn(exp_message.format(n=n, target_link=exp_target_link), n.message)
         self.assertEqual(n.email_subject, exp_email_subject.format(n=n))
 
+
 class TestNotificationTransaction(BaseTestNotificationTransaction):
     app_label = "sample_connection"
-
 
     def _generic_notification_test(
         self, exp_level, exp_type, exp_verb, exp_message, exp_email_subject
     ):
         n = Notification.objects.first()
-        config_app = (
-            "config"
-        )
+        config_app = "config"
         device_url_path = reverse(f"admin:{config_app}_device_change", args=[self.d.id])
         exp_target_link = f"https://example.com{device_url_path}"
 
@@ -97,8 +94,6 @@ class TestNotificationTransaction(BaseTestNotificationTransaction):
         self.assertIn(exp_message.format(n=n, target_link=exp_target_link), n.message)
         self.assertEqual(n.email_subject, exp_email_subject.format(n=n))
 
-
-from openwisp_controller.connection import settings as conn_settings
 
 class TestConnectionApi(BaseTestConnectionApi):
     def test_post_deviceconnection_list(self):

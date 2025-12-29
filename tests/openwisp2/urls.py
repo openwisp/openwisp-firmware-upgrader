@@ -7,8 +7,8 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path, reverse_lazy
 from django.views.generic import RedirectView
 
-from openwisp_controller.config.api.urls import get_api_urls as get_config_api_urls
-from openwisp_controller.config.utils import get_controller_urls
+# from openwisp_controller.config.api.urls import get_api_urls as get_config_api_urls
+# from openwisp_controller.config.utils import get_controller_urls
 from openwisp_controller.connection.api.urls import (
     get_api_urls as get_connection_api_urls,
 )
