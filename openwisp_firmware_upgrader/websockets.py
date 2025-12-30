@@ -10,6 +10,11 @@ from django.db.models import Case, Count, IntegerField, Q, When
 from django.utils import timezone
 from swapper import load_model
 
+from .api.serializers import (
+    DeviceUpgradeOperationSerializer,
+    UpgradeOperationSerializer,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -138,29 +143,23 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             operation = await self._get_upgrade_operation()
             if not operation:
                 return
+
+            # Serialize operation using the existing serializer
+            operation_data = await sync_to_async(
+                lambda: UpgradeOperationSerializer(operation).data
+            )()
+
             # Send operation update
             await self.send_json(
                 {
                     "type": "operation_update",
-                    "operation": {
-                        "id": str(operation.pk),
-                        "status": operation.status,
-                        "log": operation.log or "",
-                        "progress": getattr(operation, "progress", 0),
-                        "modified": (
-                            operation.modified.isoformat()
-                            if operation.modified
-                            else None
-                        ),
-                    },
+                    "operation": operation_data,
                 }
             )
         except (ConnectionError, TimeoutError) as e:
             logger.error(
                 f"Failed to connect to channel layer during operation state request: {e}"
             )
-        except RuntimeError as e:
-            logger.error(f"Runtime error during operation state request: {e}")
 
     async def upgrade_progress(self, event):
         await self.send_json(event["data"])
@@ -231,41 +230,34 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             # Get the batch operation and its upgrade operations
             batch_operation = await self._get_batch_upgrade_operation()
             if batch_operation:
-                # Send batch status
-                total_operations = await sync_to_async(
-                    batch_operation.upgrade_operations.count
-                )()
-                completed_operations = await sync_to_async(
-                    batch_operation.upgrade_operations.exclude(
-                        status="in-progress"
-                    ).count
-                )()
-                await self.send_json(
-                    {
-                        "type": "batch_status",
-                        "status": batch_operation.status,
-                        "completed": completed_operations,
-                        "total": total_operations,
-                    }
-                )
-                # Send individual operation progress
+                # Get operations list
                 operations_list = await sync_to_async(list)(
                     batch_operation.upgrade_operations.all()
                 )
-                for operation in operations_list:
-                    await self.send_json(
-                        {
-                            "type": "operation_progress",
-                            "operation_id": str(operation.pk),
-                            "status": operation.status,
-                            "progress": getattr(operation, "progress", 0),
-                            "modified": (
-                                operation.modified.isoformat()
-                                if operation.modified
-                                else None
-                            ),
-                        }
-                    )
+
+                # Serialize operations using the existing serializer
+                operations_data = await sync_to_async(
+                    lambda: UpgradeOperationSerializer(operations_list, many=True).data
+                )()
+
+                # Calculate counts
+                total_operations = len(operations_list)
+                completed_operations = sum(
+                    1 for op in operations_list if op.status != "in-progress"
+                )
+
+                # Send everything in ONE message
+                await self.send_json(
+                    {
+                        "type": "batch_state",
+                        "batch_status": {
+                            "status": batch_operation.status,
+                            "completed": completed_operations,
+                            "total": total_operations,
+                        },
+                        "operations": operations_data,
+                    }
+                )
         except (ConnectionError, TimeoutError) as e:
             logger.error(
                 f"Failed to connect to channel layer during batch state request: {e}"
@@ -333,7 +325,7 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
         """Handle request for current state of in-progress operations"""
         UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
         try:
-            # Get recent operations (including recently completed) for this device using sync_to_async
+            # Get recent operations (including recently completed) for this device
             get_operations = sync_to_async(
                 lambda: list(
                     UpgradeOperation.objects.filter(
@@ -346,31 +338,18 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                             "aborted",
                             "cancelled",
                         ],
-                    )
-                    .order_by("-modified")[:5]
-                    .values("id", "status", "log", "progress", "modified", "created")
+                    ).order_by("-modified")[:5]
                 )
             )
             operations = await get_operations()
-            # Send current state for each in-progress operation
-            for operation in operations:
-                operation_data = {
-                    "id": str(operation["id"]),
-                    "status": operation["status"],
-                    "log": operation["log"] or "",
-                    "progress": operation.get("progress", 0),  # Include progress field
-                    "modified": (
-                        operation["modified"].isoformat()
-                        if operation["modified"]
-                        else None
-                    ),
-                    "created": (
-                        operation["created"].isoformat()
-                        if operation["created"]
-                        else None
-                    ),
-                }
-                # Send as operation update
+
+            # Serialize operations using the existing serializer
+            operations_data = await sync_to_async(
+                lambda: DeviceUpgradeOperationSerializer(operations, many=True).data
+            )()
+
+            # Send current state for each operation
+            for operation_data in operations_data:
                 await self.send_json(
                     {
                         "model": "UpgradeOperation",

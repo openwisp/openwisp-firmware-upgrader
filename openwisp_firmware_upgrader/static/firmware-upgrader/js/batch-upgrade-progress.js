@@ -112,7 +112,19 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
   batchUpgradeProgressWebSocket.addEventListener("message", function (e) {
     try {
       let data = JSON.parse(e.data);
-      if (data.type === "batch_status") {
+      if (data.type === "batch_state") {
+        updateBatchProgress(data.batch_status);
+        if (data.operations && Array.isArray(data.operations)) {
+          data.operations.forEach(function (operation) {
+            updateBatchOperationProgress({
+              operation_id: operation.id,
+              status: operation.status,
+              progress: operation.progress,
+              modified: operation.modified,
+            });
+          });
+        }
+      } else if (data.type === "batch_status") {
         updateBatchProgress(data);
       } else if (data.type === "operation_progress") {
         updateBatchOperationProgress(data);
