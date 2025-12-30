@@ -131,8 +131,8 @@ To cancel an ongoing upgrade:
 - If an upgrade is in progress, you will see a "Cancel Upgrade" button
 - Click the "Cancel Upgrade" button to stop the upgrade process
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/cancel-device-upgrade.gif
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/cancel-device-upgrade.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/26/cancel-device-upgrade.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/26/cancel-device-upgrade.gif
 
 Cancellation is only possible during the early stages of the upgrade
 process. Once the firmware flashing begins, the cancel button will be
