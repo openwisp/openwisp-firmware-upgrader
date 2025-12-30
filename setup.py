@@ -19,7 +19,10 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        "openwisp-controller @ https://github.com/openwisp/openwisp-controller/tarball/1.2",
+        (
+            "openwisp-controller @"
+            "https://github.com/openwisp/openwisp-controller/archive/refs/heads/1.3.tar.gz"
+        ),
         "django-private-storage~=3.1.0",
     ],
     classifiers=[

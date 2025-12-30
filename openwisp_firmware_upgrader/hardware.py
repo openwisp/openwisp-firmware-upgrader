@@ -108,6 +108,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                "ramips-mt7621-tplink_archer-ax23-v1-squashfs-sysupgrade.bin",
+                {
+                    "label": "TP-Link Archer AX23 v1",
+                    "boards": ("TP-Link Archer AX23 v1",),
+                },
+            ),
+            (
                 "ar71xx-generic-archer-c7-v1-squashfs-sysupgrade.bin",
                 {
                     "label": "TP-Link Archer C7 v1 (OpenWrt 19.07 and earlier)",
