@@ -1,6 +1,15 @@
 Changelog
 =========
 
+Version 1.2.1 [2025-12-30]
+--------------------------
+
+Bugfixes
+~~~~~~~~
+
+- Added data migration to update firmware image identifiers `#358
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/358>`_
+
 Version 1.2.0 [2025-10-24]
 --------------------------
 
