@@ -61,3 +61,33 @@ def create_permissions_for_default_groups(apps, schema_editor, app_label):
 def create_device_firmware_for_connections(apps, schema_editor, app_label):
     for device_connection in DeviceConnection.objects.all():
         DeviceFirmware.create_for_device(device_connection.device)
+
+
+# Mapping of old image type identifiers to new ones
+IMAGE_TYPE_MAPPING = {
+    "octeon-erlite-squashfs-sysupgrade.tar": "octeon-generic-ubnt_edgerouter-lite-squashfs-sysupgrade.tar",
+    "ath79-generic-ubnt_unifi-squashfs-sysupgrade.bin": "ath79-generic-ubnt_unifi-ap-squashfs-sysupgrade.bin",
+    "x86-generic-combined-squashfs.img.gz": "x86-generic-generic-squashfs-combined.img.gz",
+    "x86-geode-combined-squashfs.img.gz": "x86-geode-generic-squashfs-combined.img.gz",
+}
+
+# Reverse mapping for rollback
+REVERSE_IMAGE_TYPE_MAPPING = {v: k for k, v in IMAGE_TYPE_MAPPING.items()}
+
+
+def update_image_types_forward(apps, schema_editor, app_label):
+    """
+    Updates firmware image type identifiers from old values to new values.
+    """
+    FirmwareImage = apps.get_model(app_label, "FirmwareImage")
+    for old_type, new_type in IMAGE_TYPE_MAPPING.items():
+        FirmwareImage.objects.filter(type=old_type).update(type=new_type)
+
+
+def update_image_types_reverse(apps, schema_editor, app_label):
+    """
+    Reverts firmware image type identifiers from new values back to old values.
+    """
+    FirmwareImage = apps.get_model(app_label, "FirmwareImage")
+    for new_type, old_type in REVERSE_IMAGE_TYPE_MAPPING.items():
+        FirmwareImage.objects.filter(type=new_type).update(type=old_type)
