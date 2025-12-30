@@ -295,7 +295,7 @@ class BuildAdmin(BaseAdmin):
 
 class UpgradeOperationForm(forms.ModelForm):
     class Meta:
-        fields = ["device", "image", "status", "log", "modified"]
+        fields = ["image", "status", "log", "modified"]
         labels = {"modified": _("last updated")}
 
 
@@ -339,13 +339,21 @@ class ReadonlyUpgradeOptionsMixin:
 
 
 @admin.register(UpgradeOperation)
-class UpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
+class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+    form = UpgradeOperationForm
     list_display = ["device", "status", "image", "modified"]
     list_filter = ["status"]
     search_fields = ["device__name"]
-    readonly_fields = ["device", "image", "status", "log", "modified"]
+    readonly_fields = ["image", "status", "log", "modified"]
     ordering = ["-modified"]
-    fields = ["device", "image", "status", "log", "modified"]
+    fields = ["image", "status", "log", "readonly_upgrade_options", "modified"]
+    change_form_template = "admin/firmware_upgrader/upgrade_operation_change_form.html"
+
+    def get_readonly_fields(self, request, obj=None):
+        # Since "readonly_upgrade_options" is dynamically added, we need to
+        # override get_readonly_fields to include it.
+        fields = super().get_readonly_fields(request, obj)
+        return fields + ["readonly_upgrade_options"]
 
     def has_add_permission(self, request):
         return False
@@ -622,6 +630,7 @@ class DeviceFirmwareInline(
     class Media:
         js = [
             "connection/js/lib/reconnecting-websocket.min.js",
+            "firmware-upgrader/js/firmware-upgrade-constants.js",
             "firmware-upgrader/js/upgrade-progress.js",
         ]
         css = {

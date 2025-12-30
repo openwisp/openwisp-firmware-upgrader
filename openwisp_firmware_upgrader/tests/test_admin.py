@@ -870,7 +870,7 @@ class TestAdminTransaction(
                 reverse("admin:config_device_change", args=[device.id])
             )
             self.assertContains(
-                response, "<script>\nvar firmwareUpgraderSchema = null\n</script>"
+                response, "<script>\nvar firmwareUpgraderSchema = null\n"
             )
 
         with self.subTest("Test using upgrade options with unsupported upgrader"):

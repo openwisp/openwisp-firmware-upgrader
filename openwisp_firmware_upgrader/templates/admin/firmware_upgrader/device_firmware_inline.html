@@ -2,4 +2,7 @@
 
 <script>
 var firmwareUpgraderSchema = {{ inline_admin_formset.formset.extra_context | default:"null" | safe }}
+var owFirmwareUpgraderApiHost = {
+    host: '{{ request.get_host }}'
+};
 </script>
