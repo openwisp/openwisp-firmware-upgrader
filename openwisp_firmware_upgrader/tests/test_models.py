@@ -173,6 +173,56 @@ class TestModels(TestUpgraderMixin, TestCase):
         else:
             self.fail("ValidationError not raised")
 
+    def test_device_firmware_validation_when_credentials_removed_after_assignment(self):
+        """
+        Regression test for issue #250:
+        When credentials are deleted after DeviceFirmware is created,
+        validate_upgrade_options() should raise ValidationError,
+        not DoesNotExist (which causes HTTP 500).
+        """
+        # Create device with credentials and firmware
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+
+        # Verify device has connection
+        self.assertGreater(device.deviceconnection_set.count(), 0)
+
+        # Set upgrade_options on DeviceFirmware
+        device_fw.upgrade_options = {"n": True}  # Valid upgrade option
+
+        # Initially, validation should pass (credentials exist)
+        device_fw.full_clean()
+
+        # Remove all device connections (simulating credentials deletion)
+        device.deviceconnection_set.all().delete()
+
+        # Verify connections are gone
+        self.assertEqual(device.deviceconnection_set.count(), 0)
+
+        # Now validation should raise ValidationError, not DoesNotExist
+        # Use helper function to isolate exception and avoid pickling issues
+        def get_validation_error_message():
+            try:
+                device_fw.full_clean()
+                return None
+            except ValidationError as e:
+                return " ".join(str(msg) for msg in e.messages)
+
+        error_message_str = get_validation_error_message()
+        self.assertIsNotNone(error_message_str, "ValidationError was not raised")
+        self.assertTrue(
+            any(
+                keyword in error_message_str.lower()
+                for keyword in [
+                    "connection",
+                    "credential",
+                    "deviceconnection",
+                    "ssh",
+                ]
+            ),
+            f"Error message should mention connection/credentials, got: {error_message_str}",
+        )
+
     def test_invalid_board(self):
         image = FIRMWARE_IMAGE_MAP[self.TPLINK_4300_IMAGE]
         boards = image["boards"]
@@ -238,6 +288,60 @@ class TestModels(TestUpgraderMixin, TestCase):
                 error.exception.message_dict["upgrade_options"],
                 ['The "-n" and "-o" options cannot be used together'],
             )
+
+    def test_upgrade_operation_validation_when_credentials_missing(self):
+        """
+        Regression test for issue #250:
+        When credentials are deleted after firmware is assigned,
+        validate_upgrade_options() should raise ValidationError,
+        not DoesNotExist (which causes HTTP 500).
+        """
+        # Create device with credentials and firmware
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+
+        # Verify device has connection
+        self.assertGreater(device.deviceconnection_set.count(), 0)
+
+        # Create UpgradeOperation with upgrade_options
+        uo = UpgradeOperation(
+            device=device,
+            image=device_fw.image,
+            upgrade_options={"n": True},  # Valid upgrade option
+        )
+
+        # Initially, validation should pass (credentials exist)
+        uo.full_clean()
+
+        # Remove all device connections (simulating credentials deletion)
+        device.deviceconnection_set.all().delete()
+
+        # Verify connections are gone
+        self.assertEqual(device.deviceconnection_set.count(), 0)
+
+        # Now validation should raise ValidationError, not DoesNotExist
+        # Use helper function to isolate exception and avoid pickling issues
+        def get_validation_error_message():
+            try:
+                uo.full_clean()
+                return None
+            except ValidationError as e:
+                return " ".join(str(msg) for msg in e.messages)
+
+        error_message_str = get_validation_error_message()
+        self.assertIsNotNone(error_message_str, "ValidationError was not raised")
+        self.assertTrue(
+            any(
+                keyword in error_message_str.lower()
+                for keyword in [
+                    "connection",
+                    "credential",
+                    "deviceconnection",
+                    "ssh",
+                ]
+            ),
+            f"Error message should mention connection/credentials, got: {error_message_str}",
+        )
 
     def test_upgrade_operation_log_line(self):
         device_fw = self._create_device_firmware()
