@@ -3,4 +3,4 @@ openwisp-notifications @ https://github.com/openwisp/openwisp-notifications/arch
 django-redis~=6.0.0
 mock-ssh-server~=0.9.1
 responses~=0.25.8
-psycopg2-binary~=2.9.10
+psycopg2-binary~=2.9.11
