@@ -1,6 +1,4 @@
-import json
 import uuid
-from unittest import mock
 
 import swapper
 from django.contrib.auth import get_user_model
@@ -1882,7 +1880,7 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
 
     def test_upgrade_operation_includes_upgrade_options(self):
         """Test that upgrade operation includes upgrade_options in response"""
-        device_fw = self._create_device_firmware(upgrade=True)
+        self._create_device_firmware(upgrade=True)
         upgrade_operation = UpgradeOperation.objects.first()
         upgrade_operation.upgrade_options = {"c": True, "F": True}
         upgrade_operation.save()
