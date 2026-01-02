@@ -84,13 +84,30 @@ class BuildSerializer(BaseSerializer):
 class UpgradeOperationSerializer(serializers.ModelSerializer):
     class Meta:
         model = UpgradeOperation
-        fields = ("id", "device", "image", "status", "log", "modified", "created", "upgrade_options")
+        fields = (
+            "id",
+            "device",
+            "image",
+            "status",
+            "log",
+            "modified",
+            "created",
+            "upgrade_options",
+        )
 
 
 class DeviceUpgradeOperationSerializer(serializers.ModelSerializer):
     class Meta:
         model = UpgradeOperation
-        fields = ("id", "device", "image", "status", "log", "modified", "upgrade_options")
+        fields = (
+            "id",
+            "device",
+            "image",
+            "status",
+            "log",
+            "modified",
+            "upgrade_options",
+        )
 
 
 class BatchUpgradeOperationListSerializer(BaseSerializer):

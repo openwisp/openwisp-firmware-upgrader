@@ -1886,7 +1886,9 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         upgrade_operation = UpgradeOperation.objects.first()
         upgrade_operation.upgrade_options = {"c": True, "F": True}
         upgrade_operation.save()
-        url = reverse("upgrader:api_upgradeoperation_detail", args=[upgrade_operation.pk])
+        url = reverse(
+            "upgrader:api_upgradeoperation_detail", args=[upgrade_operation.pk]
+        )
         r = self.client.get(url)
         self.assertEqual(r.status_code, 200)
         self.assertIn("upgrade_options", r.data)
