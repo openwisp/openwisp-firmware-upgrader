@@ -509,6 +509,26 @@ class TestAdmin(BaseTestAdmin, TestCase):
             administrator=True,
         )
 
+    def test_device_firmware_validation_error_in_admin_ui(self):
+        self._login()
+        device = self._create_device_with_connection()
+        device_conn = device.deviceconnection_set.first()
+        fw_image = self._create_firmware_image()
+        url = reverse("admin:config_device_change", args=[device.id])
+        data = self._get_device_params(device, device_conn, fw_image=fw_image)
+        data.update(
+            {
+                "devicefirmware-0-image": "",
+                "devicefirmware-TOTAL_FORMS": 1,
+                "devicefirmware-INITIAL_FORMS": 0,
+            }
+        )
+        response = self.client.post(url, data, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="errorlist"')
+        self.assertContains(response, "This field is required.")
+        self.assertFalse(hasattr(device, "devicefirmware"))
+
 
 _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
 _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
