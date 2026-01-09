@@ -375,7 +375,7 @@ class DeviceFirmwareForm(forms.ModelForm):
         )
         try:
             upgrade_op.full_clean()
-        except (ValidationError, forms.ValidationError) as error:
+        except ValidationError as error:
             self.add_error(None, error)
 
     def save(self, commit=True):

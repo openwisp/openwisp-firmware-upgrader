@@ -527,7 +527,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="errorlist"')
         self.assertContains(response, "This field is required.")
-        self.assertFalse(hasattr(device, "devicefirmware"))
+        self.assertFalse(DeviceFirmware.objects.filter(device=device).exists())
 
 
 _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
