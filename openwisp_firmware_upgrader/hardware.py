@@ -53,6 +53,27 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                "mpc85xx-p1020-extreme-networks_ws-ap3825i-squashfs-sysupgrade.bin",
+                {
+                    "label": "Extreme Networks WS-AP3825i",
+                    "boards": ("Extreme Networks WS-AP3825i",),
+                },
+            ),
+            (
+                "ipq40xx-chromium-google_wifi-squashfs-sysupgrade.bin",
+                {
+                    "label": "Google WiFi (Gale)",
+                    "boards": ("Google WiFi (Gale)",),
+                },
+            ),
+            (
+                "realtek-rtl838x-engenius_ews2910p-squashfs-sysupgrade.bin"
+                {
+                    "label": "EnGenius EWS2910P",
+                    "boards": ("EnGenius EWS2910P",),
+                },
+            ),
+            (
                 "ath79-nand-glinet_gl-ar300m-nand-squashfs-sysupgrade.bin",
                 {
                     "label": "GL.iNet GL-AR300M (NAND)",
