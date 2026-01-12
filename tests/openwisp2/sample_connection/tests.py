@@ -57,42 +57,12 @@ Notification = load_model("openwisp_notifications", "Notification")
 
 class TestNotifications(BaseTestNotifications):
     app_label = "sample_connection"
-
-    def _generic_notification_test(
-        self, exp_level, exp_type, exp_verb, exp_message, exp_email_subject
-    ):
-        n = Notification.objects.first()
-        config_app = "config"
-        device_url_path = reverse(f"admin:{config_app}_device_change", args=[self.d.id])
-        exp_target_link = f"https://example.com{device_url_path}"
-
-        self.assertEqual(n.type, exp_type)
-        self.assertEqual(n.level, exp_level)
-        self.assertEqual(n.verb, exp_verb)
-        self.assertEqual(n.actor, self.d.deviceconnection_set.first())
-        self.assertEqual(n.target, self.d)
-        self.assertIn(exp_message.format(n=n, target_link=exp_target_link), n.message)
-        self.assertEqual(n.email_subject, exp_email_subject.format(n=n))
+    config_app_label = "config"
 
 
 class TestNotificationTransaction(BaseTestNotificationTransaction):
     app_label = "sample_connection"
-
-    def _generic_notification_test(
-        self, exp_level, exp_type, exp_verb, exp_message, exp_email_subject
-    ):
-        n = Notification.objects.first()
-        config_app = "config"
-        device_url_path = reverse(f"admin:{config_app}_device_change", args=[self.d.id])
-        exp_target_link = f"https://example.com{device_url_path}"
-
-        self.assertEqual(n.type, exp_type)
-        self.assertEqual(n.level, exp_level)
-        self.assertEqual(n.verb, exp_verb)
-        self.assertEqual(n.actor, self.d.deviceconnection_set.first())
-        self.assertEqual(n.target, self.d)
-        self.assertIn(exp_message.format(n=n, target_link=exp_target_link), n.message)
-        self.assertEqual(n.email_subject, exp_email_subject.format(n=n))
+    config_app_label = "config"
 
 
 class TestConnectionApi(BaseTestConnectionApi):

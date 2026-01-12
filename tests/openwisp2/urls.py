@@ -40,7 +40,6 @@ urlpatterns += [
     path("admin/", admin.site.urls),
     path("", redirect_view, name="index"),
     path("", include("openwisp_controller.urls")),
-    # path("accounts/", include("openwisp_users.accounts.urls")),   # Not needed in development
     path("", include("openwisp_firmware_upgrader.urls")),
     # token auth API
     path("api/v1/", include((get_api_urls(), "users"), namespace="users")),
