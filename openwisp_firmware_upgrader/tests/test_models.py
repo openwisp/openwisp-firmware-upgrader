@@ -489,69 +489,69 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     image_type = TestModels.image_type
 
     @mock.patch(_mock_updrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_dry_run(self, *args):
-        env = self._create_upgrade_env()
-        # check pending upgrades
-        result = BatchUpgradeOperation.dry_run(build=env["build1"])
-        self.assertEqual(
-            list(result["device_firmwares"]),
-            list(DeviceFirmware.objects.all().order_by("-created")),
-        )
-        self.assertEqual(list(result["devices"]), [])
-        # upgrade devices
-        env["build1"].batch_upgrade(firmwareless=True)
-        # check pending upgrades again
-        result = BatchUpgradeOperation.dry_run(build=env["build1"])
-        self.assertEqual(list(result["device_firmwares"]), [])
-        self.assertEqual(list(result["devices"]), [])
+        with mock.patch(self._mock_connect, return_value=True):
+            env = self._create_upgrade_env()
+            # check pending upgrades
+            result = BatchUpgradeOperation.dry_run(build=env["build1"])
+            self.assertEqual(
+                list(result["device_firmwares"]),
+                list(DeviceFirmware.objects.all().order_by("-created")),
+            )
+            self.assertEqual(list(result["devices"]), [])
+            # upgrade devices
+            env["build1"].batch_upgrade(firmwareless=True)
+            # check pending upgrades again
+            result = BatchUpgradeOperation.dry_run(build=env["build1"])
+            self.assertEqual(list(result["device_firmwares"]), [])
+            self.assertEqual(list(result["devices"]), [])
 
     @mock.patch(_mock_updrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_related_devices(self, *args):
-        env = self._create_upgrade_env()
-        # check everything is as expected
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-        self.assertEqual(env["d1"].devicefirmware.image, env["image1a"])
-        self.assertEqual(env["d2"].devicefirmware.image, env["image1b"])
-        # upgrade all related
-        env["build2"].batch_upgrade(firmwareless=False)
-        # ensure image is changed
-        env["d1"].devicefirmware.refresh_from_db()
-        env["d2"].devicefirmware.refresh_from_db()
-        self.assertEqual(env["d1"].devicefirmware.image, env["image2a"])
-        self.assertEqual(env["d2"].devicefirmware.image, env["image2b"])
-        # ensure upgrade operation objects have been created
-        self.assertEqual(UpgradeOperation.objects.count(), 2)
-        batch_qs = BatchUpgradeOperation.objects.all()
-        self.assertEqual(batch_qs.count(), 1)
-        batch = batch_qs.first()
-        self.assertEqual(batch.upgradeoperation_set.count(), 2)
-        self.assertEqual(batch.build, env["build2"])
-        self.assertEqual(batch.status, "success")
+        with mock.patch(self._mock_connect, return_value=True):
+            env = self._create_upgrade_env()
+            # check everything is as expected
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
+            self.assertEqual(env["d1"].devicefirmware.image, env["image1a"])
+            self.assertEqual(env["d2"].devicefirmware.image, env["image1b"])
+            # upgrade all related
+            env["build2"].batch_upgrade(firmwareless=False)
+            # ensure image is changed
+            env["d1"].devicefirmware.refresh_from_db()
+            env["d2"].devicefirmware.refresh_from_db()
+            self.assertEqual(env["d1"].devicefirmware.image, env["image2a"])
+            self.assertEqual(env["d2"].devicefirmware.image, env["image2b"])
+            # ensure upgrade operation objects have been created
+            self.assertEqual(UpgradeOperation.objects.count(), 2)
+            batch_qs = BatchUpgradeOperation.objects.all()
+            self.assertEqual(batch_qs.count(), 1)
+            batch = batch_qs.first()
+            self.assertEqual(batch.upgradeoperation_set.count(), 2)
+            self.assertEqual(batch.build, env["build2"])
+            self.assertEqual(batch.status, "success")
 
     @mock.patch(_mock_updrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_firmwareless_devices(self, *args):
-        env = self._create_upgrade_env(device_firmware=False)
-        # check everything is as expected
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-        self.assertFalse(hasattr(env["d1"], "devicefirmware"))
-        self.assertFalse(hasattr(env["d2"], "devicefirmware"))
-        # upgrade all related
-        env["build2"].batch_upgrade(firmwareless=True)
-        env["d1"].refresh_from_db()
-        env["d2"].refresh_from_db()
-        self.assertEqual(env["d1"].devicefirmware.image, env["image2a"])
-        self.assertEqual(env["d2"].devicefirmware.image, env["image2b"])
-        # ensure upgrade operation objects have been created
-        self.assertEqual(UpgradeOperation.objects.count(), 2)
-        batch_qs = BatchUpgradeOperation.objects.all()
-        self.assertEqual(batch_qs.count(), 1)
-        batch = batch_qs.first()
-        self.assertEqual(batch.upgradeoperation_set.count(), 2)
-        self.assertEqual(batch.build, env["build2"])
-        self.assertEqual(batch.status, "success")
+        with mock.patch(self._mock_connect, return_value=True):
+            env = self._create_upgrade_env(device_firmware=False)
+            # check everything is as expected
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
+            self.assertFalse(hasattr(env["d1"], "devicefirmware"))
+            self.assertFalse(hasattr(env["d2"], "devicefirmware"))
+            # upgrade all related
+            env["build2"].batch_upgrade(firmwareless=True)
+            env["d1"].refresh_from_db()
+            env["d2"].refresh_from_db()
+            self.assertEqual(env["d1"].devicefirmware.image, env["image2a"])
+            self.assertEqual(env["d2"].devicefirmware.image, env["image2b"])
+            # ensure upgrade operation objects have been created
+            self.assertEqual(UpgradeOperation.objects.count(), 2)
+            batch_qs = BatchUpgradeOperation.objects.all()
+            self.assertEqual(batch_qs.count(), 1)
+            batch = batch_qs.first()
+            self.assertEqual(batch.upgradeoperation_set.count(), 2)
+            self.assertEqual(batch.build, env["build2"])
+            self.assertEqual(batch.status, "success")
 
     @mock.patch.object(upgrade_firmware, "max_retries", 0)
     def test_batch_upgrade_failure(self):
@@ -563,28 +563,28 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
 
     @mock.patch(_mock_updrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_related_devices_existing_fw(self, *args):
-        env = self._create_upgrade_env()
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-        self.assertEqual(env["d1"].devicefirmware.image, env["image1a"])
-        self.assertEqual(env["d2"].devicefirmware.image, env["image1b"])
-        env["d1"].devicefirmware.installed = False
-        env["d1"].devicefirmware.save(upgrade=False)
-        env["d2"].devicefirmware.installed = False
-        env["d2"].devicefirmware.save(upgrade=False)
-        env["build1"].batch_upgrade(firmwareless=False)
-        env["d1"].devicefirmware.refresh_from_db()
-        env["d2"].devicefirmware.refresh_from_db()
-        self.assertEqual(env["d1"].devicefirmware.image, env["image1a"])
-        self.assertEqual(env["d2"].devicefirmware.image, env["image1b"])
-        self.assertEqual(UpgradeOperation.objects.count(), 2)
-        batch_qs = BatchUpgradeOperation.objects.all()
-        self.assertEqual(batch_qs.count(), 1)
-        batch = batch_qs.first()
-        self.assertEqual(batch.upgradeoperation_set.count(), 2)
-        self.assertEqual(batch.build, env["build1"])
-        self.assertEqual(batch.status, "success")
+        with mock.patch(self._mock_connect, return_value=True):
+            env = self._create_upgrade_env()
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
+            self.assertEqual(env["d1"].devicefirmware.image, env["image1a"])
+            self.assertEqual(env["d2"].devicefirmware.image, env["image1b"])
+            env["d1"].devicefirmware.installed = False
+            env["d1"].devicefirmware.save(upgrade=False)
+            env["d2"].devicefirmware.installed = False
+            env["d2"].devicefirmware.save(upgrade=False)
+            env["build1"].batch_upgrade(firmwareless=False)
+            env["d1"].devicefirmware.refresh_from_db()
+            env["d2"].devicefirmware.refresh_from_db()
+            self.assertEqual(env["d1"].devicefirmware.image, env["image1a"])
+            self.assertEqual(env["d2"].devicefirmware.image, env["image1b"])
+            self.assertEqual(UpgradeOperation.objects.count(), 2)
+            batch_qs = BatchUpgradeOperation.objects.all()
+            self.assertEqual(batch_qs.count(), 1)
+            batch = batch_qs.first()
+            self.assertEqual(batch.upgradeoperation_set.count(), 2)
+            self.assertEqual(batch.build, env["build1"])
+            self.assertEqual(batch.status, "success")
 
     def test_upgrade_retried(self):
         env = self._create_upgrade_env()
