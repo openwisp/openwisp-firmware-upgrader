@@ -53,24 +53,17 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                "mpc85xx-p1020-extreme-networks_ws-ap3825i-squashfs-sysupgrade.bin",
-                {
-                    "label": "Extreme Networks WS-AP3825i",
-                    "boards": ("Extreme Networks WS-AP3825i",),
-                },
-            ),
-            (
-                "ipq40xx-chromium-google_wifi-squashfs-sysupgrade.bin",
-                {
-                    "label": "Google WiFi (Gale)",
-                    "boards": ("Google WiFi (Gale)",),
-                },
-            ),
-            (
                 "realtek-rtl838x-engenius_ews2910p-squashfs-sysupgrade.bin"
                 {
                     "label": "EnGenius EWS2910P",
                     "boards": ("EnGenius EWS2910P",),
+                },
+            ),
+            (
+                "mpc85xx-p1020-extreme-networks_ws-ap3825i-squashfs-sysupgrade.bin",
+                {
+                    "label": "Extreme Networks WS-AP3825i",
+                    "boards": ("Extreme Networks WS-AP3825i",),
                 },
             ),
             (
@@ -83,6 +76,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
             (
                 "ramips-mt76x8-gl-mt300n-v2-squashfs-sysupgrade.bin",
                 {"label": "GL.iNet GL-MT300N-V2", "boards": ("GL-MT300N-V2",)},
+            ),
+            (
+                "ipq40xx-chromium-google_wifi-squashfs-sysupgrade.bin",
+                {
+                    "label": "Google WiFi (Gale)",
+                    "boards": ("Google WiFi (Gale)",),
+                },
             ),
             (
                 "mvebu-cortexa9-linksys_wrt1900acs-squashfs-sysupgrade.img",
