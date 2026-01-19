@@ -55,16 +55,36 @@ class UpgradeOptionsMixin(models.Model):
     def validate_upgrade_options(self):
         if not self.upgrade_options:
             return
-        if not getattr(self.upgrader_class, "SCHEMA"):
+        try:
+            upgrader_class = self.upgrader_class
+        except ObjectDoesNotExist:
             raise ValidationError(
-                _("Using upgrade options is not allowed with this upgrader.")
+                "Cannot validate firmware upgrade options because the device "
+                "has no valid credentials or connection assigned. "
+                "Please assign credentials to the device first."
+            )
+        if not getattr(upgrader_class, "SCHEMA"):
+            raise ValidationError(
+                "Using upgrade options is not allowed with this upgrader."
             )
         try:
-            self.upgrader_class.validate_upgrade_options(self.upgrade_options)
+            upgrader_class.validate_upgrade_options(self.upgrade_options)
         except jsonschema.ValidationError:
             raise ValidationError("The upgrade options are invalid")
         except FirmwareUpgradeOptionsException as error:
-            raise ValidationError(*error.args)
+            # Extract only picklable string messages from error.args
+            # error.args[0] is typically a dict with lazy translation values
+            if error.args and isinstance(error.args[0], dict):
+                # Convert dict with lazy translations to dict with plain strings
+                clean_message_dict = {
+                    key: str(value) for key, value in error.args[0].items()
+                }
+                raise ValidationError(clean_message_dict)
+            elif error.args:
+                # If it's a plain string or other type, convert to string
+                raise ValidationError(str(error.args[0]))
+            else:
+                raise ValidationError("Invalid upgrade options")
 
     def clean(self):
         super().clean()
