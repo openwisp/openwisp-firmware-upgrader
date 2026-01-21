@@ -10,11 +10,6 @@ from django.db.models import Case, Count, IntegerField, Q, When
 from django.utils import timezone
 from swapper import load_model
 
-from .api.serializers import (
-    DeviceUpgradeOperationSerializer,
-    UpgradeOperationSerializer,
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -139,6 +134,8 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
 
     async def _handle_current_operation_state_request(self, content):
         """Handle request for current state of the operation"""
+        from .api.serializers import UpgradeOperationSerializer
+
         try:
             operation = await self._get_upgrade_operation()
             if not operation:
@@ -226,6 +223,8 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
 
     async def _handle_current_batch_state_request(self, content):
         """Handle request for current state of batch upgrade operations"""
+        from .api.serializers import UpgradeOperationSerializer
+
         try:
             # Get the batch operation and its upgrade operations
             batch_operation = await self._get_batch_upgrade_operation()
@@ -323,6 +322,8 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
 
     async def _handle_current_state_request(self, content):
         """Handle request for current state of in-progress operations"""
+        from .api.serializers import DeviceUpgradeOperationSerializer
+
         UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
         try:
             # Get recent operations (including recently completed) for this device
