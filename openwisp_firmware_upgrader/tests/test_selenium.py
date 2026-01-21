@@ -310,6 +310,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.find_element(
                 by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
             ).click()
+            self.wait_for_visibility(By.CSS_SELECTOR, "#devicefirmware-group")
             self.assertEqual(
                 UpgradeOperation.objects.filter(upgrade_options={}).count(), 1
             )

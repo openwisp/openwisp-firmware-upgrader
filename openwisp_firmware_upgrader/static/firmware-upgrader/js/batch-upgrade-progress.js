@@ -204,7 +204,7 @@ function updateBatchProgress(data) {
   }
 
   // Update completion information in the admin form if available
-  if (data.total && data.completed) {
+  if (data.total !== undefined && data.completed !== undefined) {
     let completedInfo = $(".field-completed .readonly");
     if (completedInfo.length > 0) {
       completedInfo.text(`${data.completed} out of ${data.total}`);
@@ -277,40 +277,57 @@ function addNewOperationRow(data) {
   if (!data.device_name || !data.device_id) {
     return;
   }
+
   let tbody = $("#result_list tbody");
   let existingRows = tbody.find("tr").length;
   let rowClass = existingRows % 2 === 0 ? "row1" : "row2";
   tbody.find("tr td[colspan]").parent().remove();
+
   let deviceUrl = `/admin/firmware_upgrader/upgradeoperation/${data.operation_id}/change/`;
   let imageDisplay = data.image_name || "None";
   let modifiedTime = data.modified
     ? getFormattedDateTimeString(data.modified)
     : "Just now";
 
-  let newRowHtml = `
-    <tr class="${rowClass}">
-      <td>
-        <a href="${deviceUrl}" class="device-link" aria-label="View device ${data.device_name}">
-          ${data.device_name}
-        </a>
-      </td>
-      <td class="status-cell" data-operation-id="${data.operation_id}">
-        <div class="status-content">${data.status}</div>
-      </td>
-      <td>${imageDisplay}</td>
-      <td>${modifiedTime}</td>
-    </tr>
-  `;
+  // Build row using DOM attributes to prevent XSS vulnerability due to string interpolation
+  // <tr class="${rowClass}">
+  //   <td>
+  //     <a href="${deviceUrl}" class="device-link" aria-label="View device ${data.device_name}">
+  //       ${data.device_name}
+  //     </a>
+  //   </td>
+  //   <td class="status-cell" data-operation-id="${data.operation_id}">
+  //     <div class="status-content">${data.status}</div>
+  //   </td>
+  //   <td>${imageDisplay}</td>
+  //   <td>${modifiedTime}</td>
+  // </tr>
 
-  tbody.append(newRowHtml);
-  let newRow = tbody.find(`tr:last`);
-  let statusCell = newRow.find(".status-cell");
+  let $row = $("<tr>").addClass(rowClass);
+  let $deviceTd = $("<td>");
+  let $link = $("<a>")
+    .addClass("device-link")
+    .attr("href", deviceUrl)
+    .attr("aria-label", `View device ${data.device_name}`)
+    .text(data.device_name); // SAFE
+  $deviceTd.append($link);
+  let $statusTd = $("<td>")
+    .addClass("status-cell")
+    .attr("data-operation-id", data.operation_id);
+  let $statusContent = $("<div>").addClass("status-content").text(data.status); // SAFE
+  $statusTd.append($statusContent);
+  let $imageTd = $("<td>").text(imageDisplay); // SAFE
+  let $modifiedTd = $("<td>").text(modifiedTime); // SAFE
+  $row.append($deviceTd, $statusTd, $imageTd, $modifiedTd);
+  tbody.append($row);
+
   let operation = {
     status: data.status,
     id: data.operation_id,
     progress: data.progress,
   };
-  updateBatchStatusWithProgressBar(statusCell, operation);
+
+  updateBatchStatusWithProgressBar($statusTd, operation);
 }
 
 function updateBatchStatusWithProgressBar(statusCell, operation) {

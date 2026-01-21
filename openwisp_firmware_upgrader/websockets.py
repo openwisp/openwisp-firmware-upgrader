@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from copy import deepcopy
 
@@ -6,6 +7,7 @@ from asgiref.sync import async_to_sync, sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.layers import get_channel_layer
 from django.contrib.auth import get_permission_codename
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Case, Count, IntegerField, Q, When
 from django.utils import timezone
 from swapper import load_model
@@ -17,6 +19,10 @@ class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
     """
     Base websocket consumer with authentication and authorization methods.
     """
+
+    @classmethod
+    async def encode_json(cls, content):
+        return json.dumps(content, cls=DjangoJSONEncoder)
 
     def _is_user_authenticated(self):
         try:
@@ -543,8 +549,7 @@ class DeviceUpgradeProgressPublisher:
                     device_info,
                 )
                 # Update batch status if needed
-                batch_publisher.update_batch_status(instance.batch)
-                if created:
+                if instance.batch:
                     batch_publisher.update_batch_status(instance.batch)
         except (ConnectionError, TimeoutError) as e:
             logger.error(
