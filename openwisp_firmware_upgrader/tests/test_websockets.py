@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -15,7 +16,6 @@ from ..websockets import (
     BatchUpgradeProgressConsumer,
     BatchUpgradeProgressPublisher,
     DeviceUpgradeProgressConsumer,
-    DeviceUpgradeProgressPublisher,
     UpgradeProgressConsumer,
     UpgradeProgressPublisher,
 )
@@ -337,53 +337,11 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             mock_logger.warning.assert_called()
         await communicator.disconnect()
 
-    def test_upgrade_progress_publisher(self):
-        """Test UpgradeProgressPublisher functionality."""
-        operation_id = str(uuid4())
-        publisher = UpgradeProgressPublisher(operation_id)
-        # Test publishing progress
-        with patch.object(
-            publisher.channel_layer, "group_send", new_callable=AsyncMock
-        ) as mock_group_send:
-            test_data = {"type": "test", "data": "test_value"}
-            publisher.publish_progress(test_data)
-            call_args = mock_group_send.call_args[0]
-            self.assertEqual(call_args[0], f"upgrade_{operation_id}")
-            self.assertEqual(call_args[1]["type"], "upgrade_progress")
-            self.assertEqual(call_args[1]["data"]["type"], "test")
-            self.assertEqual(call_args[1]["data"]["data"], "test_value")
-            self.assertIn("timestamp", call_args[1]["data"])
-        # Test publishing log
-        with patch.object(
-            publisher.channel_layer, "group_send", new_callable=AsyncMock
-        ) as mock_group_send:
-            publisher.publish_log("Test log line", "in-progress")
-            call_args = mock_group_send.call_args[0]
-            self.assertEqual(call_args[1]["data"]["type"], "log")
-            self.assertEqual(call_args[1]["data"]["content"], "Test log line")
-            self.assertEqual(call_args[1]["data"]["status"], "in-progress")
-        # Test publishing status
-        with patch.object(
-            publisher.channel_layer, "group_send", new_callable=AsyncMock
-        ) as mock_group_send:
-            publisher.publish_status("success")
-            call_args = mock_group_send.call_args[0]
-            self.assertEqual(call_args[1]["data"]["type"], "status")
-            self.assertEqual(call_args[1]["data"]["status"], "success")
-        # Test publishing error
-        with patch.object(
-            publisher.channel_layer, "group_send", new_callable=AsyncMock
-        ) as mock_group_send:
-            publisher.publish_error("Test error message")
-            call_args = mock_group_send.call_args[0]
-            self.assertEqual(call_args[1]["data"]["type"], "error")
-            self.assertEqual(call_args[1]["data"]["message"], "Test error message")
-
     def test_device_upgrade_progress_publisher(self):
-        """Test DeviceUpgradeProgressPublisher functionality."""
+        """Test UpgradeProgressPublisher functionality."""
         device_id = str(uuid4())
         operation_id = str(uuid4())
-        publisher = DeviceUpgradeProgressPublisher(device_id, operation_id)
+        publisher = UpgradeProgressPublisher(device_id, operation_id)
         # Test publishing progress
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
@@ -415,7 +373,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(call_args[1]["data"]["operation"]["id"], "op1")
 
         # Test publishing without operation_id
-        publisher_no_op = DeviceUpgradeProgressPublisher(device_id)
+        publisher_no_op = UpgradeProgressPublisher(device_id)
         with patch.object(
             publisher_no_op.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
@@ -573,38 +531,6 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
 
     @patch(_mock_upgrade, return_value=True)
     @patch(_mock_connect, return_value=True)
-    def test_publisher_channel_layer_errors(self, *args):
-        """Test publisher error handling when channel layer is unavailable."""
-        operation_id = str(uuid4())
-        device_id = str(uuid4())
-        # Patch group_send with a synchronous mock
-        with patch(
-            "openwisp_firmware_upgrader.websockets.get_channel_layer"
-        ) as mock_get_channel_layer:
-            mock_channel_layer = MagicMock()
-            mock_channel_layer.group_send.side_effect = ConnectionError(
-                "Connection failed"
-            )
-            mock_get_channel_layer.return_value = mock_channel_layer
-            publisher = UpgradeProgressPublisher(operation_id)
-            try:
-                publisher.publish_progress({"type": "test", "data": "test_value"})
-            except ConnectionError:
-                pass
-        with patch(
-            "openwisp_firmware_upgrader.websockets.get_channel_layer"
-        ) as mock_get_channel_layer:
-            mock_channel_layer = MagicMock()
-            mock_channel_layer.group_send.side_effect = RuntimeError("Runtime error")
-            mock_get_channel_layer.return_value = mock_channel_layer
-            publisher = DeviceUpgradeProgressPublisher(device_id, operation_id)
-            try:
-                publisher.publish_progress({"type": "test", "data": "test_value"})
-            except RuntimeError:
-                pass
-
-    @patch(_mock_upgrade, return_value=True)
-    @patch(_mock_connect, return_value=True)
     async def test_websocket_message_formatting(self, *args):
         """Test WebSocket message formatting and structure."""
         operation_id, _ = await self._create_test_device_with_upgrade()
@@ -752,4 +678,48 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(response["nested"]["boolean"], True)
         self.assertIsNone(response["nested"]["null"])
         self.assertEqual(response["array"], ["item1", "item2"])
+        await communicator.disconnect()
+
+    @override_settings(
+        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    )
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_no_duplicate_messages_on_log_line_with_batch(self, *args):
+        """
+        Test that calling log() on an UpgradeOperation associated with a
+        BatchUpgradeOperation does not send duplicate messages to the
+        operation-specific WebSocket channel.
+        """
+        # Create a batch upgrade operation
+        build = await sync_to_async(self._get_build)()
+        batch = await sync_to_async(BatchUpgradeOperation.objects.create)(build=build)
+        # Create device firmware with upgrade operation linked to the batch
+        device_fw = await sync_to_async(self._create_device_firmware)(upgrade=False)
+        operation = await sync_to_async(UpgradeOperation.objects.create)(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="in-progress",
+        )
+        operation_id = str(operation.pk)
+        communicator = await self._get_upgrade_progress_communicator(
+            operation_id, user=self.superuser
+        )
+        await sync_to_async(operation.log_line)(
+            "The upgrade operation will be retried soon."
+        )
+        messages = []
+        try:
+            # Try to receive messages for a short period
+            for _ in range(5):  # Try up to 5 times
+                response = await asyncio.wait_for(
+                    communicator.receive_json_from(), timeout=0.5
+                )
+                messages.append(response)
+        except asyncio.TimeoutError:
+            # No more messages available, which is expected
+            pass
+        # Assert that we received exactly ONE log message (not duplicates)
+        self.assertEqual(len(messages), 1)
         await communicator.disconnect()

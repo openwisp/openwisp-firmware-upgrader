@@ -383,68 +383,6 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
 
 class UpgradeProgressPublisher:
     """
-    Helper to publish WebSocket messages for a single upgrade operation.
-    """
-
-    def __init__(self, operation_id):
-        self.operation_id = operation_id
-        self.channel_layer = get_channel_layer()
-        self.group_name = f"upgrade_{operation_id}"
-
-    def publish_progress(self, data):
-        data = _convert_lazy_translations(data)
-
-        async def _send_message():
-            await self.channel_layer.group_send(
-                self.group_name,
-                {
-                    "type": "upgrade_progress",
-                    "data": {**data, "timestamp": timezone.now().isoformat()},
-                },
-            )
-
-        async_to_sync(_send_message)()
-
-    def publish_log(self, line, status):
-        self.publish_progress({"type": "log", "content": line, "status": status})
-
-    def publish_status(self, status):
-        self.publish_progress({"type": "status", "status": status})
-
-    def publish_error(self, error_message):
-        self.publish_progress({"type": "error", "message": error_message})
-
-    @classmethod
-    def handle_upgrade_operation_log_updated(cls, sender, instance, line, **kwargs):
-        """
-        Handle log line events by publishing to WebSocket channels.
-        """
-        try:
-            # Publish to operation-specific channel
-            publisher = cls(instance.pk)
-            publisher.publish_progress(
-                {"type": "log", "content": line, "status": instance.status}
-            )
-            # Publish to device-specific channel for real-time UI updates
-            device_publisher = DeviceUpgradeProgressPublisher(
-                instance.device.pk, instance.pk
-            )
-            device_publisher.publish_log(line, instance.status)
-
-        except (ConnectionError, TimeoutError) as e:
-            logger.error(
-                f"Failed to connect to channel layer for upgrade operation {instance.pk}: {e}",
-                exc_info=True,
-            )
-        except RuntimeError as e:
-            logger.error(
-                f"Runtime error in WebSocket publishing for upgrade operation {instance.pk}: {e}",
-                exc_info=True,
-            )
-
-
-class DeviceUpgradeProgressPublisher:
-    """
     Publisher for device-specific upgrade progress that publishes to
     both individual operation channels and device channels
     """
@@ -509,10 +447,6 @@ class DeviceUpgradeProgressPublisher:
         from .api.serializers import UpgradeOperationSerializer
 
         try:
-            # Publish status update to operation-specific channel
-            publisher = UpgradeProgressPublisher(instance.pk)
-            publisher.publish_progress({"type": "status", "status": instance.status})
-            # Publish complete operation update to device-specific channel
             device_publisher = cls(instance.device.pk, instance.pk)
             device_publisher_data = UpgradeOperationSerializer(instance).data
             # DRF serializers does not convert ForeignKey fields to string,

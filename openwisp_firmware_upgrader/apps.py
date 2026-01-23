@@ -7,12 +7,7 @@ from openwisp_utils.api.apps import ApiAppConfig
 from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
-from .signals import firmware_upgrader_log_updated
-from .websockets import (
-    BatchUpgradeProgressPublisher,
-    DeviceUpgradeProgressPublisher,
-    UpgradeProgressPublisher,
-)
+from .websockets import BatchUpgradeProgressPublisher, UpgradeProgressPublisher
 
 
 class FirmwareUpdaterConfig(ApiAppConfig):
@@ -85,7 +80,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
 
         post_save.connect(
-            DeviceUpgradeProgressPublisher.handle_upgrade_operation_post_save,
+            UpgradeProgressPublisher.handle_upgrade_operation_post_save,
             sender=UpgradeOperation,
             dispatch_uid="upgrade_operation.websocket_publish",
         )
@@ -93,10 +88,6 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             BatchUpgradeProgressPublisher.handle_batch_upgrade_operation_saved,
             sender=BatchUpgradeOperation,
             dispatch_uid="batch_upgrade_operation.websocket_publish",
-        )
-        firmware_upgrader_log_updated.connect(
-            UpgradeProgressPublisher.handle_upgrade_operation_log_updated,
-            dispatch_uid="firmware_upgrader.log_websocket_publish",
         )
 
     def connect_delete_signals(self):

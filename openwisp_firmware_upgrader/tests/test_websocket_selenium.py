@@ -15,7 +15,7 @@ from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
 from openwisp_firmware_upgrader.websockets import (
     BatchUpgradeProgressPublisher,
-    DeviceUpgradeProgressPublisher,
+    UpgradeProgressPublisher,
 )
 from openwisp_utils.tests import SeleniumTestMixin
 
@@ -196,7 +196,7 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
                 "id": str(operation.pk),
@@ -272,7 +272,7 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
                 "id": str(operation.pk),
@@ -340,7 +340,7 @@ class TestRealTimeWebsockets(
         operation.log = f"{operation.log}\n{new_log_line}"
         await database_sync_to_async(operation.save)()
 
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_log(new_log_line, "in-progress")
 
         # Verify UI update
@@ -386,7 +386,7 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
                 "id": str(operation.pk),
@@ -453,7 +453,7 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
                 "id": str(operation.pk),
