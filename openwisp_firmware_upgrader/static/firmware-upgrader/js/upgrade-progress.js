@@ -48,6 +48,12 @@ function formatLogForDisplay(logContent) {
   return logContent ? logContent.replace(/\n/g, "<br>") : "";
 }
 
+function getSanitizedStatusTextFromField(statusField) {
+  const statusText =
+    statusField.find(".upgrade-progress-text").text() || statusField.text().trim();
+  return statusText.replace(/\d+%.*$/, "").trim();
+}
+
 function requestCurrentOperationState(websocket) {
   if (websocket.readyState === WebSocket.OPEN) {
     try {
@@ -79,7 +85,7 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
   let processedCount = 0;
   statusFields.each(function (index) {
     let statusField = $(this);
-    let statusText = statusField.text().trim();
+    let statusText = getSanitizedStatusTextFromField(statusField);
 
     if (statusField.find(".upgrade-status-container").length > 0) {
       return;
@@ -150,7 +156,7 @@ function initializeExistingUpgradeOperation($, isRetry = false) {
     return;
   }
 
-  let statusText = statusField.text().trim();
+  let statusText = getSanitizedStatusTextFromField(statusField);
 
   if (statusText) {
     let operationId = window.upgradePageId;
@@ -387,9 +393,7 @@ function updateUpgradeOperationLog(logData) {
   // Find all in-progress operations and recently completed operations to update their logs
   $("#upgradeoperation_set-group .field-status .readonly").each(function () {
     let statusField = $(this);
-    let currentStatusText =
-      statusField.find(".upgrade-status-container span").text() ||
-      statusField.text().trim();
+    let currentStatusText = getSanitizedStatusTextFromField(statusField);
 
     // Update logs for in-progress operations and recently completed operations
     if (
@@ -443,9 +447,7 @@ function updateUpgradeOperationStatus(statusData) {
   // Update status for in-progress operations
   $("#upgradeoperation_set-group .field-status .readonly").each(function () {
     let statusField = $(this);
-    let currentStatusText =
-      statusField.find(".upgrade-status-container span").text() ||
-      statusField.text().trim();
+    let currentStatusText = getSanitizedStatusTextFromField(statusField);
 
     if (FW_STATUS_GROUPS.IN_PROGRESS.has(currentStatusText)) {
       // Get current log content for progress calculation
@@ -586,9 +588,7 @@ function updateSingleUpgradeOperationLog(logData) {
   logElement.html(formatLogForDisplay(newLog));
 
   let statusField = $(".field-status .readonly");
-  let currentStatusText =
-    statusField.find(".upgrade-status-container span").text() ||
-    statusField.text().trim();
+  let currentStatusText = getSanitizedStatusTextFromField(statusField);
 
   let operation = {
     status: currentStatusText,
