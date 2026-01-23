@@ -726,6 +726,80 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         result = Decimal(number) / Decimal(self.total_operations) * 100
         return round(result, 2)
 
+    def calculate_and_update_status(self):
+        """
+        Calculate batch status based on operation statuses and update if changed.
+        This method consolidates all business logic for determining batch status.
+        Returns tuple of (status, stats_dict) for WebSocket publishing.
+
+        Status determination rules:
+        - 'in-progress': If any operation is still in progress
+        - 'cancelled': If completed and any operation was cancelled
+        - 'failed': If completed and any operation failed or aborted
+        - 'success': If all operations completed successfully
+        - Otherwise: Maintain current status
+        """
+        operations = self.upgradeoperation_set
+        stats = operations.aggregate(
+            total_operations=models.Count("id"),
+            in_progress=models.Count(
+                models.Case(
+                    models.When(status="in-progress", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            completed=models.Count(
+                models.Case(
+                    models.When(~models.Q(status="in-progress"), then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            successful=models.Count(
+                models.Case(
+                    models.When(status="success", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            failed=models.Count(
+                models.Case(
+                    models.When(status="failed", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            cancelled=models.Count(
+                models.Case(
+                    models.When(status="cancelled", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            aborted=models.Count(
+                models.Case(
+                    models.When(status="aborted", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+        )
+        # Determine overall batch status based on individual operation statuses
+        if stats["in_progress"] > 0:
+            new_status = "in-progress"
+        elif stats["cancelled"] > 0:
+            new_status = "cancelled"
+        elif stats["failed"] > 0 or stats["aborted"] > 0:
+            new_status = "failed"
+        elif (
+            stats["successful"] > 0
+            and stats["completed"] == stats["total_operations"]
+            and stats["total_operations"] > 0
+        ):
+            new_status = "success"
+        else:
+            new_status = self.status
+        # Update status only if it has changed
+        if self.status != new_status:
+            self.status = new_status
+            self.save(update_fields=["status"])
+        return new_status, stats
+
 
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 

@@ -8,7 +8,6 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.layers import get_channel_layer
 from django.contrib.auth import get_permission_codename
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.models import Case, Count, IntegerField, Q, When
 from django.utils import timezone
 from swapper import load_model
 
@@ -505,34 +504,21 @@ class DeviceUpgradeProgressPublisher:
         # Only publish updates for existing operations
         if created and not (hasattr(instance, "batch") and instance.batch):
             return
+
+        # Import serializer here to avoid circular imports and NotReady errors
+        from .api.serializers import UpgradeOperationSerializer
+
         try:
             # Publish status update to operation-specific channel
             publisher = UpgradeProgressPublisher(instance.pk)
             publisher.publish_progress({"type": "status", "status": instance.status})
             # Publish complete operation update to device-specific channel
             device_publisher = cls(instance.device.pk, instance.pk)
-            device_publisher.publish_operation_update(
-                {
-                    "id": str(instance.pk),
-                    "device": str(instance.device.pk),
-                    "status": instance.status,
-                    "log": instance.log,
-                    "progress": getattr(
-                        instance, "progress", 0
-                    ),  # Include progress field
-                    "image": (
-                        str(getattr(instance.image, "pk", None))
-                        if getattr(instance.image, "pk", None)
-                        else None
-                    ),
-                    "modified": (
-                        instance.modified.isoformat() if instance.modified else None
-                    ),
-                    "created": (
-                        instance.created.isoformat() if instance.created else None
-                    ),
-                }
-            )
+            device_publisher_data = UpgradeOperationSerializer(instance).data
+            # DRF serializers does not convert ForeignKey fields to string,
+            for field in ["device", "image"]:
+                device_publisher_data[field] = str(device_publisher_data[field])
+            device_publisher.publish_operation_update(device_publisher_data)
 
             # Publish to batch upgrade channel if this operation belongs to a batch
             if hasattr(instance, "batch") and instance.batch:
@@ -550,9 +536,7 @@ class DeviceUpgradeProgressPublisher:
                     instance.modified,
                     device_info,
                 )
-                # Update batch status if needed
-                if instance.batch:
-                    batch_publisher.update_batch_status(instance.batch)
+                batch_publisher.update_batch_status(instance.batch)
         except (ConnectionError, TimeoutError) as e:
             logger.error(
                 f"Failed to connect to channel layer for upgrade operation {instance.pk}: {e}",
@@ -623,62 +607,12 @@ class BatchUpgradeProgressPublisher:
     def update_batch_status(self, batch_instance):
         """Update and publish batch status based on current operations"""
         batch_instance.refresh_from_db()
-        if hasattr(batch_instance, "_upgrade_operations"):
-            delattr(batch_instance, "_upgrade_operations")
-        operations = batch_instance.upgradeoperation_set
-        stats = operations.aggregate(
-            total_operations=Count("id"),
-            in_progress=Count(
-                Case(When(status="in-progress", then=1), output_field=IntegerField())
-            ),
-            completed=Count(
-                Case(
-                    When(~Q(status="in-progress"), then=1), output_field=IntegerField()
-                )
-            ),
-            successful=Count(
-                Case(When(status="success", then=1), output_field=IntegerField())
-            ),
-            failed=Count(
-                Case(When(status="failed", then=1), output_field=IntegerField())
-            ),
-            cancelled=Count(
-                Case(When(status="cancelled", then=1), output_field=IntegerField())
-            ),
-            aborted=Count(
-                Case(When(status="aborted", then=1), output_field=IntegerField())
-            ),
+        batch_status, stats = batch_instance.calculate_and_update_status()
+        self.publish_batch_status(
+            batch_status,
+            stats["completed"],
+            stats["total_operations"],
         )
-
-        total_operations = stats["total_operations"]
-        in_progress_operations = stats["in_progress"]
-        completed_operations = stats["completed"]
-        successful_operations = stats["successful"]
-        failed_operations = stats["failed"]
-        cancelled_operations = stats["cancelled"]
-        aborted_operations = stats["aborted"]
-
-        # Determine overall batch status based on individual operation statuses
-        if in_progress_operations > 0:
-            batch_status = "in-progress"
-        elif cancelled_operations > 0:
-            batch_status = "cancelled"
-        elif failed_operations > 0 or aborted_operations > 0:
-            batch_status = "failed"
-        elif (
-            successful_operations > 0
-            and completed_operations == total_operations
-            and total_operations > 0
-        ):
-            batch_status = "success"
-        else:
-            batch_status = batch_instance.status
-
-        if batch_instance.status != batch_status:
-            batch_instance.status = batch_status
-            batch_instance.save(update_fields=["status"])
-
-        self.publish_batch_status(batch_status, completed_operations, total_operations)
 
     @classmethod
     def handle_batch_upgrade_operation_saved(cls, sender, instance, created, **kwargs):
