@@ -140,6 +140,7 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
 
     async def _handle_current_operation_state_request(self, content):
         """Handle request for current state of the operation"""
+        # We import serializers here instead globally to prevent NotReady errors
         from .api.serializers import UpgradeOperationSerializer
 
         try:
@@ -229,6 +230,7 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
 
     async def _handle_current_batch_state_request(self, content):
         """Handle request for current state of batch upgrade operations"""
+        # We import serializers here instead globally to prevent NotReady errors.
         from .api.serializers import UpgradeOperationSerializer
 
         try:

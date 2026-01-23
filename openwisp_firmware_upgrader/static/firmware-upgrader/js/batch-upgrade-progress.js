@@ -149,8 +149,8 @@ function updateBatchProgress(data) {
   if (mainProgressElement.length > 0) {
     let progressPercentage =
       data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
-    let statusClass = (data.status || "").replace(/\s+/g, "-");
     let showPercentageText = true;
+    let statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS; // Safe default
 
     if (data.status === FW_UPGRADE_STATUS.SUCCESS) {
       progressPercentage = 100;
@@ -290,19 +290,6 @@ function addNewOperationRow(data) {
     : "Just now";
 
   // Build row using DOM attributes to prevent XSS vulnerability due to string interpolation
-  // <tr class="${rowClass}">
-  //   <td>
-  //     <a href="${deviceUrl}" class="device-link" aria-label="View device ${data.device_name}">
-  //       ${data.device_name}
-  //     </a>
-  //   </td>
-  //   <td class="status-cell" data-operation-id="${data.operation_id}">
-  //     <div class="status-content">${data.status}</div>
-  //   </td>
-  //   <td>${imageDisplay}</td>
-  //   <td>${modifiedTime}</td>
-  // </tr>
-
   let $row = $("<tr>").addClass(rowClass);
   let $deviceTd = $("<td>");
   let $link = $("<a>")
@@ -341,25 +328,26 @@ function updateBatchStatusWithProgressBar(statusCell, operation) {
 
   if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
     statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill in-progress" style="width: ${progressPercentage}%"></div>
+        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.IN_PROGRESS}" style="width: ${progressPercentage}%"></div>
       </div>`;
   } else if (FW_STATUS_GROUPS.SUCCESS.has(status)) {
     statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill success" style="width: 100%"></div>
+        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.SUCCESS}" style="width: 100%"></div>
       </div>`;
   } else if (status === FW_UPGRADE_STATUS.FAILED) {
     statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill failed" style="width: 100%"></div>
+        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.FAILED}" style="width: 100%"></div>
       </div>`;
   } else if (status === FW_UPGRADE_STATUS.ABORTED) {
     statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill aborted" style="width: 100%"></div>
+        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.ABORTED}" style="width: 100%"></div>
       </div>`;
   } else if (status === FW_UPGRADE_STATUS.CANCELLED) {
     statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill cancelled" style="width: 100%"></div>
+        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.CANCELLED}" style="width: 100%"></div>
       </div>`;
   } else {
+    // Use safe default CSS class for unknown statuses to prevent CSS injection
     statusHtml = `<div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill" style="width: ${progressPercentage}%"></div>
       </div>`;
@@ -369,7 +357,12 @@ function updateBatchStatusWithProgressBar(statusCell, operation) {
 
 function getBatchProgressPercentage(status, operationProgress = null) {
   if (operationProgress !== null && operationProgress !== undefined) {
-    return Math.min(100, Math.max(5, operationProgress));
+    // Coerce to an integer to prevent CSS injection via crafted strings
+    let parsed = parseInt(operationProgress, 10);
+    if (isNaN(parsed)) {
+      return 5;
+    }
+    return Math.min(100, Math.max(5, parsed));
   }
   if (FW_STATUS_HELPERS.isCompleted(status)) {
     return 100;
@@ -411,7 +404,7 @@ function initializeMainProgressBar($) {
     if (mainProgressElement.length > 0 && currentStatusText) {
       let progressPercentage = 100;
       let statusClass = "";
-      let showPercentageText = true;
+      let showPercentageText;
 
       if (currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY) {
         statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
