@@ -320,54 +320,35 @@ function addNewOperationRow(data) {
 function updateBatchStatusWithProgressBar(statusCell, operation) {
   let $ = django.jQuery;
   let status = operation.status;
-  let progressPercentage = getBatchProgressPercentage(status, operation.progress);
+  let progressPercentage = normalizeProgress(operation.progress, status);
   statusCell.empty();
   statusCell.append('<div class="upgrade-status-container"></div>');
   let statusContainer = statusCell.find(".upgrade-status-container");
-  let statusHtml = "";
 
+  let statusClass = "";
+  let showPercentageText = false;
   if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
-    statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.IN_PROGRESS}" style="width: ${progressPercentage}%"></div>
-      </div>`;
+    statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
   } else if (FW_STATUS_GROUPS.SUCCESS.has(status)) {
-    statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.SUCCESS}" style="width: 100%"></div>
-      </div>`;
+    statusClass = FW_UPGRADE_CSS_CLASSES.SUCCESS;
+    progressPercentage = 100;
   } else if (status === FW_UPGRADE_STATUS.FAILED) {
-    statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.FAILED}" style="width: 100%"></div>
-      </div>`;
+    statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
+    progressPercentage = 100;
   } else if (status === FW_UPGRADE_STATUS.ABORTED) {
-    statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.ABORTED}" style="width: 100%"></div>
-      </div>`;
+    statusClass = FW_UPGRADE_CSS_CLASSES.ABORTED;
+    progressPercentage = 100;
   } else if (status === FW_UPGRADE_STATUS.CANCELLED) {
-    statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${FW_UPGRADE_CSS_CLASSES.CANCELLED}" style="width: 100%"></div>
-      </div>`;
-  } else {
-    // Use safe default CSS class for unknown statuses to prevent CSS injection
-    statusHtml = `<div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill" style="width: ${progressPercentage}%"></div>
-      </div>`;
+    statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
+    progressPercentage = 100;
   }
-  statusContainer.html(statusHtml);
-}
 
-function getBatchProgressPercentage(status, operationProgress = null) {
-  if (operationProgress !== null && operationProgress !== undefined) {
-    // Coerce to an integer to prevent CSS injection via crafted strings
-    let parsed = parseInt(operationProgress, 10);
-    if (isNaN(parsed)) {
-      return 5;
-    }
-    return Math.min(100, Math.max(5, parsed));
-  }
-  if (FW_STATUS_HELPERS.isCompleted(status)) {
-    return 100;
-  }
-  return 5;
+  let progressHtml = renderProgressBarHtml(
+    progressPercentage,
+    statusClass,
+    showPercentageText,
+  );
+  statusContainer.html(progressHtml);
 }
 
 function getBatchUpgradeIdFromUrl() {
@@ -378,14 +359,6 @@ function getBatchUpgradeIdFromUrl() {
     console.error("Error extracting batch ID from URL:", error);
     return null;
   }
-}
-
-function getWebSocketProtocol() {
-  let protocol = "ws://";
-  if (window.location.protocol === "https:") {
-    protocol = "wss://";
-  }
-  return protocol;
 }
 
 function initializeMainProgressBar($) {
@@ -439,9 +412,4 @@ function initializeMainProgressBar($) {
       mainProgressElement.html(progressHtml);
     }
   }
-}
-
-function getFormattedDateTimeString(dateTimeString) {
-  let dateTime = new Date(dateTimeString);
-  return dateTime.toLocaleString();
 }

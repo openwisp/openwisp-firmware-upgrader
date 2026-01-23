@@ -620,19 +620,6 @@ function updateSingleUpgradeOperationStatus(statusData) {
   updateSingleOperationStatusWithProgressBar(statusField, operation);
 }
 
-function isScrolledToBottom(element) {
-  if (!element.length) return false;
-  let el = element[0];
-  return el.scrollHeight - el.clientHeight <= el.scrollTop + 1;
-}
-
-function scrollToBottom(element) {
-  if (element.length) {
-    let el = element[0];
-    el.scrollTop = el.scrollHeight - el.clientHeight;
-  }
-}
-
 function detectPageType() {
   // Check if it's a single upgrade operation page
   if (document.getElementById("upgradeoperation_form")) {
@@ -686,19 +673,6 @@ function getObjectIdFromUrl() {
     }
   }
   return objectId.replace(/\//g, "");
-}
-
-function getWebSocketProtocol() {
-  let protocol = "ws://";
-  if (window.location.protocol === "https:") {
-    protocol = "wss://";
-  }
-  return protocol;
-}
-
-function getFormattedDateTimeString(dateTimeString) {
-  let dateTime = new Date(dateTimeString);
-  return dateTime.toLocaleString();
 }
 
 function showCancelConfirmationModal(operationId) {
