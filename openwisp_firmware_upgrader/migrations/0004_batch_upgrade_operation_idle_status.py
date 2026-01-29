@@ -2,7 +2,7 @@
 
 from django.db import migrations, models
 
-from ..base.models import BatchUpgradeOperation
+from ..base.models import AbstractBatchUpgradeOperation
 
 
 class Migration(migrations.Migration):
@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
             model_name="batchupgradeoperation",
             name="status",
             field=models.CharField(
-                choices=BatchUpgradeOperation.STATUS_CHOICES,
+                choices=AbstractBatchUpgradeOperation.STATUS_CHOICES,
                 default="idle",
                 max_length=12,
             ),

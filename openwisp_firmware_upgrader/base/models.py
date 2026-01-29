@@ -542,9 +542,8 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     STATUS_CHOICES = (
         ("idle", _("idle")),
         ("in-progress", _("in progress")),
-        ("cancelled", _("completed with some cancellations"))(
-            "success", _("completed successfully")
-        ),
+        ("cancelled", _("completed with some cancellations")),
+        ("success", _("completed successfully")),
         ("failed", _("completed with some failures")),
     )
     status = models.CharField(
