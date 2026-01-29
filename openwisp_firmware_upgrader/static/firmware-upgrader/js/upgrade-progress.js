@@ -1,21 +1,29 @@
 "use strict";
 
 django.jQuery(function ($) {
-  const firmwareDeviceId = getObjectIdFromUrl();
+  // Detect page type and get appropriate ID
+  const pageType = detectPageType();
+  const pageId = getPageId(pageType);
 
-  window.firmwareDeviceId = firmwareDeviceId;
-  if (!firmwareDeviceId) {
+  if (!pageId) {
     return;
   }
 
-  let upgradeSection = $("#upgradeoperation_set-group");
+  window.upgradePageType = pageType;
+  window.upgradePageId = pageId;
 
-  // Initialize existing upgrade operations with progress bars
-  initializeExistingUpgradeOperations($);
+  // Initialize based on page type
+  if (pageType === "device") {
+    // Device page with multiple operations
+    initializeExistingUpgradeOperations($);
+  } else if (pageType === "operation") {
+    // Single operation page
+    initializeExistingUpgradeOperation($);
+  }
 
   // Use the controller API host (always defined in change_form.html)
-  const wsHost = owControllerApiHost.host;
-  const wsUrl = `${getWebSocketProtocol()}${wsHost}/ws/firmware-upgrader/device/${firmwareDeviceId}/`;
+  const wsHost = owFirmwareUpgraderApiHost.host;
+  const wsUrl = getWebSocketUrl(pageType, pageId, wsHost);
 
   const upgradeProgressWebSocket = new ReconnectingWebSocket(wsUrl, null, {
     automaticOpen: false,
@@ -33,19 +41,33 @@ let upgradeOperationsInitialized = false;
 
 // Store accumulated log content to preserve across WebSocket reconnections
 let accumulatedLogContent = new Map();
+// For single operation pages, use a simple string
+let singleOperationLogContent = "";
 
 function formatLogForDisplay(logContent) {
   return logContent ? logContent.replace(/\n/g, "<br>") : "";
 }
 
+function getSanitizedStatusTextFromField(statusField) {
+  const statusText =
+    statusField.find(".upgrade-progress-text").text() || statusField.text().trim();
+  return statusText.replace(/\d+%.*$/, "").trim();
+}
+
 function requestCurrentOperationState(websocket) {
-  // Request current state of any in-progress operations to get full log content
   if (websocket.readyState === WebSocket.OPEN) {
     try {
-      const requestMessage = {
+      let requestMessage = {
         type: "request_current_state",
-        device_id: getObjectIdFromUrl(),
       };
+
+      // Add appropriate ID based on page type
+      if (window.upgradePageType === "device") {
+        requestMessage.device_id = window.upgradePageId;
+      } else if (window.upgradePageType === "operation") {
+        requestMessage.operation_id = window.upgradePageId;
+      }
+
       websocket.send(JSON.stringify(requestMessage));
     } catch (error) {
       console.error("Error requesting current state:", error);
@@ -63,7 +85,7 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
   let processedCount = 0;
   statusFields.each(function (index) {
     let statusField = $(this);
-    let statusText = statusField.text().trim();
+    let statusText = getSanitizedStatusTextFromField(statusField);
 
     if (statusField.find(".upgrade-status-container").length > 0) {
       return;
@@ -71,11 +93,8 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
 
     if (
       statusText &&
-      (statusText.includes("progress") ||
-        statusText === "success" ||
-        statusText === "failed" ||
-        statusText === "aborted" ||
-        statusText === "cancelled")
+      (FW_STATUS_HELPERS.includesProgress(statusText) ||
+        ALL_VALID_FW_STATUSES.has(statusText))
     ) {
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -125,11 +144,63 @@ function initializeExistingUpgradeOperations($, isRetry = false) {
   }
 }
 
+function initializeExistingUpgradeOperation($, isRetry = false) {
+  if (upgradeOperationsInitialized && isRetry) {
+    return;
+  }
+
+  let statusField = $(".field-status .readonly");
+  let logElement = $(".field-log .readonly");
+
+  if (statusField.find(".upgrade-status-container").length > 0) {
+    return;
+  }
+
+  let statusText = getSanitizedStatusTextFromField(statusField);
+
+  if (statusText) {
+    let operationId = window.upgradePageId;
+    let logContent;
+
+    if (singleOperationLogContent) {
+      logContent = singleOperationLogContent;
+      if (logElement.length > 0) {
+        logElement.html(formatLogForDisplay(logContent));
+      }
+    } else {
+      logContent = logElement.length > 0 ? logElement.text().trim() : "";
+      if (logContent && operationId) {
+        singleOperationLogContent = logContent;
+      }
+    }
+
+    let operation = {
+      status: statusText,
+      log: logContent,
+      id: operationId,
+      progress: null,
+    };
+
+    updateSingleOperationStatusWithProgressBar(statusField, operation);
+    upgradeOperationsInitialized = true;
+  } else if (!isRetry) {
+    setTimeout(function () {
+      initializeExistingUpgradeOperation($, true);
+    }, 1000);
+  }
+}
+
 function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
   upgradeProgressWebSocket.addEventListener("open", function (e) {
     upgradeOperationsInitialized = false;
     requestCurrentOperationState(upgradeProgressWebSocket);
-    initializeExistingUpgradeOperations($, false);
+
+    // Initialize based on page type
+    if (window.upgradePageType === "device") {
+      initializeExistingUpgradeOperations($, false);
+    } else if (window.upgradePageType === "operation") {
+      initializeExistingUpgradeOperation($, false);
+    }
   });
 
   upgradeProgressWebSocket.addEventListener("close", function (e) {
@@ -148,18 +219,30 @@ function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
     try {
       let data = JSON.parse(e.data);
 
-      if (data.model !== "UpgradeOperation") {
-        return;
-      }
+      // Handle different message formats based on page type
+      if (window.upgradePageType === "device") {
+        // Device page - multiple operations
+        if (data.model !== "UpgradeOperation") {
+          return;
+        }
+        data = data.data;
 
-      data = data.data;
-
-      if (data.type === "operation_update") {
-        updateUpgradeOperationDisplay(data.operation);
-      } else if (data.type === "log") {
-        updateUpgradeOperationLog(data);
-      } else if (data.type === "status") {
-        updateUpgradeOperationStatus(data);
+        if (data.type === "operation_update") {
+          updateUpgradeOperationDisplay(data.operation);
+        } else if (data.type === "log") {
+          updateUpgradeOperationLog(data);
+        } else if (data.type === "status") {
+          updateUpgradeOperationStatus(data);
+        }
+      } else if (window.upgradePageType === "operation") {
+        // Single operation page
+        if (data.type === "operation_update") {
+          updateSingleUpgradeOperationDisplay(data.operation);
+        } else if (data.type === "log") {
+          updateSingleUpgradeOperationLog(data);
+        } else if (data.type === "status") {
+          updateSingleUpgradeOperationStatus(data);
+        }
       }
     } catch (error) {
       console.error("Error parsing WebSocket message:", error);
@@ -189,12 +272,7 @@ function updateUpgradeOperationDisplay(operation) {
   let shouldScroll = isScrolledToBottom(logElement);
 
   logElement.html(formatLogForDisplay(operation.log));
-  if (
-    operation.status === "success" ||
-    operation.status === "failed" ||
-    operation.status === "aborted" ||
-    operation.status === "cancelled"
-  ) {
+  if (FW_STATUS_HELPERS.isCompleted(operation.status)) {
     accumulatedLogContent.delete(operation.id);
   }
 
@@ -231,7 +309,7 @@ function updateStatusWithProgressBar(statusField, operation) {
   `;
 
   // Add progress bar for all statuses
-  if (status === "in-progress" || status === "in progress") {
+  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill in-progress" style="width: ${progressPercentage}%"></div>
@@ -248,21 +326,21 @@ function updateStatusWithProgressBar(statusField, operation) {
       : gettext("Cannot cancel - firmware flashing in progress");
 
     statusHtml += `
-      <button class="${cancelButtonClass}" 
-              data-operation-id="${operation.id}" 
+      <button class="${cancelButtonClass}"
+              data-operation-id="${operation.id}"
               title="${cancelButtonTitle}"
               ${!canCancel ? "disabled" : ""}>
         ${gettext("Cancel")}
       </button>
     `;
-  } else if (status === "success") {
+  } else if (status === FW_UPGRADE_STATUS.SUCCESS) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill success" style="width: 100%"></div>
       </div>
       <span class="upgrade-progress-text">100%</span>
     `;
-  } else if (status === "failed" || status === "aborted" || status === "cancelled") {
+  } else if (FW_STATUS_GROUPS.FAILURE.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
         <div class="upgrade-progress-fill ${status}" style="width: 100%"></div>
@@ -293,7 +371,7 @@ function getProgressPercentage(status, operationProgress = null) {
   if (operationProgress !== null && operationProgress !== undefined) {
     return Math.min(100, Math.max(5, operationProgress));
   }
-  if (status === "success") {
+  if (status === FW_UPGRADE_STATUS.SUCCESS) {
     return 100;
   }
   return 5;
@@ -315,18 +393,12 @@ function updateUpgradeOperationLog(logData) {
   // Find all in-progress operations and recently completed operations to update their logs
   $("#upgradeoperation_set-group .field-status .readonly").each(function () {
     let statusField = $(this);
-    let currentStatusText =
-      statusField.find(".upgrade-status-container span").text() ||
-      statusField.text().trim();
+    let currentStatusText = getSanitizedStatusTextFromField(statusField);
 
     // Update logs for in-progress operations and recently completed operations
     if (
-      currentStatusText === "in progress" ||
-      currentStatusText === "in-progress" ||
-      currentStatusText === "success" ||
-      currentStatusText === "failed" ||
-      currentStatusText === "aborted" ||
-      currentStatusText === "cancelled"
+      FW_STATUS_GROUPS.IN_PROGRESS.has(currentStatusText) ||
+      FW_STATUS_HELPERS.isCompleted(currentStatusText)
     ) {
       let operationFieldset = $(this).closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -375,11 +447,9 @@ function updateUpgradeOperationStatus(statusData) {
   // Update status for in-progress operations
   $("#upgradeoperation_set-group .field-status .readonly").each(function () {
     let statusField = $(this);
-    let currentStatusText =
-      statusField.find(".upgrade-status-container span").text() ||
-      statusField.text().trim();
+    let currentStatusText = getSanitizedStatusTextFromField(statusField);
 
-    if (currentStatusText === "in progress" || currentStatusText === "in-progress") {
+    if (FW_STATUS_GROUPS.IN_PROGRESS.has(currentStatusText)) {
       // Get current log content for progress calculation
       let operationFieldset = statusField.closest("fieldset");
       let logElement = operationFieldset.find(".field-log .readonly");
@@ -397,16 +467,197 @@ function updateUpgradeOperationStatus(statusData) {
   });
 }
 
-function isScrolledToBottom(element) {
-  if (!element.length) return false;
-  let el = element[0];
-  return el.scrollHeight - el.clientHeight <= el.scrollTop + 1;
+// Single operation update functions
+function updateSingleUpgradeOperationDisplay(operation) {
+  let $ = django.jQuery;
+  let statusField = $(".field-status .readonly");
+  let logElement = $(".field-log .readonly");
+
+  if (operation.log && operation.id) {
+    singleOperationLogContent = operation.log;
+  }
+
+  updateSingleOperationStatusWithProgressBar(statusField, operation);
+
+  let shouldScroll = isScrolledToBottom(logElement);
+
+  logElement.html(formatLogForDisplay(operation.log));
+  if (FW_STATUS_HELPERS.isCompleted(operation.status)) {
+    singleOperationLogContent = "";
+  }
+
+  if (shouldScroll) {
+    scrollToBottom(logElement);
+  }
+
+  if (operation.modified) {
+    $(".field-modified .readonly").html(getFormattedDateTimeString(operation.modified));
+  }
 }
 
-function scrollToBottom(element) {
-  if (element.length) {
-    let el = element[0];
-    el.scrollTop = el.scrollHeight - el.clientHeight;
+function updateSingleOperationStatusWithProgressBar(statusField, operation) {
+  let $ = django.jQuery;
+  let status = operation.status;
+  let progressPercentage = getProgressPercentage(status, operation.progress);
+  let progressClass = status.replace(/\s+/g, "-");
+
+  if (!statusField.find(".upgrade-status-container").length) {
+    statusField.empty();
+    statusField.append('<div class="upgrade-status-container"></div>');
+  }
+
+  let statusContainer = statusField.find(".upgrade-status-container");
+  let statusHtml = `<span class="upgrade-status-${progressClass}">${status}</span>`;
+
+  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill in-progress" style="width: ${progressPercentage}%"></div>
+      </div>
+      <span class="upgrade-progress-text">${progressPercentage}%</span>
+    `;
+
+    const canCancel = progressPercentage < 60;
+    const cancelButtonClass = canCancel
+      ? "upgrade-cancel-btn"
+      : "upgrade-cancel-btn disabled";
+    const cancelButtonTitle = canCancel
+      ? gettext("Cancel upgrade")
+      : gettext("Cannot cancel - firmware flashing in progress");
+
+    statusHtml += `
+      <button class="${cancelButtonClass}"
+              data-operation-id="${operation.id}"
+              title="${cancelButtonTitle}"
+              ${!canCancel ? "disabled" : ""}>
+        ${gettext("Cancel")}
+      </button>
+    `;
+  } else if (status === FW_UPGRADE_STATUS.SUCCESS) {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill success" style="width: 100%"></div>
+      </div>
+      <span class="upgrade-progress-text">100%</span>
+    `;
+  } else if (status === FW_UPGRADE_STATUS.CANCELLED) {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill cancelled" style="width: 100%"></div>
+      </div>
+    `;
+  } else if (
+    status === FW_UPGRADE_STATUS.FAILED ||
+    status === FW_UPGRADE_STATUS.ABORTED
+  ) {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill ${status}" style="width: 100%"></div>
+      </div>
+    `;
+  } else {
+    statusHtml += `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill" style="width: ${progressPercentage}%"></div>
+      </div>
+      <span class="upgrade-progress-text">${progressPercentage}%</span>
+    `;
+  }
+
+  statusContainer.html(statusHtml);
+
+  statusContainer
+    .find(".upgrade-cancel-btn:not(.disabled)")
+    .off("click")
+    .on("click", function (e) {
+      e.preventDefault();
+      const operationId = $(this).data("operation-id");
+      showCancelConfirmationModal(operationId);
+    });
+}
+
+function updateSingleUpgradeOperationLog(logData) {
+  let $ = django.jQuery;
+  let logElement = $(".field-log .readonly");
+  let shouldScroll = isScrolledToBottom(logElement);
+
+  let currentLog = singleOperationLogContent || logElement.text().replace(/\s*$/, "");
+  let newLog = currentLog ? currentLog + "\n" + logData.content : logData.content;
+
+  singleOperationLogContent = newLog;
+  logElement.html(formatLogForDisplay(newLog));
+
+  let statusField = $(".field-status .readonly");
+  let currentStatusText = getSanitizedStatusTextFromField(statusField);
+
+  let operation = {
+    status: currentStatusText,
+    log: newLog,
+    id: window.upgradePageId,
+    progress: null,
+  };
+
+  updateSingleOperationStatusWithProgressBar(statusField, operation);
+
+  if (shouldScroll) {
+    scrollToBottom(logElement);
+  }
+}
+
+function updateSingleUpgradeOperationStatus(statusData) {
+  let $ = django.jQuery;
+  let statusField = $(".field-status .readonly");
+  let logElement = $(".field-log .readonly");
+  let logContent = logElement.length > 0 ? logElement.text().trim() : "";
+
+  let operation = {
+    status: statusData.status,
+    log: logContent,
+    id: window.upgradePageId,
+    progress: null,
+  };
+
+  updateSingleOperationStatusWithProgressBar(statusField, operation);
+}
+
+function detectPageType() {
+  // Check if it's a single upgrade operation page
+  if (document.getElementById("upgradeoperation_form")) {
+    return "operation";
+  }
+  // Check if it's a device page (with upgrade operations)
+  if (document.getElementById("upgradeoperation_set-group")) {
+    return "device";
+  }
+  return null;
+}
+
+function getPageId(pageType) {
+  if (pageType === "operation") {
+    return getOperationIdFromUrl();
+  } else if (pageType === "device") {
+    return getObjectIdFromUrl();
+  }
+  return null;
+}
+
+function getWebSocketUrl(pageType, pageId, wsHost) {
+  const protocol = getWebSocketProtocol();
+  if (pageType === "operation") {
+    return `${protocol}${wsHost}/ws/firmware-upgrader/upgrade-operation/${pageId}/`;
+  } else if (pageType === "device") {
+    return `${protocol}${wsHost}/ws/firmware-upgrader/device/${pageId}/`;
+  }
+  return null;
+}
+
+function getOperationIdFromUrl() {
+  try {
+    let matches = window.location.pathname.match(/\/upgradeoperation\/([^\/]+)\//);
+    return matches && matches[1] ? matches[1] : null;
+  } catch (error) {
+    console.error("Error extracting operation ID from URL:", error);
+    return null;
   }
 }
 
@@ -422,19 +673,6 @@ function getObjectIdFromUrl() {
     }
   }
   return objectId.replace(/\//g, "");
-}
-
-function getWebSocketProtocol() {
-  let protocol = "ws://";
-  if (window.location.protocol === "https:") {
-    protocol = "wss://";
-  }
-  return protocol;
-}
-
-function getFormattedDateTimeString(dateTimeString) {
-  let dateTime = new Date(dateTimeString);
-  return dateTime.toLocaleString();
 }
 
 function showCancelConfirmationModal(operationId) {

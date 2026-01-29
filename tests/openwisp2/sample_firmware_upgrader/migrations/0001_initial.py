@@ -17,6 +17,8 @@ import openwisp_users.mixins
 from openwisp_firmware_upgrader.hardware import FIRMWARE_IMAGE_TYPE_CHOICES
 from openwisp_firmware_upgrader.settings import FIRMWARE_API_BASEURL, IMAGE_URL_PATH
 
+from ..models import BatchUpgradeOperation
+
 
 class Migration(migrations.Migration):
     initial = True
@@ -58,12 +60,7 @@ class Migration(migrations.Migration):
                 (
                     "status",
                     models.CharField(
-                        choices=[
-                            ("idle", "idle"),
-                            ("in-progress", "in progress"),
-                            ("success", "completed successfully"),
-                            ("failed", "completed with some failures"),
-                        ],
+                        choices=BatchUpgradeOperation.STATUS_CHOICES,
                         default="idle",
                         max_length=12,
                     ),

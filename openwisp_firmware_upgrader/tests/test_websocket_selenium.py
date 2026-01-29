@@ -13,7 +13,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
-from openwisp_firmware_upgrader.websockets import DeviceUpgradeProgressPublisher
+from openwisp_firmware_upgrader.websockets import (
+    BatchUpgradeProgressPublisher,
+    UpgradeProgressPublisher,
+)
 from openwisp_utils.tests import SeleniumTestMixin
 
 from ..swapper import load_model
@@ -40,12 +43,10 @@ class TestRealTimeWebsockets(
     firmware_app_label = "firmware_upgrader"
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
-    browser = "firefox"
     maxDiff = None
 
     def setUp(self):
         org = self._get_org()
-
         unique_suffix = str(uuid.uuid4())[:8]
         self.admin = self._create_admin(
             username=f"admin_{unique_suffix}",
@@ -54,7 +55,6 @@ class TestRealTimeWebsockets(
         )
         self.admin_client = self.client
         self.admin_client.force_login(self.admin)
-
         category = self._get_category(organization=org)
         build1 = self._create_build(category=category, version="0.1", os=self.os)
         build2 = self._create_build(
@@ -64,9 +64,38 @@ class TestRealTimeWebsockets(
         image2 = self._create_firmware_image(build=build2, type=self.image_type)
         self._create_credentials(auto_add=True, organization=org)
         device = self._create_device(
-            os=self.os, model=image2.boards[0], organization=org
+            os=self.os,
+            model=image2.boards[0],
+            organization=org,
+            name=f"test-device-{unique_suffix}",
+            mac_address=f"00:11:aa:bb:cc:{unique_suffix[:2]}",
         )
         self._create_config(device=device)
+        # Create additional devices for batch testing
+        device1 = self._create_device(
+            os=self.os,
+            model=image2.boards[0],
+            organization=org,
+            name=f"test-device-1-{unique_suffix}",
+            mac_address=f"00:22:bb:cc:dd:{unique_suffix[:2]}",
+        )
+        device2 = self._create_device(
+            os=self.os,
+            model=image2.boards[0],
+            organization=org,
+            name=f"test-device-2-{unique_suffix}",
+            mac_address=f"00:33:cc:dd:ee:{unique_suffix[:2]}",
+        )
+        device3 = self._create_device(
+            os=self.os,
+            model=image2.boards[0],
+            organization=org,
+            name=f"test-device-3-{unique_suffix}",
+            mac_address=f"00:44:dd:ee:ff:{unique_suffix[:2]}",
+        )
+        self._create_config(device=device1)
+        self._create_config(device=device2)
+        self._create_config(device=device3)
         # Store references for tests
         self.org = org
         self.category = category
@@ -75,6 +104,9 @@ class TestRealTimeWebsockets(
         self.image1 = image1
         self.image2 = image2
         self.device = device
+        self.device1 = device1
+        self.device2 = device2
+        self.device3 = device3
 
     def _snooze(self):
         """Allows a bit of time for the UI to update, reduces flakyness"""
@@ -135,21 +167,23 @@ class TestRealTimeWebsockets(
             progress_container.is_displayed(), "Progress container should be visible"
         )
 
-        progress_bar = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-bar")
-        self.assertTrue(progress_bar.is_displayed(), "Progress bar should be visible")
-
-        progress_fill = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-fill")
-        self.assertTrue(progress_fill.is_displayed(), "Progress fill should be visible")
-
-        progress_text = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-text")
-        self.assertTrue(progress_text.is_displayed(), "Progress text should be visible")
+        WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-bar"))
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, ".upgrade-progress-fill[style*='width: 25%']")
+            )
+        )
+        progress_text = WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, ".upgrade-progress-text")
+            )
+        )
 
         # Verify initial state
         initial_progress_text = progress_text.text
         self.assertEqual(initial_progress_text, "25%")
-
-        initial_style = progress_fill.get_attribute("style")
-        self.assertIn("width: 25%", initial_style)
 
         # Update operation to 75% progress
         operation.progress = 75
@@ -162,7 +196,7 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
                 "id": str(operation.pk),
@@ -238,7 +272,7 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
                 "id": str(operation.pk),
@@ -306,7 +340,7 @@ class TestRealTimeWebsockets(
         operation.log = f"{operation.log}\n{new_log_line}"
         await database_sync_to_async(operation.save)()
 
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_log(new_log_line, "in-progress")
 
         # Verify UI update
@@ -352,7 +386,7 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
                 "id": str(operation.pk),
@@ -419,7 +453,7 @@ class TestRealTimeWebsockets(
         await database_sync_to_async(operation.save)()
 
         # Publish websocket update
-        publisher = DeviceUpgradeProgressPublisher(self.device.pk, operation.pk)
+        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
             {
                 "id": str(operation.pk),
@@ -439,5 +473,311 @@ class TestRealTimeWebsockets(
         self.assertIn("Could not read device UUID", log_html)
         self.assertIn("aborted for security reasons", log_html)
         self.assertIn("aborting upgrade", log_html)
+        self._assert_no_js_errors()
 
+    def _check_progress_text(self, expected_text):
+        """Helper method to safely check progress text without stale element issues"""
+        # Wait for websocket message to propagate and update DOM
+        WebDriverWait(self.web_driver, 10).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"),
+                expected_text,
+            )
+        )
+
+    def _check_operation_progress(self, status_class, progress_width):
+        """Helper method to safely check individual operation progress without stale element issues"""
+        try:
+            containers = self.find_elements(
+                By.CSS_SELECTOR, "#result_list .upgrade-status-container"
+            )
+            for container in containers:
+                progress_fill = container.find_element(
+                    By.CSS_SELECTOR, ".upgrade-progress-fill"
+                )
+                if status_class in progress_fill.get_attribute(
+                    "class"
+                ) and progress_width in progress_fill.get_attribute("style"):
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def _check_row_count(self, expected_count):
+        """Helper method to safely check row count without stale element issues"""
+        try:
+            rows = self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")
+            return len(rows) == expected_count
+        except Exception:
+            return False
+
+    async def _prepare_batch(self, batch_operation):
+        """Navigate to batch upgrade page and wait for websocket connection"""
+        path = reverse(
+            f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+            args=[batch_operation.pk],
+        )
+        self.login(username=self.admin.username, password=self.admin_password)
+        self.open(path)
+        self.wait_for_visibility(By.ID, "result_list")
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: driver.execute_script(
+                "return window.batchUpgradeProgressWebSocket && "
+                "window.batchUpgradeProgressWebSocket.readyState === 1;"
+            )
+        )
+
+    async def test_batch_main_progress_bar_updates(self):
+        """Test batch main progress bar updates via websocket"""
+        batch_operation = await database_sync_to_async(
+            BatchUpgradeOperation.objects.create
+        )(build=self.build2, status="in-progress")
+        await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=25,
+        )
+        await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device2,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=0,
+        )
+        await self._prepare_batch(batch_operation)
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
+        )
+        main_progress_element = self.find_element(
+            By.CSS_SELECTOR, ".batch-main-progress"
+        )
+        self.assertTrue(
+            main_progress_element.is_displayed(), "Main progress should be visible"
+        )
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        await database_sync_to_async(publisher.publish_batch_status)(
+            status="in-progress", completed=1, total=2
+        )
+        self._check_progress_text("50%")
+        progress_fill = self.find_element(
+            By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-fill"
+        )
+        style = progress_fill.get_attribute("style")
+        self.assertIn("width: 50%", style)
+        await database_sync_to_async(publisher.publish_batch_status)(
+            status="success", completed=2, total=2
+        )
+        self._check_progress_text("100%")
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".batch-main-progress .upgrade-progress-fill.completed-successfully",
+                )
+            )
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".batch-main-progress"
+                    " .upgrade-progress-fill.completed-successfully[style*='width: 100%']",
+                )
+            )
+        )
+        progress_fill = self.find_element(
+            By.CSS_SELECTOR,
+            ".batch-main-progress .upgrade-progress-fill.completed-successfully",
+        )
+        style = progress_fill.get_attribute("style")
+        self.assertIn("width: 100%", style)
+        self._assert_no_js_errors()
+
+    async def test_individual_operation_progress_updates(self):
+        """Test individual operation progress updates within batch upgrade"""
+        batch_operation = await database_sync_to_async(
+            BatchUpgradeOperation.objects.create
+        )(build=self.build2, status="in-progress")
+        operation1 = await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=10,
+        )
+        await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device2,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=0,
+        )
+        await self._prepare_batch(batch_operation)
+        status_containers = WebDriverWait(self.web_driver, 5).until(
+            EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, "#result_list .status-cell .upgrade-status-container")
+            )
+        )
+        self.assertEqual(len(status_containers), 2)
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        device_info = {
+            "device_id": self.device1.pk,
+            "device_name": self.device1.name,
+            "image_name": str(self.image2),
+        }
+        await database_sync_to_async(publisher.publish_operation_progress)(
+            operation_id=str(operation1.pk),
+            status="in-progress",
+            progress=50,
+            modified=operation1.modified,
+            device_info=device_info,
+        )
+        # Wait for websocket message to propagate and update individual operation progress
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: self._check_operation_progress("in-progress", "width: 50%")
+        )
+        await database_sync_to_async(publisher.publish_operation_progress)(
+            operation_id=str(operation1.pk),
+            status="success",
+            progress=100,
+            modified=operation1.modified,
+            device_info=device_info,
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: self._check_operation_progress("success", "width: 100%")
+        )
+        self._assert_no_js_errors()
+
+    async def test_batch_completion_with_mixed_results(self):
+        """Test batch completion with partial success scenario"""
+        batch_operation = await database_sync_to_async(
+            BatchUpgradeOperation.objects.create
+        )(build=self.build2, status="in-progress")
+        await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="success",
+            progress=100,
+        )
+        await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device2,
+            image=self.image2,
+            batch=batch_operation,
+            status="failed",
+            progress=45,
+        )
+        await self._prepare_batch(batch_operation)
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
+        )
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        await database_sync_to_async(publisher.publish_batch_status)(
+            status="failed", total=2, completed=2
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".batch-main-progress .upgrade-progress-fill.partial-success[style*='width: 100%']",
+                )
+            )
+        )
+        status_field = self.find_element(By.CSS_SELECTOR, ".field-status .readonly")
+        status_text = status_field.get_attribute("textContent").strip()
+        self.assertIn("completed with some failures", status_text)
+        self._assert_no_js_errors()
+
+    async def test_batch_completion_all_successful(self):
+        """Test batch completion where all operations succeed"""
+        batch_operation = await database_sync_to_async(
+            BatchUpgradeOperation.objects.create
+        )(build=self.build2, status="in-progress")
+        await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="success",
+            progress=100,
+        )
+        await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device2,
+            image=self.image2,
+            batch=batch_operation,
+            status="success",
+            progress=100,
+        )
+        await self._prepare_batch(batch_operation)
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
+        )
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        await database_sync_to_async(publisher.publish_batch_status)(
+            status="success", total=2, completed=2
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".batch-main-progress .upgrade-progress-fill.completed-successfully",
+                )
+            )
+        )
+        progress_text = self.find_element(
+            By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"
+        ).text
+        self.assertEqual(progress_text, "100%")
+        status_field = self.find_element(By.CSS_SELECTOR, ".field-status .readonly")
+        status_text = status_field.get_attribute("textContent").strip()
+        self.assertIn("completed successfully", status_text)
+        self._assert_no_js_errors()
+
+    async def test_dynamic_operation_addition_to_batch(self):
+        """Test dynamic addition of new operations to batch upgrade view"""
+        batch_operation = await database_sync_to_async(
+            BatchUpgradeOperation.objects.create
+        )(build=self.build2, status="in-progress")
+        await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=50,
+        )
+        await self._prepare_batch(batch_operation)
+        initial_rows = WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, "#result_list tbody tr")
+            )
+        )
+        self.assertEqual(len(initial_rows), 1)
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        operation2 = await database_sync_to_async(UpgradeOperation.objects.create)(
+            device=self.device2,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=0,
+        )
+        device_info_2 = {
+            "device_id": self.device2.pk,
+            "device_name": self.device2.name,
+            "image_name": str(self.image2),
+        }
+        await database_sync_to_async(publisher.publish_operation_progress)(
+            str(operation2.pk), "in-progress", 0, operation2.modified, device_info_2
+        )
+        # Wait for websocket message to propagate and add new row
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: self._check_row_count(2)
+        )
+        device_links = self.find_elements(By.CSS_SELECTOR, "#result_list .device-link")
+        device_names = [link.text for link in device_links]
+        self.assertIn(self.device2.name, device_names)
+        status_containers = self.find_elements(
+            By.CSS_SELECTOR, "#result_list .status-cell .upgrade-status-container"
+        )
+        self.assertEqual(len(status_containers), 2)
         self._assert_no_js_errors()
