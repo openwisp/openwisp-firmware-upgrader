@@ -2,14 +2,12 @@
 
 django.jQuery(function ($) {
   const batchUpgradeId = getBatchUpgradeIdFromUrl();
-
   window.batchUpgradeId = batchUpgradeId;
   if (!batchUpgradeId) {
     return;
   }
   initializeExistingBatchUpgradeOperations($);
   initializeMainProgressBar($);
-
   const wsHost = owFirmwareUpgraderApiHost.host;
   const wsUrl = `${getWebSocketProtocol()}${wsHost}/ws/firmware-upgrader/batch-upgrade-operation/${batchUpgradeId}/`;
 
@@ -19,7 +17,6 @@ django.jQuery(function ($) {
     maxRetries: 5,
     retryInterval: 3000,
   });
-
   window.batchUpgradeProgressWebSocket = batchUpgradeProgressWebSocket;
   // Initialize websocket connection
   initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket);
@@ -63,7 +60,6 @@ function initializeExistingBatchUpgradeOperations($, isRetry = false) {
         ALL_VALID_FW_STATUSES.has(statusText))
     ) {
       let operationId = statusCell.attr("data-operation-id") || "unknown";
-
       let operation = {
         status: statusText,
         id: operationId,
@@ -199,10 +195,8 @@ function updateBatchProgress(data) {
     if (showPercentageText) {
       progressHtml += `<span class="upgrade-progress-text">${progressPercentage}%</span>`;
     }
-
     mainProgressElement.html(progressHtml);
   }
-
   // Update completion information in the admin form if available
   if (data.total !== undefined && data.completed !== undefined) {
     let completedInfo = $(".field-completed .readonly");
@@ -231,7 +225,6 @@ function updateBatchProgress(data) {
         return this.nodeType === 3 && this.textContent.trim();
       })
       .first();
-
     if (statusText.length > 0) {
       statusText[0].textContent = displayStatus;
     } else {
@@ -242,9 +235,7 @@ function updateBatchProgress(data) {
 
 function updateBatchOperationProgress(data) {
   let $ = django.jQuery;
-
   let found = false;
-
   $("#result_list tbody tr").each(function () {
     let row = $(this);
     let statusCell = row.find("td.status-cell");
@@ -257,7 +248,6 @@ function updateBatchOperationProgress(data) {
         id: data.operation_id,
         progress: data.progress,
       };
-
       updateBatchStatusWithProgressBar(statusCell, operation);
       if (data.modified) {
         let modifiedCell = row.find("td:nth-child(4)");
@@ -265,7 +255,6 @@ function updateBatchOperationProgress(data) {
       }
     }
   });
-
   if (!found) {
     addNewOperationRow(data);
   }
@@ -273,7 +262,6 @@ function updateBatchOperationProgress(data) {
 
 function addNewOperationRow(data) {
   let $ = django.jQuery;
-
   if (!data.device_name || !data.device_id) {
     return;
   }
@@ -313,7 +301,6 @@ function addNewOperationRow(data) {
     id: data.operation_id,
     progress: data.progress,
   };
-
   updateBatchStatusWithProgressBar($statusTd, operation);
 }
 
@@ -324,7 +311,6 @@ function updateBatchStatusWithProgressBar(statusCell, operation) {
   statusCell.empty();
   statusCell.append('<div class="upgrade-status-container"></div>');
   let statusContainer = statusCell.find(".upgrade-status-container");
-
   let statusClass = "";
   let showPercentageText = false;
   if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
@@ -342,7 +328,6 @@ function updateBatchStatusWithProgressBar(statusCell, operation) {
     statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
     progressPercentage = 100;
   }
-
   let progressHtml = renderProgressBarHtml(
     progressPercentage,
     statusClass,
@@ -372,7 +357,6 @@ function initializeMainProgressBar($) {
       .first()
       .text()
       .trim();
-
     let mainProgressElement = $(".batch-main-progress");
     if (mainProgressElement.length > 0 && currentStatusText) {
       let progressPercentage = 100;

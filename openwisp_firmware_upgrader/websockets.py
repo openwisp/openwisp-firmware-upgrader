@@ -146,12 +146,10 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             operation = await self._get_upgrade_operation()
             if not operation:
                 return
-
             # Serialize operation using the existing serializer
             operation_data = await sync_to_async(
                 lambda: UpgradeOperationSerializer(operation).data
             )()
-
             # Send operation update
             await self.send_json(
                 {
@@ -188,7 +186,6 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                 return
             self.batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
             self.group_name = f"batch_upgrade_{self.batch_id}"
-
         except (AssertionError, KeyError) as e:
             logger.error(f"Error in batch websocket connect: {e}")
             await self.close()
@@ -240,18 +237,15 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                 operations_list = await sync_to_async(list)(
                     batch_operation.upgrade_operations.all()
                 )
-
                 # Serialize operations using the existing serializer
                 operations_data = await sync_to_async(
                     lambda: UpgradeOperationSerializer(operations_list, many=True).data
                 )()
-
                 # Calculate counts
                 total_operations = len(operations_list)
                 completed_operations = sum(
                     1 for op in operations_list if op.status != "in-progress"
                 )
-
                 # Send everything in ONE message
                 await self.send_json(
                     {
@@ -453,7 +447,6 @@ class UpgradeProgressPublisher:
             for field in ["device", "image"]:
                 device_publisher_data[field] = str(device_publisher_data[field])
             device_publisher.publish_operation_update(device_publisher_data)
-
             # Publish to batch upgrade channel if this operation belongs to a batch
             if hasattr(instance, "batch") and instance.batch:
                 batch_publisher = BatchUpgradeProgressPublisher(instance.batch.pk)
