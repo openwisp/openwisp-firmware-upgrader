@@ -480,11 +480,8 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
                     "group": "00000000-0000-0000-0000-000000000000",
                 },
             )
-            self.assertEqual(r.status_code, 201)
-
-            batch = BatchUpgradeOperation.objects.first()
-            self.assertIsNotNone(batch)
-            self.assertIsNone(batch.group)  # Invalid group should be ignored
+            self.assertEqual(r.status_code, 400)
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
         BatchUpgradeOperation.objects.all().delete()
         UpgradeOperation.objects.all().delete()
@@ -653,11 +650,8 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
                     "location": "00000000-0000-0000-0000-000000000000",
                 },  # Non-existent location UUID
             )
-            self.assertEqual(r.status_code, 201)
-
-            batch = BatchUpgradeOperation.objects.first()
-            self.assertIsNotNone(batch)
-            self.assertIsNone(batch.location)  # Invalid location should be ignored
+            self.assertEqual(r.status_code, 400)
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
         BatchUpgradeOperation.objects.all().delete()
 
@@ -665,7 +659,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(
                 url, {"location": "00000000-0000-0000-0000-000000000000"}
             )
-            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.status_code, 400)
 
     def test_api_batch_upgrade_no_devices_with_filters(self):
         """Test API error handling when filters don't match any devices."""

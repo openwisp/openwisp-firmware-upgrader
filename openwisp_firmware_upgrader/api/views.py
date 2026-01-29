@@ -23,6 +23,7 @@ from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
     BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
+    BatchUpgradeSerializer,
     BuildSerializer,
     CategorySerializer,
     DeviceFirmwareSerializer,
@@ -87,7 +88,7 @@ class BuildDetailView(ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIView):
 class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
     model = Build
     queryset = Build.objects.all().select_related("category")
-    serializer_class = serializers.Serializer
+    serializer_class = BatchUpgradeSerializer
     lookup_fields = ["pk"]
     organization_field = "category__organization"
 
@@ -95,30 +96,14 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         """
         Upgrades all the devices related to the specified build ID.
         """
-        upgrade_all = request.POST.get("upgrade_all") is not None
-        group_id = request.POST.get("group")
-        location_id = request.POST.get("location")
-        group = None
-        location = None
-        if group_id:
-            try:
-                group = swapper.load_model("config", "DeviceGroup").objects.get(
-                    pk=group_id
-                )
-            except (
-                ValueError,
-                DeviceGroup.DoesNotExist,
-            ):
-                return Response(
-                    {"error": f"Invalid group ID: {group_id}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        if location_id:
-            try:
-                location = Location.objects.get(pk=location_id)
-            except (ValueError, Location.DoesNotExist):
-                location = None
         instance = self.get_object()
+        serializer = self.get_serializer(
+            data=request.data,
+        )
+        serializer.is_valid(raise_exception=True)
+        upgrade_all = serializer.validated_data.get("upgrade_all", False)
+        group = serializer.validated_data.get("group")
+        location = serializer.validated_data.get("location")
         try:
             batch = instance.batch_upgrade(
                 firmwareless=upgrade_all, group=group, location=location
@@ -135,26 +120,10 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         which would be upgraded if POST is used.
         """
         self.instance = self.get_object()
-        group_id = request.GET.get("group")
-        location_id = request.GET.get("location")
-        group = None
-        location = None
-        if group_id:
-            try:
-                group = DeviceGroup.objects.get(pk=group_id)
-            except (
-                ValueError,
-                DeviceGroup.DoesNotExist,
-            ):
-                return Response(
-                    {"error": f"Invalid group ID: {group_id}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        if location_id:
-            try:
-                location = Location.objects.get(pk=location_id)
-            except (ValueError, Location.DoesNotExist):
-                location = None
+        serializer = self.get_serializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        group = serializer.validated_data.get("group")
+        location = serializer.validated_data.get("location")
         data = BatchUpgradeOperation.dry_run(
             build=self.instance, group=group, location=location
         )
