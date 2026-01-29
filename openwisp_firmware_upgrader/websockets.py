@@ -13,6 +13,9 @@ from swapper import load_model
 
 logger = logging.getLogger(__name__)
 
+# Module-level set to hold background task references
+_background_tasks = set()
+
 
 class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
     """
@@ -83,6 +86,7 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
         try:
             auth_result = self._is_user_authenticated()
             if not auth_result:
+                await self.close()
                 return
 
             upgrade_operation_id = self.scope["url_route"]["kwargs"]["operation_id"]
@@ -175,6 +179,7 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
         try:
             auth_result = self._is_user_authenticated()
             if not auth_result:
+                await self.close()
                 return
             batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
             if not await self.is_user_authorized(
@@ -278,6 +283,7 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
         try:
             auth_result = self._is_user_authenticated()
             if not auth_result:
+                await self.close()
                 return
 
             device_id = self.scope["url_route"]["kwargs"]["pk"]
@@ -411,7 +417,9 @@ class UpgradeProgressPublisher:
         # Check if we're already in an async context
         try:
             asyncio.get_running_loop()
-            asyncio.create_task(_send_messages())
+            task = asyncio.create_task(_send_messages())
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
         except RuntimeError:
             async_to_sync(_send_messages)()
 

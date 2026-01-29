@@ -991,7 +991,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # trigger an update on the batch operation
         if self.batch and self.status != "in-progress":
             self.batch.update()
-        return self
 
     @property
     def upgrader_schema(self):

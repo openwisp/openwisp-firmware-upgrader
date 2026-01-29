@@ -109,7 +109,10 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 ValueError,
                 DeviceGroup.DoesNotExist,
             ):
-                group = None
+                return Response(
+                    {"error": f"Invalid group ID: {group_id}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         if location_id:
             try:
                 location = Location.objects.get(pk=location_id)
@@ -143,7 +146,10 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 ValueError,
                 DeviceGroup.DoesNotExist,
             ):
-                group = None
+                return Response(
+                    {"error": f"Invalid group ID: {group_id}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         if location_id:
             try:
                 location = Location.objects.get(pk=location_id)

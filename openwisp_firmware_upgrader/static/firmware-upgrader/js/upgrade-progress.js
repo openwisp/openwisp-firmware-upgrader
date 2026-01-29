@@ -22,6 +22,13 @@ django.jQuery(function ($) {
   }
 
   // Use the controller API host (always defined in change_form.html)
+  if (
+    typeof owFirmwareUpgraderApiHost === "undefined" ||
+    !owFirmwareUpgraderApiHost.host
+  ) {
+    console.error("owFirmwareUpgraderApiHost is not defined or missing host property");
+    return;
+  }
   const wsHost = owFirmwareUpgraderApiHost.host;
   const wsUrl = getWebSocketUrl(pageType, pageId, wsHost);
 
@@ -46,6 +53,18 @@ let singleOperationLogContent = "";
 
 function formatLogForDisplay(logContent) {
   return logContent ? logContent.replace(/\n/g, "<br>") : "";
+}
+
+function escapeHtml(unsafe) {
+  if (typeof unsafe !== "string") {
+    return unsafe;
+  }
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function getSanitizedStatusTextFromField(statusField) {
@@ -305,16 +324,16 @@ function updateStatusWithProgressBar(statusField, operation) {
   let statusContainer = statusField.find(".upgrade-status-container");
 
   let statusHtml = `
-    <span class="upgrade-status-${progressClass}">${status}</span>
+    <span class="upgrade-status-${escapeHtml(progressClass)}">${escapeHtml(status)}</span>
   `;
 
   // Add progress bar for all statuses
   if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill in-progress" style="width: ${progressPercentage}%"></div>
+        <div class="upgrade-progress-fill in-progress" style="width: ${escapeHtml(progressPercentage)}%"></div>
       </div>
-      <span class="upgrade-progress-text">${progressPercentage}%</span>
+      <span class="upgrade-progress-text">${escapeHtml(progressPercentage)}%</span>
     `;
 
     const canCancel = progressPercentage < 60;
@@ -326,9 +345,9 @@ function updateStatusWithProgressBar(statusField, operation) {
       : gettext("Cannot cancel - firmware flashing in progress");
 
     statusHtml += `
-      <button class="${cancelButtonClass}"
-              data-operation-id="${operation.id}"
-              title="${cancelButtonTitle}"
+      <button class="${escapeHtml(cancelButtonClass)}"
+              data-operation-id="${escapeHtml(operation.id)}"
+              title="${escapeHtml(cancelButtonTitle)}"
               ${!canCancel ? "disabled" : ""}>
         ${gettext("Cancel")}
       </button>
@@ -375,16 +394,6 @@ function getProgressPercentage(status, operationProgress = null) {
     return 100;
   }
   return 5;
-}
-
-function calculateProgressFromLogLength(logContent = "") {
-  if (!logContent) return 0;
-
-  const logLines = logContent.split("\n").filter((line) => line.trim().length > 0);
-  const estimatedTotalSteps = 20;
-  const currentProgress = Math.min(95, (logLines.length / estimatedTotalSteps) * 100);
-
-  return Math.max(5, currentProgress);
 }
 
 function updateUpgradeOperationLog(logData) {

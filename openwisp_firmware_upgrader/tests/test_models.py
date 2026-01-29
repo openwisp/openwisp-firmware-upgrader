@@ -705,7 +705,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
-    def test_batch_upgrade_with_group_filtering(self, *args):
+    def test_batch_upgrade_with_group_filtering(self, *_args):
         """Test complete batch upgrade workflow with group filtering."""
         UpgradeOperation.objects.all().delete()
         org = self._get_org()
@@ -787,7 +787,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
-    def test_batch_upgrade_with_location_filtering(self, *args):
+    def test_batch_upgrade_with_location_filtering(self, *_args):
         """Test complete batch upgrade workflow with location filtering."""
         UpgradeOperation.objects.all().delete()
         org = self._get_org()
@@ -879,7 +879,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
-    def test_batch_upgrade_with_group_and_location_filtering(self, *args):
+    def test_batch_upgrade_with_group_and_location_filtering(self, *_args):
         """Test batch upgrade with both group and location filtering."""
         UpgradeOperation.objects.all().delete()
         org = self._get_org()

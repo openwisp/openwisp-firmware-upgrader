@@ -872,9 +872,9 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertTrue(device_fw.installed)
 
     @patch("scp.SCPClient.putfo")
-    def test_upgrade_cancellation_early_stage(self, mock_putfo):
+    def test_upgrade_cancellation_early_stage(self, _mock_putfo):
         """Test cancellation during early stages of upgrade"""
-        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        _, device_conn, upgrade_op, _, _ = self._trigger_upgrade()
 
         ssh = device_conn.connector_instance
         ssh.connect()
@@ -906,7 +906,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
 
     def test_upgrade_cancellation_services_restart(self):
         """Test that non-critical services are restarted when upgrade is cancelled"""
-        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        _, device_conn, upgrade_op, _, _ = self._trigger_upgrade()
 
         ssh = device_conn.connector_instance
         ssh.connect()
@@ -914,7 +914,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         # Mock exec_command to track service restart calls
         service_restart_calls = []
 
-        def mock_exec_command(cmd, **kwargs):
+        def mock_exec_command(cmd, **_kwargs):
             if "start" in cmd:
                 service_restart_calls.append(cmd)
             # Always return success for this test
@@ -940,7 +940,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
 
     def test_upgrade_cancellation_check_method(self):
         """Test the _check_cancellation method directly"""
-        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
+        _, device_conn, upgrade_op, _, _ = self._trigger_upgrade()
 
         ssh = device_conn.connector_instance
         ssh.connect()

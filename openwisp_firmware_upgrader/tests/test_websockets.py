@@ -40,8 +40,8 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         self.regular_user = self._create_user()
         self.superuser = self._create_admin()
 
-    async def tearDown(self):
-        return await sync_to_async(super().tearDown())
+    def tearDown(self):
+        super().tearDown()
 
     async def _create_test_device_with_upgrade(self):
         """Helper to create a device with an upgrade operation."""

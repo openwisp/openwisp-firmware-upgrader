@@ -177,7 +177,6 @@ SESSION_CACHE_ALIAS = "default"
 
 # Force Redis for development to ensure async task execution
 CELERY_BROKER_URL = "redis://localhost/2"
-CELERY_RESULT_BACKEND = "redis://localhost/2"
 
 # Only use eager mode for actual tests
 if TESTING:

@@ -118,7 +118,7 @@ button that appears next to in-progress operations.
   network device
 - While the operation status is still "in-progress"
 
-**What happens when the upgrade operation cancels:**
+**What happens when the upgrade operation is canceled:**
 
 - The upgrade process stops immediately
 - If services were stopped during the upgrade, they are automatically
@@ -144,10 +144,11 @@ The typical flow of upgrade statuses follows this pattern:
 
 **Typical problematic upgrade:**
 
-1. ``in-progress`` 3. ``failed``: an unexpected error occurs during
-upgrade 2. **OR** ``aborted``: the system detects pre-condition failure
-and stops safely 4. **OR** ``cancelled``: the user manually stops the
-upgrade
+1. ``in-progress``
+2. **OR** ``aborted``: the system detects pre-condition failure and stops
+   safely
+3. ``failed``: an unexpected error occurs during upgrade
+4. **OR** ``cancelled``: the user manually stops the upgrade
 
 Monitoring Upgrades
 -------------------

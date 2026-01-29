@@ -211,7 +211,7 @@ class TestRealTimeWebsockets(
         )
 
         # Verify real-time UI updates
-        updated_progress_text = self.find_element(
+        updated_progress_text = self.wait_for_visibility(
             By.CSS_SELECTOR, ".upgrade-progress-text"
         ).text
         self.assertEqual(updated_progress_text, "75%")
@@ -467,6 +467,13 @@ class TestRealTimeWebsockets(
             }
         )
 
+        # Wait for log updates with explicit waits
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: "UUID mismatch"
+            in driver.find_element(
+                By.CSS_SELECTOR, ".field-log .readonly"
+            ).get_attribute("innerHTML")
+        )
         log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
         log_html = log_element.get_attribute("innerHTML")
         self.assertIn("UUID mismatch", log_html)

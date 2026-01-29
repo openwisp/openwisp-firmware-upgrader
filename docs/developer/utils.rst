@@ -28,6 +28,3 @@ This signal is emitted when the log content of an upgrade operation is
 updated. You can use this signal to perform custom actions when log
 updates occur, such as sending notifications, updating external systems,
 or logging to custom destinations.
-
-The signal is sent during real-time progress updates via WebSocket and
-when upgrade operations complete (success, failed, or aborted).
