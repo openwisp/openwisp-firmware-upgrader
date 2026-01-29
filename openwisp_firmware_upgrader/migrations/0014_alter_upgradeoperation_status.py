@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("firmware_upgrader", "0012_upgradeoperation_progress"),
+        ("firmware_upgrader", "0013_upgradeoperation_progress"),
     ]
 
     operations = [

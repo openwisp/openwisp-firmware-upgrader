@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("firmware_upgrader", "0011_alter_category_organization"),
+        ("firmware_upgrader", "0012_update_image_type_identifiers"),
     ]
 
     operations = [
