@@ -2,6 +2,8 @@
 
 from django.db import migrations, models
 
+from ..base.models import BatchUpgradeOperation
+
 
 class Migration(migrations.Migration):
     dependencies = [
@@ -13,12 +15,7 @@ class Migration(migrations.Migration):
             model_name="batchupgradeoperation",
             name="status",
             field=models.CharField(
-                choices=[
-                    ("idle", "idle"),
-                    ("in-progress", "in progress"),
-                    ("success", "completed successfully"),
-                    ("failed", "completed with some failures"),
-                ],
+                choices=BatchUpgradeOperation.STATUS_CHOICES,
                 default="idle",
                 max_length=12,
             ),
