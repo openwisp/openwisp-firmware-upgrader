@@ -129,26 +129,46 @@ button that appears next to in-progress operations.
 Status Flow
 -----------
 
-The typical flow of upgrade statuses follows this pattern:
+A firmware upgrade operation always starts in the ``in-progress`` state.
+From there, it can transition into one of several terminal states
+depending on how the operation concludes.
 
-.. code-block:: none
+Successful Flow
+~~~~~~~~~~~~~~~
 
-    in-progress → success
-               ↓
-               failed/aborted/cancelled
+In the normal case, the upgrade proceeds without interruption:
 
-**Typical successful upgrade:**
+1. ``in-progress`` — the upgrade is executed
+2. ``success`` — the device reboots and becomes reachable again
 
-1. ``in-progress``
-2. ``success``
+This indicates a fully completed and verified upgrade.
 
-**Typical problematic upgrade:**
+Interrupted or Unsuccessful Flows
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-1. ``in-progress``
-2. **OR** ``aborted``: the system detects pre-condition failure and stops
-   safely
-3. ``failed``: an unexpected error occurs during upgrade
-4. **OR** ``cancelled``: the user manually stops the upgrade
+An upgrade may also end prematurely or unsuccessfully:
+
+- ``aborted`` The system detects that one or more safety preconditions are
+  not met *before* flashing begins and stops the operation without making
+  any changes to the device.
+- ``cancelled`` The user manually stops the upgrade while it is still safe
+  to do so. No firmware is written, and the device remains unchanged.
+- ``failed`` The firmware flashing process completes, but the device does
+  not become reachable afterward. This usually indicates a runtime or
+  post-flash failure.
+
+Terminal States
+~~~~~~~~~~~~~~~
+
+The following statuses are terminal and will not transition further:
+
+- ``success``
+- ``failed``
+- ``aborted``
+- ``cancelled``
+
+Once a terminal state is reached, a new upgrade operation must be
+initiated to retry or recover.
 
 Monitoring Upgrades
 -------------------
