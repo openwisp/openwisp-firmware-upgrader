@@ -29,8 +29,11 @@ from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
 from .filters import (
     BuildCategoryFilter,
     BuildCategoryOrganizationFilter,
+    BuildFilter,
     CategoryFilter,
     CategoryOrganizationFilter,
+    GroupFilter,
+    LocationFilter,
 )
 from .swapper import load_model
 from .utils import get_upgrader_schema_for_device
@@ -344,16 +347,41 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
     list_display = ["device", "status", "image", "modified"]
     list_filter = ["status"]
     search_fields = ["device__name"]
-    readonly_fields = ["image", "status", "log", "modified"]
+    readonly_fields = ["device", "image", "status", "log", "modified"]
     ordering = ["-modified"]
-    fields = ["image", "status", "log", "readonly_upgrade_options", "modified"]
+    fields = [
+        "device",
+        "image",
+        "status",
+        "log",
+        "readonly_upgrade_options",
+        "modified",
+    ]
     change_form_template = "admin/firmware_upgrader/upgrade_operation_change_form.html"
+
+    def _should_display_batch(self, obj, fields):
+        return (
+            obj
+            and hasattr(obj, "batch")
+            and obj.batch is not None
+            and "batch" not in fields
+        )
 
     def get_readonly_fields(self, request, obj=None):
         # Since "readonly_upgrade_options" is dynamically added, we need to
         # override get_readonly_fields to include it.
-        fields = super().get_readonly_fields(request, obj)
-        return fields + ["readonly_upgrade_options"]
+        fields = super().get_readonly_fields(request, obj).copy()
+        if "readonly_upgrade_options" not in fields:
+            fields.append("readonly_upgrade_options")
+        if self._should_display_batch(obj, fields):
+            fields.append("batch")
+        return fields
+
+    def get_fields(self, request, obj=None):
+        fields = super().get_fields(request, obj).copy()
+        if self._should_display_batch(obj, fields):
+            fields.insert(1, "batch")
+        return fields
 
     def has_add_permission(self, request):
         return False
@@ -369,8 +397,10 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         BuildCategoryOrganizationFilter,
         "status",
         BuildCategoryFilter,
-        ("group", admin.RelatedOnlyFieldListFilter),
-        ("location", admin.RelatedOnlyFieldListFilter),
+        BuildFilter,
+        GroupFilter,
+        LocationFilter,
+        "created",
     ]
     list_select_related = ["build__category__organization", "group", "location"]
     ordering = ["-created"]

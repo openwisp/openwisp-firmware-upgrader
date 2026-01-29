@@ -1,3 +1,7 @@
+#batchupgradeoperation_form .submit-row {
+  display: none;
+}
+
 .upgrade-operations-title {
   font-size: 22px;
   font-weight: 300;

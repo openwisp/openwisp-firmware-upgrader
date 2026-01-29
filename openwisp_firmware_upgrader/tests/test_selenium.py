@@ -466,3 +466,24 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             >= 2,
             "Both group and location Select2 widgets are initialized",
         )
+
+    @patch(
+        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
+        return_value=True,
+    )
+    @patch(
+        "openwisp_controller.connection.models.DeviceConnection.connect",
+        return_value=True,
+    )
+    def test_upgrade_operation_admin_no_submit_row(self, *args):
+        """Test that UpgradeOperation admin change page does not display submit-row"""
+        # Create device firmware and upgrade
+        self._create_device_firmware(upgrade=True)
+        uo = UpgradeOperation.objects.first()
+        self.login()
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_upgradeoperation_change", args=[uo.pk]
+            )
+        )
+        self.wait_for_invisibility(By.CSS_SELECTOR, ".submit-row")
