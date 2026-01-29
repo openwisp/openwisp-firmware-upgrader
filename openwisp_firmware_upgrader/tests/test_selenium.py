@@ -26,6 +26,7 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 
 
 @tag("selenium_tests")
+@tag("no_parallel")
 class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
     config_app_label = "config"
     firmware_app_label = "firmware_upgrader"
@@ -309,6 +310,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.find_element(
                 by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
             ).click()
+            self.wait_for_visibility(By.CSS_SELECTOR, "#devicefirmware-group")
             self.assertEqual(
                 UpgradeOperation.objects.filter(upgrade_options={}).count(), 1
             )
@@ -464,3 +466,24 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             >= 2,
             "Both group and location Select2 widgets are initialized",
         )
+
+    @patch(
+        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
+        return_value=True,
+    )
+    @patch(
+        "openwisp_controller.connection.models.DeviceConnection.connect",
+        return_value=True,
+    )
+    def test_upgrade_operation_admin_no_submit_row(self, *args):
+        """Test that UpgradeOperation admin change page does not display submit-row"""
+        # Create device firmware and upgrade
+        self._create_device_firmware(upgrade=True)
+        uo = UpgradeOperation.objects.first()
+        self.login()
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_upgradeoperation_change", args=[uo.pk]
+            )
+        )
+        self.wait_for_invisibility(By.CSS_SELECTOR, ".submit-row")

@@ -1,0 +1,399 @@
+"use strict";
+
+django.jQuery(function ($) {
+  const batchUpgradeId = getBatchUpgradeIdFromUrl();
+  window.batchUpgradeId = batchUpgradeId;
+  if (!batchUpgradeId) {
+    return;
+  }
+  initializeExistingBatchUpgradeOperations($);
+  initializeMainProgressBar($);
+  const wsHost = owFirmwareUpgraderApiHost.host;
+  const wsUrl = `${getWebSocketProtocol()}${wsHost}/ws/firmware-upgrader/batch-upgrade-operation/${batchUpgradeId}/`;
+
+  const batchUpgradeProgressWebSocket = new ReconnectingWebSocket(wsUrl, null, {
+    automaticOpen: false,
+    timeoutInterval: 7000,
+    maxRetries: 5,
+    retryInterval: 3000,
+  });
+  window.batchUpgradeProgressWebSocket = batchUpgradeProgressWebSocket;
+  // Initialize websocket connection
+  initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket);
+});
+
+let batchUpgradeOperationsInitialized = false;
+
+function requestCurrentBatchState(websocket) {
+  if (websocket.readyState === WebSocket.OPEN) {
+    try {
+      const requestMessage = {
+        type: "request_current_state",
+        batch_id: getBatchUpgradeIdFromUrl(),
+      };
+      websocket.send(JSON.stringify(requestMessage));
+    } catch (error) {
+      console.error("Error requesting current batch state:", error);
+    }
+  }
+}
+
+function initializeExistingBatchUpgradeOperations($, isRetry = false) {
+  if (batchUpgradeOperationsInitialized && isRetry) {
+    return;
+  }
+  let statusCells = $("#result_list tbody td.status-cell");
+  let processedCount = 0;
+  statusCells.each(function () {
+    let statusCell = $(this);
+    if (statusCell.find(".upgrade-status-container").length > 0) {
+      return;
+    }
+    let statusText = statusCell.find(".status-content").text().trim();
+    if (!statusText) {
+      let cellText = statusCell.text().trim();
+      statusText = cellText.replace(/\d+%.*$/, "").trim();
+    }
+    if (
+      statusText &&
+      (FW_STATUS_HELPERS.includesProgress(statusText) ||
+        ALL_VALID_FW_STATUSES.has(statusText))
+    ) {
+      let operationId = statusCell.attr("data-operation-id") || "unknown";
+      let operation = {
+        status: statusText,
+        id: operationId,
+        progress: null,
+      };
+      updateBatchStatusWithProgressBar(statusCell, operation);
+      processedCount++;
+    }
+  });
+
+  if (processedCount > 0 || isRetry) {
+    batchUpgradeOperationsInitialized = true;
+  } else if (!isRetry) {
+    setTimeout(function () {
+      initializeExistingBatchUpgradeOperations($, true);
+    }, 1000);
+  }
+}
+
+function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
+  batchUpgradeProgressWebSocket.addEventListener("open", function (e) {
+    let existingContainers = $(
+      "#result_list tbody td.status-cell .upgrade-status-container",
+    );
+    if (existingContainers.length === 0) {
+      batchUpgradeOperationsInitialized = false;
+      requestCurrentBatchState(batchUpgradeProgressWebSocket);
+      initializeExistingBatchUpgradeOperations($, false);
+    } else {
+      // Just request current state without reinitializing
+      requestCurrentBatchState(batchUpgradeProgressWebSocket);
+    }
+  });
+
+  batchUpgradeProgressWebSocket.addEventListener("close", function (e) {
+    batchUpgradeOperationsInitialized = false;
+    if (e.code === 1006) {
+      console.error("WebSocket closed");
+    }
+  });
+
+  batchUpgradeProgressWebSocket.addEventListener("error", function (e) {
+    console.error("WebSocket error occurred", e);
+  });
+
+  batchUpgradeProgressWebSocket.addEventListener("message", function (e) {
+    try {
+      let data = JSON.parse(e.data);
+      if (data.type === "batch_state") {
+        updateBatchProgress(data.batch_status);
+        if (data.operations && Array.isArray(data.operations)) {
+          data.operations.forEach(function (operation) {
+            updateBatchOperationProgress({
+              operation_id: operation.id,
+              status: operation.status,
+              progress: operation.progress,
+              modified: operation.modified,
+            });
+          });
+        }
+      } else if (data.type === "batch_status") {
+        updateBatchProgress(data);
+      } else if (data.type === "operation_progress") {
+        updateBatchOperationProgress(data);
+      } else if (data.type === "operation_update") {
+        updateBatchOperationProgress({
+          operation_id: data.operation.id,
+          status: data.operation.status,
+          progress: data.operation.progress,
+          modified: data.operation.modified,
+        });
+      }
+    } catch (error) {
+      console.error("Error parsing WebSocket message:", error);
+    }
+  });
+  batchUpgradeProgressWebSocket.open();
+}
+
+function updateBatchProgress(data) {
+  let $ = django.jQuery;
+  let mainProgressElement = $(".batch-main-progress");
+  if (mainProgressElement.length > 0) {
+    let progressPercentage =
+      data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
+    let showPercentageText = true;
+    let statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS; // Safe default
+
+    if (data.status === FW_UPGRADE_STATUS.SUCCESS) {
+      progressPercentage = 100;
+      statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
+      showPercentageText = true;
+    } else if (data.status === FW_UPGRADE_STATUS.CANCELLED) {
+      progressPercentage = 100;
+      statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
+      showPercentageText = false;
+    } else if (data.status === FW_UPGRADE_STATUS.FAILED) {
+      let successfulOpsCount = $("#result_list tbody tr").filter(function () {
+        let statusText = $(this).find(".status-cell .status-content").text().trim();
+        return FW_STATUS_GROUPS.SUCCESS.has(statusText);
+      }).length;
+
+      // Also check individual operation containers for success
+      if (successfulOpsCount === 0) {
+        $("#result_list tbody tr").each(function () {
+          let statusContainer = $(this).find(".upgrade-status-container");
+          if (
+            statusContainer.length &&
+            statusContainer.find(".upgrade-progress-fill.success").length
+          ) {
+            successfulOpsCount++;
+          }
+        });
+      }
+      if (successfulOpsCount > 0) {
+        // Some operations succeeded - partial success (orange)
+        progressPercentage = 100;
+        statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
+        showPercentageText = false;
+      } else {
+        // All operations failed - total failure (red)
+        progressPercentage = 100;
+        statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
+        showPercentageText = false;
+      }
+    }
+
+    let progressHtml = `
+      <div class="upgrade-progress-bar">
+        <div class="upgrade-progress-fill ${statusClass}" style="width: ${progressPercentage}%"></div>
+      </div>
+    `;
+    if (showPercentageText) {
+      progressHtml += `<span class="upgrade-progress-text">${progressPercentage}%</span>`;
+    }
+    mainProgressElement.html(progressHtml);
+  }
+  // Update completion information in the admin form if available
+  if (data.total !== undefined && data.completed !== undefined) {
+    let completedInfo = $(".field-completed .readonly");
+    if (completedInfo.length > 0) {
+      completedInfo.text(`${data.completed} out of ${data.total}`);
+    }
+  }
+  let statusField = $(".field-status .readonly");
+  if (statusField.length > 0 && data.status) {
+    let displayStatus = data.status;
+    if (data.status === FW_UPGRADE_STATUS.SUCCESS) {
+      displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY;
+    } else if (data.status === FW_UPGRADE_STATUS.CANCELLED) {
+      displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_CANCELLATIONS;
+    } else if (data.status === FW_UPGRADE_STATUS.FAILED) {
+      displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_FAILURES;
+    } else if (data.status === FW_UPGRADE_STATUS.IN_PROGRESS) {
+      displayStatus = FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS;
+    }
+
+    let progressBar = statusField.find(".batch-main-progress");
+    let statusText = statusField
+      .contents()
+      .not(progressBar)
+      .filter(function () {
+        return this.nodeType === 3 && this.textContent.trim();
+      })
+      .first();
+    if (statusText.length > 0) {
+      statusText[0].textContent = displayStatus;
+    } else {
+      progressBar.before(document.createTextNode(displayStatus));
+    }
+  }
+}
+
+function updateBatchOperationProgress(data) {
+  let $ = django.jQuery;
+  let found = false;
+  $("#result_list tbody tr").each(function () {
+    let row = $(this);
+    let statusCell = row.find("td.status-cell");
+    let operationId = statusCell.attr("data-operation-id");
+
+    if (operationId === data.operation_id) {
+      found = true;
+      let operation = {
+        status: data.status,
+        id: data.operation_id,
+        progress: data.progress,
+      };
+      updateBatchStatusWithProgressBar(statusCell, operation);
+      if (data.modified) {
+        let modifiedCell = row.find("td:nth-child(4)");
+        modifiedCell.html(getFormattedDateTimeString(data.modified));
+      }
+    }
+  });
+  if (!found) {
+    addNewOperationRow(data);
+  }
+}
+
+function addNewOperationRow(data) {
+  let $ = django.jQuery;
+  if (!data.device_name || !data.device_id) {
+    return;
+  }
+
+  let tbody = $("#result_list tbody");
+  let existingRows = tbody.find("tr").length;
+  let rowClass = existingRows % 2 === 0 ? "row1" : "row2";
+  tbody.find("tr td[colspan]").parent().remove();
+
+  let deviceUrl = `/admin/firmware_upgrader/upgradeoperation/${data.operation_id}/change/`;
+  let imageDisplay = data.image_name || "None";
+  let modifiedTime = data.modified
+    ? getFormattedDateTimeString(data.modified)
+    : "Just now";
+
+  // Build row using DOM attributes to prevent XSS vulnerability due to string interpolation
+  let $row = $("<tr>").addClass(rowClass);
+  let $deviceTd = $("<td>");
+  let $link = $("<a>")
+    .addClass("device-link")
+    .attr("href", deviceUrl)
+    .attr("aria-label", `View device ${data.device_name}`)
+    .text(data.device_name); // SAFE
+  $deviceTd.append($link);
+  let $statusTd = $("<td>")
+    .addClass("status-cell")
+    .attr("data-operation-id", data.operation_id);
+  let $statusContent = $("<div>").addClass("status-content").text(data.status); // SAFE
+  $statusTd.append($statusContent);
+  let $imageTd = $("<td>").text(imageDisplay); // SAFE
+  let $modifiedTd = $("<td>").text(modifiedTime); // SAFE
+  $row.append($deviceTd, $statusTd, $imageTd, $modifiedTd);
+  tbody.append($row);
+
+  let operation = {
+    status: data.status,
+    id: data.operation_id,
+    progress: data.progress,
+  };
+  updateBatchStatusWithProgressBar($statusTd, operation);
+}
+
+function updateBatchStatusWithProgressBar(statusCell, operation) {
+  let $ = django.jQuery;
+  let status = operation.status;
+  let progressPercentage = normalizeProgress(operation.progress, status);
+  statusCell.empty();
+  statusCell.append('<div class="upgrade-status-container"></div>');
+  let statusContainer = statusCell.find(".upgrade-status-container");
+  let statusClass = "";
+  let showPercentageText = false;
+  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
+    statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
+  } else if (FW_STATUS_GROUPS.SUCCESS.has(status)) {
+    statusClass = FW_UPGRADE_CSS_CLASSES.SUCCESS;
+    progressPercentage = 100;
+  } else if (status === FW_UPGRADE_STATUS.FAILED) {
+    statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
+    progressPercentage = 100;
+  } else if (status === FW_UPGRADE_STATUS.ABORTED) {
+    statusClass = FW_UPGRADE_CSS_CLASSES.ABORTED;
+    progressPercentage = 100;
+  } else if (status === FW_UPGRADE_STATUS.CANCELLED) {
+    statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
+    progressPercentage = 100;
+  }
+  let progressHtml = renderProgressBarHtml(
+    progressPercentage,
+    statusClass,
+    showPercentageText,
+  );
+  statusContainer.html(progressHtml);
+}
+
+function getBatchUpgradeIdFromUrl() {
+  try {
+    let matches = window.location.pathname.match(/\/batchupgradeoperation\/([^\/]+)\//);
+    return matches && matches[1] ? matches[1] : null;
+  } catch (error) {
+    console.error("Error extracting batch ID from URL:", error);
+    return null;
+  }
+}
+
+function initializeMainProgressBar($) {
+  let statusField = $(".field-status .readonly");
+  if (statusField.length > 0) {
+    let currentStatusText = statusField
+      .contents()
+      .filter(function () {
+        return this.nodeType === 3 && this.textContent.trim();
+      })
+      .first()
+      .text()
+      .trim();
+    let mainProgressElement = $(".batch-main-progress");
+    if (mainProgressElement.length > 0 && currentStatusText) {
+      let progressPercentage = 100;
+      let statusClass = "";
+      let showPercentageText;
+
+      if (currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY) {
+        statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
+        showPercentageText = true;
+      } else if (
+        currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_CANCELLATIONS
+      ) {
+        statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
+        showPercentageText = false;
+      } else if (
+        currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_FAILURES
+      ) {
+        statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
+        showPercentageText = false;
+      } else if (currentStatusText === FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS) {
+        statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
+        showPercentageText = true;
+        progressPercentage = 0;
+      } else {
+        statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
+        showPercentageText = false;
+      }
+
+      let progressHtml = `
+        <div class="upgrade-progress-bar">
+          <div class="upgrade-progress-fill ${statusClass}" style="width: ${progressPercentage}%"></div>
+        </div>
+      `;
+      if (showPercentageText) {
+        progressHtml += `<span class="upgrade-progress-text">${progressPercentage}%</span>`;
+      }
+      mainProgressElement.html(progressHtml);
+    }
+  }
+}

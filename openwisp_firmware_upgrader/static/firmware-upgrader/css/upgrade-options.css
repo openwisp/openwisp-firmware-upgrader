@@ -8,3 +8,6 @@
 .readonly-upgrade-options li img {
   margin-right: 5px;
 }
+#upgradeoperation_form .submit-row {
+  display: none;
+}
