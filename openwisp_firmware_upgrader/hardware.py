@@ -53,7 +53,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
-                "realtek-rtl838x-engenius_ews2910p-squashfs-sysupgrade.bin"
+                "realtek-rtl838x-engenius_ews2910p-squashfs-sysupgrade.bin",
                 {
                     "label": "EnGenius EWS2910P",
                     "boards": ("EnGenius EWS2910P",),
