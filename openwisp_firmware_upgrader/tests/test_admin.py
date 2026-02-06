@@ -509,7 +509,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             administrator=True,
         )
 
-    def test_device_firmware_validation_error_in_admin_ui(self):
+    def test_empty_device_firmware_image(self):
         self._login()
         device = self._create_device_with_connection()
         device_conn = device.deviceconnection_set.first()
