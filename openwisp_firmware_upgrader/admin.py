@@ -364,7 +364,7 @@ class DeviceFirmwareForm(forms.ModelForm):
         image = cleaned_data.get("image")
         upgrade_options = cleaned_data.get("upgrade_options")
         if not image:
-            self.add_error("image", "This field is required.")
+            self.add_error("image", _("This field is required."))
             return
         if not device:
             return
