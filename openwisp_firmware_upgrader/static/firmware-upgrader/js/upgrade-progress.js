@@ -52,7 +52,7 @@ let accumulatedLogContent = new Map();
 let singleOperationLogContent = "";
 
 function formatLogForDisplay(logContent) {
-  return logContent ? logContent.replace(/\n/g, "<br>") : "";
+  return logContent ? escapeHtml(logContent).replace(/\n/g, "<br>") : "";
 }
 
 function escapeHtml(unsafe) {
@@ -336,7 +336,7 @@ function updateStatusWithProgressBar(statusField, operation) {
       <span class="upgrade-progress-text">${escapeHtml(progressPercentage)}%</span>
     `;
 
-    const canCancel = progressPercentage < 60;
+    const canCancel = progressPercentage < 65;
     const cancelButtonClass = canCancel
       ? "upgrade-cancel-btn"
       : "upgrade-cancel-btn disabled";
@@ -526,7 +526,7 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
       <span class="upgrade-progress-text">${progressPercentage}%</span>
     `;
 
-    const canCancel = progressPercentage < 60;
+    const canCancel = progressPercentage < 65;
     const cancelButtonClass = canCancel
       ? "upgrade-cancel-btn"
       : "upgrade-cancel-btn disabled";

@@ -22,6 +22,7 @@ Signals
 
 - ``sender``: the model class that sent the signal (``UpgradeOperation``)
 - ``instance``: instance of ``UpgradeOperation`` which got its log updated
+- ``line``: the new log line that was appended
 - ``**kwargs``: additional keyword arguments
 
 This signal is emitted when the log content of an upgrade operation is

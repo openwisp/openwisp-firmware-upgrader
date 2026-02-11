@@ -211,23 +211,34 @@ class TestRealTimeWebsockets(
         )
 
         # Verify real-time UI updates
-        updated_progress_text = self.wait_for_visibility(
-            By.CSS_SELECTOR, ".upgrade-progress-text"
-        ).text
-        self.assertEqual(updated_progress_text, "75%")
-
-        updated_progress_fill = self.find_element(
-            By.CSS_SELECTOR, ".upgrade-progress-fill"
+        WebDriverWait(self.web_driver, 5).until(
+            lambda driver: driver.find_element(
+                By.CSS_SELECTOR, ".upgrade-progress-text"
+            ).text
+            == "75%"
         )
-        updated_style = updated_progress_fill.get_attribute("style")
-        self.assertIn("width: 75%", updated_style)
+
+        WebDriverWait(self.web_driver, 5).until(
+            lambda driver: "width: 75%"
+            in driver.find_element(
+                By.CSS_SELECTOR, ".upgrade-progress-fill"
+            ).get_attribute("style")
+        )
 
         # Verify log updates in real-time
-        log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
-        log_html = log_element.get_attribute("innerHTML")
-        self.assertIn("Device identity verified successfully", log_html)
-        self.assertIn("Uploading firmware image", log_html)
-        self.assertIn("Upload progress: 75%", log_html)
+        WebDriverWait(self.web_driver, 5).until(
+            lambda driver: all(
+                text
+                in driver.find_element(
+                    By.CSS_SELECTOR, ".field-log .readonly"
+                ).get_attribute("innerHTML")
+                for text in [
+                    "Device identity verified successfully",
+                    "Uploading firmware image",
+                    "Upload progress: 75%",
+                ]
+            )
+        )
 
         self._assert_no_js_errors()
 
@@ -469,17 +480,19 @@ class TestRealTimeWebsockets(
 
         # Wait for log updates with explicit waits
         WebDriverWait(self.web_driver, 10).until(
-            lambda driver: "UUID mismatch"
-            in driver.find_element(
-                By.CSS_SELECTOR, ".field-log .readonly"
-            ).get_attribute("innerHTML")
+            lambda driver: all(
+                text
+                in driver.find_element(
+                    By.CSS_SELECTOR, ".field-log .readonly"
+                ).get_attribute("innerHTML")
+                for text in [
+                    "UUID mismatch",
+                    "Could not read device UUID",
+                    "aborted for security reasons",
+                    "aborting upgrade",
+                ]
+            )
         )
-        log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
-        log_html = log_element.get_attribute("innerHTML")
-        self.assertIn("UUID mismatch", log_html)
-        self.assertIn("Could not read device UUID", log_html)
-        self.assertIn("aborted for security reasons", log_html)
-        self.assertIn("aborting upgrade", log_html)
         self._assert_no_js_errors()
 
     def _check_progress_text(self, expected_text):

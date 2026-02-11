@@ -805,7 +805,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     _CANCELLABLE_STATUS = "in-progress"
-    _MAX_CANCELLABLE_PROGRESS = 70
+    _MAX_CANCELLABLE_PROGRESS = 65
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),

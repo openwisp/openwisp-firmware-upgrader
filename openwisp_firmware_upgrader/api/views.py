@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
 
 from openwisp_firmware_upgrader import private_storage
-from openwisp_users.api.mixins import FilterByOrganizationManaged
+from openwisp_users.api.mixins import FilterByOrganizationManaged, IsOrganizationManager
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 from openwisp_users.api.permissions import DjangoModelPermissions
 
@@ -373,9 +373,20 @@ class DeviceFirmwareDetailView(
                 raise
 
 
+class UpgradeOperationCancelPermission(DjangoModelPermissions):
+    perms_map = {
+        **DjangoModelPermissions.perms_map,
+        "POST": ["%(app_label)s.change_%(model_name)s"],
+    }
+
+
 class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     queryset = UpgradeOperation.objects.all()
     serializer_class = serializers.Serializer
+    permission_classes = (
+        IsOrganizationManager,
+        UpgradeOperationCancelPermission,
+    )
     lookup_field = "pk"
     organization_field = "device__organization"
 

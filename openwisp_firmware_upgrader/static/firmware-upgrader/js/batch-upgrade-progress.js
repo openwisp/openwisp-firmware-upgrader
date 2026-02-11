@@ -283,7 +283,7 @@ function addNewOperationRow(data) {
   let $link = $("<a>")
     .addClass("device-link")
     .attr("href", deviceUrl)
-    .attr("aria-label", `View device ${data.device_name}`)
+    .attr("aria-label", `View upgrade operation for ${data.device_name}`)
     .text(data.device_name); // SAFE
   $deviceTd.append($link);
   let $statusTd = $("<td>")
