@@ -84,13 +84,30 @@ class BuildSerializer(BaseSerializer):
 class UpgradeOperationSerializer(serializers.ModelSerializer):
     class Meta:
         model = UpgradeOperation
-        fields = ("id", "device", "image", "status", "log", "modified", "created")
+        fields = (
+            "id",
+            "device",
+            "image",
+            "status",
+            "log",
+            "modified",
+            "created",
+            "upgrade_options",
+        )
 
 
 class DeviceUpgradeOperationSerializer(serializers.ModelSerializer):
     class Meta:
         model = UpgradeOperation
-        fields = ("id", "device", "image", "status", "log", "modified")
+        fields = (
+            "id",
+            "device",
+            "image",
+            "status",
+            "log",
+            "modified",
+            "upgrade_options",
+        )
 
 
 class BatchUpgradeOperationListSerializer(BaseSerializer):
@@ -116,9 +133,11 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
 
 
 class DeviceFirmwareSerializer(ValidatedModelSerializer):
+    upgrade_options = serializers.JSONField(required=False, allow_null=True)
+
     class Meta:
         model = DeviceFirmware
-        fields = ("id", "image", "installed", "modified")
+        fields = ("id", "image", "installed", "modified", "upgrade_options")
         read_only_fields = ("installed", "modified")
 
     def validate(self, data):
@@ -142,7 +161,57 @@ class DeviceFirmwareSerializer(ValidatedModelSerializer):
                     )
                 }
             )
+        # Validate upgrade_options if provided
+        upgrade_options = data.get("upgrade_options")
+        if upgrade_options is not None:
+            # Create a temporary UpgradeOperation to validate upgrade_options
+            # This will trigger the model's validation logic
+            temp_operation = UpgradeOperation(
+                device=device,
+                image=image,
+                upgrade_options=upgrade_options or {},
+            )
+            try:
+                temp_operation.validate_upgrade_options()
+            except ValidationError as e:
+                raise serializers.ValidationError({"upgrade_options": e.messages})
         return super().validate(data)
+
+    def to_representation(self, instance):
+        """
+        Include upgrade_options from the latest upgrade operation if available.
+        """
+        ret = super().to_representation(instance)
+        # Get upgrade_options from the latest upgrade operation for this device
+        try:
+            latest_operation = instance.device.upgradeoperation_set.latest("created")
+            ret["upgrade_options"] = latest_operation.upgrade_options
+        except UpgradeOperation.DoesNotExist:
+            ret["upgrade_options"] = {}
+        return ret
+
+    def create(self, validated_data):
+        """
+        Extract upgrade_options from validated_data and pass it to model.save()
+        """
+        upgrade_options = validated_data.pop("upgrade_options", None)
+        if upgrade_options is None:
+            upgrade_options = {}
+        instance = DeviceFirmware(**validated_data)
+        instance.save(upgrade_options=upgrade_options)
+        return instance
+
+    def update(self, instance, validated_data):
+        """
+        Extract upgrade_options from validated_data and pass it to model.save()
+        """
+        upgrade_options = validated_data.pop("upgrade_options", None)
+        if upgrade_options is None:
+            upgrade_options = {}
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save(upgrade_options=upgrade_options)
+        return instance
 
     def _get_device_object(self, device_id):
         try:
