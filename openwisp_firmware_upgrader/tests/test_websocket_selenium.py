@@ -193,16 +193,14 @@ class TestRealTimeWebsockets(
         )
         # Verify real-time UI updates
         WebDriverWait(self.web_driver, 5).until(
-            lambda driver: driver.find_element(
-                By.CSS_SELECTOR, ".upgrade-progress-text"
-            ).text
-            == "75%"
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".upgrade-progress-text"), "75%"
+            )
         )
         WebDriverWait(self.web_driver, 5).until(
-            lambda driver: "width: 75%"
-            in driver.find_element(
-                By.CSS_SELECTOR, ".upgrade-progress-fill"
-            ).get_attribute("style")
+            EC.element_attribute_to_include(
+                (By.CSS_SELECTOR, ".upgrade-progress-fill"), "style", "width: 75%"
+            )
         )
         # Verify log updates in real-time
         WebDriverWait(self.web_driver, 5).until(
