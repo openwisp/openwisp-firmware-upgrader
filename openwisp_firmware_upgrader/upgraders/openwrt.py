@@ -191,7 +191,7 @@ class OpenWrt(object):
                 ).format(expected=device_uuid, found=config_uuid)
             )
             raise UpgradeAborted()
-        self.log(_("Device identity verified successfully"))
+        self.log(_("Device identity verified successfully"), save=False)
         self.upgrade_operation.update_progress(15)
 
     def upgrade(self, image):
@@ -224,7 +224,7 @@ class OpenWrt(object):
         result = self.connect()
         if not result:
             raise RecoverableFailure("Connection failed")
-        self.log(_("Connection successful, starting upgrade..."))
+        self.log(_("Connection successful, starting upgrade..."), save=False)
         self.upgrade_operation.update_progress(10)
 
     _non_critical_services = [
@@ -386,7 +386,7 @@ class OpenWrt(object):
             f"test -f {self.CHECKSUM_FILE}", exit_codes=[0, 1]
         )
         if exit_code == 0:
-            self.log(_("Image checksum file found"))
+            self.log(_("Image checksum file found"), save=False)
             self.upgrade_operation.update_progress(20)
             cat = f"cat {self.CHECKSUM_FILE}"
             output, code = self.exec_command(cat)
@@ -443,7 +443,7 @@ class OpenWrt(object):
         `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
         """
         self.disconnect()
-        self.log(_("Upgrade operation in progress..."))
+        self.log(_("Upgrade operation in progress..."), save=False)
         self.upgrade_operation.update_progress(65)
 
         failure_queue = Queue()
@@ -540,14 +540,16 @@ class OpenWrt(object):
                 sleep(self.RECONNECT_RETRY_DELAY)
                 continue
             self._log_reconnecting_error(attempt)
-            self.log(_("Connected! Writing checksum " f"file to {self.CHECKSUM_FILE}"))
+            self.log(
+                _("Connected! Writing checksum " f"file to {self.CHECKSUM_FILE}"),
+                save=False,
+            )
             self.upgrade_operation.update_progress(90)
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
             self.exec_command(f"mkdir -p {checksum_dir}")
             self.exec_command(f"echo {checksum} > {self.CHECKSUM_FILE}")
             self.disconnect()
-            self.log(_("Upgrade completed successfully."))
-            self.upgrade_operation.update_progress(100)
+            self.log(_("Upgrade completed successfully."), save=False)
             return
         # if all previous attempts failed
         raise ReconnectionFailed(

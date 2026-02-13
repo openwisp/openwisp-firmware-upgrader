@@ -512,14 +512,14 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
   }
 
   let statusContainer = statusField.find(".upgrade-status-container");
-  let statusHtml = `<span class="upgrade-status-${progressClass}">${status}</span>`;
+  let statusHtml = `<span class="upgrade-status-${escapeHtml(progressClass)}">${escapeHtml(status)}</span>`;
 
   if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill in-progress" style="width: ${progressPercentage}%"></div>
+        <div class="upgrade-progress-fill in-progress" style="width: ${escapeHtml(progressPercentage)}%"></div>
       </div>
-      <span class="upgrade-progress-text">${progressPercentage}%</span>
+      <span class="upgrade-progress-text">${escapeHtml(progressPercentage)}%</span>
     `;
 
     const canCancel = progressPercentage < 65;
@@ -531,9 +531,9 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
       : gettext("Cannot cancel - firmware flashing in progress");
 
     statusHtml += `
-      <button class="${cancelButtonClass}"
-              data-operation-id="${operation.id}"
-              title="${cancelButtonTitle}"
+      <button class="${escapeHtml(cancelButtonClass)}"
+              data-operation-id="${escapeHtml(operation.id)}"
+              title="${escapeHtml(cancelButtonTitle)}"
               ${!canCancel ? "disabled" : ""}>
         ${gettext("Cancel")}
       </button>
@@ -557,15 +557,15 @@ function updateSingleOperationStatusWithProgressBar(statusField, operation) {
   ) {
     statusHtml += `
       <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${status}" style="width: 100%"></div>
+        <div class="upgrade-progress-fill ${escapeHtml(status)}" style="width: 100%"></div>
       </div>
     `;
   } else {
     statusHtml += `
       <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill" style="width: ${progressPercentage}%"></div>
+        <div class="upgrade-progress-fill" style="width: ${escapeHtml(progressPercentage)}%"></div>
       </div>
-      <span class="upgrade-progress-text">${progressPercentage}%</span>
+      <span class="upgrade-progress-text">${escapeHtml(progressPercentage)}%</span>
     `;
   }
 
