@@ -259,7 +259,6 @@ class BuildAdmin(BaseAdmin):
             related_device_fw=related_device_fw,
             firmwareless_devices=firmwareless_devices,
         )
-
         context.update(
             {
                 "title": title,
@@ -270,6 +269,10 @@ class BuildAdmin(BaseAdmin):
                 "form": form,
                 "firmware_upgrader_schema": json.dumps(
                     upgrader_schema, cls=DjangoJSONEncoder
+                ),
+                "upgrade_operation_path": reverse(
+                    f"admin:{app_label}_upgradeoperation_change",
+                    args=["00000000-0000-0000-0000-000000000000"],
                 ),
                 "build": build,
                 "opts": opts,
