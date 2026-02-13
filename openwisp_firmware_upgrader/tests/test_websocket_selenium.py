@@ -312,8 +312,6 @@ class TestRealTimeWebsockets(
         new_log_line = "Device identity verified successfully"
         operation.log = f"{operation.log}\n{new_log_line}"
         await database_sync_to_async(operation.save)()
-        publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
-        publisher.publish_log(new_log_line, "in-progress")
         # Verify UI update
         updated_log = self.find_element(
             By.CSS_SELECTOR, ".field-log .readonly"

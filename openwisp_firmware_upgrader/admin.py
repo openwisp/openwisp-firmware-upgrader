@@ -124,7 +124,6 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         # Set the appropriate queryset for group field based on the build's organization
         if self.initial.get("build"):
             build = self.initial["build"]

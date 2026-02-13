@@ -245,18 +245,13 @@ function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
           return;
         }
         data = data.data;
-
         if (data.type === "operation_update") {
           updateUpgradeOperationDisplay(data.operation);
-        } else if (data.type === "status") {
-          updateUpgradeOperationStatus(data);
         }
       } else if (window.upgradePageType === "operation") {
         // Single operation page
         if (data.type === "operation_update") {
           updateSingleUpgradeOperationDisplay(data.operation);
-        } else if (data.type === "status") {
-          updateSingleUpgradeOperationStatus(data);
         }
       }
     } catch (error) {
