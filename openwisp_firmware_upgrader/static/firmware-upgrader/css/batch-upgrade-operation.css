@@ -1,0 +1,369 @@
+#batchupgradeoperation_form .submit-row {
+  display: none;
+}
+
+.upgrade-operations-title {
+  font-size: 22px;
+  font-weight: 300;
+  color: #333;
+  margin: 0;
+  padding: 0;
+}
+
+.search-section {
+  background: #f8f8f8;
+  padding: 20px;
+}
+
+.search-form {
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  width: 20px;
+  height: 20px;
+  color: #333;
+  margin-right: 15px;
+  font-size: 16px;
+}
+
+.search-input {
+  width: 300px;
+  padding: 10px 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+}
+
+.search-button {
+  padding: 10px 20px;
+  background: #333;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 15px;
+}
+
+.filter-clear-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: normal;
+}
+
+.filter-clear-link {
+  color: #666;
+  text-decoration: none;
+}
+
+.filter-clear-link:hover {
+  color: #333;
+}
+
+.results-container {
+  background: #fff;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.results-table thead tr {
+  background: #f8f9fa;
+}
+
+.results-table th {
+  padding: 12px 20px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.results-table td {
+  padding: 15px 20px;
+  color: #1f1f1f;
+}
+
+.results-table tr.row1 {
+  background-color: #fff;
+}
+
+.results-table tr.row2 {
+  background-color: #f9f9f9;
+}
+
+.results-table tr:not(:last-child) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.device-link {
+  color: #df5d43 !important;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.empty-results {
+  padding: 40px;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.pagination {
+  padding: 15px 20px;
+  text-align: right;
+  border-top: 2px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.pagination a {
+  color: #333;
+  text-decoration: none;
+  margin: 0 5px;
+}
+
+.pagination .current-page {
+  margin: 0 10px;
+  color: #666;
+}
+
+.paginator {
+  font-size: 14px;
+  color: #7a7a7a;
+  padding: 10px 20px;
+  border-bottom: 1px solid #e9ecef;
+  margin: 0;
+}
+
+.batch-progress-container {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 20px 0;
+}
+.batch-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.batch-status {
+  font-weight: 600;
+  font-size: 16px;
+  color: #333;
+  text-transform: capitalize;
+}
+
+.batch-progress-text {
+  font-size: 14px;
+  color: #666;
+}
+
+.batch-progress-bar {
+  height: 8px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.batch-progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+.batch-progress-fill.idle {
+  background-color: #6c757d;
+}
+
+.batch-progress-fill.in-progress {
+  background: linear-gradient(90deg, #007bff, #0056b3);
+  animation: progress-animation 2s infinite;
+}
+
+.batch-progress-fill.success,
+.batch-progress-fill.completed-successfully {
+  background-color: #70bf2b;
+}
+
+.batch-progress-fill.failed {
+  background-color: #dc3545;
+}
+
+.batch-progress-fill.aborted {
+  background-color: #6c757d;
+}
+
+.batch-progress-fill.cancelled {
+  background-color: #8b8b8b;
+}
+
+.batch-progress-fill.partial-success {
+  background-color: #fc9240;
+}
+
+.status-cell {
+  width: 200px;
+  min-width: 200px;
+}
+
+.upgrade-status-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.upgrade-status-container .upgrade-progress-bar {
+  width: 100%;
+  height: 10px;
+  background-color: #e9ecef;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.upgrade-status-container .upgrade-progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 3px;
+}
+
+.upgrade-status-container .upgrade-progress-fill.in-progress {
+  background-color: #70bf2b;
+}
+
+.upgrade-status-container .upgrade-progress-fill.success,
+.upgrade-status-container .upgrade-progress-fill.completed-successfully {
+  background-color: #70bf2b;
+}
+
+.upgrade-status-container .upgrade-progress-fill.failed {
+  background-color: #dc3545;
+}
+
+.upgrade-status-container .upgrade-progress-fill.aborted {
+  background-color: #6c757d;
+}
+
+.upgrade-status-container .upgrade-progress-fill.cancelled {
+  background-color: #8b8b8b;
+}
+
+.upgrade-status-container span {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.upgrade-status-container .upgrade-progress-text {
+  color: #666;
+  margin-top: 2px;
+}
+
+.upgrade-status-in-progress {
+  color: #70bf2b;
+}
+
+.upgrade-status-success,
+.upgrade-status-completed-successfully {
+  color: #70bf2b;
+}
+
+.upgrade-status-failed {
+  color: #dc3545;
+}
+
+.upgrade-status-aborted {
+  color: #6c757d;
+}
+
+.upgrade-status-cancelled {
+  color: #8b8b8b;
+}
+
+.upgrade-status-idle {
+  color: #6c757d;
+}
+
+.batch-main-progress {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-left: 20px;
+}
+
+.batch-main-progress .upgrade-progress-bar {
+  width: 300px;
+  height: 12px;
+  background-color: #d9d9d9;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #ccc;
+}
+
+.batch-main-progress .upgrade-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.batch-main-progress .upgrade-progress-fill.idle {
+  background-color: #6c757d;
+}
+
+.batch-main-progress .upgrade-progress-fill.in-progress {
+  background-color: #70bf2b;
+}
+
+.batch-main-progress .upgrade-progress-fill.success,
+.batch-main-progress .upgrade-progress-fill.completed-successfully {
+  background-color: #70bf2b;
+}
+
+.batch-main-progress .upgrade-progress-fill.failed {
+  background-color: #dc3545;
+}
+
+.batch-main-progress .upgrade-progress-fill.aborted {
+  background-color: #6c757d;
+}
+
+.batch-main-progress .upgrade-progress-fill.cancelled {
+  background-color: #8b8b8b;
+}
+
+.batch-main-progress .upgrade-progress-fill.partial-success {
+  background-color: #ff9800;
+}
+
+.batch-main-progress .upgrade-progress-text {
+  color: #000;
+  font-weight: bold;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Progress Animation */
+@keyframes progress-animation {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}

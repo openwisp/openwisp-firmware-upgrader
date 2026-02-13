@@ -58,12 +58,13 @@ class Migration(migrations.Migration):
                 (
                     "status",
                     models.CharField(
-                        choices=[
+                        choices=(
                             ("idle", "idle"),
                             ("in-progress", "in progress"),
+                            ("cancelled", "completed with some cancellations"),
                             ("success", "completed successfully"),
                             ("failed", "completed with some failures"),
-                        ],
+                        ),
                         default="idle",
                         max_length=12,
                     ),

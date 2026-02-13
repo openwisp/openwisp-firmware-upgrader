@@ -1,15 +1,18 @@
-form > div > div.form-row {
-  display: none;
+#content form .help {
+  margin-top: 3px;
 }
-form .errorlist {
-  margin-top: -10px;
-}
-.errorlist > li {
-  visibility: hidden;
-}
-.errorlist ul li {
-  visibility: visible;
+#content p.intro {
+  margin-bottom: 20px;
 }
 #ow-loading {
   display: flex;
+}
+.jsoneditor-wrapper label {
+  width: auto;
+}
+.jsoneditor-wrapper fieldset {
+  margin-bottom: 0;
+}
+input.special {
+  margin: 0 0 0 10px;
 }

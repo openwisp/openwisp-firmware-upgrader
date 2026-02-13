@@ -18,6 +18,7 @@ FirmwareImage = load_model("FirmwareImage")
 DeviceFirmware = load_model("DeviceFirmware")
 DeviceFirmware = load_model("DeviceFirmware")
 Credentials = swapper.load_model("connection", "Credentials")
+DeviceGroup = swapper.load_model("config", "DeviceGroup")
 OrganizationUser = swapper.load_model("openwisp_users", "OrganizationUser")
 
 
@@ -201,6 +202,17 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         self._create_config(device=d1)
         self._create_device_connection(device=d1)
         return d1
+
+    def _create_device_group(self, **kwargs):
+        """Create a device group for testing."""
+        opts = dict(name="Test Group")
+        opts.update(kwargs)
+        if "organization" not in opts:
+            opts["organization"] = self._get_org()
+        group = DeviceGroup(**opts)
+        group.full_clean()
+        group.save()
+        return group
 
 
 def spy_mock(method, pre_action):

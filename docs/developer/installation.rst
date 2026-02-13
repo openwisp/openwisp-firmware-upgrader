@@ -41,7 +41,7 @@ Navigate into the cloned repository:
 
 .. _firmware_upgrader_dev_docker:
 
-Launch Redis and PostgreSQL:
+Launch Redis and PostgreSQL (the latter is used in some automated tests):
 
 .. code-block:: shell
 
@@ -99,7 +99,7 @@ windows are needed):
     celery -A openwisp2 worker -l info
     celery -A openwisp2 beat -l info
 
-Run quality assurance tests with:
+Run QA checks with:
 
 .. code-block:: shell
 
@@ -110,8 +110,7 @@ Run tests with (make sure you have the :ref:`selenium dependencies
 
 .. code-block:: shell
 
-    # standard tests
-    ./runtests.py
+    ./runtests
 
 Some tests, such as the Selenium UI tests, require a PostgreSQL database
 to run. If you don't have a PostgreSQL database running on your system,
@@ -123,9 +122,10 @@ specific tests as follows:
 
     # Run only specific selenium tests classes
     cd tests/
-    DJANGO_SETTINGS_MODULE=openwisp2.postgresql_settings ./manage.py test openwisp_firmware_upgrader.tests.test_selenium.TestDeviceAdmin
+    DJANGO_SETTINGS_MODULE=openwisp2.postgresql_settings \
+      ./manage.py test openwisp_firmware_upgrader.tests.test_selenium.TestDeviceAdmin
 
-    # tests for the sample app
+    # run only tests for the sample app
     SAMPLE_APP=1 ./runtests.py --keepdb --failfast
 
 When running the last line of the previous example, the environment

@@ -138,8 +138,20 @@ At this stage you can try a mass upgrade by doing the following:
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
 
 At this point you should see a summary page which will inform you of which
-devices are going to be upgraded, you can either confirm the operation or
-cancel.
+devices are going to be upgraded. On this page, you can optionally filter
+the devices to be upgraded by:
+
+- **Device Group**: limit the upgrade to devices belonging to a specific
+  group
+- **Geographic Location**: limit the upgrade to devices at a specific
+  location
+
+These filters allow for more granular control over which devices are
+upgraded, making it easier to perform staged rollouts or target specific
+subsets of your device fleet.
+
+After reviewing the selection and setting any desired filters, you can
+either confirm the operation or cancel.
 
 Once the operation is confirmed you will be redirected to a page in which
 you can monitor the progress of the upgrade operations.

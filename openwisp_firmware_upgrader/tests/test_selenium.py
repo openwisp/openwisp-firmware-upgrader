@@ -26,6 +26,7 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 
 
 @tag("selenium_tests")
+@tag("no_parallel")
 class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
     config_app_label = "config"
     firmware_app_label = "firmware_upgrader"
@@ -56,6 +57,17 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     def _get_device_firmware_dropdown_select(self):
         select_element = self.find_element(By.ID, "id_devicefirmware-0-image")
         return Select(select_element)
+
+    def _assert_no_js_errors(self):
+        browser_logs = []
+        for log in self.get_browser_logs():
+            # ignore if not console-api
+            if log.get("source") != "console-api":
+                continue
+            else:
+                print(log)
+                browser_logs.append(log)
+        self.assertEqual(browser_logs, [])
 
     @capture_any_output()
     def test_restoring_deleted_device(self):
@@ -298,6 +310,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.find_element(
                 by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
             ).click()
+            self.wait_for_visibility(By.CSS_SELECTOR, "#devicefirmware-group")
             self.assertEqual(
                 UpgradeOperation.objects.filter(upgrade_options={}).count(), 1
             )
@@ -327,3 +340,135 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.assertEqual(
                 UpgradeOperation.objects.filter(upgrade_options={}).count(), 1
             )
+
+    @capture_any_output()
+    def test_upgrade_cancel_modal(self):
+        """Test upgrade cancel modal functionality"""
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="in-progress",
+            log="Upgrade operation in progress...",
+            progress=30,
+        )
+        self.login()
+        self.open(
+            "{}#upgradeoperation_set-group".format(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
+            )
+        )
+        self.hide_loading_overlay()
+        # Wait for upgrade operations section to be visible
+        self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
+        # Wait for progress bars and status containers to load
+        WebDriverWait(self.web_driver, 2).until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, ".upgrade-status-container")
+            )
+        )
+        # Wait for cancel button to be present and clickable
+        cancel_button = WebDriverWait(self.web_driver, 2).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
+        )
+        # Verify cancel button properties
+        self.assertTrue(cancel_button.is_displayed())
+        self.assertEqual(cancel_button.text.strip(), "Cancel")
+        # Click cancel button to open modal
+        self.web_driver.execute_script("arguments[0].click();", cancel_button)
+        # Wait for modal to appear
+        WebDriverWait(self.web_driver, 2).until(
+            EC.visibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
+        )
+        # Verify modal is visible and not hidden
+        modal = self.find_element(By.ID, "ow-cancel-confirmation-modal")
+        self.assertTrue(modal.is_displayed())
+        modal = self.find_element(By.ID, "ow-cancel-confirmation-modal")
+        title_element = WebDriverWait(self.web_driver, 2).until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    "#ow-cancel-confirmation-modal .ow-cancel-confirmation-title",
+                )
+            )
+        )
+        self.assertEqual(title_element.text.strip(), "STOP UPGRADE OPERATION")
+        self.assertTrue(title_element.is_displayed())
+        # Test closing modal with No button
+        no_button = WebDriverWait(self.web_driver, 2).until(
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "#ow-cancel-confirmation-modal .ow-dialog-close-x")
+            )
+        )
+        self.web_driver.execute_script("arguments[0].click();", no_button)
+        # Wait for modal to close
+        WebDriverWait(self.web_driver, 2).until(
+            EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
+        )
+        # Open modal again and confirm (main UI flow)
+        cancel_button = WebDriverWait(self.web_driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
+        )
+        self.web_driver.execute_script("arguments[0].click();", cancel_button)
+
+        WebDriverWait(self.web_driver, 10).until(
+            EC.visibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
+        )
+        yes_button = WebDriverWait(self.web_driver, 10).until(
+            EC.element_to_be_clickable(
+                (
+                    By.CSS_SELECTOR,
+                    "#ow-cancel-confirmation-modal .ow-cancel-btn-confirm",
+                )
+            )
+        )
+        self.web_driver.execute_script("arguments[0].click();", yes_button)
+        # Modal should close after confirming
+        WebDriverWait(self.web_driver, 10).until(
+            EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
+        )
+
+    def test_mass_upgrade_confirmation_page_widgets(self):
+        """Test mass upgrade confirmation page loads without JS errors and Select2 widgets are initialized"""
+        _, _, _, build2, _, _, _ = self._set_up_env()
+        self.login()
+        self.open(
+            reverse(f"admin:{self.firmware_app_label}_build_change", args=[build2.id])
+        )
+        self.find_element(
+            by=By.CSS_SELECTOR,
+            value='.title-wrapper .object-tools form button[type="submit"]',
+        ).click()
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located((By.ID, "id_group"))
+        )
+        self._assert_no_js_errors()
+        self.find_element(By.CSS_SELECTOR, ".select2-container")
+        self.assertTrue(
+            len(self.web_driver.find_elements(By.CSS_SELECTOR, ".select2-container"))
+            >= 2,
+            "Both group and location Select2 widgets are initialized",
+        )
+
+    @patch(
+        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
+        return_value=True,
+    )
+    @patch(
+        "openwisp_controller.connection.models.DeviceConnection.connect",
+        return_value=True,
+    )
+    def test_upgrade_operation_admin_no_submit_row(self, *args):
+        """Test that UpgradeOperation admin change page does not display submit-row"""
+        # Create device firmware and upgrade
+        self._create_device_firmware(upgrade=True)
+        uo = UpgradeOperation.objects.first()
+        self.login()
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_upgradeoperation_change", args=[uo.pk]
+            )
+        )
+        self.wait_for_invisibility(By.CSS_SELECTOR, ".submit-row")
