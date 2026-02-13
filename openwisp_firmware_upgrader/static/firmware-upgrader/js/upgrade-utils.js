@@ -76,6 +76,23 @@ const FW_STATUS_HELPERS = {
   includesProgress: (status) => status && status.includes("progress"),
 };
 
+// Mapping of status to CSS class for progress bars
+const STATUS_TO_CSS_CLASS = {
+  [FW_UPGRADE_STATUS.IN_PROGRESS]: FW_UPGRADE_CSS_CLASSES.IN_PROGRESS,
+  [FW_UPGRADE_STATUS.SUCCESS]: FW_UPGRADE_CSS_CLASSES.SUCCESS,
+  [FW_UPGRADE_STATUS.FAILED]: FW_UPGRADE_CSS_CLASSES.FAILED,
+  [FW_UPGRADE_STATUS.ABORTED]: FW_UPGRADE_CSS_CLASSES.ABORTED,
+  [FW_UPGRADE_STATUS.CANCELLED]: FW_UPGRADE_CSS_CLASSES.CANCELLED,
+};
+
+// Statuses that should show 100% progress
+const STATUSES_WITH_FULL_PROGRESS = new Set([
+  FW_UPGRADE_STATUS.SUCCESS,
+  FW_UPGRADE_STATUS.FAILED,
+  FW_UPGRADE_STATUS.ABORTED,
+  FW_UPGRADE_STATUS.CANCELLED,
+]);
+
 // Normalize numeric progress input and fallback to sensible defaults.
 function normalizeProgress(operationProgress = null, status) {
   if (operationProgress !== null && operationProgress !== undefined) {
@@ -150,6 +167,8 @@ if (typeof window !== "undefined") {
   window.ALL_VALID_FW_STATUSES = ALL_VALID_FW_STATUSES;
   window.FW_STATUS_GROUPS = FW_STATUS_GROUPS;
   window.FW_STATUS_HELPERS = FW_STATUS_HELPERS;
+  window.STATUS_TO_CSS_CLASS = STATUS_TO_CSS_CLASS;
+  window.STATUSES_WITH_FULL_PROGRESS = STATUSES_WITH_FULL_PROGRESS;
   window.normalizeProgress = normalizeProgress;
   window.renderProgressBarHtml = renderProgressBarHtml;
   window.getWebSocketProtocol = getWebSocketProtocol;

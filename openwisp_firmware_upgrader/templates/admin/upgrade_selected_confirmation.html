@@ -4,10 +4,6 @@
 {% block extrahead %}
   {{ block.super }}
   {{ media }}
-  <link rel="stylesheet" href="{% static "admin/css/forms.css" %}">
-  <link rel="stylesheet" type="text/css" href="{% static "admin/css/vendor/select2/select2.min.css" %}">
-  <link rel="stylesheet" type="text/css" href="{% static "config/css/lib/jsonschema-ui.css" %}">
-  <link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/upgrade-selected-confirmation.css" %}">
   <script type="text/javascript" src="{% static 'admin/js/cancel.js' %}"></script>
 {% endblock %}
 
@@ -50,12 +46,9 @@
         {% if form.errors %}
           <div>{{ form.errors }}</div>
         {% endif %}
-
         {{ form.build }}
-
         <fieldset class="module aligned">
           <h2>{% trans "Upgrade Filters" %}</h2>
-
           <div class="form-row">
             <div>
               <div class="flex-container">
@@ -68,7 +61,6 @@
               </div>
             </div>
           </div>
-
           <div class="form-row">
             <div>
               <div class="flex-container">
@@ -81,7 +73,6 @@
               </div>
             </div>
           </div>
-
           <div class="form-row">
             <div>
               {{ form.upgrade_options.label_tag }}
@@ -90,7 +81,6 @@
           </div>
         </fieldset>
       </div>
-
       <input
         type="submit"
         name="upgrade_all"
@@ -105,23 +95,12 @@
           class="special">
       {% endif %}
     {% endif %}
-
-    {% if related_count or firmwareless_count %}
-      <a href="#" class="button cancel-link">{% trans "Cancel the upgrade" %}</a>
-    {% else %}
-      <a href="#" class="button cancel-link">{% trans "Go back" %}</a>
-    {% endif %}
-
+    <a href="#" class="button cancel-link">{% if related_count or firmwareless_count %}{% trans "Cancel the upgrade" %}{% else %}{% trans "Go back" %}{% endif %}</a>
   </form>
 {% endblock %}
-
 {% block footer %}
   {{ block.super }}
-  <script type="text/javascript" src="{% static 'admin/js/vendor/jquery/jquery.min.js' %}"></script>
-  <script type="text/javascript" src="{% static 'admin/js/vendor/select2/select2.full.min.js' %}"></script>
-  <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-selected-confirmation.js' %}"></script>
-  <script type="text/javascript" src="{% static 'firmware-upgrader/js/mass-upgrade-select2.js' %}"></script>
   <script>
-    var firmwareUpgraderSchema = {{ firmware_upgrader_schema | safe }}
+    var firmwareUpgraderSchema = {{ firmware_upgrader_schema | safe }};
   </script>
 {% endblock footer %}

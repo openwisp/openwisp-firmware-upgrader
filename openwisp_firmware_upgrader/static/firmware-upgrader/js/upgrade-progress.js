@@ -248,8 +248,6 @@ function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
 
         if (data.type === "operation_update") {
           updateUpgradeOperationDisplay(data.operation);
-        } else if (data.type === "log") {
-          updateUpgradeOperationLog(data);
         } else if (data.type === "status") {
           updateUpgradeOperationStatus(data);
         }
@@ -257,8 +255,6 @@ function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
         // Single operation page
         if (data.type === "operation_update") {
           updateSingleUpgradeOperationDisplay(data.operation);
-        } else if (data.type === "log") {
-          updateSingleUpgradeOperationLog(data);
         } else if (data.type === "status") {
           updateSingleUpgradeOperationStatus(data);
         }
@@ -272,7 +268,7 @@ function initUpgradeProgressWebSockets($, upgradeProgressWebSocket) {
 
 function updateUpgradeOperationDisplay(operation) {
   let $ = django.jQuery;
-  let operationIdInputField = $(`input[value="${operation.id}"]`);
+  let operationIdInputField = $(`input[value="${$.escapeSelector(operation.id)}"]`);
   if (operationIdInputField.length === 0) {
     return;
   }

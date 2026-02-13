@@ -108,10 +108,6 @@ class TestRealTimeWebsockets(
         self.device2 = device2
         self.device3 = device3
 
-    def _snooze(self):
-        """Allows a bit of time for the UI to update, reduces flakyness"""
-        sleep(0.25)
-
     def _assert_no_js_errors(self):
         browser_logs = []
         for log in self.get_browser_logs():

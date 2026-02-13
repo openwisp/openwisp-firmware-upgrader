@@ -433,8 +433,8 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
             operation.cancel()
         except ValueError as e:
             return self._error_response(str(e), status.HTTP_409_CONFLICT)
-        except Exception as e:
-            logger.error(f"Failed to cancel upgrade operation {pk}: {str(e)}")
+        except Exception:
+            logger.exception("Failed to cancel upgrade operation %s", pk)
             return self._error_response(
                 "Failed to cancel upgrade operation",
                 status.HTTP_500_INTERNAL_SERVER_ERROR,

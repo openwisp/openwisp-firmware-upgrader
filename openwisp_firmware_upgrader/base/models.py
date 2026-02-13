@@ -862,7 +862,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # Validate cancellation conditions
         if self.status != self._CANCELLABLE_STATUS:
             raise ValueError(f"Cannot cancel operation with status: {self.status}")
-
         if self.progress >= self._MAX_CANCELLABLE_PROGRESS:
             raise ValueError(
                 "Cannot cancel upgrade: firmware reflashing has already started"

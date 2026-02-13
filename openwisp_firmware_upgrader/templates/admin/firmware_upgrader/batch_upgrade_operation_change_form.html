@@ -115,7 +115,7 @@
             {{ operation.device.name }}
           </a>
         </td>
-        <td class="status-cell" data-operation-id="{{ operation.id }}">
+        <td class="status-cell" data-operation-id="{{ operation.id }}" data-operation-status="{{ operation.status }}">
           <div class="status-content">{{ operation.get_status_display }}</div>
         </td>
         <td>
@@ -173,8 +173,9 @@
 <script>
   // Configuration for WebSocket connection
   var owFirmwareUpgraderApiHost = {
-    host: '{{ request.get_host }}'
+    host: "{{ request.get_host }}"
   };
+  var owDeviceUpgradeOperationUrl = "{% url 'admin:firmware_upgrader_upgradeoperation_delete' '00000000-0000-0000-0000-000000000000' %}";
 </script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-utils.js' %}"></script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-upgrade-progress.js' %}"></script>

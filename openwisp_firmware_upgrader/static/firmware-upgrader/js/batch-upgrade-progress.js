@@ -49,23 +49,18 @@ function initializeExistingBatchUpgradeOperations($, isRetry = false) {
     if (statusCell.find(".upgrade-status-container").length > 0) {
       return;
     }
-    let statusText = statusCell.find(".status-content").text().trim();
-    if (!statusText) {
-      let cellText = statusCell.text().trim();
-      statusText = cellText.replace(/\d+%.*$/, "").trim();
-    }
+    let operationStatus = statusCell.attr("data-operation-status")
     if (
-      statusText &&
-      (FW_STATUS_HELPERS.includesProgress(statusText) ||
-        ALL_VALID_FW_STATUSES.has(statusText))
-    ) {
+      operationStatus &&
+      (FW_STATUS_HELPERS.isValid(operationStatus)))
+     {
       let operationId = statusCell.attr("data-operation-id") || "unknown";
       let operation = {
-        status: statusText,
+        status: operationStatus,
         id: operationId,
         progress: null,
       };
-      updateBatchStatusWithProgressBar(statusCell, operation);
+      renderOperationProgressBarInCell(statusCell, operation);
       processedCount++;
     }
   });
@@ -248,10 +243,10 @@ function updateBatchOperationProgress(data) {
         id: data.operation_id,
         progress: data.progress,
       };
-      updateBatchStatusWithProgressBar(statusCell, operation);
+      renderOperationProgressBarInCell(statusCell, operation);
       if (data.modified) {
         let modifiedCell = row.find("td:nth-child(4)");
-        modifiedCell.html(getFormattedDateTimeString(data.modified));
+        modifiedCell.text(getFormattedDateTimeString(data.modified));
       }
     }
   });
@@ -271,7 +266,10 @@ function addNewOperationRow(data) {
   let rowClass = existingRows % 2 === 0 ? "row1" : "row2";
   tbody.find("tr td[colspan]").parent().remove();
 
-  let deviceUrl = `/admin/firmware_upgrader/upgradeoperation/${data.operation_id}/change/`;
+  let deviceUrl = owDeviceUpgradeOperationUrl.replace(
+    "00000000-0000-0000-0000-000000000000",
+    data.operation_id,
+  );
   let imageDisplay = data.image_name || "None";
   let modifiedTime = data.modified
     ? getFormattedDateTimeString(data.modified)
@@ -301,38 +299,23 @@ function addNewOperationRow(data) {
     id: data.operation_id,
     progress: data.progress,
   };
-  updateBatchStatusWithProgressBar($statusTd, operation);
+  renderOperationProgressBarInCell($statusTd, operation);
 }
 
-function updateBatchStatusWithProgressBar(statusCell, operation) {
+function renderOperationProgressBarInCell(statusCell, operation) {
+  // Renders a visual progress bar in the given status cell based on the
+  // operation's status and progress.
   let $ = django.jQuery;
   let status = operation.status;
   let progressPercentage = normalizeProgress(operation.progress, status);
   statusCell.empty();
   statusCell.append('<div class="upgrade-status-container"></div>');
   let statusContainer = statusCell.find(".upgrade-status-container");
-  let statusClass = "";
-  let showPercentageText = false;
-  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
-  } else if (FW_STATUS_GROUPS.SUCCESS.has(status)) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.SUCCESS;
-    progressPercentage = 100;
-  } else if (status === FW_UPGRADE_STATUS.FAILED) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
-    progressPercentage = 100;
-  } else if (status === FW_UPGRADE_STATUS.ABORTED) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.ABORTED;
-    progressPercentage = 100;
-  } else if (status === FW_UPGRADE_STATUS.CANCELLED) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
+  let statusClass = STATUS_TO_CSS_CLASS[status] || "";
+  if (STATUSES_WITH_FULL_PROGRESS.has(status)) {
     progressPercentage = 100;
   }
-  let progressHtml = renderProgressBarHtml(
-    progressPercentage,
-    statusClass,
-    showPercentageText,
-  );
+  let progressHtml = renderProgressBarHtml(progressPercentage, statusClass, false);
   statusContainer.html(progressHtml);
 }
 

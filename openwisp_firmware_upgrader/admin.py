@@ -148,17 +148,22 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
             ).objects.all()
             self.fields["location"].queryset = Location.objects.all()
 
-    @property
-    def media(self):
+    class Media:
+        # We don't need to include any select2 JS/CSS files as they are
+        # included by the JSONSchemaWidget used for upgrade_options.
+        js = [
+            "admin/js/jquery.init.js",
+            "firmware-upgrader/js/upgrade-selected-confirmation.js",
+            "firmware-upgrader/js/mass-upgrade-select2.js",
+        ]
         css = {
             "all": [
-                "admin/css/vendor/select2/select2.min.css",
+                "admin/css/forms.css",
                 "admin/css/autocomplete.css",
                 "admin/css/ow-auto-filter.css",
                 "firmware-upgrader/css/upgrade-selected-confirmation.css",
             ]
         }
-        return super().media + forms.Media(css=css)
 
 
 @admin.register(load_model("Build"))
