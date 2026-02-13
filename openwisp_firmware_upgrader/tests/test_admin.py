@@ -927,7 +927,6 @@ class TestAdminTransaction(
         self._login()
         env = self._create_upgrade_env()
         batch = env["build2"].batch_upgrade(firmwareless=True)
-
         # Create upgrade operations with different statuses
         upgrade_ops = list(batch.upgradeoperation_set.all())
         if len(upgrade_ops) >= 2:
@@ -935,7 +934,6 @@ class TestAdminTransaction(
             upgrade_ops[0].save()
             upgrade_ops[1].status = "failed"
             upgrade_ops[1].save()
-
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
         )
@@ -971,36 +969,29 @@ class TestAdminTransaction(
     def test_batch_upgrade_operation_organization_filter(self, *args):
         """Test organization filtering in batch upgrade operation admin page"""
         self._login()
-
         # Create devices from different organizations
         org1 = self._create_org(name="Org1", slug="org1")
         org2 = self._create_org(name="Org2", slug="org2")
-
         device1 = self._create_device(organization=org1, name="device1-org-filter")
         device2 = self._create_device(organization=org2, name="device2-org-filter")
-
         self._create_config(device=device1)
         self._create_config(device=device2)
         cred1 = self._get_credentials(organization=org1)
         cred2 = self._get_credentials(organization=org2)
         self._create_device_connection(device=device1, credentials=cred1)
         self._create_device_connection(device=device2, credentials=cred2)
-
         shared_category = self._create_category(
             organization=None, name="Shared Category"
         )
         build = self._create_build(category=shared_category)
         image = self._create_firmware_image(build=build)
-
         self._create_device_firmware(
             device=device1, image=image, device_connection=False
         )
         self._create_device_firmware(
             device=device2, image=image, device_connection=False
         )
-
         batch = build.batch_upgrade(firmwareless=False)
-
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
         )
@@ -1027,14 +1018,11 @@ class TestAdminTransaction(
     def test_batch_upgrade_operation_combined_filters(self, *args):
         """Test combining status and organization filters"""
         self._login()
-
         # Create devices from different organizations
         org1 = self._create_org(name="Org1", slug="org1")
         org2 = self._create_org(name="Org2", slug="org2")
-
         device1 = self._create_device(organization=org1, name="device1-combined-filter")
         device2 = self._create_device(organization=org2, name="device2-combined-filter")
-
         self._create_config(device=device1)
         self._create_config(device=device2)
         cred1 = self._get_credentials(organization=org1)
@@ -1048,16 +1036,13 @@ class TestAdminTransaction(
         )
         build = self._create_build(category=shared_category)
         image = self._create_firmware_image(build=build)
-
         self._create_device_firmware(
             device=device1, image=image, device_connection=False
         )
         self._create_device_firmware(
             device=device2, image=image, device_connection=False
         )
-
         batch = build.batch_upgrade(firmwareless=False)
-
         # Set different statuses for devices from different orgs
         upgrade_ops = list(batch.upgradeoperation_set.all())
         org1_op = (
@@ -1070,12 +1055,10 @@ class TestAdminTransaction(
             if upgrade_ops[1].device.organization == org2
             else upgrade_ops[0]
         )
-
         org1_op.status = "success"
         org1_op.save()
         org2_op.status = "failed"
         org2_op.save()
-
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
         )
@@ -1103,7 +1086,6 @@ class TestAdminTransaction(
         self._login()
         env = self._create_upgrade_env()
         batch = env["build2"].batch_upgrade(firmwareless=True)
-
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
         )
@@ -1111,14 +1093,12 @@ class TestAdminTransaction(
         with self.subTest("Test filter UI elements are present"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
-
             # Check status filter options
             self.assertContains(response, "By status")
             self.assertContains(response, 'title="idle"')
             self.assertContains(response, 'title="in progress"')
             self.assertContains(response, 'title="completed successfully"')
             self.assertContains(response, 'title="completed with some failures"')
-
             # Check organization filter is present
             self.assertContains(response, "By organization")
 
@@ -1151,7 +1131,6 @@ class TestAdminTransaction(
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
         )
-
         with self.subTest("Test search + status filter"):
             response = self.client.get(url + "?q=unique-test&status=success")
             self.assertEqual(response.status_code, 200)
@@ -1212,7 +1191,6 @@ class TestAdminTransaction(
         location_field = form.fields["location"]
         self.assertFalse(location_field.required)
         self.assertIn("location", location_field.help_text)
-
         # Test location queryset is filtered by organization
         location_queryset = list(location_field.queryset)
         self.assertIn(location, location_queryset)
@@ -1348,7 +1326,6 @@ class TestAdminTransaction(
             build=build, location=None  # No location
         )
         url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
-
         with self.subTest("Test no location filter - shows all batches"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)

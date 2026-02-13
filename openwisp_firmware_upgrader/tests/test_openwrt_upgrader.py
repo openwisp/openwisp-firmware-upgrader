@@ -875,15 +875,11 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     def test_upgrade_cancellation_early_stage(self, _mock_putfo):
         """Test cancellation during early stages of upgrade"""
         _, device_conn, upgrade_op, _, _ = self._trigger_upgrade()
-
         ssh = device_conn.connector_instance
         ssh.connect()
-
         # Mock the connection and exec_command to simulate normal upgrade flow
         ssh.exec_command = mocked_exec_upgrade_success
-
         upgrader = OpenWrt(upgrade_op, device_conn)
-
         # Mock the cancellation check to simulate user cancellation
         original_check_cancellation = upgrader._check_cancellation
 
@@ -898,19 +894,15 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                 return original_check_cancellation()
 
         upgrader._check_cancellation = mock_check_cancellation
-
         with self.assertRaises(UpgradeCancelled):
             upgrader.upgrade(upgrade_op.image.file)
-
         ssh.disconnect()
 
     def test_upgrade_cancellation_services_restart(self):
         """Test that non-critical services are restarted when upgrade is cancelled"""
         _, device_conn, upgrade_op, _, _ = self._trigger_upgrade()
-
         ssh = device_conn.connector_instance
         ssh.connect()
-
         # Mock exec_command to track service restart calls
         service_restart_calls = []
 
@@ -924,7 +916,6 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrader = OpenWrt(upgrade_op, device_conn)
         upgrader._stop_non_critical_services()
         upgrader._non_critical_services_stopped = True
-
         upgrade_op.status = "cancelled"
         upgrade_op.save()
 
@@ -935,24 +926,19 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         # Verify services were restarted
         self.assertTrue(len(service_restart_calls) > 0)
         self.assertTrue(any("start" in call for call in service_restart_calls))
-
         ssh.disconnect()
 
     def test_upgrade_cancellation_check_method(self):
         """Test the _check_cancellation method directly"""
         _, device_conn, upgrade_op, _, _ = self._trigger_upgrade()
-
         ssh = device_conn.connector_instance
         ssh.connect()
         ssh.exec_command = mocked_exec_upgrade_success
-
         upgrader = OpenWrt(upgrade_op, device_conn)
-
         # Test that no exception is raised when operation is in progress
         upgrade_op.status = "in-progress"
         upgrade_op.save()
         upgrader._check_cancellation()
-
         # Test that UpgradeCancelled is raised when operation is cancelled
         upgrade_op.status = "cancelled"
         upgrade_op.save()
@@ -965,5 +951,4 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op.status = "aborted"
         upgrade_op.save()
         upgrader._check_cancellation()
-
         ssh.disconnect()

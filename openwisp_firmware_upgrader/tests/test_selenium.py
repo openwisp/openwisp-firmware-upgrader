@@ -345,7 +345,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     def test_upgrade_cancel_modal(self):
         """Test upgrade cancel modal functionality"""
         org, category, build1, build2, image1, image2, device = self._set_up_env()
-
         UpgradeOperation.objects.create(
             device=device,
             image=image2,
@@ -353,7 +352,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             log="Upgrade operation in progress...",
             progress=30,
         )
-
         self.login()
         self.open(
             "{}#upgradeoperation_set-group".format(
@@ -363,10 +361,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
         )
         self.hide_loading_overlay()
-
         # Wait for upgrade operations section to be visible
         self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
-
         # Wait for progress bars and status containers to load
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located(
@@ -380,21 +376,16 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         # Verify cancel button properties
         self.assertTrue(cancel_button.is_displayed())
         self.assertEqual(cancel_button.text.strip(), "Cancel")
-
         # Click cancel button to open modal
         self.web_driver.execute_script("arguments[0].click();", cancel_button)
-
         # Wait for modal to appear
         WebDriverWait(self.web_driver, 2).until(
             EC.visibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
-
         # Verify modal is visible and not hidden
         modal = self.find_element(By.ID, "ow-cancel-confirmation-modal")
         self.assertTrue(modal.is_displayed())
-
         modal = self.find_element(By.ID, "ow-cancel-confirmation-modal")
-
         title_element = WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located(
                 (
@@ -403,10 +394,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 )
             )
         )
-
         self.assertEqual(title_element.text.strip(), "STOP UPGRADE OPERATION")
         self.assertTrue(title_element.is_displayed())
-
         # Test closing modal with No button
         no_button = WebDriverWait(self.web_driver, 2).until(
             EC.element_to_be_clickable(
@@ -414,12 +403,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
         )
         self.web_driver.execute_script("arguments[0].click();", no_button)
-
         # Wait for modal to close
         WebDriverWait(self.web_driver, 2).until(
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
-
         # Open modal again and confirm (main UI flow)
         cancel_button = WebDriverWait(self.web_driver, 10).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
@@ -429,7 +416,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         WebDriverWait(self.web_driver, 10).until(
             EC.visibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
-
         yes_button = WebDriverWait(self.web_driver, 10).until(
             EC.element_to_be_clickable(
                 (
@@ -439,7 +425,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
         )
         self.web_driver.execute_script("arguments[0].click();", yes_button)
-
         # Modal should close after confirming
         WebDriverWait(self.web_driver, 10).until(
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))

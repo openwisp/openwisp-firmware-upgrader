@@ -716,7 +716,6 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         image2 = self._create_firmware_image(build=build2)
         group1 = self._create_device_group(name="Group 1", organization=org)
         group2 = self._create_device_group(name="Group 2", organization=org)
-
         device1 = self._create_device(
             name="Device1",
             organization=org,
@@ -742,7 +741,6 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self._create_config(device=device1)
         self._create_config(device=device2)
         self._create_config(device=device3)
-
         unique_id = str(uuid.uuid4())[:8]
         credentials = self._create_credentials(
             name=f"test-creds-{unique_id}", organization=None, auto_add=True
@@ -826,7 +824,6 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         DeviceLocation.objects.create(content_object=device1, location=location1)
         DeviceLocation.objects.create(content_object=device2, location=location2)
         # device3 has no location
-
         self._create_config(device=device1)
         self._create_config(device=device2)
         self._create_config(device=device3)

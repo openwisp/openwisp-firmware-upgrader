@@ -122,15 +122,10 @@ class TestRealTimeWebsockets(
         path = reverse(
             f"admin:{self.config_app_label}_device_change", args=[self.device.pk]
         )
-
         self.login(username=self.admin.username, password=self.admin_password)
-
         self.open(f"{path}#upgradeoperation_set-group")
-
         self.hide_loading_overlay()
-
         self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
-
         WebDriverWait(self.web_driver, 10).until(
             lambda driver: driver.execute_script(
                 "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;"
@@ -139,7 +134,6 @@ class TestRealTimeWebsockets(
 
     async def test_real_time_progress_updates(self):
         """Test real-time progress updates via websocket"""
-
         operation = await database_sync_to_async(UpgradeOperation.objects.create)(
             device=self.device,
             image=self.image2,
@@ -147,13 +141,10 @@ class TestRealTimeWebsockets(
             log="Starting upgrade process...",
             progress=25,
         )
-
         await self._prepare()
-
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
-
         # Test initial progress bar visibility and components
         progress_container = self.find_element(
             By.CSS_SELECTOR, ".upgrade-status-container"
@@ -161,7 +152,6 @@ class TestRealTimeWebsockets(
         self.assertTrue(
             progress_container.is_displayed(), "Progress container should be visible"
         )
-
         WebDriverWait(self.web_driver, 10).until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-bar"))
         )
@@ -175,11 +165,9 @@ class TestRealTimeWebsockets(
                 (By.CSS_SELECTOR, ".upgrade-progress-text")
             )
         )
-
         # Verify initial state
         initial_progress_text = progress_text.text
         self.assertEqual(initial_progress_text, "25%")
-
         # Update operation to 75% progress
         operation.progress = 75
         operation.log = (
@@ -189,7 +177,6 @@ class TestRealTimeWebsockets(
             "Upload progress: 75%"
         )
         await database_sync_to_async(operation.save)()
-
         # Publish websocket update
         publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
@@ -204,7 +191,6 @@ class TestRealTimeWebsockets(
                 "created": operation.created.isoformat(),
             }
         )
-
         # Verify real-time UI updates
         WebDriverWait(self.web_driver, 5).until(
             lambda driver: driver.find_element(
@@ -212,14 +198,12 @@ class TestRealTimeWebsockets(
             ).text
             == "75%"
         )
-
         WebDriverWait(self.web_driver, 5).until(
             lambda driver: "width: 75%"
             in driver.find_element(
                 By.CSS_SELECTOR, ".upgrade-progress-fill"
             ).get_attribute("style")
         )
-
         # Verify log updates in real-time
         WebDriverWait(self.web_driver, 5).until(
             lambda driver: all(
@@ -234,7 +218,6 @@ class TestRealTimeWebsockets(
                 ]
             )
         )
-
         self._assert_no_js_errors()
 
     async def test_real_time_status_change_to_success(self):
@@ -247,19 +230,15 @@ class TestRealTimeWebsockets(
             log="Starting upgrade process...\nUploading firmware...",
             progress=75,
         )
-
         await self._prepare()
-
         # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
-
         initial_progress_text = self.find_element(
             By.CSS_SELECTOR, ".upgrade-progress-text"
         ).text
         self.assertEqual(initial_progress_text, "75%")
-
         # Update operation status to success with realistic log
         operation.status = "success"
         operation.progress = 100
@@ -276,7 +255,6 @@ class TestRealTimeWebsockets(
             "Firmware upgrade completed successfully"
         )
         await database_sync_to_async(operation.save)()
-
         # Publish websocket update
         publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
@@ -291,24 +269,19 @@ class TestRealTimeWebsockets(
                 "created": operation.created.isoformat(),
             }
         )
-
         # Verify real-time UI updates for success status
         WebDriverWait(self.web_driver, 5).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-status-success"))
         )
-
         status_element = self.find_element(By.CSS_SELECTOR, ".upgrade-status-success")
         self.assertEqual(status_element.text, "success")
-
         progress_text = self.find_element(By.CSS_SELECTOR, ".upgrade-progress-text")
         self.assertEqual(progress_text.text, "100%")
-
         progress_fill = self.find_element(
             By.CSS_SELECTOR, ".upgrade-progress-fill.success"
         )
         style = progress_fill.get_attribute("style")
         self.assertIn("width: 100%", style)
-
         # Verify comprehensive success log display
         log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
         log_html = log_element.get_attribute("innerHTML")
@@ -316,7 +289,6 @@ class TestRealTimeWebsockets(
         self.assertIn("Device identity verified", log_html)
         self.assertIn("Sysupgrade test passed", log_html)
         self.assertIn("completed successfully", log_html)
-
         self._assert_no_js_errors()
 
     async def test_real_time_log_updates(self):
@@ -329,14 +301,11 @@ class TestRealTimeWebsockets(
             log="Starting upgrade process...",
             progress=20,
         )
-
         await self._prepare()
-
         # Wait for initial state
         WebDriverWait(self.web_driver, 5).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".field-log .readonly"))
         )
-
         initial_log = self.find_element(
             By.CSS_SELECTOR, ".field-log .readonly"
         ).get_attribute("innerHTML")
@@ -345,16 +314,13 @@ class TestRealTimeWebsockets(
         new_log_line = "Device identity verified successfully"
         operation.log = f"{operation.log}\n{new_log_line}"
         await database_sync_to_async(operation.save)()
-
         publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_log(new_log_line, "in-progress")
-
         # Verify UI update
         updated_log = self.find_element(
             By.CSS_SELECTOR, ".field-log .readonly"
         ).get_attribute("innerHTML")
         self.assertIn("Device identity verified successfully", updated_log)
-
         self._assert_no_js_errors()
 
     async def test_real_time_status_change_to_failed(self):
@@ -367,14 +333,11 @@ class TestRealTimeWebsockets(
             log="Starting upgrade process...",
             progress=50,
         )
-
         await self._prepare()
-
         # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
-
         operation.status = "failed"
         operation.progress = 50  # Failed operations don't reach 100%
         operation.log = (
@@ -390,7 +353,6 @@ class TestRealTimeWebsockets(
             "Upgrade operation failed"
         )
         await database_sync_to_async(operation.save)()
-
         # Publish websocket update
         publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
@@ -405,19 +367,16 @@ class TestRealTimeWebsockets(
                 "created": operation.created.isoformat(),
             }
         )
-
         WebDriverWait(self.web_driver, 5).until(
             EC.presence_of_element_located(
                 (By.CSS_SELECTOR, ".upgrade-progress-fill.failed")
             )
         )
-
         progress_fill = self.find_element(
             By.CSS_SELECTOR, ".upgrade-progress-fill.failed"
         )
         class_list = progress_fill.get_attribute("class")
         self.assertIn("failed", class_list)
-
         log_element = self.find_element(By.CSS_SELECTOR, ".field-log .readonly")
         log_html = log_element.get_attribute("innerHTML")
         self.assertIn("Image check failed", log_html)
@@ -437,14 +396,11 @@ class TestRealTimeWebsockets(
             log="Starting upgrade process...",
             progress=30,
         )
-
         await self._prepare()
-
         # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
-
         operation.status = "aborted"
         operation.progress = 30  # Aborted operations stop at current progress
         operation.log = (
@@ -457,7 +413,6 @@ class TestRealTimeWebsockets(
             "Non critical services started, aborting upgrade."
         )
         await database_sync_to_async(operation.save)()
-
         # Publish websocket update
         publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
@@ -472,7 +427,6 @@ class TestRealTimeWebsockets(
                 "created": operation.created.isoformat(),
             }
         )
-
         # Wait for log updates with explicit waits
         WebDriverWait(self.web_driver, 10).until(
             lambda driver: all(
