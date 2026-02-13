@@ -49,11 +49,8 @@ function initializeExistingBatchUpgradeOperations($, isRetry = false) {
     if (statusCell.find(".upgrade-status-container").length > 0) {
       return;
     }
-    let operationStatus = statusCell.attr("data-operation-status")
-    if (
-      operationStatus &&
-      (FW_STATUS_HELPERS.isValid(operationStatus)))
-     {
+    let operationStatus = statusCell.attr("data-operation-status");
+    if (operationStatus && FW_STATUS_HELPERS.isValid(operationStatus)) {
       let operationId = statusCell.attr("data-operation-id") || "unknown";
       let operation = {
         status: operationStatus,

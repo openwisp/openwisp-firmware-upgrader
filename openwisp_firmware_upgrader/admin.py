@@ -614,16 +614,28 @@ class DeviceFirmwareForm(forms.ModelForm):
 
     def full_clean(self):
         super().full_clean()
-        if not self.errors and hasattr(self, "cleaned_data"):
-            upgrade_op = UpgradeOperation(
-                device=self.cleaned_data["device"],
-                image=self.cleaned_data["image"],
-                upgrade_options=self.cleaned_data["upgrade_options"],
-            )
-            try:
-                upgrade_op.full_clean()
-            except forms.ValidationError as error:
-                self.add_error("__all__", error.messages[0])
+        if not self.is_bound:
+            return
+        if self.errors:
+            return
+        cleaned_data = getattr(self, "cleaned_data", {})
+        device = cleaned_data.get("device")
+        image = cleaned_data.get("image")
+        upgrade_options = cleaned_data.get("upgrade_options")
+        if not image:
+            self.add_error("image", _("This field is required."))
+            return
+        if not device:
+            return
+        upgrade_op = UpgradeOperation(
+            device=device,
+            image=image,
+            upgrade_options=upgrade_options,
+        )
+        try:
+            upgrade_op.full_clean()
+        except ValidationError as error:
+            self.add_error(None, error)
 
     def save(self, commit=True):
         """
