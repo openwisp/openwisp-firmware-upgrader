@@ -198,7 +198,7 @@ class TestRealTimeWebsockets(
             )
         )
         WebDriverWait(self.web_driver, 5).until(
-            EC.element_attribute_to_include(
+            EC.text_to_be_present_in_element_attribute(
                 (By.CSS_SELECTOR, ".upgrade-progress-fill"), "style", "width: 75%"
             )
         )
