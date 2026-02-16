@@ -74,9 +74,9 @@ jobs:
           pip install -U ${{ matrix.django-version }}
           sudo npm install -g prettier
 
-      - name: Start InfluxDB and redis
+      - name: Start redis
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
-        run: docker compose up -d postgres redis
+        run: docker compose up -d redis
 
       - name: QA checks
         run: |

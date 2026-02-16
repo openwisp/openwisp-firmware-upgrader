@@ -2,7 +2,10 @@ import os
 import sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TESTING = "test" in sys.argv
+TESTING = os.environ.get("TESTING", False) or sys.argv[1:2] == ["test"]
+SELENIUM_HEADLESS = True if os.environ.get("SELENIUM_HEADLESS", False) else False
+SHELL = "shell" in sys.argv or "shell_plus" in sys.argv
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 DEBUG = True
 
@@ -15,10 +18,7 @@ DATABASES = {
     }
 }
 
-if TESTING and not any(
-    tag in sys.argv
-    for tag in ("--exclude-tag=no_parallel", "--exclude-tag=selenium_tests")
-):
+if TESTING and "--exclude-tag=selenium_tests" not in sys.argv:
     DATABASES["default"]["TEST"] = {
         "NAME": os.path.join(BASE_DIR, "openwisp-firmware-upgrader-tests.db"),
     }
@@ -103,14 +103,15 @@ MIDDLEWARE = [
 ROOT_URLCONF = "openwisp2.urls"
 
 ASGI_APPLICATION = "openwisp2.routing.application"
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
-        },
-    },
-}
+if not TESTING:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [f"{REDIS_URL}/7"]},
+        }
+    }
+else:
+    CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
 
 TIME_ZONE = "Europe/Rome"
@@ -167,19 +168,17 @@ else:
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": "redis://localhost/0",
+            "LOCATION": f"{REDIS_URL}/6",
             "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
         }
     }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"
-
 # Force Redis for development to ensure async task execution
-CELERY_BROKER_URL = "redis://localhost/2"
-
-# Only use eager mode for actual tests
-if TESTING:
+if not TESTING:
+    CELERY_BROKER_URL = f"{REDIS_URL}/1"
+else:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
     CELERY_BROKER_URL = "memory://"

@@ -2,35 +2,44 @@
 # -*- coding: utf-8 -*-
 
 import os
+import subprocess
 import sys
 
-from django.core.management import execute_from_command_line
 
-
-def run_tests(args, settings_module):
+def run_tests(extra_args, settings_module, test_app):
     """
-    Run Django tests with the specified settings module while preserving command-line arguments.
+    Run Django tests with the specified settings module in a separate subprocess.
     """
-    os.environ["DJANGO_SETTINGS_MODULE"] = settings_module
-    execute_from_command_line(args)
+    args = [
+        "./tests/manage.py",
+        "test",
+        test_app,
+        "--settings",
+        settings_module,
+        "--pythonpath",
+        "tests",
+    ]
+    args.extend(extra_args)
+    if os.environ.get("COVERAGE_RUN", False):
+        # Since the Django tests are run in a separate process (using subprocess),
+        # we need to run coverage in the subprocess as well.
+        args = ["coverage", "run"] + args
+    result = subprocess.run(args)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
 
 
 if __name__ == "__main__":
-    sys.path.insert(0, "tests")
-
-    args = sys.argv
-    args.insert(1, "test")
+    # Configure Django settings for test execution
+    # (sets Celery to eager mode, configures in-memory channels layer, etc.)
+    os.environ.setdefault("TESTING", "1")
+    args = sys.argv.copy()[1:]
+    # normal tests vs SAMPLE_APP
     if not os.environ.get("SAMPLE_APP", False):
-        args.insert(2, "openwisp_firmware_upgrader")
+        test_app = "openwisp_firmware_upgrader"
+        app_dir = "openwisp_firmware_upgrader/"
     else:
-        args.insert(2, "openwisp2")
-
-    # Run all tests except Selenium tests using SQLite
-    sqlite_args = args.copy()
-    sqlite_args.extend(["--exclude-tag", "selenium_tests"])
-    run_tests(sqlite_args, settings_module="openwisp2.settings")
-
-    # Run Selenium tests using PostgreSQL
-    psql_args = args.copy()
-    psql_args.extend(["--tag", "selenium_tests"])
-    run_tests(psql_args, settings_module="openwisp2.postgresql_settings")
+        test_app = "openwisp2"
+        app_dir = "tests/openwisp2/"
+    # Run Django tests
+    django_tests = run_tests(args, "openwisp2.settings", test_app)
