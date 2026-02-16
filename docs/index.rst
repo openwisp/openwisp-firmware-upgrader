@@ -42,6 +42,7 @@ within the OpenWISP architecture.
     ./user/automatic-device-firmware-detection.rst
     ./user/custom-firmware-upgrader.rst
     ./user/rest-api.rst
+    ./user/websocket-api.rst
     ./user/settings.rst
 
 .. toctree::
