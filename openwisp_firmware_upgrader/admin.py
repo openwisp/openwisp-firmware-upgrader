@@ -249,7 +249,17 @@ class BuildAdmin(BaseAdmin):
                     return redirect(url)
                 except ValidationError as e:
                     self.message_user(request, str(e.messages[0]), messages.ERROR)
-        result = BatchUpgradeOperation.dry_run(build=build)
+        dry_run_kwargs = {
+            "build": build,
+        }
+        if form.is_bound:
+            group = form.cleaned_data.get("group") if not form.errors else None
+            location = form.cleaned_data.get("location") if not form.errors else None
+            dry_run_kwargs["group"] = group
+            dry_run_kwargs["location"] = location
+        result = BatchUpgradeOperation.dry_run(
+            **dry_run_kwargs,
+        )
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
         title = _("Confirm mass upgrade operation")

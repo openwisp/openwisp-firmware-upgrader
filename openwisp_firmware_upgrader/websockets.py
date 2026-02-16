@@ -64,6 +64,19 @@ class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
             )
         )()
 
+    async def receive_json(self, content):
+        """Handle incoming messages from the client"""
+        message_type = content.get("type")
+        if message_type != "request_current_state":
+            logger.warning(f"Unknown message type received: {message_type}")
+            return
+        await self._handle_current_state_request(content)
+
+    async def _handle_current_state_request(self, content):
+        raise NotImplementedError(
+            "Subclasses must implement _handle_current_state_request method"
+        )
+
 
 def _convert_lazy_translations(obj):
     """Recursively convert Django lazy translation objects to strings for JSON serialization."""
@@ -131,14 +144,6 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
     def _get_upgrade_operation(self):
         UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
         return UpgradeOperation.objects.filter(pk=self.operation_id).first()
-
-    async def receive_json(self, content):
-        """Handle incoming messages from the client"""
-        message_type = content.get("type")
-        if not message_type:
-            logger.warning("Received message without type")
-            return
-        await self._handle_current_operation_state_request(content)
 
     async def _handle_current_operation_state_request(self, content):
         """Handle request for current state of the operation"""
@@ -215,20 +220,12 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
         except AttributeError:
             return
 
-    async def receive_json(self, content):
-        """Handle incoming messages from the client"""
-        message_type = content.get("type")
-        if message_type != "request_current_state":
-            logger.warning(f"Unknown message type received: {message_type}")
-            return
-        await self._handle_current_batch_state_request(content)
-
     @sync_to_async
     def _get_batch_upgrade_operation(self):
         BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
         return BatchUpgradeOperation.objects.filter(pk=self.batch_id).first()
 
-    async def _handle_current_batch_state_request(self, content):
+    async def _handle_current_state_request(self, content):
         """Handle request for current state of batch upgrade operations"""
         # We import serializers here instead globally to prevent NotReady errors.
         from .api.serializers import UpgradeOperationSerializer
@@ -317,14 +314,6 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
         except AttributeError:
             return
-
-    async def receive_json(self, content):
-        """Handle incoming messages from the client"""
-        message_type = content.get("type")
-        if message_type == "request_current_state":
-            await self._handle_current_state_request(content)
-        else:
-            logger.warning(f"Unknown message type received: {message_type}")
 
     async def _handle_current_state_request(self, content):
         """Handle request for current state of in-progress operations"""

@@ -12,8 +12,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
-from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
-from openwisp_utils.tests import SeleniumTestMixin, capture_any_output
+from openwisp_firmware_upgrader.tests.base import SeleniumTestMixin, TestUpgraderMixin
+from openwisp_utils.tests import capture_any_output
 
 from ..swapper import load_model
 from ..upgraders.openwisp import OpenWrt
@@ -56,17 +56,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     def _get_device_firmware_dropdown_select(self):
         select_element = self.find_element(By.ID, "id_devicefirmware-0-image")
         return Select(select_element)
-
-    def _assert_no_js_errors(self):
-        browser_logs = []
-        for log in self.get_browser_logs():
-            # ignore if not console-api
-            if log.get("source") != "console-api":
-                continue
-            else:
-                print(log)
-                browser_logs.append(log)
-        self.assertEqual(browser_logs, [])
 
     @capture_any_output()
     def test_restoring_deleted_device(self):

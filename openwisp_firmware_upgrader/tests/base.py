@@ -9,6 +9,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from openwisp_controller.connection.tests.utils import CreateConnectionsMixin
+from openwisp_utils.tests.selenium import SeleniumTestMixin
 
 from ..swapper import load_model
 
@@ -213,6 +214,19 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         group.full_clean()
         group.save()
         return group
+
+
+class SeleniumTestMixin(SeleniumTestMixin):
+    def _assert_no_js_errors(self):
+        browser_logs = []
+        for log in self.get_browser_logs():
+            # ignore if not console-api
+            if log.get("source") != "console-api":
+                continue
+            else:
+                print(log)
+                browser_logs.append(log)
+        self.assertEqual(browser_logs, [])
 
 
 def spy_mock(method, pre_action):

@@ -15,12 +15,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
-from openwisp_firmware_upgrader.tests.base import TestUpgraderMixin
+from openwisp_firmware_upgrader.tests.base import SeleniumTestMixin, TestUpgraderMixin
 from openwisp_firmware_upgrader.websockets import (
     BatchUpgradeProgressPublisher,
     UpgradeProgressPublisher,
 )
-from openwisp_utils.tests import SeleniumTestMixin
 
 from ..swapper import load_model
 
@@ -109,17 +108,6 @@ class TestRealTimeWebsockets(
         self.device1 = device1
         self.device2 = device2
         self.device3 = device3
-
-    def _assert_no_js_errors(self):
-        browser_logs = []
-        for log in self.get_browser_logs():
-            # ignore if not console-api
-            if log.get("source") != "console-api":
-                continue
-            else:
-                print(log)
-                browser_logs.append(log)
-        self.assertEqual(browser_logs, [])
 
     async def _prepare(self):
         path = reverse(
@@ -476,7 +464,7 @@ class TestRealTimeWebsockets(
         try:
             rows = self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")
             return len(rows) == expected_count
-        except Exception:
+        except (StaleElementReferenceException, NoSuchElementException):
             return False
 
     async def _prepare_batch(self, batch_operation):

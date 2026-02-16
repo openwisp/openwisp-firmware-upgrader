@@ -304,6 +304,17 @@ class TestModels(TestUpgraderMixin, TestCase):
             uo.update_progress(75.7)
             self.assertEqual(uo.progress, 75)
 
+    def test_concurrent_cancellation_race_condition(self):
+        """Test that concurrent cancellation attempts don't cause errors."""
+        self._create_device_firmware(upgrade=True)
+        uo = UpgradeOperation.objects.first()
+        with mock.patch.object(uo, "save"):
+            # First call succeeds
+            uo.cancel()
+            # Second call should raise ValueError (already cancelled)
+            with self.assertRaises(ValueError):
+                uo.cancel()
+
     def test_permissions(self):
         admin = Group.objects.get(name="Administrator")
         operator = Group.objects.get(name="Operator")
