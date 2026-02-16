@@ -301,8 +301,8 @@ class BuildAdmin(BaseAdmin):
             context,
         )
 
-    upgrade_selected.short_description = (
-        "Mass-upgrade devices related " "to the selected build"
+    upgrade_selected.short_description = _(
+        "Mass-upgrade devices related to the selected build"
     )
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
@@ -351,7 +351,7 @@ class ReadonlyUpgradeOptionsMixin:
             option_title = value["title"]
             icon_url = static(f"admin/img/icon-{option_used}.svg")
             options.append(
-                f'<li><img src="{icon_url}" alt="{option_used}">{option_title}</li>'
+                f'<li><img src="{icon_url}" alt="{_(option_used)}">{option_title}</li>'
             )
         return format_html(
             mark_safe(f'<ul class="readonly-upgrade-options">{"".join(options)}</ul>')
@@ -598,7 +598,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     def __get_rate(self, value):
         if value:
             return f"{value}%"
-        return "N/A"
+        return _("N/A")
 
     completed.short_description = _("completed")
     success_rate.short_description = _("success rate")

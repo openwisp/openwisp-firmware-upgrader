@@ -268,10 +268,10 @@ function addNewOperationRow(data) {
     "00000000-0000-0000-0000-000000000000",
     data.operation_id,
   );
-  let imageDisplay = data.image_name || "None";
+  let imageDisplay = data.image_name || gettext("None");
   let modifiedTime = data.modified
     ? getFormattedDateTimeString(data.modified)
-    : "Just now";
+    : gettext("Just now");
 
   // Build row using DOM attributes to prevent XSS vulnerability due to string interpolation
   let $row = $("<tr>").addClass(rowClass);
@@ -279,16 +279,16 @@ function addNewOperationRow(data) {
   let $link = $("<a>")
     .addClass("device-link")
     .attr("href", deviceUrl)
-    .attr("aria-label", `View upgrade operation for ${data.device_name}`)
-    .text(data.device_name); // SAFE
+    .attr("aria-label", gettext("View upgrade operation for") + " " + data.device_name)
+    .text(data.device_name);
   $deviceTd.append($link);
   let $statusTd = $("<td>")
     .addClass("status-cell")
     .attr("data-operation-id", data.operation_id);
   let $statusContent = $("<div>").addClass("status-content").text(data.status); // SAFE
   $statusTd.append($statusContent);
-  let $imageTd = $("<td>").text(imageDisplay); // SAFE
-  let $modifiedTd = $("<td>").text(modifiedTime); // SAFE
+  let $imageTd = $("<td>").text(imageDisplay);
+  let $modifiedTd = $("<td>").text(modifiedTime);
   $row.append($deviceTd, $statusTd, $imageTd, $modifiedTd);
   tbody.append($row);
 

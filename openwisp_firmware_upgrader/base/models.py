@@ -855,9 +855,15 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     def update_progress(self, progress, save=True):
         """Update progress with validation."""
         if not isinstance(progress, (int, float)):
-            raise ValidationError(f"Progress must be numeric, got {type(progress)}")
+            raise ValidationError(
+                _("Progress must be numeric, got %(progress_type)s")
+                % {"progress_type": type(progress)}
+            )
         if not 0 <= progress <= 100:
-            raise ValidationError(f"Progress must be between 0-100, got {progress}")
+            raise ValidationError(
+                _("Progress must be between 0-100, got %(progress)s")
+                % {"progress": progress}
+            )
         self.progress = int(progress)
         if save:
             self.save()
@@ -866,13 +872,16 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         """Cancels the upgrade operation if conditions are met."""
         # Validate cancellation conditions
         if self.status != self._CANCELLABLE_STATUS:
-            raise ValueError(f"Cannot cancel operation with status: {self.status}")
+            raise ValueError(
+                _("Cannot cancel operation with status: %(status)s")
+                % {"status": self.status}
+            )
         if self.progress >= UpgradeProgress.CANCELLATION_THRESHOLD:
             raise ValueError(
-                "Cannot cancel upgrade: firmware reflashing has already started"
+                _("Cannot cancel upgrade: firmware reflashing has already started")
             )
         # Update status and save
-        self.log_line("Upgrade operation has been cancelled by user", save=False)
+        self.log_line(_("Upgrade operation has been cancelled by user"), save=False)
         self.status = "cancelled"
         self.save()
         return
