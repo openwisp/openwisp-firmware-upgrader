@@ -34,7 +34,6 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 @tag("selenium_tests")
-@tag("no_parallel")
 class TestRealTimeWebsockets(
     TestUpgraderMixin,
     SeleniumTestMixin,

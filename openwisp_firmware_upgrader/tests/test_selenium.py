@@ -26,7 +26,6 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 
 
 @tag("selenium_tests")
-@tag("no_parallel")
 class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
     config_app_label = "config"
     firmware_app_label = "firmware_upgrader"

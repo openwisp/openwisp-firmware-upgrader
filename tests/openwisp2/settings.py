@@ -103,7 +103,7 @@ MIDDLEWARE = [
 ROOT_URLCONF = "openwisp2.urls"
 
 ASGI_APPLICATION = "openwisp2.routing.application"
-if not TESTING:
+if not TESTING or "--exclude-tag=selenium_tests" not in sys.argv:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
