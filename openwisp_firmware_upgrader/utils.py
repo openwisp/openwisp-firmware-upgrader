@@ -41,3 +41,14 @@ def get_upgrader_class_from_device_connection(device_conn):
         logger.exception(e)
         return
     return upgrader_class
+
+
+class UpgradeProgress:
+    CONNECTION_SUCCESS = 10
+    DEVICE_VERIFIED = 15
+    CHECKSUM_VERIFIED = 20
+    REFLASHING = 65
+    RECONNECTED = 90
+    COMPLETE = 100
+
+    CANCELLATION_THRESHOLD = 65

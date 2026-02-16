@@ -263,6 +263,47 @@ class TestModels(TestUpgraderMixin, TestCase):
         uo.refresh_from_db()
         self.assertEqual(uo.log, "line1\nline2")
 
+    def test_upgrade_operation_update_progress(self):
+        self._create_device_firmware(upgrade=True)
+        uo = UpgradeOperation.objects.first()
+
+        with self.subTest("Valid progress update to 50"):
+            uo.update_progress(50)
+            self.assertEqual(uo.progress, 50)
+
+        with self.subTest("Valid progress update to 0"):
+            uo.update_progress(0)
+            self.assertEqual(uo.progress, 0)
+
+        with self.subTest("Valid progress update to 100"):
+            uo.update_progress(100)
+            self.assertEqual(uo.progress, 100)
+
+        with self.subTest("Invalid progress: non-numeric string"):
+            with self.assertRaises(ValidationError) as context:
+                uo.update_progress("50")
+            self.assertEqual(
+                context.exception.message, "Progress must be numeric, got <class 'str'>"
+            )
+
+        with self.subTest("Invalid progress: negative value"):
+            with self.assertRaises(ValidationError) as context:
+                uo.update_progress(-1)
+            self.assertEqual(
+                context.exception.message, "Progress must be between 0-100, got -1"
+            )
+
+        with self.subTest("Invalid progress: value over 100"):
+            with self.assertRaises(ValidationError) as context:
+                uo.update_progress(101)
+            self.assertEqual(
+                context.exception.message, "Progress must be between 0-100, got 101"
+            )
+
+        with self.subTest("Float value gets converted to int"):
+            uo.update_progress(75.7)
+            self.assertEqual(uo.progress, 75)
+
     def test_permissions(self):
         admin = Group.objects.get(name="Administrator")
         operator = Group.objects.get(name="Operator")

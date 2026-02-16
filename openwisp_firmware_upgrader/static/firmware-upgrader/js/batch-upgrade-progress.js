@@ -14,8 +14,9 @@ django.jQuery(function ($) {
   const batchUpgradeProgressWebSocket = new ReconnectingWebSocket(wsUrl, null, {
     automaticOpen: false,
     timeoutInterval: 7000,
-    maxRetries: 5,
-    retryInterval: 3000,
+    maxRetries: 10,
+    retryInterval: 30000,
+    reconnectDecay: 2,
   });
   window.batchUpgradeProgressWebSocket = batchUpgradeProgressWebSocket;
   // Initialize websocket connection
@@ -312,6 +313,7 @@ function renderOperationProgressBarInCell(statusCell, operation) {
   if (STATUSES_WITH_FULL_PROGRESS.has(status)) {
     progressPercentage = 100;
   }
+  // Per operation bars do not show percentage text to keep table rows compact
   let progressHtml = renderProgressBarHtml(progressPercentage, statusClass, false);
   statusContainer.html(progressHtml);
 }

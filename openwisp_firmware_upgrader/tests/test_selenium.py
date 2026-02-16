@@ -288,7 +288,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     )
     @patch.object(OpenWrt, "SCHEMA", None)
     def test_upgrader_with_unsupported_upgrade_options(self, *args):
-        org, category, build1, build2, image1, image2, device = self._set_up_env()
+        _org, _category, _build1, build2, _image1, image2, device = self._set_up_env()
         self.login()
 
         with self.subTest("Test DeviceFirmware"):

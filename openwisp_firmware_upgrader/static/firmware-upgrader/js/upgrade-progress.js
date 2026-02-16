@@ -353,7 +353,7 @@ function updateStatusWithProgressBar(statusField, operation) {
   } else if (FW_STATUS_GROUPS.FAILURE.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${status}" style="width: 100%"></div>
+        <div class="upgrade-progress-fill ${escapeHtml(status)}" style="width: 100%"></div>
       </div>
     `;
   } else {

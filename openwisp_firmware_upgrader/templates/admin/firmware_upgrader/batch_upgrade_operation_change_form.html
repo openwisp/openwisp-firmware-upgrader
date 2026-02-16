@@ -173,7 +173,7 @@
 <script>
   // Configuration for WebSocket connection
   var owFirmwareUpgraderApiHost = {
-    host: "{{ request.get_host }}"
+    host: "{{ request.get_host|escapejs }}"
   };
   var owDeviceUpgradeOperationUrl = "{{ upgrade_operation_path }}";
 </script>

@@ -12,7 +12,7 @@
 <script>
   // Configuration for WebSocket connection
   var owFirmwareUpgraderApiHost = {
-    host: "{{ request.get_host }}"
+    host: "{{ request.get_host|escapejs }}"
   };
 </script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-utils.js' %}"></script>

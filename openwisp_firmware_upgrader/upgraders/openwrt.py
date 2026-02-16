@@ -19,6 +19,7 @@ from ..exceptions import (
     UpgradeNotNeeded,
 )
 from ..settings import OPENWRT_SETTINGS
+from ..utils import UpgradeProgress
 
 
 class OpenWrt(object):
@@ -192,7 +193,7 @@ class OpenWrt(object):
             )
             raise UpgradeAborted()
         self.log(_("Device identity verified successfully"), save=False)
-        self.upgrade_operation.update_progress(15)
+        self.upgrade_operation.update_progress(UpgradeProgress.DEVICE_VERIFIED)
 
     def upgrade(self, image):
         self._test_connection()
@@ -225,7 +226,7 @@ class OpenWrt(object):
         if not result:
             raise RecoverableFailure("Connection failed")
         self.log(_("Connection successful, starting upgrade..."), save=False)
-        self.upgrade_operation.update_progress(10)
+        self.upgrade_operation.update_progress(UpgradeProgress.CONNECTION_SUCCESS)
 
     _non_critical_services = [
         "uhttpd",
@@ -387,7 +388,7 @@ class OpenWrt(object):
         )
         if exit_code == 0:
             self.log(_("Image checksum file found"), save=False)
-            self.upgrade_operation.update_progress(20)
+            self.upgrade_operation.update_progress(UpgradeProgress.CHECKSUM_VERIFIED)
             cat = f"cat {self.CHECKSUM_FILE}"
             output, code = self.exec_command(cat)
             if checksum == output.strip():
@@ -444,7 +445,7 @@ class OpenWrt(object):
         """
         self.disconnect()
         self.log(_("Upgrade operation in progress..."), save=False)
-        self.upgrade_operation.update_progress(65)
+        self.upgrade_operation.update_progress(UpgradeProgress.REFLASHING)
 
         failure_queue = Queue()
         subprocess = Process(
@@ -544,7 +545,7 @@ class OpenWrt(object):
                 _("Connected! Writing checksum " f"file to {self.CHECKSUM_FILE}"),
                 save=False,
             )
-            self.upgrade_operation.update_progress(90)
+            self.upgrade_operation.update_progress(UpgradeProgress.RECONNECTED)
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
             self.exec_command(f"mkdir -p {checksum_dir}")
             self.exec_command(f"echo {checksum} > {self.CHECKSUM_FILE}")

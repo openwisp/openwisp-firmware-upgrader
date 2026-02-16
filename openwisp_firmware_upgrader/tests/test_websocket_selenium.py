@@ -6,6 +6,10 @@ from channels.db import database_sync_to_async
 from channels.testing import ChannelsLiveServerTestCase
 from django.test import tag
 from django.urls import reverse
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+)
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -465,7 +469,7 @@ class TestRealTimeWebsockets(
                 ) and progress_width in progress_fill.get_attribute("style"):
                     return True
             return False
-        except Exception:
+        except (StaleElementReferenceException, NoSuchElementException):
             return False
 
     def _check_row_count(self, expected_count):

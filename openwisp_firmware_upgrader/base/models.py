@@ -41,6 +41,7 @@ from ..tasks import (
     upgrade_firmware,
 )
 from ..utils import (
+    UpgradeProgress,
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
@@ -805,7 +806,6 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     _CANCELLABLE_STATUS = "in-progress"
-    _MAX_CANCELLABLE_PROGRESS = 65
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
@@ -853,7 +853,12 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         )
 
     def update_progress(self, progress, save=True):
-        self.progress = max(0, min(100, progress))
+        """Update progress with validation."""
+        if not isinstance(progress, (int, float)):
+            raise ValidationError(f"Progress must be numeric, got {type(progress)}")
+        if not 0 <= progress <= 100:
+            raise ValidationError(f"Progress must be between 0-100, got {progress}")
+        self.progress = int(progress)
         if save:
             self.save()
 
@@ -862,7 +867,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # Validate cancellation conditions
         if self.status != self._CANCELLABLE_STATUS:
             raise ValueError(f"Cannot cancel operation with status: {self.status}")
-        if self.progress >= self._MAX_CANCELLABLE_PROGRESS:
+        if self.progress >= UpgradeProgress.CANCELLATION_THRESHOLD:
             raise ValueError(
                 "Cannot cancel upgrade: firmware reflashing has already started"
             )
@@ -989,7 +994,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # when an operation is completed
         # trigger an update on the batch operation
         if self.batch and self.status != "in-progress":
-            self.batch.update()
+            self.batch.calculate_and_update_status()
 
     @property
     def upgrader_schema(self):

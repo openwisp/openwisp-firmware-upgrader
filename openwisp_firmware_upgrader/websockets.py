@@ -100,20 +100,19 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
 
             self.operation_id = upgrade_operation_id
             self.group_name = f"upgrade_{self.operation_id}"
-
-        except (AssertionError, KeyError) as e:
-            logger.error(f"Error in operation websocket connect: {e}")
+        except (AssertionError, KeyError):
+            logger.exception("Error in operation websocket connect")
             await self.close()
         else:
             try:
                 await self.channel_layer.group_add(self.group_name, self.channel_name)
-            except (ConnectionError, TimeoutError) as e:
-                logger.error(f"Failed to add channel to group {self.group_name}: {e}")
+            except (ConnectionError, TimeoutError):
+                logger.exception(f"Failed to add channel to group {self.group_name}")
                 await self.close()
                 return
-            except RuntimeError as e:
-                logger.error(
-                    f"Channel layer error when joining group {self.group_name}: {e}"
+            except RuntimeError:
+                logger.exception(
+                    f"Channel layer error when joining group {self.group_name}"
                 )
                 await self.close()
                 return
@@ -123,7 +122,7 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
         try:
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
         except AttributeError:
-            logger.error(
+            logger.exception(
                 f"Attribute error when discarding channel {self.channel_name} from group {self.group_name}"
             )
             return
@@ -161,9 +160,9 @@ class UpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                     "operation": operation_data,
                 }
             )
-        except (ConnectionError, TimeoutError) as e:
-            logger.error(
-                f"Failed to connect to channel layer during operation state request: {e}"
+        except (ConnectionError, TimeoutError):
+            logger.exception(
+                "Failed to connect to channel layer during operation state request"
             )
 
     async def upgrade_progress(self, event):
@@ -191,19 +190,19 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                 return
             self.batch_id = self.scope["url_route"]["kwargs"]["batch_id"]
             self.group_name = f"batch_upgrade_{self.batch_id}"
-        except (AssertionError, KeyError) as e:
-            logger.error(f"Error in batch websocket connect: {e}")
+        except (AssertionError, KeyError):
+            logger.exception("Error in batch websocket connect")
             await self.close()
         else:
             try:
                 await self.channel_layer.group_add(self.group_name, self.channel_name)
-            except (ConnectionError, TimeoutError) as e:
-                logger.error(f"Failed to add channel to group {self.group_name}: {e}")
+            except (ConnectionError, TimeoutError):
+                logger.exception("Failed to add channel to group {self.group_name}")
                 await self.close()
                 return
-            except RuntimeError as e:
-                logger.error(
-                    f"Channel layer error when joining group {self.group_name}: {e}"
+            except RuntimeError:
+                logger.exception(
+                    "Channel layer error when joining group {self.group_name}"
                 )
                 await self.close()
                 return
@@ -263,12 +262,12 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                         "operations": operations_data,
                     }
                 )
-        except (ConnectionError, TimeoutError) as e:
-            logger.error(
-                f"Failed to connect to channel layer during batch state request: {e}"
+        except (ConnectionError, TimeoutError):
+            logger.exception(
+                "Failed to connect to channel layer during batch state request"
             )
-        except RuntimeError as e:
-            logger.error(f"Runtime error during batch state request: {e}")
+        except RuntimeError:
+            logger.exception("Runtime error during batch state request")
 
     async def batch_upgrade_progress(self, event):
         await self.send_json(event["data"])
@@ -295,19 +294,19 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             self.pk_ = device_id
             self.group_name = f"firmware_upgrader.device-{self.pk_}"
 
-        except (AssertionError, KeyError) as e:
-            logger.error(f"Error in websocket connect: {e}")
+        except (AssertionError, KeyError):
+            logger.exception("Error in websocket connect")
             await self.close()
         else:
             try:
                 await self.channel_layer.group_add(self.group_name, self.channel_name)
-            except (ConnectionError, TimeoutError) as e:
-                logger.error(f"Failed to add channel to group {self.group_name}: {e}")
+            except (ConnectionError, TimeoutError):
+                logger.exception("Failed to add channel to group {self.group_name}")
                 await self.close()
                 return
-            except RuntimeError as e:
-                logger.error(
-                    f"Channel layer error when joining group {self.group_name}: {e}"
+            except RuntimeError:
+                logger.exception(
+                    "Channel layer error when joining group {self.group_name}"
                 )
                 await self.close()
                 return
@@ -367,12 +366,12 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                         },
                     }
                 )
-        except (ConnectionError, TimeoutError) as e:
-            logger.error(
-                f"Failed to connect to channel layer during current state request: {e}"
+        except (ConnectionError, TimeoutError):
+            logger.exception(
+                "Failed to connect to channel layer during current state request"
             )
-        except RuntimeError as e:
-            logger.error(f"Runtime error during current state request: {e}")
+        except RuntimeError:
+            logger.exception("Runtime error during current state request")
 
     async def send_update(self, event):
         """Send upgrade progress updates to the device page"""
@@ -466,15 +465,13 @@ class UpgradeProgressPublisher:
                     device_info,
                 )
                 batch_publisher.update_batch_status(instance.batch)
-        except (ConnectionError, TimeoutError) as e:
-            logger.error(
-                f"Failed to connect to channel layer for upgrade operation {instance.pk}: {e}",
-                exc_info=True,
+        except (ConnectionError, TimeoutError):
+            logger.exception(
+                "Failed to connect to channel layer for upgrade operation {instance.pk}"
             )
-        except RuntimeError as e:
-            logger.error(
-                f"Runtime error in WebSocket publishing for upgrade operation {instance.pk}: {e}",
-                exc_info=True,
+        except RuntimeError:
+            logger.exception(
+                "Runtime error in WebSocket publishing for upgrade operation {instance.pk}"
             )
 
 
@@ -554,13 +551,11 @@ class BatchUpgradeProgressPublisher:
         try:
             batch_publisher = cls(instance.pk)
             batch_publisher.update_batch_status(instance)
-        except (ConnectionError, TimeoutError) as e:
-            logger.error(
-                f"Failed to connect to channel layer for batch upgrade operation {instance.pk}: {e}",
-                exc_info=True,
+        except (ConnectionError, TimeoutError):
+            logger.exception(
+                "Failed to connect to channel layer for batch upgrade operation {instance.pk}"
             )
-        except RuntimeError as e:
-            logger.error(
-                f"Runtime error in WebSocket publishing for batch upgrade operation {instance.pk}: {e}",
-                exc_info=True,
+        except RuntimeError:
+            logger.exception(
+                "Runtime error in WebSocket publishing for batch upgrade operation {instance.pk}"
             )
