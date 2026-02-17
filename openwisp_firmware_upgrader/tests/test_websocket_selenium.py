@@ -1,8 +1,6 @@
 import uuid
 
-import pytest
 import swapper
-from channels.db import database_sync_to_async
 from channels.testing import ChannelsLiveServerTestCase
 from django.test import tag
 from django.urls import reverse
@@ -30,8 +28,6 @@ DeviceFirmware = load_model("DeviceFirmware")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 
 
-@pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
 @tag("selenium_tests")
 class TestRealTimeWebsockets(
     TestUpgraderMixin,
@@ -109,7 +105,7 @@ class TestRealTimeWebsockets(
         self.device2 = device2
         self.device3 = device3
 
-    async def _prepare(self):
+    def _prepare(self):
         path = reverse(
             f"admin:{self.config_app_label}_device_change", args=[self.device.pk]
         )
@@ -123,16 +119,16 @@ class TestRealTimeWebsockets(
             )
         )
 
-    async def test_real_time_progress_updates(self):
+    def test_real_time_progress_updates(self):
         """Test real-time progress updates via websocket"""
-        operation = await database_sync_to_async(UpgradeOperation.objects.create)(
+        operation = UpgradeOperation.objects.create(
             device=self.device,
             image=self.image2,
             status="in-progress",
             log="Starting upgrade process...",
             progress=25,
         )
-        await self._prepare()
+        self._prepare()
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
@@ -167,7 +163,7 @@ class TestRealTimeWebsockets(
             "Uploading firmware image...\n"
             "Upload progress: 75%"
         )
-        await database_sync_to_async(operation.save)()
+        operation.save()
         # Publish websocket update
         publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
@@ -209,17 +205,17 @@ class TestRealTimeWebsockets(
         )
         self._assert_no_js_errors()
 
-    async def test_real_time_status_change_to_success(self):
+    def test_real_time_status_change_to_success(self):
         """Test real-time status change from in-progress to success"""
         # preparation
-        operation = await database_sync_to_async(UpgradeOperation.objects.create)(
+        operation = UpgradeOperation.objects.create(
             device=self.device,
             image=self.image2,
             status="in-progress",
             log="Starting upgrade process...\nUploading firmware...",
             progress=75,
         )
-        await self._prepare()
+        self._prepare()
         # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
@@ -243,7 +239,7 @@ class TestRealTimeWebsockets(
             "Connection re-established successfully\n"
             "Firmware upgrade completed successfully"
         )
-        await database_sync_to_async(operation.save)()
+        operation.save()
         # Publish websocket update
         publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
@@ -280,17 +276,17 @@ class TestRealTimeWebsockets(
         self.assertIn("completed successfully", log_html)
         self._assert_no_js_errors()
 
-    async def test_real_time_log_updates(self):
+    def test_real_time_log_updates(self):
         """Test real-time log line appending during upgrade"""
         # preparation
-        operation = await database_sync_to_async(UpgradeOperation.objects.create)(
+        operation = UpgradeOperation.objects.create(
             device=self.device,
             image=self.image2,
             status="in-progress",
             log="Starting upgrade process...",
             progress=20,
         )
-        await self._prepare()
+        self._prepare()
         # Wait for initial state
         WebDriverWait(self.web_driver, 5).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".field-log .readonly"))
@@ -302,7 +298,7 @@ class TestRealTimeWebsockets(
         # Update operation log
         new_log_line = "Device identity verified successfully"
         operation.log = f"{operation.log}\n{new_log_line}"
-        await database_sync_to_async(operation.save)()
+        operation.save()
         # Verify UI update
         updated_log = self.find_element(
             By.CSS_SELECTOR, ".field-log .readonly"
@@ -310,17 +306,17 @@ class TestRealTimeWebsockets(
         self.assertIn("Device identity verified successfully", updated_log)
         self._assert_no_js_errors()
 
-    async def test_real_time_status_change_to_failed(self):
+    def test_real_time_status_change_to_failed(self):
         """Test real-time status change to failed"""
         # preparation
-        operation = await database_sync_to_async(UpgradeOperation.objects.create)(
+        operation = UpgradeOperation.objects.create(
             device=self.device,
             image=self.image2,
             status="in-progress",
             log="Starting upgrade process...",
             progress=50,
         )
-        await self._prepare()
+        self._prepare()
         # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
@@ -339,7 +335,7 @@ class TestRealTimeWebsockets(
             "Non critical services started, aborting upgrade.\n"
             "Upgrade operation failed"
         )
-        await database_sync_to_async(operation.save)()
+        operation.save()
         # Publish websocket update
         publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
@@ -373,17 +369,17 @@ class TestRealTimeWebsockets(
 
         self._assert_no_js_errors()
 
-    async def test_real_time_status_change_to_aborted(self):
+    def test_real_time_status_change_to_aborted(self):
         """Test real-time status change to aborted"""
         # preparation
-        operation = await database_sync_to_async(UpgradeOperation.objects.create)(
+        operation = UpgradeOperation.objects.create(
             device=self.device,
             image=self.image2,
             status="in-progress",
             log="Starting upgrade process...",
             progress=30,
         )
-        await self._prepare()
+        self._prepare()
         # Wait for initial state
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
@@ -399,7 +395,7 @@ class TestRealTimeWebsockets(
             "Starting non critical services again...\n"
             "Non critical services started, aborting upgrade."
         )
-        await database_sync_to_async(operation.save)()
+        operation.save()
         # Publish websocket update
         publisher = UpgradeProgressPublisher(self.device.pk, operation.pk)
         publisher.publish_operation_update(
@@ -467,7 +463,7 @@ class TestRealTimeWebsockets(
         except (StaleElementReferenceException, NoSuchElementException):
             return False
 
-    async def _prepare_batch(self, batch_operation):
+    def _prepare_batch(self, batch_operation):
         """Navigate to batch upgrade page and wait for websocket connection"""
         path = reverse(
             f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
@@ -483,26 +479,26 @@ class TestRealTimeWebsockets(
             )
         )
 
-    async def test_batch_main_progress_bar_updates(self):
+    def test_batch_main_progress_bar_updates(self):
         """Test batch main progress bar updates via websocket"""
-        batch_operation = await database_sync_to_async(
-            BatchUpgradeOperation.objects.create
-        )(build=self.build2, status="in-progress")
-        await database_sync_to_async(UpgradeOperation.objects.create)(
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
             device=self.device1,
             image=self.image2,
             batch=batch_operation,
             status="in-progress",
             progress=25,
         )
-        await database_sync_to_async(UpgradeOperation.objects.create)(
+        UpgradeOperation.objects.create(
             device=self.device2,
             image=self.image2,
             batch=batch_operation,
             status="in-progress",
             progress=0,
         )
-        await self._prepare_batch(batch_operation)
+        self._prepare_batch(batch_operation)
         WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
@@ -513,18 +509,14 @@ class TestRealTimeWebsockets(
             main_progress_element.is_displayed(), "Main progress should be visible"
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
-        await database_sync_to_async(publisher.publish_batch_status)(
-            status="in-progress", completed=1, total=2
-        )
+        publisher.publish_batch_status(status="in-progress", completed=1, total=2)
         self._check_progress_text("50%")
         progress_fill = self.find_element(
             By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-fill"
         )
         style = progress_fill.get_attribute("style")
         self.assertIn("width: 50%", style)
-        await database_sync_to_async(publisher.publish_batch_status)(
-            status="success", completed=2, total=2
-        )
+        publisher.publish_batch_status(status="success", completed=2, total=2)
         self._check_progress_text("100%")
         WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located(
@@ -551,26 +543,26 @@ class TestRealTimeWebsockets(
         self.assertIn("width: 100%", style)
         self._assert_no_js_errors()
 
-    async def test_individual_operation_progress_updates(self):
+    def test_individual_operation_progress_updates(self):
         """Test individual operation progress updates within batch upgrade"""
-        batch_operation = await database_sync_to_async(
-            BatchUpgradeOperation.objects.create
-        )(build=self.build2, status="in-progress")
-        operation1 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        operation1 = UpgradeOperation.objects.create(
             device=self.device1,
             image=self.image2,
             batch=batch_operation,
             status="in-progress",
             progress=10,
         )
-        await database_sync_to_async(UpgradeOperation.objects.create)(
+        UpgradeOperation.objects.create(
             device=self.device2,
             image=self.image2,
             batch=batch_operation,
             status="in-progress",
             progress=0,
         )
-        await self._prepare_batch(batch_operation)
+        self._prepare_batch(batch_operation)
         status_containers = WebDriverWait(self.web_driver, 5).until(
             EC.presence_of_all_elements_located(
                 (By.CSS_SELECTOR, "#result_list .status-cell .upgrade-status-container")
@@ -583,7 +575,7 @@ class TestRealTimeWebsockets(
             "device_name": self.device1.name,
             "image_name": str(self.image2),
         }
-        await database_sync_to_async(publisher.publish_operation_progress)(
+        publisher.publish_operation_progress(
             operation_id=str(operation1.pk),
             status="in-progress",
             progress=50,
@@ -594,7 +586,7 @@ class TestRealTimeWebsockets(
         WebDriverWait(self.web_driver, 10).until(
             lambda driver: self._check_operation_progress("in-progress", "width: 50%")
         )
-        await database_sync_to_async(publisher.publish_operation_progress)(
+        publisher.publish_operation_progress(
             operation_id=str(operation1.pk),
             status="success",
             progress=100,
@@ -606,33 +598,31 @@ class TestRealTimeWebsockets(
         )
         self._assert_no_js_errors()
 
-    async def test_batch_completion_with_mixed_results(self):
+    def test_batch_completion_with_mixed_results(self):
         """Test batch completion with partial success scenario"""
-        batch_operation = await database_sync_to_async(
-            BatchUpgradeOperation.objects.create
-        )(build=self.build2, status="in-progress")
-        await database_sync_to_async(UpgradeOperation.objects.create)(
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
             device=self.device1,
             image=self.image2,
             batch=batch_operation,
             status="success",
             progress=100,
         )
-        await database_sync_to_async(UpgradeOperation.objects.create)(
+        UpgradeOperation.objects.create(
             device=self.device2,
             image=self.image2,
             batch=batch_operation,
             status="failed",
             progress=45,
         )
-        await self._prepare_batch(batch_operation)
+        self._prepare_batch(batch_operation)
         WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
-        await database_sync_to_async(publisher.publish_batch_status)(
-            status="failed", total=2, completed=2
-        )
+        publisher.publish_batch_status(status="failed", total=2, completed=2)
         WebDriverWait(self.web_driver, 10).until(
             EC.visibility_of_element_located(
                 (
@@ -646,33 +636,31 @@ class TestRealTimeWebsockets(
         self.assertIn("completed with some failures", status_text)
         self._assert_no_js_errors()
 
-    async def test_batch_completion_all_successful(self):
+    def test_batch_completion_all_successful(self):
         """Test batch completion where all operations succeed"""
-        batch_operation = await database_sync_to_async(
-            BatchUpgradeOperation.objects.create
-        )(build=self.build2, status="in-progress")
-        await database_sync_to_async(UpgradeOperation.objects.create)(
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
             device=self.device1,
             image=self.image2,
             batch=batch_operation,
             status="success",
             progress=100,
         )
-        await database_sync_to_async(UpgradeOperation.objects.create)(
+        UpgradeOperation.objects.create(
             device=self.device2,
             image=self.image2,
             batch=batch_operation,
             status="success",
             progress=100,
         )
-        await self._prepare_batch(batch_operation)
+        self._prepare_batch(batch_operation)
         WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
-        await database_sync_to_async(publisher.publish_batch_status)(
-            status="success", total=2, completed=2
-        )
+        publisher.publish_batch_status(status="success", total=2, completed=2)
         WebDriverWait(self.web_driver, 10).until(
             EC.visibility_of_element_located(
                 (
@@ -690,19 +678,19 @@ class TestRealTimeWebsockets(
         self.assertIn("completed successfully", status_text)
         self._assert_no_js_errors()
 
-    async def test_dynamic_operation_addition_to_batch(self):
+    def test_dynamic_operation_addition_to_batch(self):
         """Test dynamic addition of new operations to batch upgrade view"""
-        batch_operation = await database_sync_to_async(
-            BatchUpgradeOperation.objects.create
-        )(build=self.build2, status="in-progress")
-        await database_sync_to_async(UpgradeOperation.objects.create)(
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
             device=self.device1,
             image=self.image2,
             batch=batch_operation,
             status="in-progress",
             progress=50,
         )
-        await self._prepare_batch(batch_operation)
+        self._prepare_batch(batch_operation)
         initial_rows = WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_all_elements_located(
                 (By.CSS_SELECTOR, "#result_list tbody tr")
@@ -710,7 +698,7 @@ class TestRealTimeWebsockets(
         )
         self.assertEqual(len(initial_rows), 1)
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
-        operation2 = await database_sync_to_async(UpgradeOperation.objects.create)(
+        operation2 = UpgradeOperation.objects.create(
             device=self.device2,
             image=self.image2,
             batch=batch_operation,
@@ -722,7 +710,7 @@ class TestRealTimeWebsockets(
             "device_name": self.device2.name,
             "image_name": str(self.image2),
         }
-        await database_sync_to_async(publisher.publish_operation_progress)(
+        publisher.publish_operation_progress(
             str(operation2.pk), "in-progress", 0, operation2.modified, device_info_2
         )
         # Wait for websocket message to propagate and add new row
