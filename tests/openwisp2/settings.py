@@ -15,10 +15,13 @@ DATABASES = {
     "default": {
         "ENGINE": "openwisp_utils.db.backends.spatialite",
         "NAME": "openwisp-firmware-upgrader.db",
+        # minimize sqlite concurrency issues
+        "OPTIONS": {"timeout": 10},
     }
 }
 
 if TESTING and "--exclude-tag=selenium_tests" not in sys.argv:
+    # Use file DB for selenium tests (in-memory DB not shared across processes)
     DATABASES["default"]["TEST"] = {
         "NAME": os.path.join(BASE_DIR, "openwisp-firmware-upgrader-tests.db"),
     }

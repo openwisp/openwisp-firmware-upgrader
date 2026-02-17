@@ -494,8 +494,6 @@ class TestRealTimeProgress(
             password=self.admin_password,
             email=f"admin_{unique_suffix}@example.com",
         )
-        self.admin_client = self.client
-        self.admin_client.force_login(self.admin)
         category = self._get_category(organization=org)
         build1 = self._create_build(category=category, version="0.1", os=self.os)
         build2 = self._create_build(
