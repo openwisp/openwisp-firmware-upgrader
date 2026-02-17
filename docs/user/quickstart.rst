@@ -98,8 +98,8 @@ it.
 4. Perform a Firmware Upgrade to a Specific Device
 --------------------------------------------------
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-devicefirmware.gif
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-devicefirmware.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-devicefirmware.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-devicefirmware.gif
 
 Once a new build is ready, has been created in the system and its image
 have been uploaded, it will be the time to finally upgrade our devices.
@@ -134,8 +134,8 @@ At this stage you can try a mass upgrade by doing the following:
   devices to be upgraded with
 - click on "Mass-upgrade devices related to the selected build".
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-batch-upgrade.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-batch-upgrade.gif
 
 At this point you should see a summary page which will inform you of which
 devices are going to be upgraded. On this page, you can optionally filter

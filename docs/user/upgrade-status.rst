@@ -1,16 +1,16 @@
-Upgrade Status Reference
-========================
+Upgrade Status
+==============
+
+OpenWISP Firmware Upgrader tracks the progress of firmware upgrade
+operations through different status values. Understanding these statuses
+is helpful for monitoring upgrade operations and troubleshooting issues.
 
 .. contents:: **Table of contents**:
     :depth: 2
     :local:
 
-Overview
---------
-
-OpenWISP Firmware Upgrader tracks the progress of firmware upgrade
-operations through different status values. Understanding these statuses
-is essential for monitoring upgrade operations and troubleshooting issues.
+Upgrade Operation Status Reference
+----------------------------------
 
 In Progress
 ~~~~~~~~~~~

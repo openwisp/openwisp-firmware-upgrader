@@ -1,5 +1,9 @@
-WebSocket API
-=============
+WebSocket Reference
+===================
+
+.. contents:: **Table of contents**:
+    :depth: 2
+    :local:
 
 Overview
 --------
@@ -27,16 +31,15 @@ A user is authorized if:
 - The user is a superuser, OR
 - The user:
 
-      - Is marked as staff,
-      - Has either ``view`` or ``change`` permission on the relevant
-        object,
-      - Is an organization admin (manager) for the object's organization.
+  - Is marked as staff,
+  - Has either ``view`` or ``change`` permission on the relevant object,
+  - Is an organization admin (manager) for the object's organization.
 
 Connection Endpoints
 --------------------
 
-Upgrade Operation
-~~~~~~~~~~~~~~~~~
+1. Upgrade Operation
+~~~~~~~~~~~~~~~~~~~~
 
 Connection URL:
 
@@ -54,7 +57,7 @@ Client Message
 
 To request the current state of the operation:
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
         "type": "request_current_state",    // Required. Requests current operation state.
@@ -68,7 +71,7 @@ To request the current state of the operation:
 When the client sends ``request_current_state``, the server responds with
 exactly one message:
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
         "type": "operation_update",         // Message type identifier
@@ -84,8 +87,8 @@ exactly one message:
         }
     }
 
-Realtime Updates
-++++++++++++++++
+Real-time Updates
++++++++++++++++++
 
 After the connection is established, the server pushes
 ``operation_update`` messages whenever the operation state changes.
@@ -93,8 +96,8 @@ After the connection is established, the server pushes
 The message structure is identical to the response returned for
 ``request_current_state``.
 
-Batch Upgrade Operation
-~~~~~~~~~~~~~~~~~~~~~~~
+2. Batch Upgrade Operation
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Connection URL:
 
@@ -112,7 +115,7 @@ Client Message
 
 To request the current state of the batch:
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
         "type": "request_current_state",    // Required. Requests current batch state.
@@ -126,7 +129,7 @@ To request the current state of the batch:
 When the client sends ``request_current_state``, the server responds with
 exactly one message:
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
         "type": "batch_state",              // Message type identifier
@@ -149,14 +152,14 @@ exactly one message:
         ]
     }
 
-Realtime Updates
-++++++++++++++++
+Real-time Updates
++++++++++++++++++
 
 The endpoint may push:
 
 ``operation_progress``
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
         "type": "operation_progress",       // Message type identifier
@@ -171,7 +174,7 @@ The endpoint may push:
 
 ``batch_status``
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
         "type": "batch_status",             // Message type identifier
@@ -180,8 +183,8 @@ The endpoint may push:
         "total": <integer>                  // Total operations in the batch
     }
 
-Device Upgrade
-~~~~~~~~~~~~~~
+3. Device Upgrade
+~~~~~~~~~~~~~~~~~
 
 Connection URL:
 
@@ -199,7 +202,7 @@ Client Message
 
 To request the current state for the device:
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
         "type": "request_current_state",    // Required. Requests device upgrade state.
@@ -215,7 +218,7 @@ separate messages (one per operation).
 
 Each message uses the following envelope:
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
         "model": "UpgradeOperation",        // Model identifier
@@ -233,11 +236,11 @@ Each message uses the following envelope:
         }
     }
 
-Realtime Updates
-++++++++++++++++
+Real-time Updates
++++++++++++++++++
 
 After the connection is established, the server forwards
 ``operation_update`` events for upgrade operations related to the device.
 
-Realtime messages use the same envelope structure as described above and
+Real-time messages use the same envelope structure as described above and
 are emitted individually as operation state changes occur.
