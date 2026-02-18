@@ -532,6 +532,36 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(response, "This field is required.")
         self.assertFalse(DeviceFirmware.objects.filter(device=device).exists())
 
+    def test_batch_upgrade_operation_filters(self, *args):
+        """Test that filter UI elements are displayed correctly for organization admin"""
+        env = self._create_upgrade_env()
+        org_admin = self._create_administrator(organizations=[env["d1"].organization])
+        self.client.force_login(org_admin)
+        batch = env["build2"].batch_upgrade(firmwareless=True)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+
+        with self.subTest("Test filter UI elements are present"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            # Check status filter options
+            self.assertContains(response, "By status")
+            self.assertContains(response, 'title="idle"')
+            self.assertContains(response, 'title="in progress"')
+            self.assertContains(response, 'title="completed successfully"')
+            self.assertContains(response, 'title="completed with some failures"')
+            # Organization filter should not be present because the build's category is not shared
+            self.assertNotContains(response, "By organization")
+
+        with self.subTest("Test active filter indication"):
+            # Test with status filter active
+            response = self.client.get(url + "?status=idle")
+            self.assertEqual(response.status_code, 200)
+            # Check that the idle status is selected
+            self.assertContains(response, 'class="selected"')
+            self.assertContains(response, 'title="idle"')
+
 
 _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
 _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
@@ -926,6 +956,8 @@ class TestAdminTransaction(
         """Test status filtering in batch upgrade operation admin page"""
         self._login()
         env = self._create_upgrade_env()
+        env["category"].organization = None
+        env["category"].save()
         batch = env["build2"].batch_upgrade(firmwareless=True)
         # Create upgrade operations with different statuses
         upgrade_ops = list(batch.upgradeoperation_set.all())
@@ -1080,41 +1112,6 @@ class TestAdminTransaction(
             self.assertEqual(response.status_code, 200)
             self.assertNotContains(response, org1_op.device.name)
             self.assertNotContains(response, org2_op.device.name)
-
-    def test_batch_upgrade_operation_filters(self, *args):
-        """Test that filter UI elements are displayed correctly"""
-        self._login()
-        env = self._create_upgrade_env()
-        batch = env["build2"].batch_upgrade(firmwareless=True)
-        url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
-        )
-
-        with self.subTest("Test filter UI elements are present"):
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            # Check status filter options
-            self.assertContains(response, "By status")
-            self.assertContains(response, 'title="idle"')
-            self.assertContains(response, 'title="in progress"')
-            self.assertContains(response, 'title="completed successfully"')
-            self.assertContains(response, 'title="completed with some failures"')
-            # Check organization filter is present
-            self.assertContains(response, "By organization")
-
-        with self.subTest("Test active filter indication"):
-            # Test with status filter active
-            response = self.client.get(url + "?status=idle")
-            self.assertEqual(response.status_code, 200)
-            # Check that the idle status is selected
-            self.assertContains(response, 'class="selected"')
-            self.assertContains(response, 'title="idle"')
-
-        with self.subTest("Test active filter indication with organization"):
-            org = env["d1"].organization
-            response = self.client.get(url + f"?organization={org.id}")
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, org.name)
 
     def test_batch_upgrade_operation_filter_search_combination(self, *args):
         """Test combining search with filters"""

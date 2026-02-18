@@ -456,8 +456,12 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
             "upgradeoperation_set__device", "upgradeoperation_set__image"
         )
 
-    def get_upgrade_operations(self, obj):
-        return obj.upgradeoperation_set.all().select_related("device", "image")
+    def get_upgrade_operations(self, request, obj):
+        if request.user.is_superuser:
+            return obj.upgradeoperation_set.all()
+        return obj.upgradeoperation_set.filter(
+            device__organization_id__in=request.user.organizations_managed
+        )
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
@@ -469,7 +473,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         obj = self.get_object(request, object_id)
         if obj:
             # Get upgrade operations with search and filtering
-            upgrades_qs = self.get_upgrade_operations(obj)
+            upgrades_qs = self.get_upgrade_operations(request, obj)
 
             # Handle search
             search_query = request.GET.get("q", "")
@@ -525,23 +529,33 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
             filter_specs.append(StatusFilter())
 
             # Organization filter
-            org_choices = [
-                {"display": _("All"), "selected": not current_org, "query_string": "?"}
-            ]
-            for org in Organization.objects.all().order_by("name"):
-                org_choices.append(
+            # If the build's category is not shared, then all devices will
+            # belong to the same organization and there's no need to show the filter.
+            if obj.build.category.organization is None:
+                org_choices = [
                     {
-                        "display": org.name,
-                        "selected": current_org == str(org.id),
-                        "query_string": f"?organization={org.id}",
+                        "display": _("All"),
+                        "selected": not current_org,
+                        "query_string": "?",
                     }
-                )
+                ]
+                org_qs = Organization.objects
+                if not request.user.is_superuser:
+                    org_qs = org_qs.filter(id__in=request.user.organizations_managed)
+                for org in org_qs.order_by("name"):
+                    org_choices.append(
+                        {
+                            "display": org.name,
+                            "selected": current_org == str(org.id),
+                            "query_string": f"?organization={org.id}",
+                        }
+                    )
 
-            class OrganizationFilter:
-                title = _("organization")
-                choices = org_choices
+                class OrganizationFilter:
+                    title = _("organization")
+                    choices = org_choices
 
-            filter_specs.append(OrganizationFilter())
+                filter_specs.append(OrganizationFilter())
 
             # Pagination
             paginator = Paginator(
