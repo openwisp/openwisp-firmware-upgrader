@@ -532,6 +532,70 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(response, "This field is required.")
         self.assertFalse(DeviceFirmware.objects.filter(device=device).exists())
 
+    def test_batch_upgrade_operation_detail_organization_filter(self):
+        category = self._create_category(name="Shared", organization=None)
+        env = self._create_upgrade_env(category=category)
+        org1 = env["d1"].organization
+        org2 = self._create_org(name="org2", slug="org2")
+        org1_admin = self._create_administrator(organizations=[org1])
+        batch = env["build2"].batch_upgrade(firmwareless=True)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+
+        def _get_org_option(org):
+            return f'<a title="{org.name}" href="?organization={org.id}">{org.name}</a>'
+
+        org1_option = _get_org_option(org1)
+        org2_option = _get_org_option(org2)
+        with self.subTest(
+            "Superuser: Organization filter is visible for shared category"
+        ):
+            self._login()
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "By organization")
+            self.assertContains(
+                response,
+                org1_option,
+                html=True,
+            )
+            self.assertContains(
+                response,
+                org2_option,
+                html=True,
+            )
+
+        with self.subTest("Org admin: Cannot view shared mass upgrade operation"):
+            self.client.force_login(org1_admin)
+            response = self.client.get(url, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.request["PATH_INFO"], reverse("admin:index"))
+            self.assertContains(
+                response,
+                f'<li class="warning">Mass upgrade operation with ID “{batch.pk}”'
+                " doesn’t exist. Perhaps it was deleted?</li>",
+                html=True,
+            )
+
+        env["category"].organization = org1
+        env["category"].save()
+        with self.subTest(
+            "Superuser: Organization filter hidden when category belongs to org"
+        ):
+            self._login()
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, "By organization")
+
+        with self.subTest(
+            "Org admin: Organization filter hidden when category belongs to org"
+        ):
+            self.client.force_login(org1_admin)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, "By organization")
+
     def test_batch_upgrade_operation_filters(self, *args):
         """Test that filter UI elements are displayed correctly for organization admin"""
         env = self._create_upgrade_env()
@@ -1129,7 +1193,8 @@ class TestAdminTransaction(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
         )
         with self.subTest("Test search + status filter"):
-            response = self.client.get(url + "?q=unique-test&status=success")
+            with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
+                response = self.client.get(url + "?q=unique-test&status=success")
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, "unique-test-device")
 
@@ -1324,14 +1389,16 @@ class TestAdminTransaction(
         )
         url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
         with self.subTest("Test no location filter - shows all batches"):
-            response = self.client.get(url)
+            with self.assertNumQueries(5):
+                response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, str(batch1.pk))
             self.assertContains(response, str(batch2.pk))
             self.assertContains(response, str(batch3.pk))
 
         with self.subTest("Test location1 filter"):
-            response = self.client.get(url + f"?location={location1.pk}")
+            with self.assertNumQueries(4):
+                response = self.client.get(url + f"?location={location1.pk}")
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, str(batch1.pk))
             self.assertNotContains(response, str(batch2.pk))

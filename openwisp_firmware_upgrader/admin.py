@@ -450,18 +450,11 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     )
     device_upgrades_per_page = 20
 
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.prefetch_related(
-            "upgradeoperation_set__device", "upgradeoperation_set__image"
-        )
-
     def get_upgrade_operations(self, request, obj):
+        qs = obj.upgradeoperation_set.select_related("device", "image")
         if request.user.is_superuser:
-            return obj.upgradeoperation_set.all()
-        return obj.upgradeoperation_set.filter(
-            device__organization_id__in=request.user.organizations_managed
-        )
+            return qs
+        return qs.filter(device__organization_id__in=request.user.organizations_managed)
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
