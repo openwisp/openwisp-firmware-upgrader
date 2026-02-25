@@ -115,7 +115,6 @@ PRIVATE_STORAGE_ROOT = os.path.join(BASE_DIR, "private", "firmware")
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [os.path.join(os.path.dirname(BASE_DIR), "templates")],
         "OPTIONS": {
             "loaders": [
                 "django.template.loaders.filesystem.Loader",
@@ -216,6 +215,35 @@ if os.environ.get("SAMPLE_APP", False):
     FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = (
         "sample_firmware_upgrader.UpgradeOperation"
     )
+
+    # For controller extended apps:
+    # Replace Config
+    config_index = INSTALLED_APPS.index("openwisp_controller.config")
+    INSTALLED_APPS.remove("openwisp_controller.config")
+    INSTALLED_APPS.insert(config_index, "openwisp2.sample_config")
+    # Replace Connection
+    connection_index = INSTALLED_APPS.index("openwisp_controller.connection")
+    INSTALLED_APPS.remove("openwisp_controller.connection")
+    INSTALLED_APPS.insert(connection_index, "openwisp2.sample_connection")
+    # Extended apps
+    EXTENDED_APPS.append("openwisp_controller.config")
+    EXTENDED_APPS.append("openwisp_controller.connection")
+    # Swapper
+    CONFIG_DEVICE_MODEL = "sample_config.Device"
+    CONFIG_DEVICEGROUP_MODEL = "sample_config.DeviceGroup"
+    CONFIG_CONFIG_MODEL = "sample_config.Config"
+    CONFIG_TEMPLATETAG_MODEL = "sample_config.TemplateTag"
+    CONFIG_TAGGEDTEMPLATE_MODEL = "sample_config.TaggedTemplate"
+    CONFIG_TEMPLATE_MODEL = "sample_config.Template"
+    CONFIG_VPN_MODEL = "sample_config.Vpn"
+    CONFIG_VPNCLIENT_MODEL = "sample_config.VpnClient"
+    CONFIG_ORGANIZATIONCONFIGSETTINGS_MODEL = "sample_config.OrganizationConfigSettings"
+    CONFIG_ORGANIZATIONLIMITS_MODEL = "sample_config.OrganizationLimits"
+
+    CONNECTION_CREDENTIALS_MODEL = "sample_connection.Credentials"
+    CONNECTION_DEVICECONNECTION_MODEL = "sample_connection.DeviceConnection"
+    CONNECTION_COMMAND_MODEL = "sample_connection.Command"
+
 
 TEST_RUNNER = "openwisp_utils.tests.TimeLoggingTestRunner"
 
