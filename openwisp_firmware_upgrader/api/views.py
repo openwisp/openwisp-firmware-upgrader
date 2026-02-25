@@ -1,3 +1,5 @@
+import json
+
 import swapper
 from django.core.exceptions import ValidationError
 from django.http import Http404
@@ -86,9 +88,36 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         """
         Upgrades all the devices related to the specified build ID.
         """
-        upgrade_all = request.POST.get("upgrade_all") is not None
+        upgrade_all = (
+            request.data.get("upgrade_all") is not None
+            or request.POST.get("upgrade_all") is not None
+        )
+        upgrade_options = request.data.get("upgrade_options")
+        # If not in request.data, try request.POST (for form data)
+        if upgrade_options is None:
+            upgrade_options = request.POST.get("upgrade_options")
+        # Parse upgrade_options if it's a string (from form data)
+        if isinstance(upgrade_options, str):
+            try:
+                upgrade_options = json.loads(upgrade_options)
+            except (json.JSONDecodeError, ValueError):
+                upgrade_options = {}
+        if upgrade_options is None:
+            upgrade_options = {}
         instance = self.get_object()
-        batch = instance.batch_upgrade(firmwareless=upgrade_all)
+        # Validate upgrade_options by creating a temporary BatchUpgradeOperation
+        temp_batch = BatchUpgradeOperation(
+            build=instance, upgrade_options=upgrade_options
+        )
+        try:
+            temp_batch.full_clean()
+        except ValidationError as e:
+            return Response(
+                {"upgrade_options": e.messages}, status=status.HTTP_400_BAD_REQUEST
+            )
+        batch = instance.batch_upgrade(
+            firmwareless=upgrade_all, upgrade_options=upgrade_options
+        )
         return Response({"batch": str(batch.pk)}, status=201)
 
     def get(self, request, pk):

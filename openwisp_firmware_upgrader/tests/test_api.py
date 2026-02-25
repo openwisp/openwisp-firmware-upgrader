@@ -321,7 +321,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 0)
         with self.subTest("Existing build"):
             url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
-            with self.assertNumQueries(8):
+            with self.assertNumQueries(10):
                 r = self.client.post(url)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
             self.assertEqual(DeviceFirmware.objects.count(), 0)
@@ -403,7 +403,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             )
 
         with self.subTest("Test superuser can mass upgrade shared build"):
-            with self.assertNumQueries(5):
+            with self.assertNumQueries(7):
                 response = self.client.post(path)
             self.assertEqual(response.status_code, 201)
             batch = BatchUpgradeOperation.objects.first()
@@ -413,7 +413,35 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         url = reverse("upgrader:api_build_batch_upgrade", args=[uuid.uuid4()])
         with self.assertNumQueries(4):
             r = self.client.get(url)
-        self.assertEqual(r.status_code, 404)
+            self.assertEqual(r.status_code, 404)
+
+    def test_api_batch_upgrade_with_upgrade_options(self):
+        """Test batch upgrade accepts upgrade_options"""
+        build = self._create_build()
+        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
+        upgrade_options = {"c": True, "F": True}
+        r = self.client.post(
+            url, {"upgrade_options": upgrade_options}, content_type="application/json"
+        )
+        self.assertEqual(r.status_code, 201)
+        batch = BatchUpgradeOperation.objects.first()
+        self.assertEqual(batch.upgrade_options, upgrade_options)
+
+    def test_api_batch_upgrade_validates_upgrade_options(self):
+        """Test batch upgrade validates upgrade_options"""
+        # Create a build with a device so upgrader_class can be determined
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
+        # -n and -c are mutually exclusive
+        invalid_upgrade_options = {"c": True, "n": True}
+        r = self.client.post(
+            url,
+            {"upgrade_options": invalid_upgrade_options},
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("upgrade_options", r.data)
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
 
@@ -794,6 +822,18 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
 
+    def test_batchupgradeoperation_includes_upgrade_options(self):
+        """Test that batch upgrade operation includes upgrade_options in response"""
+        build = self._create_build()
+        batch = BatchUpgradeOperation.objects.create(
+            build=build, upgrade_options={"c": True, "F": True}
+        )
+        url = reverse("upgrader:api_batchupgradeoperation_detail", args=[batch.pk])
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("upgrade_options", r.data)
+        self.assertEqual(r.data["upgrade_options"], {"c": True, "F": True})
+
 
 class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
     def _serialize_image(self, firmware):
@@ -1159,7 +1199,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             url = reverse(
                 "upgrader:api_devicefirmware_detail", args=[device_fw1.device.pk]
             )
-            with self.assertNumQueries(9):
+            with self.assertNumQueries(13):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw1)
@@ -1207,7 +1247,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 0)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(26):
+        with self.assertNumQueries(29):
             data = {"image": image1a.pk}
             # This API view allows the creation
             # of new devicefirmware objects with
@@ -1245,7 +1285,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
         self.client.force_login(self.administrator)
-        with self.assertNumQueries(25):
+        with self.assertNumQueries(28):
             data = {"image": shared_image.pk}
             r = self.client.put(
                 f"{path}?format=api", data, content_type="application/json"
@@ -1275,7 +1315,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(27):
+        with self.assertNumQueries(30):
             data = {"image": image2a.pk}
             r = self.client.put(
                 f"{url}?format=api", data, content_type="application/json"
@@ -1314,7 +1354,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(27):
+        with self.assertNumQueries(31):
             data = {"image": image2a.pk}
             r = self.client.patch(
                 f"{url}?format=api", data, content_type="application/json"
@@ -1336,6 +1376,41 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertNotIn(f"{image2b}</option>", repsonse)
         self.assertNotIn(f"{image2}</option>", repsonse)
 
+    def test_device_firmware_detail_with_upgrade_options(self):
+        """Test device firmware update accepts upgrade_options"""
+        env = self._create_upgrade_env()
+        device_fw = env["device_fw1"]
+        new_image = env["image2a"]
+        url = reverse("upgrader:api_devicefirmware_detail", args=[device_fw.device.pk])
+        upgrade_options = {"c": True, "F": True}
+        r = self.client.put(
+            url,
+            {"image": new_image.pk, "upgrade_options": upgrade_options},
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        upgrade_operation = UpgradeOperation.objects.first()
+        self.assertEqual(upgrade_operation.upgrade_options, upgrade_options)
+        self.assertIn("upgrade_options", r.data)
+        self.assertEqual(r.data["upgrade_options"], upgrade_options)
+
+    def test_device_firmware_detail_validates_upgrade_options(self):
+        """Test device firmware update validates upgrade_options"""
+        env = self._create_upgrade_env()
+        device_fw = env["device_fw1"]
+        new_image = env["image2a"]
+        url = reverse("upgrader:api_devicefirmware_detail", args=[device_fw.device.pk])
+        # -n and -c are mutually exclusive
+        invalid_upgrade_options = {"c": True, "n": True}
+        r = self.client.put(
+            url,
+            {"image": new_image.pk, "upgrade_options": invalid_upgrade_options},
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("upgrade_options", r.data)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+
     def test_device_firmware_detail_multitenancy(self):
         (
             d1,
@@ -1349,7 +1424,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest("Test device firmware detail org manager"):
             self._login("org1_manager", "tester")
             url = reverse("upgrader:api_devicefirmware_detail", args=[d1.pk])
-            with self.assertNumQueries(7):
+            with self.assertNumQueries(8):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw1)
@@ -1382,7 +1457,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest("Test device firmware detail org admin"):
             self._login("org_admin", "tester")
             url = reverse("upgrader:api_devicefirmware_detail", args=[d1.pk])
-            with self.assertNumQueries(6):
+            with self.assertNumQueries(10):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw1)
@@ -1390,7 +1465,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertContains(r, f"{image1}</option>")
             self.assertNotContains(r, f"{image2}</option>")
             url = reverse("upgrader:api_devicefirmware_detail", args=[d2.pk])
-            with self.assertNumQueries(6):
+            with self.assertNumQueries(10):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw2)
@@ -1556,6 +1631,22 @@ class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 200)
             serializer_list = self._serialize_device_upgrade_operation(device_uo2)
             self.assertEqual(r.data["results"], [serializer_list])
+
+    def test_device_upgrade_operation_includes_upgrade_options(self):
+        """Test that device upgrade operation includes upgrade_options in response"""
+        device_fw = self._create_device_firmware(upgrade=True)
+        upgrade_operation = UpgradeOperation.objects.first()
+        upgrade_operation.upgrade_options = {"c": True, "F": True}
+        upgrade_operation.save()
+        url = reverse(
+            "upgrader:api_deviceupgradeoperation_list", args=[device_fw.device.pk]
+        )
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertGreater(len(r.data["results"]), 0)
+        result = r.data["results"][0]
+        self.assertIn("upgrade_options", result)
+        self.assertEqual(result["upgrade_options"], {"c": True, "F": True})
 
 
 class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
@@ -1786,6 +1877,20 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 200)
             serializer_list = self._serialize_upgrade_operation(uo_qs, many=True)
             self.assertEqual(r.data["results"], serializer_list)
+
+    def test_upgrade_operation_includes_upgrade_options(self):
+        """Test that upgrade operation includes upgrade_options in response"""
+        self._create_device_firmware(upgrade=True)
+        upgrade_operation = UpgradeOperation.objects.first()
+        upgrade_operation.upgrade_options = {"c": True, "F": True}
+        upgrade_operation.save()
+        url = reverse(
+            "upgrader:api_upgradeoperation_detail", args=[upgrade_operation.pk]
+        )
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("upgrade_options", r.data)
+        self.assertEqual(r.data["upgrade_options"], {"c": True, "F": True})
 
 
 class TestOrgAPIMixin(TestAPIUpgraderMixin, TestCase):

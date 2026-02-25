@@ -55,12 +55,15 @@ class UpgradeOptionsMixin(models.Model):
     def validate_upgrade_options(self):
         if not self.upgrade_options:
             return
-        if not getattr(self.upgrader_class, "SCHEMA"):
+        upgrader_class = self.upgrader_class
+        if not upgrader_class:
+            return
+        if not getattr(upgrader_class, "SCHEMA", None):
             raise ValidationError(
                 _("Using upgrade options is not allowed with this upgrader.")
             )
         try:
-            self.upgrader_class.validate_upgrade_options(self.upgrade_options)
+            upgrader_class.validate_upgrade_options(self.upgrade_options)
         except jsonschema.ValidationError:
             raise ValidationError("The upgrade options are invalid")
         except FirmwareUpgradeOptionsException as error:
