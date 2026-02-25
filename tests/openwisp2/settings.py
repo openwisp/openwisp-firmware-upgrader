@@ -10,7 +10,7 @@ ALLOWED_HOSTS = ["*"]
 
 DATABASES = {
     "default": {
-        "ENGINE": "openwisp_utils.db.backends.spatialite",
+        "ENGINE": "django.db.backends.sqlite3",
         "NAME": "openwisp-firmware-upgrader.db",
     }
 }
@@ -39,10 +39,10 @@ INSTALLED_APPS = [
     "openwisp_controller.pki",
     "openwisp_controller.config",
     "openwisp_controller.connection",
-    "openwisp_controller.geo",
+    # "openwisp_controller.geo",  # Temporarily disabled - requires GDAL
     "openwisp_firmware_upgrader",
     "openwisp_users",
-    "openwisp_notifications",
+    # "openwisp_notifications",  # Temporarily disabled due to Windows path length issue
     "openwisp_ipam",
     # openwisp2 admin theme
     # (must be loaded here)
@@ -128,7 +128,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "openwisp_utils.admin_theme.context_processor.menu_groups",
-                "openwisp_notifications.context_processors.notification_api_settings",
+                # "openwisp_notifications.context_processors.notification_api_settings",  # Temporarily disabled
             ],
         },
     }
