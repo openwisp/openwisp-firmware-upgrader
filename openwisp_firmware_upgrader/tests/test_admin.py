@@ -47,6 +47,7 @@ class MockRequest:
 
 class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
     app_label = "firmware_upgrader"
+    config_app_label = "config"
     _device_params = TestConfigAdmin._device_params.copy()
     _device_params.update(
         {
@@ -106,7 +107,9 @@ class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
         self.factory = RequestFactory()
 
     def make_device_admin_request(self, pk):
-        return self.factory.get(reverse("admin:config_device_change", args=[pk]))
+        return self.factory.get(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[pk])
+        )
 
     @property
     def build_list_url(self):
@@ -186,7 +189,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
         org = self._get_org()
         self._create_administrator(organizations=[org])
         self._login(username="administrator", password="tester")
-        url = reverse("admin:config_device_change", args=[device_fw.device_id])
+        url = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[device_fw.device_id]
+        )
         r = self.client.get(url)
         self.assertContains(r, str(device_fw.image_id))
 
@@ -359,7 +364,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         FirmwareImage.objects.all().delete()
         response = self.client.post(
-            reverse("admin:config_device_change", args=[device.id]),
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
             data=device_params,
             follow=True,
         )
@@ -377,7 +382,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         device = device_fw.device
         device.deviceconnection_set.all().delete()
         response = self.client.get(
-            reverse("admin:config_device_change", args=[device.id])
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
         )
         self.assertNotIn(
             "'NoneType' object has no attribute 'update_strategy'",
@@ -391,7 +396,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         device = self._create_config(organization=self._get_org()).device
         device.deactivate()
         response = self.client.get(
-            reverse("admin:config_device_change", args=[device.id])
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
         )
         # Check that it is not possible to add a DeviceFirmwareImage to a
         # deactivated device in the admin interface.
@@ -402,7 +407,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         self._create_device_firmware(device=device)
         response = self.client.get(
-            reverse("admin:config_device_change", args=[device.id])
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
         )
         # Ensure that a deactivated device's existing DeviceFirmwareImage
         # is displayed as readonly in the admin interface.
@@ -423,7 +428,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         device = self._create_device_with_connection()
         device_conn = device.deviceconnection_set.first()
         device_params = self._get_device_params(device, device_conn, shared_image)
-        path = reverse("admin:config_device_change", args=[device.id])
+        path = reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
 
         with self.subTest("Test with administrator account"):
             self.client.force_login(administrator)
@@ -514,7 +519,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         device = self._create_device_with_connection()
         device_conn = device.deviceconnection_set.first()
         fw_image = self._create_firmware_image()
-        url = reverse("admin:config_device_change", args=[device.id])
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
         data = self._get_device_params(device, device_conn, fw_image=fw_image)
         data.update(
             {
@@ -741,7 +746,9 @@ class TestAdminTransaction(
     def test_recent_upgrades(self, *args):
         self._login()
         env = self._create_upgrade_env()
-        url = reverse("admin:config_device_change", args=[env["d2"].pk])
+        url = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[env["d2"].pk]
+        )
         r = self.client.get(url)
         self.assertNotContains(r, "Recent Firmware Upgrades")
         env["build2"].batch_upgrade(firmwareless=True)
@@ -800,7 +807,7 @@ class TestAdminTransaction(
             device, device_conn, image, device_fw, json.dumps(upgrade_options)
         )
         response = self.client.post(
-            reverse("admin:config_device_change", args=[device.id]),
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
             data=device_params,
             follow=True,
         )
@@ -884,7 +891,9 @@ class TestAdminTransaction(
 
         with self.subTest("Test DeviceFirmwareInline does not have schema defined"):
             response = self.client.get(
-                reverse("admin:config_device_change", args=[device.id])
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
             )
             self.assertContains(
                 response, "<script>\nvar firmwareUpgraderSchema = null\n</script>"
@@ -892,7 +901,9 @@ class TestAdminTransaction(
 
         with self.subTest("Test using upgrade options with unsupported upgrader"):
             response = self.client.post(
-                reverse("admin:config_device_change", args=[device.id]),
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                ),
                 data=device_params,
                 follow=True,
             )
@@ -907,7 +918,9 @@ class TestAdminTransaction(
         with self.subTest("Test upgrading without upgrade options"):
             del device_params["devicefirmware-0-upgrade_options"]
             response = self.client.post(
-                reverse("admin:config_device_change", args=[device.id]),
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                ),
                 data=device_params,
                 follow=True,
             )
