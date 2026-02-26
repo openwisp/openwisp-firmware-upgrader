@@ -7,17 +7,16 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("firmware_upgrader", "0011_alter_category_organization"),
+        ("firmware_upgrader", "0012_update_image_type_identifiers"),
     ]
 
     operations = [
         migrations.AddField(
             model_name="upgradeoperation",
             name="progress",
-            field=models.IntegerField(
+            field=models.PositiveSmallIntegerField(
                 default=0,
                 validators=[
-                    django.core.validators.MinValueValidator(0),
                     django.core.validators.MaxValueValidator(100),
                 ],
             ),

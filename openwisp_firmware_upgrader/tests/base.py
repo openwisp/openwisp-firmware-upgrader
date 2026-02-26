@@ -9,13 +9,13 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from openwisp_controller.connection.tests.utils import CreateConnectionsMixin
+from openwisp_utils.tests.selenium import SeleniumTestMixin
 
 from ..swapper import load_model
 
 Build = load_model("Build")
 Category = load_model("Category")
 FirmwareImage = load_model("FirmwareImage")
-DeviceFirmware = load_model("DeviceFirmware")
 DeviceFirmware = load_model("DeviceFirmware")
 Credentials = swapper.load_model("connection", "Credentials")
 DeviceGroup = swapper.load_model("config", "DeviceGroup")
@@ -154,6 +154,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
             build=build2, type=self.TPLINK_4300_IL_IMAGE
         )
         data = {
+            "category": category,
             "build1": build1,
             "build2": build2,
             "d1": d1,
@@ -213,6 +214,19 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         group.full_clean()
         group.save()
         return group
+
+
+class SeleniumTestMixin(SeleniumTestMixin):
+    def _assert_no_js_errors(self):
+        browser_logs = []
+        for log in self.get_browser_logs():
+            # capture SEVERE-level entries from both JS runtime and console API
+            if log.get("level") == "SEVERE" and log.get("source") in (
+                "javascript",
+                "console-api",
+            ):
+                browser_logs.append(log)
+        self.assertEqual(browser_logs, [])
 
 
 def spy_mock(method, pre_action):

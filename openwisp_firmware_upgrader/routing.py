@@ -1,4 +1,4 @@
-from django.urls import re_path
+from django.urls import path
 
 from .websockets import (
     BatchUpgradeProgressConsumer,
@@ -7,16 +7,16 @@ from .websockets import (
 )
 
 websocket_urlpatterns = [
-    re_path(
-        r"ws/firmware-upgrader/upgrade-operation/(?P<operation_id>[^/]+)/$",
+    path(
+        "ws/firmware-upgrader/upgrade-operation/<uuid:operation_id>/",
         UpgradeProgressConsumer.as_asgi(),
     ),
-    re_path(
-        r"ws/firmware-upgrader/batch-upgrade-operation/(?P<batch_id>[^/]+)/$",
+    path(
+        "ws/firmware-upgrader/batch-upgrade-operation/<uuid:batch_id>/",
         BatchUpgradeProgressConsumer.as_asgi(),
     ),
-    re_path(
-        r"ws/firmware-upgrader/device/(?P<pk>[^/]+)/$",
+    path(
+        "ws/firmware-upgrader/device/<uuid:device_id>/",
         DeviceUpgradeProgressConsumer.as_asgi(),
     ),
 ]

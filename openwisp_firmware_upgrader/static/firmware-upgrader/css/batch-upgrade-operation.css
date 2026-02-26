@@ -5,13 +5,11 @@
 .upgrade-operations-title {
   font-size: 22px;
   font-weight: 300;
-  color: #333;
   margin: 0;
   padding: 0;
 }
 
 .search-section {
-  background: #f8f8f8;
   padding: 20px;
 }
 
@@ -20,52 +18,25 @@
   align-items: center;
 }
 
-.search-icon {
+#main #content .search-icon {
   width: 20px;
   height: 20px;
-  color: #333;
   margin-right: 15px;
   font-size: 16px;
+  margin-top: -3px;
 }
 
-.search-input {
-  width: 300px;
+#main #content .search-input {
   padding: 10px 15px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
-  outline: none;
 }
 
-.search-button {
+#main #content .search-button {
   padding: 10px 20px;
-  background: #333;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
   margin-left: 15px;
 }
 
-.filter-clear-heading {
-  margin: 0;
-  font-size: 14px;
-  font-weight: normal;
-}
-
-.filter-clear-link {
-  color: #666;
-  text-decoration: none;
-}
-
 .filter-clear-link:hover {
-  color: #333;
-}
-
-.results-container {
-  background: #fff;
+  color: var(--ow-color-fg-darker);
 }
 
 .results-table {
@@ -73,80 +44,46 @@
   border-collapse: collapse;
 }
 
-.results-table thead tr {
-  background: #f8f9fa;
-}
-
-.results-table th {
-  padding: 12px 20px;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 600;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 2px solid #e9ecef;
-}
-
-.results-table td {
-  padding: 15px 20px;
-  color: #1f1f1f;
-}
-
-.results-table tr.row1 {
-  background-color: #fff;
-}
-
-.results-table tr.row2 {
-  background-color: #f9f9f9;
-}
-
-.results-table tr:not(:last-child) {
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.device-link {
-  color: #df5d43 !important;
-  text-decoration: none;
+#main #content .device-link {
+  color: var(--ow-color-primary);
   font-weight: bold;
 }
 
 .empty-results {
   padding: 40px;
   text-align: center;
-  color: #666;
+  color: var(--body-quiet-color);
   font-style: italic;
 }
 
 .pagination {
   padding: 15px 20px;
   text-align: right;
-  border-top: 2px solid #e9ecef;
-  background: #f8f9fa;
+  border-top: 2px solid var(--hairline-color);
+  background: var(--darkened-bg);
 }
 
 .pagination a {
-  color: #333;
+  color: var(--body-fg);
   text-decoration: none;
   margin: 0 5px;
 }
 
 .pagination .current-page {
   margin: 0 10px;
-  color: #666;
+  color: var(--body-quiet-color);
 }
 
 .paginator {
-  font-size: 14px;
-  color: #7a7a7a;
+  color: var(--body-quiet-color);
   padding: 10px 20px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--hairline-color);
   margin: 0;
 }
 
 .batch-progress-container {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background: var(--darkened-bg);
+  border: 1px solid var(--hairline-color);
   border-radius: 8px;
   padding: 20px;
   margin: 20px 0;
@@ -161,57 +98,20 @@
 .batch-status {
   font-weight: 600;
   font-size: 16px;
-  color: #333;
+  color: var(--body-fg);
   text-transform: capitalize;
 }
 
 .batch-progress-text {
-  font-size: 14px;
-  color: #666;
+  color: var(--body-quiet-color);
 }
 
 .batch-progress-bar {
   height: 8px;
-  background-color: #e9ecef;
+  background-color: var(--hairline-color);
   border-radius: 4px;
   overflow: hidden;
   position: relative;
-}
-
-.batch-progress-fill {
-  height: 100%;
-  transition: width 0.3s ease;
-  border-radius: 4px;
-}
-
-.batch-progress-fill.idle {
-  background-color: #6c757d;
-}
-
-.batch-progress-fill.in-progress {
-  background: linear-gradient(90deg, #007bff, #0056b3);
-  animation: progress-animation 2s infinite;
-}
-
-.batch-progress-fill.success,
-.batch-progress-fill.completed-successfully {
-  background-color: #70bf2b;
-}
-
-.batch-progress-fill.failed {
-  background-color: #dc3545;
-}
-
-.batch-progress-fill.aborted {
-  background-color: #6c757d;
-}
-
-.batch-progress-fill.cancelled {
-  background-color: #8b8b8b;
-}
-
-.batch-progress-fill.partial-success {
-  background-color: #fc9240;
 }
 
 .status-cell {
@@ -229,7 +129,7 @@
 .upgrade-status-container .upgrade-progress-bar {
   width: 100%;
   height: 10px;
-  background-color: #e9ecef;
+  background-color: var(--hairline-color);
   border-radius: 3px;
   overflow: hidden;
   position: relative;
@@ -268,7 +168,7 @@
 }
 
 .upgrade-status-container .upgrade-progress-text {
-  color: #666;
+  color: var(--body-quiet-color);
   margin-top: 2px;
 }
 
@@ -310,7 +210,7 @@
   background-color: #d9d9d9;
   border-radius: 4px;
   overflow: hidden;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-color);
 }
 
 .batch-main-progress .upgrade-progress-fill {
@@ -349,21 +249,21 @@
 }
 
 .batch-main-progress .upgrade-progress-text {
-  color: #000;
+  color: var(--ow-color-black);
   font-weight: bold;
-  font-size: 14px;
   white-space: nowrap;
 }
 
-/* Progress Animation */
-@keyframes progress-animation {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
+/* Adjustments for list filters */
+#main #content .left-arrow {
+  left: -1.125rem;
+}
+#main #content .right-arrow {
+  right: -1.125rem;
+}
+#main #content #ow-changelist-filter {
+  padding: 1.25rem 0rem;
+}
+#main #content .filters-top {
+  margin-bottom: 0.5rem;
 }

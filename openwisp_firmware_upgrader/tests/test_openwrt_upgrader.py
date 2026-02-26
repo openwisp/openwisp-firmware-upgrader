@@ -124,13 +124,13 @@ def mocked_sysupgrade_failure(command, exit_codes=None, timeout=None):
         raise CommandFailedException(
             "Invalid image type\nImage check 'platform_check_image' failed."
         )
-    return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
+    return mocked_exec_upgrade_success(command, exit_codes, timeout)
 
 
 def mocked_sysupgrade_test_failure(command, exit_codes=None, timeout=None):
     if command.startswith(f"{OpenWrt._SYSUPGRADE} --test"):
         raise CommandFailedException("Invalid image type")
-    return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
+    return mocked_exec_upgrade_success(command, exit_codes, timeout)
 
 
 def mocked_exec_upgrade_memory_success(
@@ -145,7 +145,9 @@ def mocked_exec_upgrade_memory_success(
     ):
         _mock_memory_success_called = True
         return ["MemAvailable:      0 kB", 0]
-    return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
+    return mocked_exec_upgrade_success(
+        command, exit_codes, timeout, raise_unexpected_exit
+    )
 
 
 def mocked_exec_upgrade_memory_success_legacy(
@@ -170,7 +172,9 @@ def mocked_exec_upgrade_memory_failure(
 ):
     if command == "cat /proc/meminfo | grep MemAvailable":
         return ["MemAvailable:      0 kB", 0]
-    return mocked_exec_upgrade_memory_success(command, exit_codes=None, timeout=None)
+    return mocked_exec_upgrade_memory_success(
+        command, exit_codes, timeout, raise_unexpected_exit
+    )
 
 
 def mocked_exec_upgrade_memory_aborted(
@@ -182,7 +186,7 @@ def mocked_exec_upgrade_memory_aborted(
 
 
 def mocked_exec_upgrade_success_false_positives(
-    command, exit_codes=None, timeout=None, raised_unexpected_exit=None
+    command, exit_codes=None, timeout=None, raise_unexpected_exit=None
 ):
     if command.startswith(f"{OpenWrt._SYSUPGRADE} -v -c /tmp/openwrt-"):
         filename = command.split()[-1].split("/")[-1]
@@ -195,7 +199,9 @@ def mocked_exec_upgrade_success_false_positives(
             '"options": { "save_partitions": 1 } } '
             "(Connection failed)"
         )
-    return mocked_exec_upgrade_success(command, exit_codes=None, timeout=None)
+    return mocked_exec_upgrade_success(
+        command, exit_codes, timeout, raise_unexpected_exit
+    )
 
 
 def connect_fail_on_write_checksum_pre_action(*args, **kwargs):
@@ -408,7 +414,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         )
         lines = [
             (
-                f"Failed to connect with device using {device_conn.credentials}."
+                f"Failed to connect with {device_fw.device} using {device_conn.credentials}."
                 f" Error: {device_conn.failure_reason}"
             ),
             f"Detected a recoverable failure: {device_conn_error}",
@@ -450,11 +456,11 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op.refresh_from_db()
         lines = [
             (
-                f"Failed to connect with device using {conn1.credentials}."
+                f"Failed to connect with {device} using {conn1.credentials}."
                 f" Error: {conn1.failure_reason}"
             ),
             (
-                f"Failed to connect with device using {conn2.credentials}."
+                f"Failed to connect with {device} using {conn2.credentials}."
                 f" Error: {conn2.failure_reason}"
             ),
             (
@@ -872,18 +878,17 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         self.assertTrue(device_fw.installed)
 
     @patch("scp.SCPClient.putfo")
-    def test_upgrade_cancellation_early_stage(self, mock_putfo):
+    def test_upgrade_cancellation_early_stage(self, _mock_putfo):
         """Test cancellation during early stages of upgrade"""
-        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
-
+        _, device_conn, upgrade_op, _, _ = self._trigger_upgrade()
+        # Reset to non-terminal state before manually running upgrader
+        upgrade_op.status = "in-progress"
+        upgrade_op.save()
         ssh = device_conn.connector_instance
         ssh.connect()
-
         # Mock the connection and exec_command to simulate normal upgrade flow
         ssh.exec_command = mocked_exec_upgrade_success
-
         upgrader = OpenWrt(upgrade_op, device_conn)
-
         # Mock the cancellation check to simulate user cancellation
         original_check_cancellation = upgrader._check_cancellation
 
@@ -898,23 +903,22 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                 return original_check_cancellation()
 
         upgrader._check_cancellation = mock_check_cancellation
-
         with self.assertRaises(UpgradeCancelled):
             upgrader.upgrade(upgrade_op.image.file)
-
         ssh.disconnect()
 
     def test_upgrade_cancellation_services_restart(self):
         """Test that non-critical services are restarted when upgrade is cancelled"""
-        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
-
+        _, device_conn, upgrade_op, _, _ = self._trigger_upgrade()
+        # Reset to non-terminal state before manually running upgrader
+        upgrade_op.status = "in-progress"
+        upgrade_op.save()
         ssh = device_conn.connector_instance
         ssh.connect()
-
         # Mock exec_command to track service restart calls
         service_restart_calls = []
 
-        def mock_exec_command(cmd, **kwargs):
+        def mock_exec_command(cmd, **_kwargs):
             if "start" in cmd:
                 service_restart_calls.append(cmd)
             # Always return success for this test
@@ -924,35 +928,30 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrader = OpenWrt(upgrade_op, device_conn)
         upgrader._stop_non_critical_services()
         upgrader._non_critical_services_stopped = True
-
         upgrade_op.status = "cancelled"
         upgrade_op.save()
-
         # Check cancellation (should restart services)
         with self.assertRaises(UpgradeCancelled):
             upgrader._check_cancellation()
-
         # Verify services were restarted
         self.assertTrue(len(service_restart_calls) > 0)
-        self.assertTrue(any("start" in call for call in service_restart_calls))
-
+        self.assertTrue(
+            any("uhttpd start" in call for call in service_restart_calls),
+            "Expected uhttpd to be restarted after cancellation",
+        )
         ssh.disconnect()
 
     def test_upgrade_cancellation_check_method(self):
         """Test the _check_cancellation method directly"""
-        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
-
+        _, device_conn, upgrade_op, _, _ = self._trigger_upgrade()
         ssh = device_conn.connector_instance
         ssh.connect()
         ssh.exec_command = mocked_exec_upgrade_success
-
         upgrader = OpenWrt(upgrade_op, device_conn)
-
         # Test that no exception is raised when operation is in progress
         upgrade_op.status = "in-progress"
         upgrade_op.save()
         upgrader._check_cancellation()
-
         # Test that UpgradeCancelled is raised when operation is cancelled
         upgrade_op.status = "cancelled"
         upgrade_op.save()
@@ -965,5 +964,4 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
         upgrade_op.status = "aborted"
         upgrade_op.save()
         upgrader._check_cancellation()
-
         ssh.disconnect()

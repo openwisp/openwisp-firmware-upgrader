@@ -8,14 +8,20 @@ django.jQuery(function ($) {
   }
   initializeExistingBatchUpgradeOperations($);
   initializeMainProgressBar($);
-  const wsHost = owFirmwareUpgraderApiHost.host;
+  const wsHost = getFirmwareUpgraderApiHost();
+  if (!wsHost) {
+    // helper already printed message; skip websocket setup
+    return;
+  }
+
   const wsUrl = `${getWebSocketProtocol()}${wsHost}/ws/firmware-upgrader/batch-upgrade-operation/${batchUpgradeId}/`;
 
   const batchUpgradeProgressWebSocket = new ReconnectingWebSocket(wsUrl, null, {
     automaticOpen: false,
     timeoutInterval: 7000,
-    maxRetries: 5,
-    retryInterval: 3000,
+    maxReconnectAttempts: 10,
+    reconnectInterval: 30000,
+    reconnectDecay: 2,
   });
   window.batchUpgradeProgressWebSocket = batchUpgradeProgressWebSocket;
   // Initialize websocket connection
@@ -29,7 +35,7 @@ function requestCurrentBatchState(websocket) {
     try {
       const requestMessage = {
         type: "request_current_state",
-        batch_id: getBatchUpgradeIdFromUrl(),
+        batch_id: window.batchUpgradeId,
       };
       websocket.send(JSON.stringify(requestMessage));
     } catch (error) {
@@ -49,23 +55,15 @@ function initializeExistingBatchUpgradeOperations($, isRetry = false) {
     if (statusCell.find(".upgrade-status-container").length > 0) {
       return;
     }
-    let statusText = statusCell.find(".status-content").text().trim();
-    if (!statusText) {
-      let cellText = statusCell.text().trim();
-      statusText = cellText.replace(/\d+%.*$/, "").trim();
-    }
-    if (
-      statusText &&
-      (FW_STATUS_HELPERS.includesProgress(statusText) ||
-        ALL_VALID_FW_STATUSES.has(statusText))
-    ) {
+    let operationStatus = statusCell.attr("data-operation-status");
+    if (operationStatus && FW_STATUS_HELPERS.isValid(operationStatus)) {
       let operationId = statusCell.attr("data-operation-id") || "unknown";
       let operation = {
-        status: statusText,
+        status: operationStatus,
         id: operationId,
         progress: null,
       };
-      updateBatchStatusWithProgressBar(statusCell, operation);
+      renderOperationProgressBarInCell(statusCell, operation);
       processedCount++;
     }
   });
@@ -138,7 +136,6 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
   });
   batchUpgradeProgressWebSocket.open();
 }
-
 function updateBatchProgress(data) {
   let $ = django.jQuery;
   let mainProgressElement = $(".batch-main-progress");
@@ -161,7 +158,6 @@ function updateBatchProgress(data) {
         let statusText = $(this).find(".status-cell .status-content").text().trim();
         return FW_STATUS_GROUPS.SUCCESS.has(statusText);
       }).length;
-
       // Also check individual operation containers for success
       if (successfulOpsCount === 0) {
         $("#result_list tbody tr").each(function () {
@@ -186,14 +182,17 @@ function updateBatchProgress(data) {
         showPercentageText = false;
       }
     }
-
     let progressHtml = `
       <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${statusClass}" style="width: ${progressPercentage}%"></div>
+        <div class="upgrade-progress-fill ${escapeHtml(statusClass)}"
+             style="width: ${escapeHtml(String(progressPercentage))}%">
+        </div>
       </div>
     `;
     if (showPercentageText) {
-      progressHtml += `<span class="upgrade-progress-text">${progressPercentage}%</span>`;
+      progressHtml += `<span class="upgrade-progress-text">
+        ${escapeHtml(String(progressPercentage))}%
+      </span>`;
     }
     mainProgressElement.html(progressHtml);
   }
@@ -204,6 +203,7 @@ function updateBatchProgress(data) {
       completedInfo.text(`${data.completed} out of ${data.total}`);
     }
   }
+
   let statusField = $(".field-status .readonly");
   if (statusField.length > 0 && data.status) {
     let displayStatus = data.status;
@@ -216,7 +216,6 @@ function updateBatchProgress(data) {
     } else if (data.status === FW_UPGRADE_STATUS.IN_PROGRESS) {
       displayStatus = FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS;
     }
-
     let progressBar = statusField.find(".batch-main-progress");
     let statusText = statusField
       .contents()
@@ -248,10 +247,10 @@ function updateBatchOperationProgress(data) {
         id: data.operation_id,
         progress: data.progress,
       };
-      updateBatchStatusWithProgressBar(statusCell, operation);
+      renderOperationProgressBarInCell(statusCell, operation);
       if (data.modified) {
         let modifiedCell = row.find("td:nth-child(4)");
-        modifiedCell.html(getFormattedDateTimeString(data.modified));
+        modifiedCell.text(getFormattedDateTimeString(data.modified));
       }
     }
   });
@@ -265,34 +264,34 @@ function addNewOperationRow(data) {
   if (!data.device_name || !data.device_id) {
     return;
   }
-
   let tbody = $("#result_list tbody");
+  tbody.find("tr td[colspan]").parent().remove();
   let existingRows = tbody.find("tr").length;
   let rowClass = existingRows % 2 === 0 ? "row1" : "row2";
-  tbody.find("tr td[colspan]").parent().remove();
-
-  let deviceUrl = `/admin/firmware_upgrader/upgradeoperation/${data.operation_id}/change/`;
-  let imageDisplay = data.image_name || "None";
+  let deviceUrl = owDeviceUpgradeOperationUrl.replace(
+    "00000000-0000-0000-0000-000000000000",
+    data.operation_id,
+  );
+  let imageDisplay = data.image_name || gettext("None");
   let modifiedTime = data.modified
     ? getFormattedDateTimeString(data.modified)
-    : "Just now";
-
+    : gettext("Just now");
   // Build row using DOM attributes to prevent XSS vulnerability due to string interpolation
   let $row = $("<tr>").addClass(rowClass);
   let $deviceTd = $("<td>");
   let $link = $("<a>")
     .addClass("device-link")
     .attr("href", deviceUrl)
-    .attr("aria-label", `View device ${data.device_name}`)
-    .text(data.device_name); // SAFE
+    .attr("aria-label", gettext("View upgrade operation for") + " " + data.device_name)
+    .text(data.device_name);
   $deviceTd.append($link);
   let $statusTd = $("<td>")
     .addClass("status-cell")
     .attr("data-operation-id", data.operation_id);
   let $statusContent = $("<div>").addClass("status-content").text(data.status); // SAFE
   $statusTd.append($statusContent);
-  let $imageTd = $("<td>").text(imageDisplay); // SAFE
-  let $modifiedTd = $("<td>").text(modifiedTime); // SAFE
+  let $imageTd = $("<td>").text(imageDisplay);
+  let $modifiedTd = $("<td>").text(modifiedTime);
   $row.append($deviceTd, $statusTd, $imageTd, $modifiedTd);
   tbody.append($row);
 
@@ -301,38 +300,24 @@ function addNewOperationRow(data) {
     id: data.operation_id,
     progress: data.progress,
   };
-  updateBatchStatusWithProgressBar($statusTd, operation);
+  renderOperationProgressBarInCell($statusTd, operation);
 }
 
-function updateBatchStatusWithProgressBar(statusCell, operation) {
+function renderOperationProgressBarInCell(statusCell, operation) {
+  // Renders a visual progress bar in the given status cell based on the
+  // operation's status and progress.
   let $ = django.jQuery;
   let status = operation.status;
   let progressPercentage = normalizeProgress(operation.progress, status);
   statusCell.empty();
   statusCell.append('<div class="upgrade-status-container"></div>');
   let statusContainer = statusCell.find(".upgrade-status-container");
-  let statusClass = "";
-  let showPercentageText = false;
-  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
-  } else if (FW_STATUS_GROUPS.SUCCESS.has(status)) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.SUCCESS;
-    progressPercentage = 100;
-  } else if (status === FW_UPGRADE_STATUS.FAILED) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
-    progressPercentage = 100;
-  } else if (status === FW_UPGRADE_STATUS.ABORTED) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.ABORTED;
-    progressPercentage = 100;
-  } else if (status === FW_UPGRADE_STATUS.CANCELLED) {
-    statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
+  let statusClass = STATUS_TO_CSS_CLASS[status] || "";
+  if (STATUSES_WITH_FULL_PROGRESS.has(status)) {
     progressPercentage = 100;
   }
-  let progressHtml = renderProgressBarHtml(
-    progressPercentage,
-    statusClass,
-    showPercentageText,
-  );
+  // Per operation bars do not show percentage text to keep table rows compact
+  let progressHtml = renderProgressBarHtml(progressPercentage, statusClass, false);
   statusContainer.html(progressHtml);
 }
 
@@ -384,14 +369,17 @@ function initializeMainProgressBar($) {
         statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
         showPercentageText = false;
       }
-
       let progressHtml = `
         <div class="upgrade-progress-bar">
-          <div class="upgrade-progress-fill ${statusClass}" style="width: ${progressPercentage}%"></div>
+          <div class="upgrade-progress-fill ${escapeHtml(statusClass)}"
+               style="width: ${escapeHtml(progressPercentage)}%">
+          </div>
         </div>
       `;
       if (showPercentageText) {
-        progressHtml += `<span class="upgrade-progress-text">${progressPercentage}%</span>`;
+        progressHtml += `<span class="upgrade-progress-text">
+          ${escapeHtml(progressPercentage)}%
+        </span>`;
       }
       mainProgressElement.html(progressHtml);
     }

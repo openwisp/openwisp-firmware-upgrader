@@ -123,42 +123,43 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         fields = ("build", "group", "location", "upgrade_options")
 
     def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop("user")
         super().__init__(*args, **kwargs)
+        build = self.initial.get("build")
+        device_group_qs = DeviceGroup.objects
+        location_qs = Location.objects
+        organization_id = None
+        if build:
+            organization_id = build.category.organization_id
+        if organization_id:
+            device_group_qs = device_group_qs.filter(organization_id=organization_id)
+            location_qs = location_qs.filter(organization_id=organization_id)
+        if not self.user.is_superuser:
+            device_group_qs = device_group_qs.filter(
+                organization_id__in=self.user.organizations_managed
+            )
+            location_qs = location_qs.filter(
+                organization_id__in=self.user.organizations_managed
+            )
+        self.fields["group"].queryset = device_group_qs
+        self.fields["location"].queryset = location_qs
 
-        # Set the appropriate queryset for group field based on the build's organization
-        if self.initial.get("build"):
-            build = self.initial["build"]
-            if hasattr(build, "category") and build.category.organization:
-                self.fields["group"].queryset = swapper.load_model(
-                    "config", "DeviceGroup"
-                ).objects.filter(organization=build.category.organization)
-                self.fields["location"].queryset = Location.objects.filter(
-                    organization=build.category.organization
-                )
-            else:
-                # For shared builds, allow all groups and locations
-                self.fields["group"].queryset = swapper.load_model(
-                    "config", "DeviceGroup"
-                ).objects.all()
-                self.fields["location"].queryset = Location.objects.all()
-        else:
-            # If no build in initial, show all groups and locations
-            self.fields["group"].queryset = swapper.load_model(
-                "config", "DeviceGroup"
-            ).objects.all()
-            self.fields["location"].queryset = Location.objects.all()
-
-    @property
-    def media(self):
+    class Media:
+        # We don't need to include any select2 JS/CSS files as they are
+        # included by the JSONSchemaWidget used for upgrade_options.
+        js = [
+            "admin/js/jquery.init.js",
+            "firmware-upgrader/js/upgrade-selected-confirmation.js",
+            "firmware-upgrader/js/mass-upgrade-select2.js",
+        ]
         css = {
             "all": [
-                "admin/css/vendor/select2/select2.min.css",
+                "admin/css/forms.css",
                 "admin/css/autocomplete.css",
                 "admin/css/ow-auto-filter.css",
                 "firmware-upgrader/css/upgrade-selected-confirmation.css",
             ]
         }
-        return super().media + forms.Media(css=css)
 
 
 @admin.register(load_model("Build"))
@@ -207,8 +208,8 @@ class BuildAdmin(BaseAdmin):
         upgrade_options = request.POST.get("upgrade_options")
         group_id = request.POST.get("group")
         location_id = request.POST.get("location")
-        form = BatchUpgradeConfirmationForm(initial={"build": queryset.first()})
         build = queryset.first()
+        form = BatchUpgradeConfirmationForm(initial={"build": build}, user=request.user)
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
             form = BatchUpgradeConfirmationForm(
@@ -217,7 +218,8 @@ class BuildAdmin(BaseAdmin):
                     "build": build,
                     "group": group_id,
                     "location": location_id,
-                }
+                },
+                user=request.user,
             )
             form.full_clean()
             if not form.errors:
@@ -234,8 +236,7 @@ class BuildAdmin(BaseAdmin):
                     # Success message for when batch upgrade starts successfully
                     text = _(
                         "You can track the progress of this mass upgrade operation "
-                        "in this page. Refresh the page from time to time to check "
-                        "its progress."
+                        "in this page."
                     )
                     self.message_user(request, mark_safe(text), messages.SUCCESS)
                     url = reverse(
@@ -244,8 +245,20 @@ class BuildAdmin(BaseAdmin):
                     )
                     return redirect(url)
                 except ValidationError as e:
-                    self.message_user(request, str(e.messages[0]), messages.ERROR)
-        result = BatchUpgradeOperation.dry_run(build=build)
+                    self.message_user(
+                        request, str(e.messages[0] if e.messages else e), messages.ERROR
+                    )
+        dry_run_kwargs = {
+            "build": build,
+        }
+        if form.is_bound:
+            group = form.cleaned_data.get("group") if not form.errors else None
+            location = form.cleaned_data.get("location") if not form.errors else None
+            dry_run_kwargs["group"] = group
+            dry_run_kwargs["location"] = location
+        result = BatchUpgradeOperation.dry_run(
+            **dry_run_kwargs,
+        )
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
         title = _("Confirm mass upgrade operation")
@@ -254,7 +267,6 @@ class BuildAdmin(BaseAdmin):
             related_device_fw=related_device_fw,
             firmwareless_devices=firmwareless_devices,
         )
-
         context.update(
             {
                 "title": title,
@@ -265,6 +277,10 @@ class BuildAdmin(BaseAdmin):
                 "form": form,
                 "firmware_upgrader_schema": json.dumps(
                     upgrader_schema, cls=DjangoJSONEncoder
+                ),
+                "upgrade_operation_path": reverse(
+                    f"admin:{app_label}_upgradeoperation_change",
+                    args=["00000000-0000-0000-0000-000000000000"],
                 ),
                 "build": build,
                 "opts": opts,
@@ -284,16 +300,15 @@ class BuildAdmin(BaseAdmin):
             context,
         )
 
-    upgrade_selected.short_description = (
-        "Mass-upgrade devices related " "to the selected build"
-    )
-
-    def change_view(self, request, object_id, form_url="", extra_context=None):
+    def change_view(self, request, object_id, extra_context=None, **kwargs):
         app_label = self.model._meta.app_label
         extra_context = extra_context or {}
         upgrade_url = f"{app_label}_build_changelist"
         extra_context.update({"upgrade_url": upgrade_url})
-        return super().change_view(request, object_id, form_url, extra_context)
+        extra_context["django_locale"] = get_language()
+        return super().change_view(
+            request, object_id, extra_context=extra_context, **kwargs
+        )
 
 
 class UpgradeOperationForm(forms.ModelForm):
@@ -334,10 +349,16 @@ class ReadonlyUpgradeOptionsMixin:
             option_title = value["title"]
             icon_url = static(f"admin/img/icon-{option_used}.svg")
             options.append(
-                f'<li><img src="{icon_url}" alt="{option_used}">{option_title}</li>'
+                format_html(
+                    '<li><img src="{}" alt="{}">{}</li>',
+                    icon_url,
+                    _(option_used),
+                    option_title,
+                )
             )
         return format_html(
-            mark_safe(f'<ul class="readonly-upgrade-options">{"".join(options)}</ul>')
+            '<ul class="readonly-upgrade-options">{}</ul>',
+            mark_safe("".join(options)),
         )
 
 
@@ -376,6 +397,17 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
         if self._should_display_batch(obj, fields):
             fields.append("batch")
         return fields
+
+    def change_view(self, request, object_id, extra_context=None, **kwargs):
+        extra_context = extra_context or {}
+        extra_context["upgrade_operation_cancel_url"] = reverse(
+            "upgrader:api_upgradeoperation_cancel",
+            args=["00000000-0000-0000-0000-000000000000"],
+        )
+        extra_context["django_locale"] = get_language()
+        return super().change_view(
+            request, object_id, extra_context=extra_context, **kwargs
+        )
 
     def get_fields(self, request, obj=None):
         fields = super().get_fields(request, obj).copy()
@@ -433,91 +465,69 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     )
     device_upgrades_per_page = 20
 
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.prefetch_related(
-            "upgradeoperation_set__device", "upgradeoperation_set__image"
-        )
-
-    def get_upgrade_operations(self, obj):
-        return obj.upgradeoperation_set.all().select_related("device", "image")
+    def get_upgrade_operations(self, request, obj):
+        qs = obj.upgradeoperation_set.select_related("device", "image")
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(device__organization_id__in=request.user.organizations_managed)
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
         extra_context["title"] = _("Mass upgrade operations")
         return super().changelist_view(request, extra_context)
 
-    def change_view(self, request, object_id, form_url="", extra_context=None):
-        extra_context = extra_context or {}
-        obj = self.get_object(request, object_id)
-        if obj:
-            # Get upgrade operations with search and filtering
-            upgrades_qs = self.get_upgrade_operations(obj)
+    def _build_filter_specs(self, request, obj, current_status, current_org):
+        """Return a list of filter spec objects for the change view.
 
-            # Handle search
-            search_query = request.GET.get("q", "")
-            if search_query:
-                upgrades_qs = upgrades_qs.filter(device__name__icontains=search_query)
+        ``upgrades_qs`` is not strictly required here but could be passed if
+        future filters need to inspect the queryset.  For now the filters are
+        based on request parameters and the build's organization.
+        """
+        filter_specs = []
+        # Status filter
+        status_choices = []
+        # build a base QueryDict with all current GET params
+        params = request.GET.copy()
 
-            # Get current filter values
-            current_status = request.GET.get("status", "")
-            current_org = request.GET.get("organization", "")
+        # generic choice builder used by both status and organization filters
+        def _make_choice(current_value, display, param_name, value):
+            # start with a fresh copy so we don't mutate params
+            q = params.copy()
+            # always remove existing key for this filter
+            q.pop(param_name, None)
+            if value:
+                q[param_name] = value
+            qs = q.urlencode()
+            query_string = f"?{qs}" if qs else ""
+            return {
+                "display": display,
+                "selected": current_value == value,
+                "query_string": query_string,
+            }
 
-            # Apply filters to queryset
-            if current_status:
-                upgrades_qs = upgrades_qs.filter(status=current_status)
-            if current_org:
-                upgrades_qs = upgrades_qs.filter(device__organization_id=current_org)
+        for status_value, display_name in (
+            ("", _("All")),
+        ) + UpgradeOperation.STATUS_CHOICES:
+            status_choices.append(
+                _make_choice(current_status, display_name, "status", status_value)
+            )
 
-            # Create filter specs for the template
-            filter_specs = []
+        class StatusFilter:
+            title = _("status")
+            choices = status_choices
 
-            # Status filter
-            status_choices = [
-                {
-                    "display": _("All"),
-                    "selected": not current_status,
-                    "query_string": "?",
-                },
-                {
-                    "display": _("idle"),
-                    "selected": current_status == "idle",
-                    "query_string": "?status=idle",
-                },
-                {
-                    "display": _("in progress"),
-                    "selected": current_status == "in-progress",
-                    "query_string": "?status=in-progress",
-                },
-                {
-                    "display": _("completed successfully"),
-                    "selected": current_status == "success",
-                    "query_string": "?status=success",
-                },
-                {
-                    "display": _("completed with some failures"),
-                    "selected": current_status == "failed",
-                    "query_string": "?status=failed",
-                },
-            ]
-
-            class StatusFilter:
-                title = _("status")
-                choices = status_choices
-
-            filter_specs.append(StatusFilter())
-
-            # Organization filter
-            org_choices = [
-                {"display": _("All"), "selected": not current_org, "query_string": "?"}
-            ]
-            for org in Organization.objects.all().order_by("name"):
+        filter_specs.append(StatusFilter())
+        # Organization filter (only for shared builds)
+        if obj.build.category.organization is None:
+            org_choices = []
+            # "All" choice is selected when there is no current_org value
+            org_choices.append(_make_choice(current_org, _("All"), "organization", ""))
+            org_qs = Organization.objects
+            if not request.user.is_superuser:
+                org_qs = org_qs.filter(id__in=request.user.organizations_managed)
+            for org in org_qs.order_by("name"):
                 org_choices.append(
-                    {
-                        "display": org.name,
-                        "selected": current_org == str(org.id),
-                        "query_string": f"?organization={org.id}",
-                    }
+                    _make_choice(current_org, org.name, "organization", str(org.id))
                 )
 
             class OrganizationFilter:
@@ -525,23 +535,46 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
                 choices = org_choices
 
             filter_specs.append(OrganizationFilter())
+        return filter_specs
 
-            # Pagination
-            paginator = Paginator(
-                upgrades_qs.order_by("id"), self.device_upgrades_per_page
+    def _paginate_operations(self, upgrades_qs, page_param, per_page=None):
+        """Paginate ``upgrades_qs`` returning (page_obj, paginator, object_list)."""
+        per_page = per_page or self.device_upgrades_per_page
+        paginator = Paginator(upgrades_qs.order_by("id"), per_page)
+        page_number = page_param or 1
+        try:
+            page_obj = paginator.page(page_number)
+        except InvalidPage:
+            page_obj = paginator.page(1)
+        return page_obj, paginator, page_obj.object_list
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        extra_context = extra_context or {}
+        obj = self.get_object(request, object_id)
+        if obj:
+            upgrades_qs = self.get_upgrade_operations(request, obj)
+            search_query = request.GET.get("q", "")
+            if search_query:
+                upgrades_qs = upgrades_qs.filter(device__name__icontains=search_query)
+            # Get current filter values
+            current_status = request.GET.get("status", "")
+            current_org = request.GET.get("organization", "")
+            # apply filters to queryset
+            if current_status:
+                upgrades_qs = upgrades_qs.filter(status=current_status)
+            if current_org:
+                upgrades_qs = upgrades_qs.filter(device__organization_id=current_org)
+            # build filter specs and paginate results
+            filter_specs = self._build_filter_specs(
+                request, obj, current_status, current_org
             )
-            page_number = request.GET.get("page", 1)
-            try:
-                page_obj = paginator.page(page_number)
-            except InvalidPage:
-                page_obj = paginator.page(1)
-
-            # Get the app label for URL construction
-            upgrade_operation_app_label = load_model("UpgradeOperation")._meta.app_label
-
+            page_obj, paginator, upgrade_operations = self._paginate_operations(
+                upgrades_qs, request.GET.get("page", 1)
+            )
+            upgrade_operation_app_label = UpgradeOperation._meta.app_label
             extra_context.update(
                 {
-                    "upgrade_operations": page_obj.object_list,
+                    "upgrade_operations": upgrade_operations,
                     "page_obj": page_obj,
                     "paginator": paginator,
                     "filter_specs": filter_specs,
@@ -551,8 +584,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
                     "upgrade_operation_app_label": upgrade_operation_app_label,
                 }
             )
-
-        return super().change_view(request, object_id, extra_context)
+        return super().change_view(request, object_id, extra_context=extra_context)
 
     def get_readonly_fields(self, request, obj=None):
         fields = super().get_readonly_fields(request, obj)
@@ -581,7 +613,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     def __get_rate(self, value):
         if value:
             return f"{value}%"
-        return "N/A"
+        return _("N/A")
 
     completed.short_description = _("completed")
     success_rate.short_description = _("success rate")
@@ -728,6 +760,7 @@ class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperation
     class Media:
         js = [
             "connection/js/lib/reconnecting-websocket.min.js",
+            "firmware-upgrader/js/upgrade-utils.js",
             "firmware-upgrader/js/upgrade-progress.js",
         ]
         css = {

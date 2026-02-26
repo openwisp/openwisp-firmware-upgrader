@@ -1,16 +1,16 @@
-Upgrade Status Reference
-========================
+Upgrade Status
+==============
+
+OpenWISP Firmware Upgrader tracks the progress of firmware upgrade
+operations through different status values. Understanding these statuses
+is helpful for monitoring upgrade operations and troubleshooting issues.
 
 .. contents:: **Table of contents**:
     :depth: 2
     :local:
 
-Overview
---------
-
-OpenWISP Firmware Upgrader tracks the progress of firmware upgrade
-operations through different status values. Understanding these statuses
-is essential for monitoring upgrade operations and troubleshooting issues.
+Upgrade Operation Status Reference
+----------------------------------
 
 In Progress
 ~~~~~~~~~~~
@@ -31,7 +31,7 @@ file upload, and firmware flashing.
 
 **User Actions**: Users can cancel upgrade operations that are in
 progress, but only before the firmware flashing phase begins (typically
-when progress is below 60%).
+when progress is below 65%).
 
 Success
 ~~~~~~~
@@ -75,7 +75,7 @@ Aborted
 
 **Status**: ``aborted``
 
-**Description**: The upgrade operation was stopped due to pre-requisites
+**Description**: The upgrade operation was stopped due to prerequisites
 not being met. The system determined it was unsafe or impossible to
 proceed with the upgrade.
 
@@ -113,12 +113,12 @@ button that appears next to in-progress operations.
 
 **When cancellation is possible:**
 
-- During the early stages of upgrade (typically before 60% progress)
+- During the early stages of upgrade (typically before 65% progress)
 - Before the new firmware image is written to the flash memory of the
   network device
 - While the operation status is still "in-progress"
 
-**What happens when the upgrade operation cancels:**
+**What happens when the upgrade operation is cancelled:**
 
 - The upgrade process stops immediately
 - If services were stopped during the upgrade, they are automatically
@@ -129,31 +129,54 @@ button that appears next to in-progress operations.
 Status Flow
 -----------
 
-The typical flow of upgrade statuses follows this pattern:
+A firmware upgrade operation always starts in the ``in-progress`` state.
+From there, it can transition into one of several terminal states
+depending on how the operation concludes.
 
-.. code-block:: none
+Successful Flow
+~~~~~~~~~~~~~~~
 
-    in-progress → success
-               ↓
-               failed/aborted/cancelled
+In the normal case, the upgrade proceeds without interruption:
 
-**Typical successful upgrade:**
+1. ``in-progress``: the upgrade is executed;
+2. ``success``: the device reboots and becomes reachable again.
 
-1. ``in-progress``
-2. ``success``
+This indicates a fully completed and verified upgrade.
 
-**Typical problematic upgrade:**
+Interrupted or Unsuccessful Flows
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-1. ``in-progress`` 3. ``failed``: an unexpected error occurs during
-upgrade 2. **OR** ``aborted``: the system detects pre-condition failure
-and stops safely 4. **OR** ``cancelled``: the user manually stops the
-upgrade
+An upgrade may also end prematurely or unsuccessfully:
+
+- ``aborted``: the system detects that one or more safety preconditions
+  are not met *before* flashing begins and stops the operation without
+  making any changes to the device;
+- ``cancelled``: the user manually stops the upgrade while it is still
+  safe to do so, firmware flash is prevented;
+- ``failed``: the firmware flashing process completes, but the device does
+  not become reachable afterward, it usually indicates a post-flash
+  failure.
+
+Terminal States
+~~~~~~~~~~~~~~~
+
+The following statuses are terminal and will not transition further:
+
+- ``success``
+- ``failed``
+- ``aborted``
+- ``cancelled``
+
+Once a terminal state is reached, a new upgrade operation must be
+initiated to retry or recover.
 
 Monitoring Upgrades
 -------------------
 
 **Real-time Progress**: The admin interface provides real-time updates of
-upgrade operations, including progress percentages and detailed logs.
+upgrade operations, including progress percentages and detailed logs. See
+:doc:`websocket-api` for details on the WebSocket API used to deliver
+these updates.
 
 **Upgrade Logs**: Each status change is logged with detailed information
 about what occurred during the upgrade process.

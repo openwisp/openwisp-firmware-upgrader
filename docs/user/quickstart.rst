@@ -98,8 +98,8 @@ it.
 4. Perform a Firmware Upgrade to a Specific Device
 --------------------------------------------------
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-devicefirmware.gif
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-devicefirmware.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-devicefirmware.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-devicefirmware.gif
 
 Once a new build is ready, has been created in the system and its image
 have been uploaded, it will be the time to finally upgrade our devices.
@@ -128,8 +128,8 @@ To cancel an ongoing upgrade:
 - If an upgrade is in progress, you will see a "Cancel Upgrade" button
 - Click the "Cancel Upgrade" button to stop the upgrade process
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/26/cancel-device-upgrade.gif
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/26/cancel-device-upgrade.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-cancel-upgrade.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-cancel-upgrade.gif
 
 Cancellation is only possible during the early stages of the upgrade
 process. Once the firmware flashing begins, the cancel button will be
@@ -139,8 +139,8 @@ process could corrupt the device.
 The system automatically prevents cancellation during critical phases to
 ensure device safety.
 
-Once canceled, the upgrade status will be updated to show that the
-operation was canceled, and you can attempt a new upgrade if needed.
+Once cancelled, the upgrade status will be updated to show that the
+operation was cancelled, and you can attempt a new upgrade if needed.
 
 6. Performing Mass Upgrades
 ---------------------------
@@ -158,8 +158,8 @@ At this stage you can try a mass upgrade by doing the following:
   devices to be upgraded with
 - click on "Mass-upgrade devices related to the selected build".
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-batch-upgrade.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-batch-upgrade.gif
 
 At this point you should see a summary page which will inform you of which
 devices are going to be upgraded. On this page, you can optionally filter

@@ -28,7 +28,6 @@ Device = load_model("config", "Device")
 
 
 @pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
 class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
     """Test WebSocket consumers and publishers for firmware upgrade progress."""
 
@@ -40,8 +39,8 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         self.regular_user = self._create_user()
         self.superuser = self._create_admin()
 
-    async def tearDown(self):
-        return await sync_to_async(super().tearDown())
+    def tearDown(self):
+        super().tearDown()
 
     async def _create_test_device_with_upgrade(self):
         """Helper to create a device with an upgrade operation."""
@@ -112,7 +111,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             DeviceUpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/device/{device_id}/",
         )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
+        communicator.scope["url_route"] = {"kwargs": {"device_id": device_id}}
         communicator.scope["user"] = user
         connected, _ = await communicator.connect()
         assert connected is True
@@ -227,7 +226,6 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             group_name,
             {
                 "type": "send_update",
-                "model": "UpgradeOperation",
                 "data": {
                     "type": "operation_update",
                     "operation": {
@@ -235,13 +233,13 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
                         "status": "in-progress",
                         "log": "Test log",
                     },
+                    "timestamp": timezone.now().isoformat(),
                 },
             },
         )
         response = await communicator.receive_json_from()
-        self.assertEqual(response["model"], "UpgradeOperation")
-        self.assertEqual(response["data"]["type"], "operation_update")
-        self.assertEqual(response["data"]["operation"]["id"], "test-op-id")
+        self.assertEqual(response["type"], "operation_update")
+        self.assertEqual(response["operation"]["id"], "test-op-id")
         await communicator.disconnect()
 
     @patch(_mock_upgrade, return_value=True)
@@ -256,14 +254,10 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             DeviceUpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/device/{device_id}/",
         )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
+        communicator.scope["url_route"] = {"kwargs": {"device_id": device_id}}
         communicator.scope["user"] = unauthenticated_user
-        try:
-            connected, _ = await communicator.connect()
-            self.assertEqual(connected, False)
-        except Exception:
-            # If connection is forcibly closed then treat it as failed connection
-            pass
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
 
     @patch(_mock_upgrade, return_value=True)
     @patch(_mock_connect, return_value=True)
@@ -276,13 +270,10 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             DeviceUpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/device/{device_id}/",
         )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
+        communicator.scope["url_route"] = {"kwargs": {"device_id": device_id}}
         communicator.scope["user"] = self.regular_user
-        try:
-            connected, _ = await communicator.connect()
-            self.assertEqual(connected, False)
-        except Exception:
-            pass
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
 
     @patch(_mock_upgrade, return_value=True)
     @patch(_mock_connect, return_value=True)
@@ -290,8 +281,6 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         """Test DeviceUpgradeProgressConsumer current state request functionality."""
         _, device_id = await self._create_test_device_with_upgrade()
         communicator = await self._get_device_upgrade_progress_communicator(device_id)
-        # Send current state request
-        await communicator.send_json_to({"type": "request_current_state"})
         test_operations = [
             {
                 "id": "op1",
@@ -302,7 +291,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             },
             {
                 "id": "op2",
-                "status": "in progress",
+                "status": "in-progress",
                 "log": "Test log 2",
                 "modified": timezone.now(),
                 "created": timezone.now(),
@@ -312,15 +301,15 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             "openwisp_firmware_upgrader.websockets.sync_to_async"
         ) as mock_sync_to_async:
             mock_sync_to_async.return_value = AsyncMock(return_value=test_operations)
+            # Send current state request
+            await communicator.send_json_to({"type": "request_current_state"})
             # The consumer should send current state for each operation
             response1 = await communicator.receive_json_from()
             response2 = await communicator.receive_json_from()
-            self.assertEqual(response1["model"], "UpgradeOperation")
-            self.assertEqual(response1["data"]["type"], "operation_update")
-            self.assertEqual(response1["data"]["operation"]["id"], "op1")
-            self.assertEqual(response2["model"], "UpgradeOperation")
-            self.assertEqual(response2["data"]["type"], "operation_update")
-            self.assertEqual(response2["data"]["operation"]["id"], "op2")
+            self.assertEqual(response1["type"], "operation_update")
+            self.assertEqual(response1["operation"]["id"], "op1")
+            self.assertEqual(response2["type"], "operation_update")
+            self.assertEqual(response2["operation"]["id"], "op2")
         await communicator.disconnect()
 
     @patch(_mock_upgrade, return_value=True)
@@ -354,7 +343,6 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             device_call = mock_group_send.call_args_list[0]
             self.assertEqual(device_call[0][0], f"firmware_upgrader.device-{device_id}")
             self.assertEqual(device_call[0][1]["type"], "send_update")
-            self.assertEqual(device_call[0][1]["model"], "UpgradeOperation")
             self.assertEqual(device_call[0][1]["data"]["type"], "test")
             # Check operation channel call
             operation_call = mock_group_send.call_args_list[1]
@@ -427,11 +415,8 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             f"/ws/firmware-upgrader/upgrade-operation/{operation_id}/",
         )
         communicator.scope["url_route"] = {"kwargs": {}}
-        try:
-            connected, _ = await communicator.connect()
-            self.assertEqual(connected, False)
-        except (KeyError, Exception):
-            pass
+        connected, _ = await communicator.connect()
+        self.assertEqual(connected, False)
 
     @override_settings(
         CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
@@ -441,14 +426,12 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
     async def test_websocket_with_inmemory_channel_layer(self, *args):
         """Test WebSocket functionality with in-memory channel layer."""
         operation_id, _ = await self._create_test_device_with_upgrade()
-
         communicator = await self._get_upgrade_progress_communicator(
             operation_id, user=self.superuser
         )
         # Test receiving messages with in-memory channel layer
         channel_layer = get_channel_layer()
         group_name = f"upgrade_{operation_id}"
-
         await channel_layer.group_send(
             group_name,
             {
@@ -490,11 +473,11 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
                 DeviceUpgradeProgressConsumer.as_asgi(),
                 f"/ws/firmware-upgrader/device/{device_id}/",
             )
-            communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
+            communicator.scope["url_route"] = {"kwargs": {"device_id": device_id}}
             communicator.scope["user"] = self.superuser
             try:
                 await communicator.connect()
-            except Exception:
+            except ConnectionError:
                 pass
         with patch.object(
             DeviceUpgradeProgressConsumer, "channel_layer", create=True
@@ -504,11 +487,11 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
                 DeviceUpgradeProgressConsumer.as_asgi(),
                 f"/ws/firmware-upgrader/device/{device_id}/",
             )
-            communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
+            communicator.scope["url_route"] = {"kwargs": {"device_id": device_id}}
             communicator.scope["user"] = self.superuser
             try:
                 await communicator.connect()
-            except Exception:
+            except ConnectionError:
                 pass
 
     @patch(_mock_upgrade, return_value=True)
@@ -602,24 +585,18 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             DeviceUpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/device/{device_id}/",
         )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
+        communicator.scope["url_route"] = {"kwargs": {"device_id": device_id}}
         # Don't set user in scope
-        try:
-            connected, _ = await communicator.connect()
-            self.assertEqual(connected, False)
-        except Exception:
-            pass
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
         communicator = WebsocketCommunicator(
             DeviceUpgradeProgressConsumer.as_asgi(),
             f"/ws/firmware-upgrader/device/{device_id}/",
         )
-        communicator.scope["url_route"] = {"kwargs": {"pk": device_id}}
+        communicator.scope["url_route"] = {"kwargs": {"device_id": device_id}}
         communicator.scope["user"] = MagicMock(is_authenticated=False)
-        try:
-            connected, _ = await communicator.connect()
-            self.assertEqual(connected, False)
-        except Exception:
-            pass
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
 
     @patch(_mock_upgrade, return_value=True)
     @patch(_mock_connect, return_value=True)

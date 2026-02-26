@@ -41,11 +41,11 @@ Navigate into the cloned repository:
 
 .. _firmware_upgrader_dev_docker:
 
-Launch Redis and PostgreSQL (the latter is used in some automated tests):
+Launch Redis:
 
 .. code-block:: shell
 
-    docker compose up -d redis postgres
+    docker compose up -d redis
 
 Setup and activate a virtual-environment (we'll be using `virtualenv
 <https://pypi.org/project/virtualenv/>`_):
@@ -112,28 +112,13 @@ Run tests with (make sure you have the :ref:`selenium dependencies
 
     ./runtests
 
-Some tests, such as the Selenium UI tests, require a PostgreSQL database
-to run. If you don't have a PostgreSQL database running on your system,
-you can use the :ref:`Docker Compose configuration provided in this
-repository <firmware_upgrader_dev_docker>`. Once set up, you can run these
-specific tests as follows:
+``./runtests`` is a wrapper that runs tests for both
+``openwisp_firmware_upgrader`` and the SAMPLE_APP. To run only the
+SAMPLE_APP tests:
 
 .. code-block:: shell
 
-    # Run only specific selenium tests classes
-    cd tests/
-    DJANGO_SETTINGS_MODULE=openwisp2.postgresql_settings \
-      ./manage.py test openwisp_firmware_upgrader.tests.test_selenium.TestDeviceAdmin
-
-    # run only tests for the sample app
     SAMPLE_APP=1 ./runtests.py --keepdb --failfast
-
-When running the last line of the previous example, the environment
-variable ``SAMPLE_APP`` activates the app in
-``/tests/openwisp2/sample_firmware_upgrader/`` which is a simple django
-app that extends ``openwisp-firmware-upgrader`` with the sole purpose of
-testing its extensibility, for more information regarding this concept,
-read :doc:`extending`.
 
 .. important::
 
