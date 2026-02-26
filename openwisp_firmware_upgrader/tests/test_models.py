@@ -263,6 +263,58 @@ class TestModels(TestUpgraderMixin, TestCase):
         uo.refresh_from_db()
         self.assertEqual(uo.log, "line1\nline2")
 
+    def test_upgrade_operation_update_progress(self):
+        self._create_device_firmware(upgrade=True)
+        uo = UpgradeOperation.objects.first()
+
+        with self.subTest("Valid progress update to 50"):
+            uo.update_progress(50)
+            self.assertEqual(uo.progress, 50)
+
+        with self.subTest("Valid progress update to 0"):
+            uo.update_progress(0)
+            self.assertEqual(uo.progress, 0)
+
+        with self.subTest("Valid progress update to 100"):
+            uo.update_progress(100)
+            self.assertEqual(uo.progress, 100)
+
+        with self.subTest("Invalid progress: non-numeric string"):
+            with self.assertRaises(ValidationError) as context:
+                uo.update_progress("50")
+            self.assertEqual(
+                context.exception.message, "Progress must be numeric, got <class 'str'>"
+            )
+
+        with self.subTest("Invalid progress: negative value"):
+            with self.assertRaises(ValidationError) as context:
+                uo.update_progress(-1)
+            self.assertEqual(
+                context.exception.message, "Progress must be between 0-100, got -1"
+            )
+
+        with self.subTest("Invalid progress: value over 100"):
+            with self.assertRaises(ValidationError) as context:
+                uo.update_progress(101)
+            self.assertEqual(
+                context.exception.message, "Progress must be between 0-100, got 101"
+            )
+
+        with self.subTest("Float value gets converted to int"):
+            uo.update_progress(75.7)
+            self.assertEqual(uo.progress, 75)
+
+    def test_concurrent_cancellation_race_condition(self):
+        """Test that concurrent cancellation attempts don't cause errors."""
+        self._create_device_firmware(upgrade=True)
+        uo = UpgradeOperation.objects.first()
+        with mock.patch.object(uo, "save"):
+            # First call succeeds
+            uo.cancel()
+            # Second call should raise ValueError (already cancelled)
+            with self.assertRaises(ValueError):
+                uo.cancel()
+
     def test_permissions(self):
         admin = Group.objects.get(name="Administrator")
         operator = Group.objects.get(name="Operator")
@@ -705,7 +757,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
-    def test_batch_upgrade_with_group_filtering(self, *args):
+    def test_batch_upgrade_with_group_filtering(self, *_args):
         """Test complete batch upgrade workflow with group filtering."""
         UpgradeOperation.objects.all().delete()
         org = self._get_org()
@@ -716,7 +768,6 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         image2 = self._create_firmware_image(build=build2)
         group1 = self._create_device_group(name="Group 1", organization=org)
         group2 = self._create_device_group(name="Group 2", organization=org)
-
         device1 = self._create_device(
             name="Device1",
             organization=org,
@@ -742,7 +793,6 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self._create_config(device=device1)
         self._create_config(device=device2)
         self._create_config(device=device3)
-
         unique_id = str(uuid.uuid4())[:8]
         credentials = self._create_credentials(
             name=f"test-creds-{unique_id}", organization=None, auto_add=True
@@ -787,7 +837,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
-    def test_batch_upgrade_with_location_filtering(self, *args):
+    def test_batch_upgrade_with_location_filtering(self, *_args):
         """Test complete batch upgrade workflow with location filtering."""
         UpgradeOperation.objects.all().delete()
         org = self._get_org()
@@ -826,7 +876,6 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         DeviceLocation.objects.create(content_object=device1, location=location1)
         DeviceLocation.objects.create(content_object=device2, location=location2)
         # device3 has no location
-
         self._create_config(device=device1)
         self._create_config(device=device2)
         self._create_config(device=device3)
@@ -879,7 +928,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
     @mock.patch(_mock_updrade, return_value=True)
     @mock.patch(_mock_connect, return_value=True)
-    def test_batch_upgrade_with_group_and_location_filtering(self, *args):
+    def test_batch_upgrade_with_group_and_location_filtering(self, *_args):
         """Test batch upgrade with both group and location filtering."""
         UpgradeOperation.objects.all().delete()
         org = self._get_org()

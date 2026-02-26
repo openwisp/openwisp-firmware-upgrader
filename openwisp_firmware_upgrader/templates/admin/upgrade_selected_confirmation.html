@@ -4,10 +4,6 @@
 {% block extrahead %}
   {{ block.super }}
   {{ media }}
-  <link rel="stylesheet" href="{% static "admin/css/forms.css" %}">
-  <link rel="stylesheet" type="text/css" href="{% static "admin/css/vendor/select2/select2.min.css" %}">
-  <link rel="stylesheet" type="text/css" href="{% static "config/css/lib/jsonschema-ui.css" %}">
-  <link rel="stylesheet" type="text/css" href="{% static "firmware-upgrader/css/upgrade-selected-confirmation.css" %}">
   <script type="text/javascript" src="{% static 'admin/js/cancel.js' %}"></script>
 {% endblock %}
 
@@ -50,12 +46,9 @@
         {% if form.errors %}
           <div>{{ form.errors }}</div>
         {% endif %}
-
         {{ form.build }}
-
         <fieldset class="module aligned">
           <h2>{% trans "Upgrade Filters" %}</h2>
-
           <div class="form-row">
             <div>
               <div class="flex-container">
@@ -68,7 +61,6 @@
               </div>
             </div>
           </div>
-
           <div class="form-row">
             <div>
               <div class="flex-container">
@@ -76,12 +68,11 @@
                 {{ form.location.label_tag }}
                 {{ form.location }}
               </div>
-              <div class="help">
+              <div class="help" id="{{ form.location.auto_id }}_helptext">
                 {{ form.location.help_text|safe }}
               </div>
             </div>
           </div>
-
           <div class="form-row">
             <div>
               {{ form.upgrade_options.label_tag }}
@@ -89,39 +80,27 @@
             </div>
           </div>
         </fieldset>
-      </div>
-
-      <input
-        type="submit"
-        name="upgrade_all"
-        title="{% trans "If a device has no related firmware image information available, the system will attempt at automatically figure out what image to use based on the hardware model." %}"
-        value="{% trans "Upgrade all devices" %}">
-      {% if firmwareless_count and related_count %}
         <input
           type="submit"
-          name="upgrade_related"
-          title="{% trans "Devices which have no related firwmare image information will be skipped." %}"
-          value="{% trans "Upgrade only known devices" %}"
-          class="special">
+          name="upgrade_all"
+          title="{% trans "If a device has no related firmware image information available, the system will attempt at automatically figure out what image to use based on the hardware model." %}"
+          value="{% trans "Upgrade all devices" %}">
+        {% if firmwareless_count and related_count %}
+          <input
+            type="submit"
+            name="upgrade_related"
+            title="{% trans "Devices which have no related firmware image information will be skipped." %}"
+            value="{% trans "Upgrade only known devices" %}"
+            class="special">
+        {% endif %}
       {% endif %}
-    {% endif %}
-
-    {% if related_count or firmwareless_count %}
-      <a href="#" class="button cancel-link" style="margin-left">{% trans "Cancel the upgrade" %}</a>
-    {% else %}
-      <a href="#" class="button cancel-link">{% trans "Go back" %}</a>
-    {% endif %}
-
+      <a href="#" class="button cancel-link">{% if related_count or firmwareless_count %}{% trans "Cancel the upgrade" %}{% else %}{% trans "Go back" %}{% endif %}</a>
+    </div>
   </form>
 {% endblock %}
-
 {% block footer %}
   {{ block.super }}
-  <script type="text/javascript" src="{% static 'admin/js/vendor/jquery/jquery.min.js' %}"></script>
-  <script type="text/javascript" src="{% static 'admin/js/vendor/select2/select2.full.min.js' %}"></script>
-  <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-selected-confirmation.js' %}"></script>
-  <script type="text/javascript" src="{% static 'firmware-upgrader/js/mass-upgrade-select2.js' %}"></script>
   <script>
-    var firmwareUpgraderSchema = {{ firmware_upgrader_schema | safe }}
+    var firmwareUpgraderSchema = {{ firmware_upgrader_schema | safe }};
   </script>
 {% endblock footer %}

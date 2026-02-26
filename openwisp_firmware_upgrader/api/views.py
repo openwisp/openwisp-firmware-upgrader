@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
 
 from openwisp_firmware_upgrader import private_storage
-from openwisp_users.api.mixins import FilterByOrganizationManaged
+from openwisp_users.api.mixins import FilterByOrganizationManaged, IsOrganizationManager
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 from openwisp_users.api.permissions import DjangoModelPermissions
 
@@ -23,6 +23,7 @@ from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
     BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
+    BatchUpgradeSerializer,
     BuildSerializer,
     CategorySerializer,
     DeviceFirmwareSerializer,
@@ -40,8 +41,6 @@ Category = load_model("Category")
 FirmwareImage = load_model("FirmwareImage")
 DeviceFirmware = load_model("DeviceFirmware")
 Device = swapper.load_model("config", "Device")
-DeviceGroup = swapper.load_model("config", "DeviceGroup")
-Location = swapper.load_model("geo", "Location")
 
 
 class ListViewPagination(pagination.PageNumberPagination):
@@ -87,7 +86,7 @@ class BuildDetailView(ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIView):
 class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
     model = Build
     queryset = Build.objects.all().select_related("category")
-    serializer_class = serializers.Serializer
+    serializer_class = BatchUpgradeSerializer
     lookup_fields = ["pk"]
     organization_field = "category__organization"
 
@@ -95,27 +94,14 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         """
         Upgrades all the devices related to the specified build ID.
         """
-        upgrade_all = request.POST.get("upgrade_all") is not None
-        group_id = request.POST.get("group")
-        location_id = request.POST.get("location")
-        group = None
-        location = None
-        if group_id:
-            try:
-                group = swapper.load_model("config", "DeviceGroup").objects.get(
-                    pk=group_id
-                )
-            except (
-                ValueError,
-                DeviceGroup.DoesNotExist,
-            ):
-                group = None
-        if location_id:
-            try:
-                location = Location.objects.get(pk=location_id)
-            except (ValueError, Location.DoesNotExist):
-                location = None
         instance = self.get_object()
+        serializer = self.get_serializer(
+            data=request.data,
+        )
+        serializer.is_valid(raise_exception=True)
+        upgrade_all = serializer.validated_data.get("upgrade_all", False)
+        group = serializer.validated_data.get("group")
+        location = serializer.validated_data.get("location")
         try:
             batch = instance.batch_upgrade(
                 firmwareless=upgrade_all, group=group, location=location
@@ -132,23 +118,10 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         which would be upgraded if POST is used.
         """
         self.instance = self.get_object()
-        group_id = request.GET.get("group")
-        location_id = request.GET.get("location")
-        group = None
-        location = None
-        if group_id:
-            try:
-                group = DeviceGroup.objects.get(pk=group_id)
-            except (
-                ValueError,
-                DeviceGroup.DoesNotExist,
-            ):
-                group = None
-        if location_id:
-            try:
-                location = Location.objects.get(pk=location_id)
-            except (ValueError, Location.DoesNotExist):
-                location = None
+        serializer = self.get_serializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        group = serializer.validated_data.get("group")
+        location = serializer.validated_data.get("location")
         data = BatchUpgradeOperation.dry_run(
             build=self.instance, group=group, location=location
         )
@@ -398,9 +371,20 @@ class DeviceFirmwareDetailView(
                 raise
 
 
+class UpgradeOperationCancelPermission(DjangoModelPermissions):
+    perms_map = {
+        **DjangoModelPermissions.perms_map,
+        "POST": ["%(app_label)s.change_%(model_name)s"],
+    }
+
+
 class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     queryset = UpgradeOperation.objects.all()
     serializer_class = serializers.Serializer
+    permission_classes = (
+        IsOrganizationManager,
+        UpgradeOperationCancelPermission,
+    )
     lookup_field = "pk"
     organization_field = "device__organization"
 
@@ -447,8 +431,8 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
             operation.cancel()
         except ValueError as e:
             return self._error_response(str(e), status.HTTP_409_CONFLICT)
-        except Exception as e:
-            logger.error(f"Failed to cancel upgrade operation {pk}: {str(e)}")
+        except Exception:
+            logger.exception("Failed to cancel upgrade operation %s", pk)
             return self._error_response(
                 "Failed to cancel upgrade operation",
                 status.HTTP_500_INTERNAL_SERVER_ERROR,

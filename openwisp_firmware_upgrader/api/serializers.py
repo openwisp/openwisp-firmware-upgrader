@@ -16,6 +16,8 @@ FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
 Device = swapper.load_model("config", "Device")
+DeviceGroup = swapper.load_model("config", "DeviceGroup")
+Location = swapper.load_model("geo", "Location")
 
 
 class BaseMeta:
@@ -79,6 +81,18 @@ class BuildSerializer(BaseSerializer):
     class Meta(BaseMeta):
         model = Build
         fields = "__all__"
+
+
+class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
+    upgrade_all = serializers.BooleanField(required=False, default=False)
+
+    class Meta:
+        fields = ("upgrade_all", "group", "location")
+        model = BatchUpgradeOperation
+        extra_kwargs = {
+            "group": {"required": False, "allow_null": True},
+            "location": {"required": False, "allow_null": True},
+        }
 
 
 class UpgradeOperationSerializer(serializers.ModelSerializer):

@@ -34,13 +34,10 @@ class MassUpgradeSelect2Widget(forms.Select):
     """
 
     def __init__(self, attrs=None, placeholder=None):
-        # Default placeholder for backward compatibility
         if placeholder is None:
-            placeholder = _("Select a group")
-
+            placeholder = _("Select an option")
         default_attrs = {
             "class": "select2-input",
-            "data-dropdown-css-class": "ow2-autocomplete-dropdown",
             "data-placeholder": placeholder,
             "data-allow-clear": "true",
         }
@@ -50,12 +47,16 @@ class MassUpgradeSelect2Widget(forms.Select):
 
     @property
     def media(self):
-        return forms.Media(
+        return super().media + forms.Media(
+            js=[
+                "admin/js/jquery.init.js",
+                "firmware-upgrader/js/mass-upgrade-select2.js",
+            ],
             css={
                 "all": [
                     "admin/css/vendor/select2/select2.min.css",
                     "admin/css/autocomplete.css",
                     "admin/css/ow-auto-filter.css",
                 ]
-            }
+            },
         )

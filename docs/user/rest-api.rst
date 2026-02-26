@@ -83,7 +83,7 @@ List Mass Upgrade Operations
 The list of batch upgrade operations provides the following filters:
 
 - ``build`` (Firmware build ID)
-- ``status`` (One of: idle, in-progress, success, failed)
+- ``status`` (One of: idle, in-progress, success, failed, cancelled)
 
 Here's a few examples:
 
@@ -225,8 +225,8 @@ Example with filters:
 .. code-block:: json
 
     {
-        "group": "group-uuid",
-        "location": "location-uuid"
+        "group": "{group_id}",
+        "location": "{location_id}"
     }
 
 Dry-run Batch Upgrade
@@ -251,6 +251,9 @@ parameters:
   specific group
 - ``location`` (Location ID): limit the preview to devices at a specific
   geographic location
+
+If both ``group`` and ``location`` are provided, only devices matching
+both filters are included.
 
 Example with filters:
 
@@ -315,7 +318,7 @@ The list of upgrade operations provides the following filters:
 - ``device__organization_slug`` (Organization slug of the device)
 - ``device`` (Device ID)
 - ``image`` (Firmware image ID)
-- ``status`` (One of: in-progress, success, failed, aborted)
+- ``status`` (One of: in-progress, success, failed, aborted, cancelled)
 
 Here's a few examples:
 
@@ -344,7 +347,7 @@ Cancel Upgrade Operation
 .. note::
 
     This endpoint may return a 409 status code if the operation cannot be
-    canceled.
+    cancelled.
 
 List Device Upgrade Operations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -356,7 +359,7 @@ List Device Upgrade Operations
 **Available filters**
 
 The list of device upgrade operations can be filtered by ``status`` (one
-of: in-progress, success, failed, aborted).
+of: in-progress, success, failed, aborted, cancelled).
 
 .. code-block:: text
 

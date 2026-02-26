@@ -12,8 +12,10 @@
 <script>
   // Configuration for WebSocket connection
   var owFirmwareUpgraderApiHost = {
-    host: '{{ request.get_host }}'
+    host: "{{ request.get_host|escapejs }}"
   };
+  var owUpgradeOperationCancelUrl = "{{ upgrade_operation_cancel_url }}";
+  window.djangoLocale = "{{ django_locale|default:"en-us" }}";
 </script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-utils.js' %}"></script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-progress.js' %}"></script>
