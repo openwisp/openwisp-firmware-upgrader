@@ -992,3 +992,77 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(len(upgrade_ops), 1)
         batch.refresh_from_db()
         self.assertEqual(batch.status, "success")
+
+    def test_device_firmware_deactivated_device_validation(self):
+        """Test that DeviceFirmware clean method raises ValidationError for deactivated device"""
+        device_fw = self._create_device_firmware(upgrade=False)
+        device_fw.device.deactivate()
+
+        with self.assertRaises(ValidationError) as ctx:
+            device_fw.clean()
+
+        self.assertIn(
+            "Cannot create firmware object for deactivated device", str(ctx.exception)
+        )
+
+    def test_upgrade_operation_deactivated_device_validation(self):
+        """Test that UpgradeOperation clean method raises ValidationError for deactivated device"""
+        device_fw = self._create_device_firmware(upgrade=False)
+        device_fw.device.deactivate()
+
+        upgrade_op = UpgradeOperation(device=device_fw.device, image=device_fw.image)
+
+        with self.assertRaises(ValidationError) as ctx:
+            upgrade_op.clean()
+
+        self.assertIn(
+            "Cannot create upgrade operation for deactivated device", str(ctx.exception)
+        )
+
+    def test_device_firmware_save_deactivated_device(self):
+        """Test that DeviceFirmware save fails for deactivated device"""
+        device_fw = self._create_device_firmware(upgrade=False)
+        device_fw.device.deactivate()
+
+        # Create new DeviceFirmware instance for deactivated device
+        new_device_fw = DeviceFirmware(device=device_fw.device, image=device_fw.image)
+
+        with self.assertRaises(ValidationError):
+            new_device_fw.full_clean()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    def test_batch_upgrade_excludes_deactivated_devices(self, *args):
+        """Test that batch upgrades exclude deactivated devices"""
+        env = self._create_upgrade_env()
+        # Deactivate one device
+        env["d1"].deactivate()
+
+        batch = env["build2"].batch_upgrade(firmwareless=False)
+        ops = UpgradeOperation.objects.filter(batch=batch)
+
+        # Should only have operations for non-deactivated devices
+        device_ids = [op.device.pk for op in ops]
+        self.assertNotIn(env["d1"].pk, device_ids)  # deactivated device excluded
+        self.assertIn(env["d2"].pk, device_ids)  # active device included
+
+    def test_deactivated_device_validation(self):
+        """Test that model validation prevents operations on deactivated devices"""
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+
+        # Test DeviceFirmware validation
+        device.deactivate()
+        with self.assertRaises(ValidationError) as cm:
+            new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
+            new_device_fw.full_clean()
+        self.assertIn(
+            "Cannot create firmware object for deactivated device", str(cm.exception)
+        )
+
+        # Test UpgradeOperation validation
+        with self.assertRaises(ValidationError) as cm:
+            operation = UpgradeOperation(device=device, image=device_fw.image)
+            operation.full_clean()
+        self.assertIn(
+            "Cannot create upgrade operation for deactivated device", str(cm.exception)
+        )

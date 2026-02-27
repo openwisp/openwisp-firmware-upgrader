@@ -150,8 +150,12 @@ class DeviceFirmwareSerializer(ValidatedModelSerializer):
             device_id = self.context.get("device_id")
             device = self._get_device_object(device_id)
             data.update({"device": device})
-        image = data.get("image")
         device = data.get("device")
+        if device and device.is_deactivated():
+            raise ValidationError(
+                _("Cannot create firmware object for deactivated device")
+            )
+        image = data.get("image")
         if (
             image
             and device
