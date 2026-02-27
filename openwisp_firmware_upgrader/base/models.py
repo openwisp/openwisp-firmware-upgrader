@@ -206,6 +206,7 @@ class AbstractBuild(TimeStampedEditableModel):
             .select_related(*related)
             .filter(image__build__category_id=self.category_id)
             .exclude(image__build=self, installed=True)
+            .exclude(device___is_deactivated=True)
             .order_by("-created")
         )
         if group:
@@ -227,7 +228,7 @@ class AbstractBuild(TimeStampedEditableModel):
         qs = Device.objects.filter(
             devicefirmware__isnull=True,
             model__in=boards,
-        )
+        ).exclude(_is_deactivated=True)
         if self.category.organization_id:
             qs = qs.filter(organization_id=self.category.organization_id)
         if group:
@@ -391,6 +392,10 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def clean(self):
         if not hasattr(self, "image") or not hasattr(self, "device"):
             return
+        if self.device.is_deactivated():
+            raise ValidationError(
+                _("Cannot create firmware object for deactivated device")
+            )
         if (
             self.image.build.category.organization is not None
             and self.image.build.category.organization != self.device.organization
@@ -826,6 +831,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     class Meta:
         abstract = True
+
+    def clean(self):
+        super().clean()
+        if hasattr(self, "device") and self.device and self.device.is_deactivated():
+            raise ValidationError(
+                _("Cannot create upgrade operation for deactivated device")
+            )
 
     def log_line(self, line, save=True):
         if self.log:

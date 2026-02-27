@@ -7,6 +7,7 @@ import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils.timezone import localtime
@@ -392,6 +393,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_deactivated_firmware_image_inline(self):
         self._login()
         device = self._create_config(organization=self._get_org()).device
+        # Create device firmware BEFORE deactivating device
+        self._create_device_firmware(device=device)
+        # Now deactivate the device
         device.deactivate()
         response = self.client.get(
             reverse("admin:config_device_change", args=[device.id])
@@ -403,10 +407,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             '<input type="hidden" name="devicefirmware-MAX_NUM_FORMS"'
             ' value="0" id="id_devicefirmware-MAX_NUM_FORMS">',
         )
-        self._create_device_firmware(device=device)
-        response = self.client.get(
-            reverse("admin:config_device_change", args=[device.id])
-        )
+
         # Ensure that a deactivated device's existing DeviceFirmwareImage
         # is displayed as readonly in the admin interface.
         self.assertContains(
@@ -1463,6 +1464,33 @@ class TestAdminTransaction(
             self.assertContains(response, str(batch1.pk))
             self.assertNotContains(response, str(batch2.pk))
             self.assertNotContains(response, str(batch3.pk))
+
+    def test_device_firmware_inline_deactivated_device(self, *args):
+        """Test that DeviceFirmware inline shows validation error for deactivated device"""
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device.deactivate()
+
+        # Test that trying to create a new DeviceFirmware for deactivated device fails
+        with self.assertRaises(ValidationError) as cm:
+            new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
+            new_device_fw.full_clean()
+
+        self.assertIn(
+            "Cannot create firmware object for deactivated device", str(cm.exception)
+        )
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    def test_basic_deactivated_device_admin_validation(self, *args):
+        """Test basic admin validation for deactivated devices"""
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+
+        # Test that validation works at the model level
+        device.deactivate()
+        with self.assertRaises(ValidationError):
+            new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
+            new_device_fw.full_clean()
 
 
 del TestConfigAdmin
