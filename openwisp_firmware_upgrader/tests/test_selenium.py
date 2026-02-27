@@ -3,7 +3,6 @@ from unittest.mock import patch
 
 import swapper
 from channels.testing import ChannelsLiveServerTestCase
-from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.management import call_command
 from django.test import tag
 from django.urls import reverse
@@ -36,7 +35,8 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 
 
 @tag("selenium_tests")
-class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
+class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, ChannelsLiveServerTestCase):
+    browser = "chrome"
     config_app_label = "config"
     firmware_app_label = "firmware_upgrader"
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
@@ -64,11 +64,13 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         )
 
     def _get_device_firmware_dropdown_select(self):
-        select_element = self.find_element(By.ID, "id_devicefirmware-0-image")
+        select_element = self.find_element(
+            By.ID, "id_devicefirmware-0-image", wait_for="presence"
+        )
         return Select(select_element)
 
     @capture_any_output()
-    def test_restoring_deleted_device(self):
+    def test_restoring_deleted_device(self, *args):
         org = self._get_org()
         category = self._get_category(organization=org)
         build = self._create_build(category=category, version="0.1", os=self.os)
@@ -332,6 +334,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 By.CSS_SELECTOR, "#devicefirmware-group .jsoneditor-wrapper"
             )
             # Upgrade all devices
+            self.wait_for_presence(By.CSS_SELECTOR, 'input[name="upgrade_all"]')
             self.find_element(
                 by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
             ).click()
@@ -441,7 +444,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             EC.presence_of_element_located((By.ID, "id_group"))
         )
         self._assert_no_js_errors()
-        self.find_element(By.CSS_SELECTOR, ".select2-container")
+        self.find_element(By.CSS_SELECTOR, ".select2-container", wait_for="presence")
         self.assertTrue(
             len(self.web_driver.find_elements(By.CSS_SELECTOR, ".select2-container"))
             >= 2,
@@ -478,6 +481,7 @@ class TestRealTimeProgress(
 ):
     """Test real-time progress functionality with Selenium"""
 
+    browser = "chrome"
     config_app_label = "config"
     firmware_app_label = "firmware_upgrader"
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
@@ -552,7 +556,7 @@ class TestRealTimeProgress(
         self.login(username=self.admin.username, password=self.admin_password)
         self.open(f"{path}#upgradeoperation_set-group")
         self.hide_loading_overlay()
-        self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
+        self.wait_for_presence(By.ID, "upgradeoperation_set-group")
         WebDriverWait(self.web_driver, 10).until(
             lambda driver: driver.execute_script(
                 "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;"
@@ -1056,11 +1060,14 @@ class TestRealTimeProgress(
                 args=[operation1.id],
             )
         )
-        progress_fill = self.wait_for_presence(
+        self.wait_for_presence(
             By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-fill"
         )
         WebDriverWait(self.web_driver, 5).until(
-            lambda d: "0%" in progress_fill.get_attribute("style")
+            lambda d: "0%"
+            in d.find_element(
+                By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-fill"
+            ).get_attribute("style")
         )
         self._assert_no_js_errors()
 
