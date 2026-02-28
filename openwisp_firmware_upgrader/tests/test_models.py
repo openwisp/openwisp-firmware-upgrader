@@ -7,6 +7,7 @@ import swapper
 from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.test import TestCase, TransactionTestCase
+from django.utils import timezone
 
 from openwisp_utils.tests import capture_any_output
 
@@ -480,6 +481,21 @@ class TestModels(TestUpgraderMixin, TestCase):
         mock_logger.info.assert_called_once_with(
             "Deleted firmware file: %s", "firmware.bin"
         )
+
+    def test_batch_upgrade_operation_str(self):
+        build = self._create_build()
+        batch = BatchUpgradeOperation.objects.create(build=build)
+        expected = f"{build} ({timezone.localtime(batch.created).strftime('%Y-%m-%d %H:%M:%S')})"
+        self.assertEqual(str(batch), expected)
+
+    def test_upgrade_operation_str(self):
+        with mock.patch(
+            f"{self.app_label}.models.UpgradeOperation.upgrade", return_value=None
+        ):
+            self._create_device_firmware(upgrade=True)
+        uo = UpgradeOperation.objects.first()
+        expected = f"{uo.device} ({timezone.localtime(uo.created).strftime('%Y-%m-%d %H:%M:%S')})"
+        self.assertEqual(str(uo), expected)
 
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):

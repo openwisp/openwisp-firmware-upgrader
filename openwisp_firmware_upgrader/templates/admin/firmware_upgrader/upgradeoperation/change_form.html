@@ -1,0 +1,16 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+{% if batch %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{{ batch_changelist_url }}">{% trans 'Mass upgrade operations' %}</a>
+&rsaquo; <a href="{{ batch_change_url }}">{{ batch }}</a>
+&rsaquo; {{ original }}
+</div>
+{% else %}
+{{ block.super }}
+{% endif %}
+{% endblock %}
