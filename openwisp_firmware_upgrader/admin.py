@@ -322,6 +322,7 @@ class UpgradeOperationInline(admin.StackedInline):
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
+    show_change_link = True
 
     def has_delete_permission(self, request, obj):
         return False
@@ -405,9 +406,23 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
             args=["00000000-0000-0000-0000-000000000000"],
         )
         extra_context["django_locale"] = get_language()
+        obj = self.get_object(request, object_id)
+        if obj and obj.batch_id:
+            app_label = self.model._meta.app_label
+            extra_context["batch"] = obj.batch
+            extra_context["batch_changelist_url"] = reverse(
+                f"admin:{app_label}_batchupgradeoperation_changelist"
+            )
+            extra_context["batch_change_url"] = reverse(
+                f"admin:{app_label}_batchupgradeoperation_change",
+                args=[obj.batch_id],
+            )
         return super().change_view(
             request, object_id, extra_context=extra_context, **kwargs
         )
+
+    def has_module_permission(self, request):
+        return False
 
     def get_fields(self, request, obj=None):
         fields = super().get_fields(request, obj).copy()
