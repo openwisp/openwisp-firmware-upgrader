@@ -406,9 +406,23 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
             args=["00000000-0000-0000-0000-000000000000"],
         )
         extra_context["django_locale"] = get_language()
+        obj = self.get_object(request, object_id)
+        if obj and obj.batch_id:
+            app_label = self.model._meta.app_label
+            extra_context["batch"] = obj.batch
+            extra_context["batch_changelist_url"] = reverse(
+                f"admin:{app_label}_batchupgradeoperation_changelist"
+            )
+            extra_context["batch_change_url"] = reverse(
+                f"admin:{app_label}_batchupgradeoperation_change",
+                args=[obj.batch_id],
+            )
         return super().change_view(
             request, object_id, extra_context=extra_context, **kwargs
         )
+
+    def has_module_permission(self, request):
+        return False
 
     def get_fields(self, request, obj=None):
         fields = super().get_fields(request, obj).copy()
@@ -621,29 +635,6 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     failed_rate.short_description = _("failure rate")
     aborted_rate.short_description = _("abortion rate")
     cancelled_rate.short_description = _("cancellation rate")
-
-
-@admin.register(UpgradeOperation)
-class UpgradeOperationAdmin(ReadOnlyAdmin, BaseAdmin):
-    change_form_template = "admin/firmware_upgrader/upgradeoperation/change_form.html"
-
-    def change_view(self, request, object_id, form_url="", extra_context=None):
-        extra_context = extra_context or {}
-        obj = self.get_object(request, object_id)
-        if obj and obj.batch_id:
-            app_label = self.model._meta.app_label
-            extra_context["batch"] = obj.batch
-            extra_context["batch_changelist_url"] = reverse(
-                f"admin:{app_label}_batchupgradeoperation_changelist"
-            )
-            extra_context["batch_change_url"] = reverse(
-                f"admin:{app_label}_batchupgradeoperation_change",
-                args=[obj.batch_id],
-            )
-            return super().change_view(request, object_id, extra_context=extra_context)
-
-    def has_module_perms(self, request):
-        return False
 
 
 class DeviceFirmwareForm(forms.ModelForm):
