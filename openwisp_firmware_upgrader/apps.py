@@ -7,6 +7,7 @@ from openwisp_utils.api.apps import ApiAppConfig
 from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
+from .websockets import BatchUpgradeProgressPublisher, UpgradeProgressPublisher
 
 
 class FirmwareUpdaterConfig(ApiAppConfig):
@@ -26,6 +27,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         super().ready(*args, **kwargs)
         self.register_menu_groups()
         self.connect_device_signals()
+        self.connect_upgrade_signals()
         self.connect_delete_signals()
 
     def register_menu_groups(self):
@@ -61,6 +63,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         DeviceConnection = load_model("connection", "DeviceConnection")
         DeviceFirmware = load_model("firmware_upgrader", "DeviceFirmware")
         FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
+
         post_save.connect(
             DeviceFirmware.auto_add_device_firmware_to_device,
             sender=DeviceConnection,
@@ -70,6 +73,21 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             DeviceFirmware.auto_create_device_firmwares,
             sender=FirmwareImage,
             dispatch_uid="firmware_image.auto_add_device_firmwares",
+        )
+
+    def connect_upgrade_signals(self):
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+        BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
+
+        post_save.connect(
+            UpgradeProgressPublisher.handle_upgrade_operation_post_save,
+            sender=UpgradeOperation,
+            dispatch_uid="upgrade_operation.websocket_publish",
+        )
+        post_save.connect(
+            BatchUpgradeProgressPublisher.handle_batch_upgrade_operation_saved,
+            sender=BatchUpgradeOperation,
+            dispatch_uid="batch_upgrade_operation.websocket_publish",
         )
 
     def connect_delete_signals(self):

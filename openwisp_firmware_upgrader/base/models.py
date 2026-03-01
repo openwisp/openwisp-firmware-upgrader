@@ -6,6 +6,7 @@ from pathlib import Path
 import jsonschema
 import swapper
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.validators import MaxValueValidator
 from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -23,6 +24,7 @@ from ..exceptions import (
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
+    UpgradeCancelled,
     UpgradeNotNeeded,
 )
 from ..hardware import (
@@ -30,6 +32,7 @@ from ..hardware import (
     FIRMWARE_IMAGE_TYPE_CHOICES,
     REVERSE_FIRMWARE_IMAGE_MAP,
 )
+from ..signals import firmware_upgrader_log_updated
 from ..swapper import get_model_name, load_model
 from ..tasks import (
     batch_upgrade_operation,
@@ -38,12 +41,15 @@ from ..tasks import (
     upgrade_firmware,
 )
 from ..utils import (
+    UpgradeProgress,
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
 )
 
 logger = logging.getLogger(__name__)
+PROGRESS_MIN = 0
+PROGRESS_MAX = 100
 
 
 class UpgradeOptionsMixin(models.Model):
@@ -155,10 +161,27 @@ class AbstractBuild(TimeStampedEditableModel):
                 }
             )
 
-    def batch_upgrade(self, firmwareless, upgrade_options=None):
+    def batch_upgrade(
+        self, firmwareless, upgrade_options=None, group=None, location=None
+    ):
         upgrade_options = upgrade_options or {}
+        # Check if there are any devices to upgrade with the given filters
+        dry_run_result = load_model("BatchUpgradeOperation").dry_run(
+            build=self, group=group, location=location
+        )
+        # If no devices match the filters, don't start the upgrade
+        if not (
+            dry_run_result["device_firmwares"].exists()
+            or (firmwareless and dry_run_result["devices"].exists())
+        ):
+            raise ValidationError(
+                _(
+                    "No devices found matching the specified filters. "
+                    "Please adjust your group and/or location filters."
+                )
+            )
         batch = load_model("BatchUpgradeOperation")(
-            build=self, upgrade_options=upgrade_options
+            build=self, upgrade_options=upgrade_options, group=group, location=location
         )
         batch.full_clean()
         batch.save()
@@ -167,7 +190,9 @@ class AbstractBuild(TimeStampedEditableModel):
         )
         return batch
 
-    def _find_related_device_firmwares(self, select_devices=False):
+    def _find_related_device_firmwares(
+        self, select_devices=False, group=None, location=None
+    ):
         """
         Returns all the DeviceFirmware objects related to the firmware
         category of this build that have not been installed yet
@@ -175,7 +200,7 @@ class AbstractBuild(TimeStampedEditableModel):
         related = ["image"]
         if select_devices:
             related.append("device")
-        return (
+        qs = (
             load_model("DeviceFirmware")
             .objects.all()
             .select_related(*related)
@@ -183,8 +208,13 @@ class AbstractBuild(TimeStampedEditableModel):
             .exclude(image__build=self, installed=True)
             .order_by("-created")
         )
+        if group:
+            qs = qs.filter(device__group=group)
+        if location:
+            qs = qs.filter(device__devicelocation__location=location)
+        return qs
 
-    def _find_firmwareless_devices(self, boards=None):
+    def _find_firmwareless_devices(self, boards=None, group=None, location=None):
         """
         Returns devices which have no related DeviceFirmware
         but that are upgradable to one of the image of this build
@@ -200,6 +230,10 @@ class AbstractBuild(TimeStampedEditableModel):
         )
         if self.category.organization_id:
             qs = qs.filter(organization_id=self.category.organization_id)
+        if group:
+            qs = qs.filter(group=group)
+        if location:
+            qs = qs.filter(devicelocation__location=location)
         return qs.order_by("-created")
 
 
@@ -491,11 +525,26 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
 class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     build = models.ForeignKey(get_model_name("Build"), on_delete=models.CASCADE)
+    group = models.ForeignKey(
+        swapper.get_model_name("config", "DeviceGroup"),
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name=_("device group"),
+    )
+    location = models.ForeignKey(
+        swapper.get_model_name("geo", "Location"),
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name=_("location"),
+    )
     STATUS_CHOICES = (
         ("idle", _("idle")),
         ("in-progress", _("in progress")),
         ("success", _("completed successfully")),
         ("failed", _("completed with some failures")),
+        ("cancelled", _("completed with some cancellations")),
     )
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
@@ -509,16 +558,34 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     def __str__(self):
         return f"{self.build} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
 
-    def update(self):
-        operations = self.upgradeoperation_set
-        if operations.filter(status="in-progress").exists():
-            return
-        # if there's any failed operation, mark as failure
-        if operations.filter(status="failed").exists():
-            self.status = "failed"
-        else:
-            self.status = "success"
-        self.save()
+    def clean(self):
+        super().clean()
+        if (
+            self.group
+            and self.build.category.organization
+            and self.group.organization != self.build.category.organization
+        ):
+            raise ValidationError(
+                {
+                    "group": _(
+                        "The organization of the group doesn't match "
+                        "the organization of the build category"
+                    )
+                }
+            )
+        if (
+            self.location
+            and self.build.category.organization
+            and self.location.organization != self.build.category.organization
+        ):
+            raise ValidationError(
+                {
+                    "location": _(
+                        "The organization of the location doesn't match "
+                        "the organization of the build category"
+                    )
+                }
+            )
 
     def upgrade(self, firmwareless):
         self.status = "in-progress"
@@ -528,9 +595,13 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             self.upgrade_firmwareless_devices()
 
     @staticmethod
-    def dry_run(build):
-        related_device_fw = build._find_related_device_firmwares(select_devices=True)
-        firmwareless_devices = build._find_firmwareless_devices()
+    def dry_run(build, group=None, location=None):
+        related_device_fw = build._find_related_device_firmwares(
+            select_devices=True, group=group, location=location
+        )
+        firmwareless_devices = build._find_firmwareless_devices(
+            group=group, location=location
+        )
         return {
             "device_firmwares": related_device_fw,
             "devices": firmwareless_devices,
@@ -541,7 +612,9 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         upgrades all devices which have an
         existing related DeviceFirmware
         """
-        device_firmwares = self.build._find_related_device_firmwares()
+        device_firmwares = self.build._find_related_device_firmwares(
+            group=self.group, location=self.location
+        )
         for device_fw in device_firmwares:
             image = self.build.firmwareimage_set.filter(
                 type=device_fw.image.type
@@ -560,7 +633,9 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         # for each image, find related "firmwareless"
         # devices and perform upgrade one by one
         for image in self.build.firmwareimage_set.all():
-            devices = self.build._find_firmwareless_devices(image.boards)
+            devices = self.build._find_firmwareless_devices(
+                image.boards, group=self.group, location=self.location
+            )
             for device in devices:
                 DeviceFirmware = load_model("DeviceFirmware")
                 device_fw = DeviceFirmware(device=device, image=image)
@@ -602,6 +677,13 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self.__get_rate(aborted)
 
     @property
+    def cancelled_rate(self):
+        if not self.total_operations:
+            return 0
+        cancelled = self.upgrade_operations.filter(status="cancelled").count()
+        return self.__get_rate(cancelled)
+
+    @property
     def upgrader_class(self):
         return self._get_upgrader_class()
 
@@ -634,13 +716,90 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         result = Decimal(number) / Decimal(self.total_operations) * 100
         return round(result, 2)
 
+    def calculate_and_update_status(self):
+        """
+        Calculate batch status based on operation statuses and update if changed.
+        This method consolidates all business logic for determining batch status.
+        Returns tuple of (status, stats_dict) for WebSocket publishing.
+
+        Status determination rules:
+        - 'in-progress': If any operation is still in progress
+        - 'cancelled': If completed and any operation was cancelled
+        - 'failed': If completed and any operation failed or aborted
+        - 'success': If all operations completed successfully
+        - Otherwise: Maintain current status
+        """
+        operations = self.upgradeoperation_set
+        stats = operations.aggregate(
+            total_operations=models.Count("id"),
+            in_progress=models.Count(
+                models.Case(
+                    models.When(status="in-progress", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            completed=models.Count(
+                models.Case(
+                    models.When(~models.Q(status="in-progress"), then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            successful=models.Count(
+                models.Case(
+                    models.When(status="success", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            failed=models.Count(
+                models.Case(
+                    models.When(status="failed", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            cancelled=models.Count(
+                models.Case(
+                    models.When(status="cancelled", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            aborted=models.Count(
+                models.Case(
+                    models.When(status="aborted", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+        )
+        # Determine overall batch status based on individual operation statuses
+        if stats["in_progress"] > 0:
+            new_status = "in-progress"
+        elif stats["failed"] > 0 or stats["aborted"] > 0:
+            new_status = "failed"
+        elif stats["cancelled"] > 0:
+            new_status = "cancelled"
+        elif (
+            stats["successful"] > 0
+            and stats["completed"] == stats["total_operations"]
+            and stats["total_operations"] > 0
+        ):
+            new_status = "success"
+        else:
+            new_status = self.status
+        # Update status only if it has changed
+        if self.status != new_status:
+            self.status = new_status
+            self.save(update_fields=["status"])
+        return new_status, stats
+
 
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
+
+    _CANCELLABLE_STATUS = "in-progress"
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
-        ("failed", _("failed")),
-        ("aborted", _("aborted")),
+        ("failed", _("failed")),  # failed at late stage or can't reconnect
+        ("cancelled", _("cancelled")),  # cancelled by the user
+        ("aborted", _("aborted")),  # aborted due to prerequisites not met
     )
     device = models.ForeignKey(
         swapper.get_model_name("config", "Device"), on_delete=models.CASCADE
@@ -652,6 +811,12 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
     )
     log = models.TextField(blank=True)
+    progress = models.PositiveSmallIntegerField(
+        default=PROGRESS_MIN,
+        validators=[
+            MaxValueValidator(PROGRESS_MAX),
+        ],
+    )
     batch = models.ForeignKey(
         get_model_name("BatchUpgradeOperation"),
         on_delete=models.CASCADE,
@@ -673,6 +838,60 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         logger.info(f"# {line}")
         if save:
             self.save()
+            firmware_upgrader_log_updated.send(
+                sender=self.__class__, instance=self, line=line
+            )
+
+    def update_progress(self, progress, save=True):
+        """Update progress with validation."""
+        if not isinstance(progress, (int, float)):
+            raise ValidationError(
+                _("Progress must be numeric, got %(progress_type)s")
+                % {"progress_type": type(progress)}
+            )
+        if not PROGRESS_MIN <= progress <= PROGRESS_MAX:
+            raise ValidationError(
+                _("Progress must be between %(min)s-%(max)s, got %(progress)s")
+                % {"min": PROGRESS_MIN, "max": PROGRESS_MAX, "progress": progress}
+            )
+        self.progress = int(progress)
+        if save:
+            self.save()
+
+    def cancel(self):
+        """Cancels the upgrade operation if conditions are met, atomically."""
+        with transaction.atomic():
+            # A concurrent upgrade worker can change status/progress
+            # between fetch and save(), so cancellation can succeed
+            # or fail incorrectly.
+            # By using an UPDATE query, we avoid such situation.
+            updated = self._meta.model.objects.filter(
+                pk=self.pk,
+                status=self._CANCELLABLE_STATUS,
+                progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
+            ).update(status="cancelled")
+            if not updated:
+                # The cancellation did not succeed, check why
+                self.refresh_from_db(fields=["status", "progress"])
+                if self.status != self._CANCELLABLE_STATUS:
+                    raise ValueError(
+                        _("Cannot cancel operation with status: %(status)s")
+                        % {"status": self.status}
+                    )
+                if self.progress >= UpgradeProgress.CANCELLATION_THRESHOLD:
+                    raise ValueError(
+                        _(
+                            "Cannot cancel upgrade: firmware reflashing has already started"
+                        )
+                    )
+                raise ValueError(_("Unknown error during cancellation"))
+            # Since we use update() to change the status, we need to refresh
+            # the instance for 2 reasons:
+            # 1. get the updated status
+            # 2. get any log ling which may have been written
+            #    concurrently in background workers, so we avoid overwriting
+            self.refresh_from_db()
+            self.log_line(_("Upgrade operation has been cancelled by user"))
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
@@ -684,6 +903,9 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         self.log_line(f"Max retries exceeded. Upgrade failed: {cause}.", save=False)
 
     def upgrade(self, recoverable=True):
+        # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
+        if self.status != "in-progress":
+            return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:
             conn = DeviceConnection.get_working_connection(self.device)
@@ -693,12 +915,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 return
 
             log_template = (
-                "Failed to connect with device using {credentials}."
+                "Failed to connect with {device} using {credentials}."
                 " Error: {failure_reason}"
             )
             for conn in self.device.deviceconnection_set.select_related("credentials"):
                 self.log_line(
                     log_template.format(
+                        device=self.device.name,
                         credentials=conn.credentials,
                         failure_reason=conn.failure_reason,
                     ),
@@ -723,8 +946,8 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             .objects.filter(device=self.device, status="in-progress")
             .exclude(pk=self.pk)
         )
-        if qs.count() > 0:
-            message = "Another upgrade operation is in progress, aborting..."
+        if qs.exists():
+            message = _("Another upgrade operation is in progress, aborting...")
             logger.warning(message)
             self.log_line(message, save=False)
             self.status = "aborted"
@@ -741,11 +964,15 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # means the device was aleady flashed previously with the same image
         except UpgradeNotNeeded:
             self.status = "success"
+            self.update_progress(100, save=False)
             installed = True
         # this exception is raised when the test of the image fails,
         # meaning the image file is corrupted or not apt for flashing
         except UpgradeAborted:
             self.status = "aborted"
+        # this exception is raised when the upgrade is cancelled by the user
+        except UpgradeCancelled:
+            self.status = "cancelled"
         # raising this exception will cause celery to retry again
         # the upgrade according to its configuration
         except RecoverableFailure as e:
@@ -770,6 +997,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         else:
             installed = True
             self.status = "success"
+            self.update_progress(100, save=False)
         self.save()
         # if the firmware has been successfully installed,
         # or if it was already installed
@@ -779,12 +1007,11 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.device.devicefirmware.save(upgrade=False)
 
     def save(self, *args, **kwargs):
-        result = super().save(*args, **kwargs)
+        super().save(*args, **kwargs)
         # when an operation is completed
         # trigger an update on the batch operation
         if self.batch and self.status != "in-progress":
-            self.batch.update()
-        return result
+            self.batch.calculate_and_update_status()
 
     @property
     def upgrader_schema(self):

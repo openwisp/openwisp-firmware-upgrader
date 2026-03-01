@@ -14,6 +14,7 @@ from django.utils.timezone import localtime
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
 from openwisp_controller.connection import settings as conn_settings
 from openwisp_firmware_upgrader.admin import (
+    BatchUpgradeConfirmationForm,
     BuildAdmin,
     DeviceAdmin,
     DeviceFirmwareForm,
@@ -39,6 +40,9 @@ FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Device = swapper.load_model("config", "Device")
+Location = swapper.load_model("geo", "Location")
+DeviceLocation = swapper.load_model("geo", "DeviceLocation")
+DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 
 
 class MockRequest:
@@ -151,7 +155,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(13):
+        with self.assertNumQueries(15):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -160,14 +164,12 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 },
                 follow=True,
             )
-        self.assertContains(r, "Devices related to build")
-        self.assertNotContains(r, "has never upgraded yet")
         self.assertNotContains(r, '<input type="submit" name="upgrade_related"')
 
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(12):
+        with self.assertNumQueries(14):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -176,10 +178,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 },
                 follow=True,
             )
-        self.assertNotContains(r, "Devices related to build")
-        self.assertContains(r, "has never upgraded yet")
-        self.assertNotContains(r, '<input type="submit" name="upgrade_related"')
-        self.assertContains(r, '<input type="submit" name="upgrade_all"')
+        self.assertNotContains(
+            r,
+            'name="upgrade_related"',
+        )
+        self.assertContains(r, 'name="upgrade_all"')
 
     def test_view_device_administrator(self):
         device_fw = self._create_device_firmware()
@@ -529,6 +532,120 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(response, "This field is required.")
         self.assertFalse(DeviceFirmware.objects.filter(device=device).exists())
 
+    def test_batch_upgrade_operation_detail_organization_filter(self):
+        category = self._create_category(name="Shared", organization=None)
+        env = self._create_upgrade_env(category=category)
+        org1 = env["d1"].organization
+        org2 = self._create_org(name="org2", slug="org2")
+        org1_admin = self._create_administrator(organizations=[org1])
+        batch = env["build2"].batch_upgrade(firmwareless=True)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+
+        def _get_org_option(org):
+            return f'<a title="{org.name}" href="?organization={org.id}">{org.name}</a>'
+
+        org1_option = _get_org_option(org1)
+        org2_option = _get_org_option(org2)
+        with self.subTest(
+            "Superuser: Organization filter is visible for shared category"
+        ):
+            self._login()
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "By organization")
+            self.assertContains(
+                response,
+                org1_option,
+                html=True,
+            )
+            self.assertContains(
+                response,
+                org2_option,
+                html=True,
+            )
+
+        with self.subTest("Org admin: Cannot view shared mass upgrade operation"):
+            self.client.force_login(org1_admin)
+            response = self.client.get(url, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.request["PATH_INFO"], reverse("admin:index"))
+            self.assertContains(
+                response,
+                f'<li class="warning">Mass upgrade operation with ID “{batch.pk}”'
+                " doesn’t exist. Perhaps it was deleted?</li>",
+                html=True,
+            )
+
+        env["category"].organization = org1
+        env["category"].save()
+        with self.subTest(
+            "Superuser: Organization filter hidden when category belongs to org"
+        ):
+            self._login()
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, "By organization")
+
+        with self.subTest(
+            "Org admin: Organization filter hidden when category belongs to org"
+        ):
+            self.client.force_login(org1_admin)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, "By organization")
+
+    def test_batch_upgrade_operation_filters(self, *args):
+        """Test that filter UI elements are displayed correctly for organization admin"""
+        env = self._create_upgrade_env()
+        org_admin = self._create_administrator(organizations=[env["d1"].organization])
+        self.client.force_login(org_admin)
+        batch = env["build2"].batch_upgrade(firmwareless=True)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+
+        with self.subTest("Test filter UI elements are present"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            # Check status filter options
+            self.assertContains(response, "By status")
+            self.assertContains(response, 'title="in progress"')
+            self.assertContains(response, 'title="success"')
+            self.assertContains(response, 'title="failed"')
+            # Organization filter should not be present because the build's category is not shared
+            self.assertNotContains(response, "By organization")
+
+        with self.subTest("Test active filter indication"):
+            # Test with status filter active
+            response = self.client.get(url + "?status=in-progress")
+            self.assertEqual(response.status_code, 200)
+            # Check that the in-progress status is selected
+            self.assertContains(
+                response,
+                (
+                    '<a class="selected" title="in progress" href="?status=in-progress">'
+                    "in progress</a>"
+                ),
+                html=True,
+            )
+
+        with self.subTest("Filter link building preserves other GET params"):
+            # Apply search and status simultaneously and verify the generated
+            # "All" choice keeps the search parameter when building its
+            # query string. The href for the idle option will still contain
+            # both params, but the important part is the all link.
+            response = self.client.get(url + "?q=testsearch&status=idle")
+            self.assertEqual(response.status_code, 200)
+            content = response.content.decode()
+            self.assertIn('href="?q=testsearch"', content)
+            self.assertContains(
+                response,
+                '<a title="All" href="?q=testsearch">All</a>',
+                html=True,
+            )
+
 
 _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
 _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
@@ -559,8 +676,7 @@ class TestAdminTransaction(
             obj=env["build1"],
             message=(
                 "You can track the progress of this mass upgrade operation "
-                "in this page. Refresh the page from time to time to check "
-                "its progress."
+                "in this page."
             ),
             required_perms=["change"],
             extra_payload={
@@ -903,7 +1019,7 @@ class TestAdminTransaction(
                 reverse("admin:config_device_change", args=[device.id])
             )
             self.assertContains(
-                response, "<script>\nvar firmwareUpgraderSchema = null\n</script>"
+                response, "<script>\nvar firmwareUpgraderSchema = null\n"
             )
 
         with self.subTest("Test using upgrade options with unsupported upgrader"):
@@ -934,6 +1050,435 @@ class TestAdminTransaction(
                     "not supported for this upgrader.</div>"
                 ),
             )
+
+    def test_batch_upgrade_operation_status_filter(self, *args):
+        """Test status filtering in batch upgrade operation admin page"""
+        self._login()
+        env = self._create_upgrade_env()
+        env["category"].organization = None
+        env["category"].save()
+        batch = env["build2"].batch_upgrade(firmwareless=True)
+        # Create upgrade operations with different statuses
+        upgrade_ops = list(batch.upgradeoperation_set.all())
+        if len(upgrade_ops) >= 2:
+            upgrade_ops[0].status = "success"
+            upgrade_ops[0].save()
+            upgrade_ops[1].status = "failed"
+            upgrade_ops[1].save()
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+
+        with self.subTest("Test no filter - shows all operations"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "ow-filter status")
+            self.assertContains(response, "By status")
+            self.assertContains(response, "By organization")
+
+        with self.subTest("Test status success filter"):
+            response = self.client.get(url + "?status=success")
+            self.assertEqual(response.status_code, 200)
+            success_ops = batch.upgradeoperation_set.filter(status="success")
+            for op in success_ops:
+                self.assertContains(response, op.device.name)
+
+        with self.subTest("Test status failed filter"):
+            response = self.client.get(url + "?status=failed")
+            self.assertEqual(response.status_code, 200)
+            failed_ops = batch.upgradeoperation_set.filter(status="failed")
+            for op in failed_ops:
+                self.assertContains(response, op.device.name)
+
+        with self.subTest("Test status idle filter"):
+            response = self.client.get(url + "?status=idle")
+            self.assertEqual(response.status_code, 200)
+            idle_ops = batch.upgradeoperation_set.filter(status="idle")
+            for op in idle_ops:
+                self.assertContains(response, op.device.name)
+
+    def test_batch_upgrade_operation_organization_filter(self, *args):
+        """Test organization filtering in batch upgrade operation admin page"""
+        self._login()
+        # Create devices from different organizations
+        org1 = self._create_org(name="Org1", slug="org1")
+        org2 = self._create_org(name="Org2", slug="org2")
+        device1 = self._create_device(organization=org1, name="device1-org-filter")
+        device2 = self._create_device(organization=org2, name="device2-org-filter")
+        self._create_config(device=device1)
+        self._create_config(device=device2)
+        cred1 = self._get_credentials(organization=org1)
+        cred2 = self._get_credentials(organization=org2)
+        self._create_device_connection(device=device1, credentials=cred1)
+        self._create_device_connection(device=device2, credentials=cred2)
+        shared_category = self._create_category(
+            organization=None, name="Shared Category"
+        )
+        build = self._create_build(category=shared_category)
+        image = self._create_firmware_image(build=build)
+        self._create_device_firmware(
+            device=device1, image=image, device_connection=False
+        )
+        self._create_device_firmware(
+            device=device2, image=image, device_connection=False
+        )
+        batch = build.batch_upgrade(firmwareless=False)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+
+        with self.subTest("Test no organization filter - shows all operations"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, device1.name)
+            self.assertContains(response, device2.name)
+            self.assertContains(response, "By organization")
+
+        with self.subTest("Test organization filter for org1"):
+            response = self.client.get(url + f"?organization={org1.id}")
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, device1.name)
+            self.assertNotContains(response, device2.name)
+
+        with self.subTest("Test organization filter for org2"):
+            response = self.client.get(url + f"?organization={org2.id}")
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, device1.name)
+            self.assertContains(response, device2.name)
+
+    def test_batch_upgrade_operation_combined_filters(self, *args):
+        """Test combining status and organization filters"""
+        self._login()
+        # Create devices from different organizations
+        org1 = self._create_org(name="Org1", slug="org1")
+        org2 = self._create_org(name="Org2", slug="org2")
+        device1 = self._create_device(organization=org1, name="device1-combined-filter")
+        device2 = self._create_device(organization=org2, name="device2-combined-filter")
+        self._create_config(device=device1)
+        self._create_config(device=device2)
+        cred1 = self._get_credentials(organization=org1)
+        cred2 = self._get_credentials(organization=org2)
+        self._create_device_connection(device=device1, credentials=cred1)
+        self._create_device_connection(device=device2, credentials=cred2)
+
+        # Create shared build and batch upgrade that works with any organization
+        shared_category = self._create_category(
+            organization=None, name="Shared Category"
+        )
+        build = self._create_build(category=shared_category)
+        image = self._create_firmware_image(build=build)
+        self._create_device_firmware(
+            device=device1, image=image, device_connection=False
+        )
+        self._create_device_firmware(
+            device=device2, image=image, device_connection=False
+        )
+        batch = build.batch_upgrade(firmwareless=False)
+        # Set different statuses for devices from different orgs
+        upgrade_ops = list(batch.upgradeoperation_set.all())
+        org1_op = (
+            upgrade_ops[0]
+            if upgrade_ops[0].device.organization == org1
+            else upgrade_ops[1]
+        )
+        org2_op = (
+            upgrade_ops[1]
+            if upgrade_ops[1].device.organization == org2
+            else upgrade_ops[0]
+        )
+        org1_op.status = "success"
+        org1_op.save()
+        org2_op.status = "failed"
+        org2_op.save()
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+
+        with self.subTest("Test combined filter: org1 + success"):
+            response = self.client.get(url + f"?organization={org1.id}&status=success")
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, org1_op.device.name)
+            self.assertNotContains(response, org2_op.device.name)
+
+        with self.subTest("Test combined filter: org2 + failed"):
+            response = self.client.get(url + f"?organization={org2.id}&status=failed")
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, org1_op.device.name)
+            self.assertContains(response, org2_op.device.name)
+
+        with self.subTest("Test combined filter: org1 + failed (no results)"):
+            response = self.client.get(url + f"?organization={org1.id}&status=failed")
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, org1_op.device.name)
+            self.assertNotContains(response, org2_op.device.name)
+
+        with self.subTest("Combined filters preserve each other in generated links"):
+            response = self.client.get(url + f"?organization={org1.id}&status=success")
+            # Organization 'All' should keep status
+            self.assertContains(
+                response,
+                '<a title="All" href="?status=success">All</a>',
+                html=True,
+            )
+            # Status 'All' should keep organization
+            self.assertContains(
+                response,
+                f'<a title="All" href="?organization={org1.id}">All</a>',
+                html=True,
+            )
+
+    def test_batch_upgrade_operation_filter_search_combination(self, *args):
+        """Test combining search with filters"""
+        self._login()
+        env = self._create_upgrade_env()
+        batch = env["build2"].batch_upgrade(firmwareless=True)
+
+        upgrade_op = batch.upgradeoperation_set.first()
+        upgrade_op.device.name = "unique-test-device"
+        upgrade_op.device.save()
+        upgrade_op.status = "success"
+        upgrade_op.save()
+
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        with self.subTest("Test search + status filter"):
+            with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
+                response = self.client.get(url + "?q=unique-test&status=success")
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "unique-test-device")
+            self.assertContains(
+                response,
+                '<a title="All" href="?q=unique-test">All</a>',
+                html=True,
+            )
+
+        with self.subTest("Test search + status filter (no match)"):
+            response = self.client.get(url + "?q=unique-test&status=failed")
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, "unique-test-device")
+
+    def test_batch_upgrade_confirmation_form_multitenancy(self, *args):
+        """Test BatchUpgradeConfirmationForm multitenancy for organization admin vs superuser."""
+        # Setup common objects
+        org1 = self._get_org()
+        org2 = self._create_org(name="Org 2", slug="org2")
+        group1 = self._create_device_group(name="Group Org1", organization=org1)
+        group2 = self._create_device_group(name="Group Org2", organization=org2)
+        location1 = Location.objects.create(
+            name="Location Org1", address="123 Test St", organization=org1
+        )
+        location2 = Location.objects.create(
+            name="Location Org2", address="456 Test St", organization=org2
+        )
+        category_org1 = self._create_category(organization=org1)
+        build_org1 = self._create_build(category=category_org1)
+        category_shared = self._create_category(organization=None)
+        build_shared = self._create_build(category=category_shared)
+        category_org2 = self._create_category(organization=org2)
+        build_org2 = self._create_build(category=category_org2)
+        superuser = self._get_admin()
+        org_admin = self._create_administrator(organizations=[org1])
+
+        with self.subTest("Superuser: Org build should shown related org objects"):
+            form = BatchUpgradeConfirmationForm(
+                initial={"build": build_org1}, user=superuser
+            )
+            self.assertIn(group1, form.fields["group"].queryset)
+            self.assertNotIn(group2, form.fields["group"].queryset)
+            self.assertIn(location1, form.fields["location"].queryset)
+            self.assertNotIn(location2, form.fields["location"].queryset)
+
+        with self.subTest("Superuser: Shared build should show all org objects"):
+            form = BatchUpgradeConfirmationForm(
+                initial={"build": build_shared}, user=superuser
+            )
+            self.assertIn(group1, form.fields["group"].queryset)
+            self.assertIn(group2, form.fields["group"].queryset)
+            self.assertIn(location1, form.fields["location"].queryset)
+            self.assertIn(location2, form.fields["location"].queryset)
+
+        with self.subTest(
+            "Org admin: Shared build should show only managed org objects"
+        ):
+            form = BatchUpgradeConfirmationForm(
+                initial={"build": build_shared}, user=org_admin
+            )
+            self.assertIn(group1, form.fields["group"].queryset)
+            self.assertNotIn(group2, form.fields["group"].queryset)
+            self.assertIn(location1, form.fields["location"].queryset)
+            self.assertNotIn(location2, form.fields["location"].queryset)
+
+        with self.subTest("Org admin: Org build should show only that org objects"):
+            form = BatchUpgradeConfirmationForm(
+                initial={"build": build_org1}, user=org_admin
+            )
+            self.assertIn(group1, form.fields["group"].queryset)
+            self.assertNotIn(group2, form.fields["group"].queryset)
+            self.assertIn(location1, form.fields["location"].queryset)
+            self.assertNotIn(location2, form.fields["location"].queryset)
+
+        with self.subTest("Org admin: Different org build should show no objects"):
+            form = BatchUpgradeConfirmationForm(
+                initial={"build": build_org2}, user=org_admin
+            )
+            self.assertEqual(form.fields["group"].queryset.count(), 0)
+            self.assertEqual(form.fields["location"].queryset.count(), 0)
+
+        with self.subTest("Location field exists and is not required"):
+            form = BatchUpgradeConfirmationForm(
+                initial={"build": build_org1}, user=superuser
+            )
+            self.assertIn("location", form.fields)
+            self.assertFalse(form.fields["location"].required)
+            self.assertIn("location", form.fields["location"].help_text)
+
+    def test_batch_upgrade_with_location_admin_action(self, *args):
+        """Test mass upgrade admin action with location filtering."""
+        self._login()
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category)
+        image = self._create_firmware_image(build=build)
+        # Create location
+        location = Location.objects.create(
+            name="Test Location", address="123 Test St", organization=org
+        )
+        # Create devices
+        device1 = self._create_device(
+            name="Device1-WithLocation",
+            organization=org,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:71",
+        )
+        device2 = self._create_device(
+            name="Device2-NoLocation",
+            organization=org,
+            model=image.boards[0],
+            mac_address="00:11:22:33:55:72",
+        )
+        # Set location for device1 only
+        DeviceLocation.objects.create(content_object=device1, location=location)
+        # Create configs and connections
+        self._create_config(device=device1)
+        self._create_config(device=device2)
+        cred1 = self._get_credentials(organization=org)
+        if not DeviceConnection.objects.filter(
+            device=device1, credentials=cred1
+        ).exists():
+            self._create_device_connection(device=device1, credentials=cred1)
+        if not DeviceConnection.objects.filter(
+            device=device2, credentials=cred1
+        ).exists():
+            self._create_device_connection(device=device2, credentials=cred1)
+        url = reverse(f"admin:{self.app_label}_build_changelist")
+        data = {
+            ACTION_CHECKBOX_NAME: [build.pk],
+            "action": "upgrade_selected",
+            "location": location.pk,
+            "upgrade_related": "on",
+        }
+        with self.subTest("Test upgrade confirmation page with location"):
+            response = self.client.post(url, data, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, location.name)
+        # Submit the actual upgrade with location filter
+        data.update(
+            {
+                "upgrade_all": "on",
+                "location": location.pk,
+            }
+        )
+        with self.subTest("Test actual batch upgrade with location"):
+            with mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"):
+                response = self.client.post(url, data, follow=True)
+                self.assertEqual(response.status_code, 200)
+            # Check that batch was created with location
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertIsNotNone(batch)
+            self.assertEqual(batch.location, location)
+
+    def test_batch_upgrade_operation_admin_location_field(self, *args):
+        """Test location field in BatchUpgradeOperationAdmin."""
+        self._login()
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category)
+        location = Location.objects.create(
+            name="Test Location", address="123 Test St", organization=org
+        )
+        batch = BatchUpgradeOperation.objects.create(build=build, location=location)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, location.name)
+
+    def test_batch_upgrade_no_devices_error_handling(self, *args):
+        """Test admin error handling when filters don't match any devices."""
+        self._login()
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category, version="error-test")
+        # Create location and group but no devices matching both
+        location = Location.objects.create(
+            name="Empty Location", address="456 Empty St", organization=org
+        )
+        group = self._create_device_group(name="Empty Group", organization=org)
+        url = reverse(f"admin:{self.app_label}_build_changelist")
+        data = {
+            ACTION_CHECKBOX_NAME: [build.pk],
+            "action": "upgrade_selected",
+            "location": location.pk,
+            "group": group.pk,
+            "upgrade_all": "on",
+        }
+        with self.subTest("Test error message when no devices match filters"):
+            response = self.client.post(url, data, follow=True)
+            self.assertEqual(response.status_code, 200)
+            # Should stay on confirmation page with error message
+            self.assertContains(response, "No devices found matching")
+            self.assertContains(response, "adjust your group and/or location filters")
+            # No batch should be created
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+    def test_batch_upgrade_operation_list_location_filter(self, *args):
+        """Test location filter in BatchUpgradeOperation list view."""
+        self._login()
+        org = self._get_org()
+        category = self._create_category(
+            name="Location Filter Test Category", organization=org
+        )
+        build = self._create_build(category=category, version="location-test-1.0")
+        location1 = Location.objects.create(
+            name="Location 1", address="123 Main St", organization=org
+        )
+        location2 = Location.objects.create(
+            name="Location 2", address="456 Oak Ave", organization=org
+        )
+        # Create batch operations with different locations
+        batch1 = BatchUpgradeOperation.objects.create(build=build, location=location1)
+        batch2 = BatchUpgradeOperation.objects.create(build=build, location=location2)
+        batch3 = BatchUpgradeOperation.objects.create(
+            build=build, location=None  # No location
+        )
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        with self.subTest("Test no location filter - shows all batches"):
+            with self.assertNumQueries(5):
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, str(batch1.pk))
+            self.assertContains(response, str(batch2.pk))
+            self.assertContains(response, str(batch3.pk))
+
+        with self.subTest("Test location1 filter"):
+            with self.assertNumQueries(4):
+                response = self.client.get(url + f"?location={location1.pk}")
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, str(batch1.pk))
+            self.assertNotContains(response, str(batch2.pk))
+            self.assertNotContains(response, str(batch3.pk))
 
 
 del TestConfigAdmin

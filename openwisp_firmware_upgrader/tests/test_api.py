@@ -1,4 +1,5 @@
 import uuid
+from unittest import mock
 
 import swapper
 from django.contrib.auth import get_user_model
@@ -30,9 +31,13 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Build = load_model("Build")
 Category = load_model("Category")
 DeviceFirmware = load_model("DeviceFirmware")
+Device = swapper.load_model("config", "Device")
 FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 OrganizationUser = swapper.load_model("openwisp_users", "OrganizationUser")
+Location = swapper.load_model("geo", "Location")
+DeviceLocation = swapper.load_model("geo", "DeviceLocation")
+DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 
 user_model = get_user_model()
 
@@ -316,15 +321,14 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(response.status_code, 403)
 
     def test_api_batch_upgrade(self):
-        build = self._create_build()
+        env = self._create_upgrade_env()
+        build = env["build2"]
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
-        self.assertEqual(DeviceFirmware.objects.count(), 0)
         with self.subTest("Existing build"):
             url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
-            with self.assertNumQueries(8):
+            with self.assertNumQueries(10):
                 r = self.client.post(url)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
-            self.assertEqual(DeviceFirmware.objects.count(), 0)
             batch = BatchUpgradeOperation.objects.first()
             self.assertEqual(r.status_code, 201)
             self.assertEqual(r.data, {"batch": str(batch.pk)})
@@ -402,9 +406,18 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
                 },
             )
 
-        with self.subTest("Test superuser can mass upgrade shared build"):
-            with self.assertNumQueries(5):
-                response = self.client.post(path)
+        with self.subTest(
+            "Test superuser cannot mass upgrade shared build without upgrade_all"
+        ):
+            response = self.client.post(path)
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("No devices found", response.data["error"])
+
+        with self.subTest(
+            "Test superuser can mass upgrade shared build with upgrade_all"
+        ):
+            with self.assertNumQueries(8):
+                response = self.client.post(path, {"upgrade_all": True})
             self.assertEqual(response.status_code, 201)
             batch = BatchUpgradeOperation.objects.first()
             self.assertEqual(response.data, {"batch": str(batch.pk)})
@@ -416,6 +429,245 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
+    def test_api_batch_upgrade_with_group(self):
+        """Test batch upgrade API with group filtering."""
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        org = build.category.organization
+        group1 = self._create_device_group(name="Group 1", organization=org)
+        group2 = self._create_device_group(name="Group 2", organization=org)
+        env["d1"].group = group1
+        env["d1"].save()
+        env["d2"].group = group2
+        env["d2"].save()
+        image2a = env["image2a"]
+        device3 = self._create_device(
+            name="Device3",
+            organization=org,
+            group=group1,
+            model=image2a.boards[0],
+            mac_address="00:11:22:33:66:03",
+        )
+        self._create_config(device=device3)
+        credentials = self._get_credentials(organization=None, auto_add=True)
+        self._create_device_connection(device=device3, credentials=credentials)
+        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
+        with self.subTest("Test POST with group filter"):
+            r = self.client.post(url, {"upgrade_all": "true", "group": group1.pk})
+            self.assertEqual(r.status_code, 201)
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertIsNotNone(batch)
+            self.assertEqual(batch.group, group1)
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay"
+            ):
+                batch.upgrade(firmwareless=True)
+            upgrade_ops = batch.upgradeoperation_set.all()
+            upgraded_device_names = [op.device.name for op in upgrade_ops]
+            self.assertEqual(len(upgraded_device_names), 2)
+            self.assertIn("device1", upgraded_device_names)  # env["d1"] name
+            self.assertIn("Device3", upgraded_device_names)
+            self.assertNotIn("device2", upgraded_device_names)
+
+        BatchUpgradeOperation.objects.all().delete()
+        UpgradeOperation.objects.all().delete()
+        with self.subTest("Test POST with invalid group"):
+            r = self.client.post(
+                url,
+                {
+                    "upgrade_all": "true",
+                    "group": "00000000-0000-0000-0000-000000000000",
+                },
+            )
+            self.assertEqual(r.status_code, 400)
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+        BatchUpgradeOperation.objects.all().delete()
+        UpgradeOperation.objects.all().delete()
+        with self.subTest("Test GET with group filter"):
+            r = self.client.get(url, {"group": group1.pk})
+            self.assertEqual(r.status_code, 200)
+            device_ids = r.data["devices"]
+            device_fw_ids = r.data["device_firmwares"]
+            self.assertTrue(len(device_ids) > 0 or len(device_fw_ids) > 0)
+            if device_fw_ids:
+                device_fws = DeviceFirmware.objects.filter(pk__in=device_fw_ids)
+                device_fw_names = [df.device.name for df in device_fws]
+                self.assertIn("device1", device_fw_names)
+            if device_ids:
+                devices = Device.objects.filter(pk__in=device_ids)
+                device_names = [d.name for d in devices]
+                self.assertIn("Device3", device_names)
+
+        with self.subTest("Test GET without group filter"):
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            device_ids = r.data["devices"]
+            device_fw_ids = r.data["device_firmwares"]
+            self.assertTrue(len(device_ids) > 0 or len(device_fw_ids) > 0)
+            if device_fw_ids:
+                device_fws = DeviceFirmware.objects.filter(pk__in=device_fw_ids)
+                device_fw_names = [df.device.name for df in device_fws]
+                self.assertIn("device1", device_fw_names)
+                self.assertIn("device2", device_fw_names)
+            if device_ids:
+                devices = Device.objects.filter(pk__in=device_ids)
+                device_names = [d.name for d in devices]
+                self.assertIn("Device3", device_names)
+
+    def test_api_batch_upgrade_location(self):
+        """Test batch upgrade API with location filtering."""
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        org = self.org
+        # Create location
+        location = Location.objects.create(
+            name="Test Location", address="123 Test St", organization=org
+        )
+        # Create device with location
+        device_with_location = self._create_device(
+            name="DeviceWithLocation",
+            organization=org,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:77:01",
+        )
+        DeviceLocation.objects.create(
+            content_object=device_with_location, location=location
+        )
+        self._create_config(device=device_with_location)
+        credentials = self._get_credentials(organization=org)
+        if not DeviceConnection.objects.filter(
+            device=device_with_location, credentials=credentials
+        ).exists():
+            self._create_device_connection(
+                device=device_with_location, credentials=credentials
+            )
+        # Create device firmware
+        with mock.patch(
+            "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_upgrade_operation"
+        ):
+            DeviceFirmware.objects.create(
+                device=device_with_location, image=env["image1a"], installed=True
+            )
+        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
+        with self.subTest("Test POST with location filter"):
+            r = self.client.post(url, {"upgrade_all": "true", "location": location.pk})
+            self.assertEqual(r.status_code, 201)
+
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertIsNotNone(batch)
+            self.assertEqual(batch.location, location)
+
+        BatchUpgradeOperation.objects.all().delete()
+        UpgradeOperation.objects.all().delete()
+        with self.subTest("Test GET with location filter"):
+            r = self.client.get(url, {"location": location.pk})
+            self.assertEqual(r.status_code, 200)
+
+            device_fw_ids = r.data["device_firmwares"]
+
+            # Check that only devices at the location are returned
+            if device_fw_ids:
+                device_fws = DeviceFirmware.objects.filter(pk__in=device_fw_ids)
+                device_fw_names = [df.device.name for df in device_fws]
+                self.assertIn("DeviceWithLocation", device_fw_names)
+
+    def test_api_batch_upgrade_location_and_group(self):
+        """Test batch upgrade API with both location and group filtering."""
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        org = self.org
+        # Create location and group
+        location = Location.objects.create(
+            name="Test Location", address="123 Test St", organization=org
+        )
+        group = self._create_device_group(name="Test Group", organization=org)
+        # Create device with both location and group
+        device_both = self._create_device(
+            name="DeviceBothLocationGroup",
+            organization=org,
+            group=group,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:77:02",
+        )
+        DeviceLocation.objects.create(content_object=device_both, location=location)
+        self._create_config(device=device_both)
+        credentials = self._get_credentials(organization=org)
+        if not DeviceConnection.objects.filter(
+            device=device_both, credentials=credentials
+        ).exists():
+            self._create_device_connection(device=device_both, credentials=credentials)
+
+        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
+        with self.subTest("Test POST with both location and group filters"):
+            r = self.client.post(
+                url, {"upgrade_all": "true", "location": location.pk, "group": group.pk}
+            )
+            self.assertEqual(r.status_code, 201)
+
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertIsNotNone(batch)
+            self.assertEqual(batch.location, location)
+            self.assertEqual(batch.group, group)
+
+        BatchUpgradeOperation.objects.all().delete()
+        with self.subTest("Test GET with both location and group filters"):
+            r = self.client.get(url, {"location": location.pk, "group": group.pk})
+            self.assertEqual(r.status_code, 200)
+
+    def test_api_batch_upgrade_invalid_location(self):
+        """Test batch upgrade API with invalid location ID."""
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
+        with self.subTest("Test POST with invalid location"):
+            r = self.client.post(
+                url,
+                {
+                    "upgrade_all": "true",
+                    "location": "00000000-0000-0000-0000-000000000000",
+                },  # Non-existent location UUID
+            )
+            self.assertEqual(r.status_code, 400)
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+        BatchUpgradeOperation.objects.all().delete()
+        with self.subTest("Test GET with invalid location"):
+            r = self.client.get(
+                url, {"location": "00000000-0000-0000-0000-000000000000"}
+            )
+            self.assertEqual(r.status_code, 400)
+
+    def test_api_batch_upgrade_no_devices_with_filters(self):
+        """Test API error handling when filters don't match any devices."""
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        org = self.org
+        # Create location and group but no devices matching them
+        location = Location.objects.create(
+            name="Empty Location", address="456 Empty St", organization=org
+        )
+        group = self._create_device_group(name="Empty Group", organization=org)
+        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
+        with self.subTest("Test POST with filters matching no devices"):
+            r = self.client.post(
+                url, {"upgrade_all": "true", "location": location.pk, "group": group.pk}
+            )
+            # Should return 400 Bad Request
+            self.assertEqual(r.status_code, 400)
+            self.assertIn("No devices found matching", str(r.data["error"]))
+
+            # No batch should be created
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+        with self.subTest("Test GET dry run with filters matching no devices"):
+            r = self.client.get(url, {"location": location.pk, "group": group.pk})
+            self.assertEqual(r.status_code, 200)
+
+            # Should return empty results
+            self.assertEqual(len(r.data["device_firmwares"]), 0)
+            self.assertEqual(len(r.data["devices"]), 0)
+
 
 class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
     def _serialize_category(self, category):
@@ -424,7 +676,6 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
 
     def test_category_unauthorized(self):
         category = self._create_category()
-
         org2 = self._create_org(name="org2", slug="org2")
         self.tearDown()
         self.operator.openwisp_users_organization.all().delete()
@@ -435,7 +686,6 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(4):
             r = self.client.get(url)
         self.assertEqual(r.status_code, 404)
-
         client = Client()
         url = reverse("upgrader:api_category_list")
         with self.assertNumQueries(0):
@@ -463,7 +713,6 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         category_details_path = reverse(
             "upgrader:api_category_detail", args=[category.pk]
         )
-
         with self.subTest("Test superuser can view shared category"):
             response = self.client.get(list_view_path)
             self.assertEqual(response.status_code, 200)
@@ -521,12 +770,9 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
             username="administrator2",
             email="administrator2@test.com",
         )
-
         category = self._create_category()
         category2 = self._create_category(name="New category", organization=org2)
-
         url = reverse("upgrader:api_category_list")
-
         self._login("administrator", "tester")
         serialized_list = [
             self._serialize_category(category),
@@ -534,7 +780,6 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
-
         self._login("administrator2", "tester")
         serialized_list = [
             self._serialize_category(category2),
@@ -548,12 +793,9 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         self._create_operator(
             username="admin", email="admin@test.com", is_superuser=True
         )
-
         self._create_category()
         category2 = self._create_category(name="New category", organization=org2)
-
         url = reverse("upgrader:api_category_list")
-
         self._login("admin", "tester")
         serialized_list = [
             self._serialize_category(category)
@@ -562,7 +804,6 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
-
         data_filter = {"organization": "new-org"}
         serialized_list = [
             self._serialize_category(category2),
@@ -635,14 +876,12 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
     def test_batchupgradeoperation_unauthorized(self):
         env = self._create_upgrade_env()
         env["build2"].batch_upgrade(firmwareless=False)
-
         org2 = self._create_org(name="org2", slug="org2")
         self.tearDown()
         self.administrator.openwisp_users_organization.all().delete()
         OrganizationUser.objects.create(
             user=self.administrator, organization=org2, is_admin=True
         )
-
         url = reverse(
             "upgrader:api_batchupgradeoperation_detail", args=[env["build2"].pk]
         )
@@ -676,9 +915,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         env = self._create_upgrade_env(organization=self.org)
         env["build1"].batch_upgrade(firmwareless=False)
         env["build2"].batch_upgrade(firmwareless=False)
-
         url = reverse("upgrader:api_batchupgradeoperation_list")
-
         serialized_list = [
             self._serialize_upgrade_env(operation)
             for operation in BatchUpgradeOperation.objects.order_by("-created")
@@ -686,21 +923,18 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
-
         operation = BatchUpgradeOperation.objects.get(build=env["build1"])
         serialized_list = [self._serialize_upgrade_env(operation)]
         filter_params = dict(build=env["build1"].pk)
         with self.assertNumQueries(6):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data["results"], serialized_list)
-
         operation = BatchUpgradeOperation.objects.get(build=env["build2"])
         serialized_list = [self._serialize_upgrade_env(operation)]
         filter_params = dict(build=env["build2"].pk)
         with self.assertNumQueries(6):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data["results"], serialized_list)
-
         serialized_list = [
             self._serialize_upgrade_env(operation)
             for operation in BatchUpgradeOperation.objects.filter(
@@ -711,7 +945,6 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(4):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data["results"], serialized_list)
-
         serialized_list = [
             self._serialize_upgrade_env(operation)
             for operation in BatchUpgradeOperation.objects.filter(
@@ -729,21 +962,17 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self._create_operator(
             organizations=[org2], username="operator2", email="operator2@test.com"
         )
-
         env = self._create_upgrade_env(organization=self.org)
         env2 = self._create_upgrade_env(category=category2, organization=org2)
         env["build2"].batch_upgrade(firmwareless=False)
         env2["build2"].batch_upgrade(firmwareless=False)
-
         url = reverse("upgrader:api_batchupgradeoperation_list")
-
         self._login("operator", "tester")
         operation = BatchUpgradeOperation.objects.get(build=env["build2"])
         serialized_list = [self._serialize_upgrade_env(operation)]
         with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
-
         self._login("operator2", "tester")
         operation2 = BatchUpgradeOperation.objects.get(build=env2["build2"])
         serialized_list = [self._serialize_upgrade_env(operation2)]
@@ -757,19 +986,14 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self._create_operator(
             username="admin", email="admin@test.com", is_superuser=True
         )
-
         env = self._create_upgrade_env(organization=self.org)
         env2 = self._create_upgrade_env(category=category2, organization=org2)
         env["build2"].batch_upgrade(firmwareless=False)
         env2["build2"].batch_upgrade(firmwareless=False)
-
         BatchUpgradeOperation.objects.get(build=env["build2"])
         operation2 = BatchUpgradeOperation.objects.get(build=env2["build2"])
-
         url = reverse("upgrader:api_batchupgradeoperation_list")
-
         self._login("admin", "tester")
-
         serialized_list = [
             self._serialize_upgrade_env(operation)
             for operation in BatchUpgradeOperation.objects.all().order_by("-created")
@@ -777,7 +1001,6 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(3):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
-
         data_filter = {"organization": "new-org"}
         serialized_list = [self._serialize_upgrade_env(operation2)]
         with self.assertNumQueries(3):
@@ -810,7 +1033,6 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         org2 = self._create_org(name="org2", slug="org2")
         OrganizationUser.objects.create(user=self.operator, organization=org2)
-
         client = Client()
         url = reverse("upgrader:api_firmware_list", args=[image.build.pk])
         with self.subTest(url=url):
@@ -834,7 +1056,6 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
     def test_firmware_list(self):
         image = self._create_firmware_image()
         self._create_firmware_image(type=self.TPLINK_4300_IL_IMAGE)
-
         url = reverse("upgrader:api_firmware_list", args=[image.build.pk])
         with self.assertNumQueries(8):
             r = self.client.get(url)
@@ -865,16 +1086,12 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
     def test_firmware_list_django_filters(self):
         image = self._create_firmware_image(type=self.TPLINK_4300_IMAGE)
         image2 = self._create_firmware_image(type=self.TPLINK_4300_IL_IMAGE)
-
         url = reverse("upgrader:api_firmware_list", args=[image.build.pk])
-
         filter_params = dict(type=self.TPLINK_4300_IMAGE)
         with self.assertNumQueries(7):
             r = self.client.get(url, filter_params)
         self.assertEqual(r.data["results"], [self._serialize_image(image)])
-
         url = reverse("upgrader:api_firmware_list", args=[image.build.pk])
-
         filter_params = dict(type=self.TPLINK_4300_IL_IMAGE)
         with self.assertNumQueries(7):
             r = self.client.get(url, filter_params)
@@ -886,13 +1103,11 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             organizations=[org2], username="operator2", email="operator2@test.com"
         )
         cat2 = self._create_category(name="New category", organization=org2)
-
         image = self._create_firmware_image()
         build2 = self._create_build(version="0.2", category=cat2)
         image2 = self._create_firmware_image(build=build2)
 
         url = reverse("upgrader:api_firmware_list", args=[image.build.pk])
-
         self._login("operator", "tester")
         serialized_list = [self._serialize_image(image)]
         with self.assertNumQueries(7):
@@ -1832,6 +2047,51 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
             self._login("admin", "tester")
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403)
+
+    def test_upgrade_operation_cancel_success(self):
+        """Test successful cancellation of an upgrade operation"""
+        env = self._create_upgrade_env(upgrade_operation=True, organization=self.org)
+        device = env["d1"]
+        image = env["image2a"]
+        operation = UpgradeOperation.objects.create(
+            device=device, image=image, status="in-progress", progress=30
+        )
+        url = reverse(
+            "upgrader:api_upgradeoperation_cancel",
+            kwargs={"pk": operation.pk},
+        )
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("message", response.data)
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "cancelled")
+        self.assertIn("cancelled by user", operation.log)
+
+    def test_cancel_upgrade_after_reflashing(self):
+        """Test cancellation when upgrade has progressed too far"""
+        env = self._create_upgrade_env(upgrade_operation=True, organization=self.org)
+        device = env["d1"]
+        image = env["image2a"]
+        operation = UpgradeOperation.objects.create(
+            device=device, image=image, status="in-progress", progress=80
+        )
+        url = reverse(
+            "upgrader:api_upgradeoperation_cancel",
+            kwargs={"pk": operation.pk},
+        )
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("firmware reflashing has already started", response.data["error"])
+
+    def test_upgrade_operation_cancel_not_found(self):
+        """Test cancellation of a non-existent operation"""
+        url = reverse(
+            "upgrader:api_upgradeoperation_cancel",
+            kwargs={"pk": "00000000-0000-0000-0000-000000000000"},
+        )
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("not found", response.data["error"])
 
 
 class TestFirmwareDownloadPermissions(

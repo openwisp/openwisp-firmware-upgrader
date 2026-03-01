@@ -1,7 +1,8 @@
 "use strict";
 
 django.jQuery(function ($) {
-  if (firmwareUpgraderSchema === null) {
+  const upgradeOptions = $('textarea[name="upgrade_options"]');
+  if (firmwareUpgraderSchema === null || !upgradeOptions.length) {
     $(".form-row").hide();
   } else {
     django._loadJsonSchemaUi(

@@ -73,9 +73,9 @@ jobs:
           pip install -U ${{ matrix.django-version }}
           sudo npm install -g prettier
 
-      - name: Start InfluxDB and redis
+      - name: Start redis
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
-        run: docker compose up -d postgres redis
+        run: docker compose up -d redis
 
       - name: QA checks
         run: |
@@ -83,11 +83,7 @@ jobs:
 
       - name: Tests
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
-        run: |
-          coverage run runtests.py --parallel
-          SAMPLE_APP=1 coverage run ./runtests.py --parallel --exclude-tag=selenium_tests
-          coverage combine
-          coverage xml
+        run: ./runtests
         env:
           SELENIUM_HEADLESS: 1
           GECKO_LOG: 1
@@ -104,6 +100,7 @@ jobs:
           format: cobertura
           flag-name: python-${{ matrix.env.env }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-error: false
 
   coveralls:
     needs: build
@@ -113,3 +110,4 @@ jobs:
         uses: coverallsapp/github-action@v2
         with:
           parallel-finished: true
+          fail-on-error: false

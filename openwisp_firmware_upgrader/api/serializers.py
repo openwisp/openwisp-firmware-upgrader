@@ -16,6 +16,8 @@ FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
 Device = swapper.load_model("config", "Device")
+DeviceGroup = swapper.load_model("config", "DeviceGroup")
+Location = swapper.load_model("geo", "Location")
 
 
 class BaseMeta:
@@ -81,16 +83,37 @@ class BuildSerializer(BaseSerializer):
         fields = "__all__"
 
 
+class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
+    upgrade_all = serializers.BooleanField(required=False, default=False)
+
+    class Meta:
+        fields = ("upgrade_all", "group", "location")
+        model = BatchUpgradeOperation
+        extra_kwargs = {
+            "group": {"required": False, "allow_null": True},
+            "location": {"required": False, "allow_null": True},
+        }
+
+
 class UpgradeOperationSerializer(serializers.ModelSerializer):
     class Meta:
         model = UpgradeOperation
-        fields = ("id", "device", "image", "status", "log", "modified", "created")
+        fields = (
+            "id",
+            "device",
+            "image",
+            "status",
+            "log",
+            "progress",
+            "modified",
+            "created",
+        )
 
 
 class DeviceUpgradeOperationSerializer(serializers.ModelSerializer):
     class Meta:
         model = UpgradeOperation
-        fields = ("id", "device", "image", "status", "log", "modified")
+        fields = ("id", "device", "image", "status", "log", "progress", "modified")
 
 
 class BatchUpgradeOperationListSerializer(BaseSerializer):
@@ -106,6 +129,7 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
     success_rate = serializers.IntegerField(read_only=True)
     failed_rate = serializers.IntegerField(read_only=True)
     aborted_rate = serializers.IntegerField(read_only=True)
+    cancelled_rate = serializers.IntegerField(read_only=True)
     upgradeoperations = UpgradeOperationSerializer(
         read_only=True, source="upgradeoperation_set", many=True
     )
