@@ -46,8 +46,8 @@ class MockRequest:
 
 
 class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
-    app_label = "firmware_upgrader"
-    config_app_label = "config"
+    app_label = Build._meta.app_label
+    config_app_label = Device._meta.app_label
     _device_params = TestConfigAdmin._device_params.copy()
     _device_params.update(
         {
