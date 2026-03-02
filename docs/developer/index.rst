@@ -8,6 +8,7 @@ Developer Docs
 
     ./installation.rst
     ./extending.rst
+    ./utils.rst
 
 Other useful resources:
 
