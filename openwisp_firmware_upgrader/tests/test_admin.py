@@ -398,9 +398,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_deactivated_firmware_image_inline(self):
         self._login()
         device = self._create_config(organization=self._get_org()).device
-        # Create device firmware BEFORE deactivating device
         self._create_device_firmware(device=device)
-        # Now deactivate the device
         device.deactivate()
         response = self.client.get(
             reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
@@ -1546,31 +1544,23 @@ class TestAdminTransaction(
             self.assertNotContains(response, str(batch3.pk))
 
     def test_device_firmware_inline_deactivated_device(self, *args):
-        """Test that DeviceFirmware inline shows validation error for deactivated device"""
+        self._login()
         device_fw = self._create_device_firmware()
         device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
         device.deactivate()
-
-        # Test that trying to create a new DeviceFirmware for deactivated device fails
-        with self.assertRaises(ValidationError) as cm:
-            new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
-            new_device_fw.full_clean()
-
-        self.assertIn(
-            "Cannot create firmware object for deactivated device", str(cm.exception)
-        )
-
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
-    def test_basic_deactivated_device_admin_validation(self, *args):
-        """Test basic admin validation for deactivated devices"""
-        device_fw = self._create_device_firmware()
-        device = device_fw.device
-
-        # Test that validation works at the model level
-        device.deactivate()
-        with self.assertRaises(ValidationError):
-            new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
-            new_device_fw.full_clean()
-
+        # Try to add a new DeviceFirmware via admin interface
+        device_params = self._get_device_params(device, device_conn, device_fw.image)
+        device_params.update({
+            "devicefirmware-0-image": str(device_fw.image.id),
+            "devicefirmware-TOTAL_FORMS": 1,
+            "devicefirmware-INITIAL_FORMS": 0,
+        }) 
+        response = self.client.post(
+            reverse("admin:config_device_change", args=[device.id]),
+            data=device_params,
+            follow=True,
+        ) 
+        self.assertEqual(response.status_code, 403)
 
 del TestConfigAdmin
