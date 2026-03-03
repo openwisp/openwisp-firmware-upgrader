@@ -407,13 +407,14 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
         extra_context["django_locale"] = get_language()
         obj = self.get_object(request, object_id)
         if obj and obj.batch_id:
-            app_label = self.model._meta.app_label
+            batch_opts = BatchUpgradeOperation._meta
+            batch_admin_prefix = f"admin:{batch_opts.app_label}_{batch_opts.model_name}"
             extra_context["batch"] = obj.batch
             extra_context["batch_changelist_url"] = reverse(
-                f"admin:{app_label}_batchupgradeoperation_changelist"
+                f"{batch_admin_prefix}_changelist"
             )
             extra_context["batch_change_url"] = reverse(
-                f"admin:{app_label}_batchupgradeoperation_change",
+                f"{batch_admin_prefix}_change",
                 args=[obj.batch_id],
             )
         return super().change_view(
