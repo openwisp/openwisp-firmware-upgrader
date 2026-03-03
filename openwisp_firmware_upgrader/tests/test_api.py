@@ -3,7 +3,6 @@ from unittest import mock
 
 import swapper
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 from django.test import Client, TestCase
 from django.urls import reverse
 from packaging.version import parse as parse_version

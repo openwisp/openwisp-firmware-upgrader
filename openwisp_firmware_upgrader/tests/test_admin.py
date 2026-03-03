@@ -7,7 +7,6 @@ import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils.timezone import localtime
