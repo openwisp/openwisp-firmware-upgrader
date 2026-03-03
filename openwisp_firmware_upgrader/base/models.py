@@ -394,7 +394,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             return
         if self.device.is_deactivated():
             raise ValidationError(
-                _("Cannot create firmware object for deactivated device")
+                _("Cannot create or modify firmware object for deactivated device")
             )
         if (
             self.image.build.category.organization is not None
@@ -836,7 +836,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         super().clean()
         if hasattr(self, "device") and self.device and self.device.is_deactivated():
             raise ValidationError(
-                _("Cannot create upgrade operation for deactivated device")
+                _("Cannot create or modify upgrade operation for deactivated device")
             )
 
     def log_line(self, line, save=True):

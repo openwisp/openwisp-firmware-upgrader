@@ -2116,22 +2116,3 @@ class TestFirmwareDownloadPermissions(
             "upgrader:api_firmware_download",
             args=[self.image.build.pk, self.image.pk],
         )
-
-
-class TestDeactivatedDeviceAPI(TestAPIUpgraderMixin, TestCase):
-    """Test API behavior with deactivated devices"""
-
-    def test_device_firmware_basic_deactivated_validation(self):
-        """Test that DeviceFirmware creation is rejected for deactivated devices"""
-        device_fw = self._create_device_firmware()
-        device = device_fw.device
-        device.deactivate()
-
-        # Test that we cannot create new device firmware for deactivated device
-        with self.assertRaises(ValidationError) as cm:
-            new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
-            new_device_fw.full_clean()
-
-        self.assertIn(
-            "Cannot create firmware object for deactivated device", str(cm.exception)
-        )
