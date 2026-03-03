@@ -142,24 +142,24 @@
 }
 
 .upgrade-status-container .upgrade-progress-fill.in-progress {
-  background-color: #70bf2b;
+  background-color: var(--ow-color-success);
 }
 
 .upgrade-status-container .upgrade-progress-fill.success,
 .upgrade-status-container .upgrade-progress-fill.completed-successfully {
-  background-color: #70bf2b;
+  background-color: var(--ow-color-success);
 }
 
 .upgrade-status-container .upgrade-progress-fill.failed {
-  background-color: #dc3545;
+  background-color: var(--ow-btn-danger-bg);
 }
 
 .upgrade-status-container .upgrade-progress-fill.aborted {
-  background-color: #6c757d;
+  background-color: var(--ow-color-fg-dark);
 }
 
 .upgrade-status-container .upgrade-progress-fill.cancelled {
-  background-color: #8b8b8b;
+  background-color: var(--ow-color-fg-dark);
 }
 
 .upgrade-status-container span {
@@ -173,28 +173,28 @@
 }
 
 .upgrade-status-in-progress {
-  color: #70bf2b;
+  color: var(--ow-color-success);
 }
 
 .upgrade-status-success,
 .upgrade-status-completed-successfully {
-  color: #70bf2b;
+  color: var(--ow-color-success);
 }
 
 .upgrade-status-failed {
-  color: #dc3545;
+  color: var(--ow-btn-danger-bg);
 }
 
 .upgrade-status-aborted {
-  color: #6c757d;
+  color: var(--ow-color-fg-dark);
 }
 
 .upgrade-status-cancelled {
-  color: #8b8b8b;
+  color: var(--ow-color-fg-dark);
 }
 
 .upgrade-status-idle {
-  color: #6c757d;
+  color: var(--ow-color-fg-dark);
 }
 
 .batch-main-progress {
@@ -207,7 +207,7 @@
 .batch-main-progress .upgrade-progress-bar {
   width: 300px;
   height: 12px;
-  background-color: #d9d9d9;
+  background-color: var(--ow-color-fg-medium);
   border-radius: 4px;
   overflow: hidden;
   border: 1px solid var(--border-color);
@@ -220,32 +220,32 @@
 }
 
 .batch-main-progress .upgrade-progress-fill.idle {
-  background-color: #6c757d;
+  background-color: var(--ow-color-fg-dark);
 }
 
 .batch-main-progress .upgrade-progress-fill.in-progress {
-  background-color: #70bf2b;
+  background-color: var(--ow-color-success);
 }
 
 .batch-main-progress .upgrade-progress-fill.success,
 .batch-main-progress .upgrade-progress-fill.completed-successfully {
-  background-color: #70bf2b;
+  background-color: var(--ow-color-success);
 }
 
 .batch-main-progress .upgrade-progress-fill.failed {
-  background-color: #dc3545;
+  background-color: var(--ow-btn-danger-bg);
 }
 
 .batch-main-progress .upgrade-progress-fill.aborted {
-  background-color: #6c757d;
+  background-color: var(--ow-color-fg-dark);
 }
 
 .batch-main-progress .upgrade-progress-fill.cancelled {
-  background-color: #8b8b8b;
+  background-color: var(--ow-color-fg-dark);
 }
 
 .batch-main-progress .upgrade-progress-fill.partial-success {
-  background-color: #ff9800;
+  background-color: var(--ow-color-primary);
 }
 
 .batch-main-progress .upgrade-progress-text {
