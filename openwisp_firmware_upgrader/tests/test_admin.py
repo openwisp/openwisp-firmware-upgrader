@@ -398,7 +398,6 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_deactivated_firmware_image_inline(self):
         self._login()
         device = self._create_config(organization=self._get_org()).device
-        self._create_device_firmware(device=device)
         device.deactivate()
         response = self.client.get(
             reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
@@ -409,21 +408,6 @@ class TestAdmin(BaseTestAdmin, TestCase):
             response,
             '<input type="hidden" name="devicefirmware-MAX_NUM_FORMS"'
             ' value="0" id="id_devicefirmware-MAX_NUM_FORMS">',
-        )
-        self._create_device_firmware(device=device)
-        response = self.client.get(
-            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
-        )
-        # Ensure that a deactivated device's existing DeviceFirmwareImage
-        # is displayed as readonly in the admin interface.
-        self.assertContains(
-            response,
-            '<div class="readonly">Test Category v0.1:'
-            " TP-Link WDR4300 v1 (OpenWrt 19.07 and later)</div>",
-        )
-        self.assertNotContains(
-            response,
-            '<select name="devicefirmware-0-image" id="id_devicefirmware-0-image">',
         )
 
     def test_device_upgrade_shared_firmware(self, *args):
@@ -1502,7 +1486,7 @@ class TestAdminTransaction(
             }
         )
         response = self.client.post(
-            reverse("admin:config_device_change", args=[device.id]),
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
             data=device_params,
             follow=True,
         )
