@@ -322,7 +322,6 @@ class UpgradeOperationInline(admin.StackedInline):
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
-    show_change_link = True
 
     def has_delete_permission(self, request, obj):
         return False
@@ -420,9 +419,6 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
         return super().change_view(
             request, object_id, extra_context=extra_context, **kwargs
         )
-
-    def has_module_permission(self, request):
-        return False
 
     def get_fields(self, request, obj=None):
         fields = super().get_fields(request, obj).copy()
