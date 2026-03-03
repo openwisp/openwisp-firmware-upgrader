@@ -1566,7 +1566,7 @@ class TestAdminTransaction(
             }
         )
         response = self.client.post(
-            reverse("admin:config_device_change", args=[device.id]),
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
             data=device_params,
             follow=True,
         )
