@@ -390,7 +390,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         abstract = True
 
     def clean(self):
-        if not hasattr(self, "image") or not hasattr(self, "device"):
+        if not self.device_id or not self.image_id:
             return
         if self.device.is_deactivated():
             raise ValidationError(

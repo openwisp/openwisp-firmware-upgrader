@@ -177,6 +177,12 @@ class TestModels(TestUpgraderMixin, TestCase):
         else:
             self.fail("ValidationError not raised")
 
+    def test_device_firmware_missing_required_fields(self):
+        with self.assertRaises(ValidationError) as cm:
+            DeviceFirmware().full_clean()
+        self.assertIn("device", cm.exception.message_dict)
+        self.assertIn("image", cm.exception.message_dict)
+
     def test_invalid_board(self):
         image = FIRMWARE_IMAGE_MAP[self.TPLINK_4300_IMAGE]
         boards = image["boards"]
