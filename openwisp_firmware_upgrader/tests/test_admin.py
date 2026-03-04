@@ -52,7 +52,6 @@ class MockRequest:
 class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
     app_label = Build._meta.app_label
     config_app_label = Device._meta.app_label
-    connection_app_label = "connection"
     _device_params = TestConfigAdmin._device_params.copy()
     _device_params.update(
         {
