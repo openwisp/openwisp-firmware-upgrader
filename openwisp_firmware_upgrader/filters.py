@@ -29,6 +29,24 @@ class BuildCategoryFilter(MultitenantRelatedOrgFilter):
     rel_model = Build
 
 
+class BuildFilter(MultitenantRelatedOrgFilter):
+    field_name = "build"
+    parameter_name = "build_id"
+    title = _("build")
+
+
+class LocationFilter(MultitenantRelatedOrgFilter):
+    field_name = "location"
+    parameter_name = "location_id"
+    title = _("location")
+
+
+class GroupFilter(MultitenantRelatedOrgFilter):
+    field_name = "group"
+    parameter_name = "group_id"
+    title = _("group")
+
+
 class BuildCategoryOrganizationFilter(MultitenantOrgFilter):
     parameter_name = "build__category__organization"
     rel_model = Category

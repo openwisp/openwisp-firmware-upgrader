@@ -83,7 +83,7 @@ List Mass Upgrade Operations
 The list of batch upgrade operations provides the following filters:
 
 - ``build`` (Firmware build ID)
-- ``status`` (One of: idle, in-progress, success, failed)
+- ``status`` (One of: idle, in-progress, success, failed, cancelled)
 
 Here's a few examples:
 
@@ -210,6 +210,25 @@ Upgrades all the devices related to the specified build ID.
 
     POST /api/v1/firmware-upgrader/build/{id}/upgrade/
 
+**Optional Parameters**
+
+The batch upgrade operation accepts the following optional parameters in
+the request body:
+
+- ``group`` (Device group ID): limit the upgrade to devices belonging to a
+  specific group
+- ``location`` (Location ID): limit the upgrade to devices at a specific
+  geographic location
+
+Example with filters:
+
+.. code-block:: json
+
+    {
+        "group": "{group_id}",
+        "location": "{location_id}"
+    }
+
 Dry-run Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -222,6 +241,25 @@ exists for a device which would be upgraded.
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/build/{id}/upgrade/
+
+**Optional Query Parameters**
+
+The dry-run batch upgrade operation accepts the following optional query
+parameters:
+
+- ``group`` (Device group ID): limit the preview to devices belonging to a
+  specific group
+- ``location`` (Location ID): limit the preview to devices at a specific
+  geographic location
+
+If both ``group`` and ``location`` are provided, only devices matching
+both filters are included.
+
+Example with filters:
+
+.. code-block:: text
+
+    GET /api/v1/firmware-upgrader/build/{id}/upgrade/?group={group_id}&location={location_id}
 
 List Firmware Categories
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -280,7 +318,7 @@ The list of upgrade operations provides the following filters:
 - ``device__organization_slug`` (Organization slug of the device)
 - ``device`` (Device ID)
 - ``image`` (Firmware image ID)
-- ``status`` (One of: in-progress, success, failed, aborted)
+- ``status`` (One of: in-progress, success, failed, aborted, cancelled)
 
 Here's a few examples:
 
@@ -299,6 +337,18 @@ Get Upgrade Operation Details
 
     GET /api/v1/firmware-upgrader/upgrade-operation/{id}
 
+Cancel Upgrade Operation
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/upgrade-operation/{id}/cancel/
+
+.. note::
+
+    This endpoint may return a 409 status code if the operation cannot be
+    cancelled.
+
 List Device Upgrade Operations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -309,7 +359,7 @@ List Device Upgrade Operations
 **Available filters**
 
 The list of device upgrade operations can be filtered by ``status`` (one
-of: in-progress, success, failed, aborted).
+of: in-progress, success, failed, aborted, cancelled).
 
 .. code-block:: text
 

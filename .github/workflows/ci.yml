@@ -5,9 +5,11 @@ on:
   push:
     branches:
       - master
+      - "1.2"
   pull_request:
     branches:
       - master
+      - "1.2"
 
 jobs:
   build:
@@ -28,7 +30,7 @@ jobs:
           - django~=5.2.0
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -41,7 +43,7 @@ jobs:
             **/requirements*.txt
 
       - name: Cache APT packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /var/cache/apt/archives
           key: apt-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
@@ -71,9 +73,9 @@ jobs:
           pip install -U ${{ matrix.django-version }}
           sudo npm install -g prettier
 
-      - name: Start InfluxDB and redis
+      - name: Start redis
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
-        run: docker compose up -d postgres redis
+        run: docker compose up -d redis
 
       - name: QA checks
         run: |
@@ -81,11 +83,7 @@ jobs:
 
       - name: Tests
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}
-        run: |
-          coverage run runtests.py --parallel
-          SAMPLE_APP=1 coverage run ./runtests.py --parallel --exclude-tag=selenium_tests
-          coverage combine
-          coverage xml
+        run: ./runtests
         env:
           SELENIUM_HEADLESS: 1
           GECKO_LOG: 1
@@ -102,6 +100,7 @@ jobs:
           format: cobertura
           flag-name: python-${{ matrix.env.env }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-error: false
 
   coveralls:
     needs: build
@@ -111,3 +110,4 @@ jobs:
         uses: coverallsapp/github-action@v2
         with:
           parallel-finished: true
+          fail-on-error: false

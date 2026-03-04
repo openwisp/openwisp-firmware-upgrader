@@ -98,8 +98,8 @@ it.
 4. Perform a Firmware Upgrade to a Specific Device
 --------------------------------------------------
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-devicefirmware.gif
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-devicefirmware.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-devicefirmware.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-devicefirmware.gif
 
 Once a new build is ready, has been created in the system and its image
 have been uploaded, it will be the time to finally upgrade our devices.
@@ -110,15 +110,39 @@ then go to the "Firmware" tab.
 If you correctly filled **OS identifier** in step 2, you should have a
 situation similar to the one above: in this example, the device is using
 version ``1.0`` and we want to upgrade it to version ``2.0``, once the new
-firmware image is selected we just have to hit save, then a new tab will
-appear in the device page which allows us to see what's going on during
-the upgrade.
+firmware image is selected we just have to hit save, then a new tab
+"Recent Firmware Upgrades" will appear in the device page which allows us
+to observe in real time what's going on during the upgrade without
+requiring page reloads.
 
-Right now, the update of the upgrade information is not asynchronous yet,
-so you will have to reload the page periodically to find new information.
-This will be addressed in a future release.
+5. Canceling a Firmware Upgrade
+-------------------------------
 
-5. Performing Mass Upgrades
+If you need to cancel a firmware upgrade that is currently in progress on
+a specific device, you can do so from the device's firmware upgrade page.
+
+To cancel an ongoing upgrade:
+
+- Navigate to the device details page
+- Go to the "Firmware" tab
+- If an upgrade is in progress, you will see a "Cancel Upgrade" button
+- Click the "Cancel Upgrade" button to stop the upgrade process
+
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-cancel-upgrade.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-cancel-upgrade.gif
+
+Cancellation is only possible during the early stages of the upgrade
+process. Once the firmware flashing begins, the cancel button will be
+disabled and the upgrade cannot be stopped, as interrupting the flashing
+process could corrupt the device.
+
+The system automatically prevents cancellation during critical phases to
+ensure device safety.
+
+Once cancelled, the upgrade status will be updated to show that the
+operation was cancelled, and you can attempt a new upgrade if needed.
+
+6. Performing Mass Upgrades
 ---------------------------
 
 Before proceeding, please ensure the following preconditions are met:
@@ -134,16 +158,24 @@ At this stage you can try a mass upgrade by doing the following:
   devices to be upgraded with
 - click on "Mass-upgrade devices related to the selected build".
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-batch-upgrade.gif
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-batch-upgrade.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.3/quickstart-batch-upgrade.gif
 
 At this point you should see a summary page which will inform you of which
-devices are going to be upgraded, you can either confirm the operation or
-cancel.
+devices are going to be upgraded. On this page, you can optionally filter
+the devices to be upgraded by:
+
+- **Device Group**: limit the upgrade to devices belonging to a specific
+  group
+- **Geographic Location**: limit the upgrade to devices at a specific
+  location
+
+These filters allow for more granular control over which devices are
+upgraded, making it easier to perform staged rollouts or target specific
+subsets of your device fleet.
+
+After reviewing the selection and setting any desired filters, you can
+either confirm the operation or cancel.
 
 Once the operation is confirmed you will be redirected to a page in which
-you can monitor the progress of the upgrade operations.
-
-Right now, the update of the upgrade information is not asynchronous yet,
-so you will have to reload the page periodically to find new information.
-This will be addressed in a future release.
+you can monitor the progress of the upgrade operations in real time.
