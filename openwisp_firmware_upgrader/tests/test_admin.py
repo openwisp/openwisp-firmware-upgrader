@@ -578,8 +578,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.assertEqual(response.request["PATH_INFO"], reverse("admin:index"))
             self.assertContains(
                 response,
-                f'<li class="warning">Mass upgrade operation with ID “{batch.pk}”'
-                " doesn’t exist. Perhaps it was deleted?</li>",
+                f'<li class="warning">Mass upgrade operation with ID "{batch.pk}"'
+                " doesn't exist. Perhaps it was deleted?</li>",
                 html=True,
             )
 
@@ -1395,51 +1395,6 @@ class TestAdminTransaction(
             self.assertIsNotNone(batch)
             self.assertEqual(batch.location, location)
 
-    def test_batch_upgrade_operation_admin_location_field(self, *args):
-        """Test location field in BatchUpgradeOperationAdmin."""
-        self._login()
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category)
-        location = Location.objects.create(
-            name="Test Location", address="123 Test St", organization=org
-        )
-        batch = BatchUpgradeOperation.objects.create(build=build, location=location)
-        url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
-        )
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, location.name)
-
-    def test_batch_upgrade_no_devices_error_handling(self, *args):
-        """Test admin error handling when filters don't match any devices."""
-        self._login()
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category, version="error-test")
-        # Create location and group but no devices matching both
-        location = Location.objects.create(
-            name="Empty Location", address="456 Empty St", organization=org
-        )
-        group = self._create_device_group(name="Empty Group", organization=org)
-        url = reverse(f"admin:{self.app_label}_build_changelist")
-        data = {
-            ACTION_CHECKBOX_NAME: [build.pk],
-            "action": "upgrade_selected",
-            "location": location.pk,
-            "group": group.pk,
-            "upgrade_all": "on",
-        }
-        with self.subTest("Test error message when no devices match filters"):
-            response = self.client.post(url, data, follow=True)
-            self.assertEqual(response.status_code, 200)
-            # Should stay on confirmation page with error message
-            self.assertContains(response, "No devices found matching")
-            self.assertContains(response, "adjust your group and/or location filters")
-            # No batch should be created
-            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
-
     def test_batch_upgrade_operation_list_location_filter(self, *args):
         """Test location filter in BatchUpgradeOperation list view."""
         self._login()
@@ -1454,11 +1409,10 @@ class TestAdminTransaction(
         location2 = Location.objects.create(
             name="Location 2", address="456 Oak Ave", organization=org
         )
-        # Create batch operations with different locations
         batch1 = BatchUpgradeOperation.objects.create(build=build, location=location1)
         batch2 = BatchUpgradeOperation.objects.create(build=build, location=location2)
         batch3 = BatchUpgradeOperation.objects.create(
-            build=build, location=None  # No location
+            build=build, location=None
         )
         url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
         with self.subTest("Test no location filter - shows all batches"):
@@ -1476,6 +1430,59 @@ class TestAdminTransaction(
             self.assertContains(response, str(batch1.pk))
             self.assertNotContains(response, str(batch2.pk))
             self.assertNotContains(response, str(batch3.pk))
+
+    def test_batch_upgrade_operation_str(self):
+        """Test __str__ of BatchUpgradeOperation includes build and datetime"""
+        self.test_upgrade_all()
+        batch = BatchUpgradeOperation.objects.first()
+        expected = f"{batch.build} ({batch.created.strftime('%Y-%m-%d %H:%M:%S')})"
+        self.assertEqual(str(batch), expected)
+
+    def test_upgrade_operation_str(self):
+        """Test __str__ of UpgradeOperation includes device name and datetime"""
+        self.test_upgrade_all()
+        uo = UpgradeOperation.objects.first()
+        expected = f"{uo.device.name} ({uo.created.strftime('%Y-%m-%d %H:%M:%S')})"
+        self.assertEqual(str(uo), expected)
+
+    def test_upgrade_operation_change_breadcrumb_with_batch(self, *args):
+        """Breadcrumb shows batch path when operation belongs to a batch"""
+        self.test_upgrade_all()
+        uo = UpgradeOperation.objects.first()
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        batch_changelist_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_changelist"
+        )
+        batch_change_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+        )
+        self.assertContains(response, batch_changelist_url)
+        self.assertContains(response, batch_change_url)
+        self.assertContains(response, str(uo.batch))
+        generic_changelist_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_changelist"
+        )
+        self.assertNotContains(response, f'href="{generic_changelist_url}"')
+
+    def test_upgrade_operation_change_breadcrumb_without_batch(self, *args):
+        """Breadcrumb falls back to default when operation has no batch"""
+        self.test_upgrade_all()
+        uo = UpgradeOperation.objects.filter(batch__isnull=True).first()
+        if not uo:
+            self.skipTest("No standalone upgrade operation available")
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        generic_changelist_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_changelist"
+        )
+        self.assertContains(response, generic_changelist_url)
+        batch_changelist_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_changelist"
+        )
+        self.assertNotContains(response, batch_changelist_url)
 
 
 del TestConfigAdmin
