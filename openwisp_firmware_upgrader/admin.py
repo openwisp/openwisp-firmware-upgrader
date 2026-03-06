@@ -323,7 +323,26 @@ class UpgradeOperationInline(admin.StackedInline):
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
 
-    def has_delete_permission(self, request, obj):
+    def has_delete_permission(self, request, obj=None):
+        # Superusers can delete anything (but skip if mocked)
+        if getattr(getattr(request, "user", None), "is_superuser", False) is True:
+            return True
+        # Check if this is a cascade delete from a parent view or bulk action
+        if request.resolver_match:
+            url_name = request.resolver_match.url_name
+            # Allow cascade deletions from parent delete views or bulk / mass operations
+            if url_name and url_name.endswith("_delete"):
+                return True
+            if (
+                url_name
+                and url_name.endswith("_changelist")
+                and request.POST.get("action") == "delete_selected"
+            ):
+                return True
+        # Allow if obj is None (cascade delete check during confirmation page)
+        # or if we can't determine the URL (internal permission check)
+        elif obj is None:
+            return True
         return False
 
     def has_add_permission(self, request, obj):
@@ -589,6 +608,28 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     def get_readonly_fields(self, request, obj=None):
         fields = super().get_readonly_fields(request, obj)
         return fields + self.__class__.readonly_fields
+
+    def has_delete_permission(self, request, obj=None):
+        # Superusers can delete anything (but skip if mocked)
+        if getattr(getattr(request, "user", None), "is_superuser", False) is True:
+            return True
+        # Check if this is a cascade delete from a parent view or bulk action
+        if request.resolver_match:
+            url_name = request.resolver_match.url_name
+            # Allow cascade deletions from parent delete views or bulk / mass operations
+            if url_name and url_name.endswith("_delete"):
+                return True
+            if (
+                url_name
+                and url_name.endswith("_changelist")
+                and request.POST.get("action") == "delete_selected"
+            ):
+                return True
+        # Allow if obj is None (cascade delete check during confirmation page)
+        # or if we can't determine the URL (internal permission check)
+        elif obj is None:
+            return True
+        return False
 
     def organization(self, obj):
         return obj.build.category.organization
