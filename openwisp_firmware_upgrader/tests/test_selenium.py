@@ -478,6 +478,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
 
 
 @tag("selenium_tests")
+@tag("channels")
 class TestRealTimeProgress(
     TestUpgraderMixin,
     SeleniumTestMixin,
