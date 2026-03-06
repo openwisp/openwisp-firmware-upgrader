@@ -556,7 +556,8 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         verbose_name_plural = _("Mass upgrade operations")
 
     def __str__(self):
-        return f"Upgrade of {self.build} on {self.created}"
+        # e.g. "Generic x86 v24.10.5 (2026-01-29 11:38:47)"
+        return f"{self.build} ({self.created.strftime('%Y-%m-%d %H:%M:%S')})"
 
     def clean(self):
         super().clean()
@@ -826,6 +827,10 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     class Meta:
         abstract = True
+
+    def __str__(self):
+        # e.g. "04-pandafy-vm (2026-01-29 11:38:47)"
+        return f"{self.device.name} ({self.created.strftime('%Y-%m-%d %H:%M:%S')})"
 
     def log_line(self, line, save=True):
         if self.log:

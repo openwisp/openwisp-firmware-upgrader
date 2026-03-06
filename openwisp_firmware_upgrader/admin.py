@@ -380,6 +380,9 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
     ]
     change_form_template = "admin/firmware_upgrader/upgrade_operation_change_form.html"
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("batch", "device")
+
     def _should_display_batch(self, obj, fields):
         return (
             obj
@@ -398,13 +401,25 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
             fields.append("batch")
         return fields
 
-    def change_view(self, request, object_id, extra_context=None, **kwargs):
+    def change_view(self, request, object_id, form_url="", extra_context=None, **kwargs):
         extra_context = extra_context or {}
         extra_context["upgrade_operation_cancel_url"] = reverse(
             "upgrader:api_upgradeoperation_cancel",
             args=["00000000-0000-0000-0000-000000000000"],
         )
         extra_context["django_locale"] = get_language()
+        obj = self.get_object(request, object_id)
+        if obj and obj.batch_id:
+            batch_opts = BatchUpgradeOperation._meta
+            batch_admin_prefix = f"admin:{batch_opts.app_label}_{batch_opts.model_name}"
+            extra_context["batch"] = obj.batch
+            extra_context["batch_changelist_url"] = reverse(
+                f"{batch_admin_prefix}_changelist"
+            )
+            extra_context["batch_change_url"] = reverse(
+                f"{batch_admin_prefix}_change",
+                args=[obj.batch_id],
+            )
         return super().change_view(
             request, object_id, extra_context=extra_context, **kwargs
         )
