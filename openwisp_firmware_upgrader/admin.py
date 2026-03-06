@@ -417,9 +417,16 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
                 f"{batch_admin_prefix}_change",
                 args=[obj.batch_id],
             )
+            batch_admin = self.admin_site._registry.get(BatchUpgradeOperation)
+            extra_context["batch_has_view_permission"] = (
+                batch_admin.has_view_permission(request) if batch_admin else False
+            )
         return super().change_view(
             request, object_id, extra_context=extra_context, **kwargs
         )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("batch")
 
     def get_fields(self, request, obj=None):
         fields = super().get_fields(request, obj).copy()

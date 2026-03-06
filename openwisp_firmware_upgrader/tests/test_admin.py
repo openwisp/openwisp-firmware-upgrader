@@ -874,6 +874,28 @@ class TestAdminTransaction(
         self.assertContains(response, batch_changelist_url)
         self.assertContains(response, batch_change_url)
         self.assertContains(response, str(uo.batch))
+        generic_upgrade_changelist_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_changelist"
+        )
+        self.assertNotContains(response, f'href="{generic_upgrade_changelist_url}"')
+
+    def test_upgrade_operation_change_breadcrumb_without_batch(self, *args):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device_fw.save(upgrade=True)
+        uo = device_fw.device.upgradeoperation_set.first()
+        self.assertIsNone(uo.batch_id)
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        batch_changelist_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_changelist"
+        )
+        self.assertNotContains(response, batch_changelist_url)
+        generic_upgrade_changelist_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_changelist"
+        )
+        self.assertContains(response, f'href="{generic_upgrade_changelist_url}"')
 
     def test_recent_upgrades(self, *args):
         self._login()
