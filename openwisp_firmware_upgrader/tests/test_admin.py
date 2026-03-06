@@ -1,9 +1,11 @@
 import json
 from datetime import timedelta
 from unittest import mock
+from unittest.mock import MagicMock
 
 import django
 import swapper
+from django.contrib.admin import AdminSite
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -20,6 +22,7 @@ from openwisp_firmware_upgrader.admin import (
     DeviceFirmwareInline,
     DeviceUpgradeOperationInline,
     FirmwareImageInline,
+    UpgradeOperationInline,
     admin,
 )
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
@@ -39,6 +42,7 @@ FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Device = swapper.load_model("config", "Device")
+Organization = swapper.load_model("openwisp_users", "Organization")
 
 
 class MockRequest:
@@ -918,6 +922,56 @@ class TestAdminTransaction(
                     "not supported for this upgrader.</div>"
                 ),
             )
+
+
+class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
+    def test_upgrade_operation_inline_delete_permission(self):
+        inline = UpgradeOperationInline(BatchUpgradeOperation, AdminSite())
+
+        with self.subTest("cascade delete via parent delete view"):
+            request = MagicMock()
+            request.resolver_match.url_name = (
+                f"admin:{Organization._meta.app_label}_"
+                f"{Organization._meta.model_name}_delete"
+            )
+            request.POST.get.return_value = None
+            self.assertTrue(inline.has_delete_permission(request))
+
+        with self.subTest("bulk delete via delete_selected action"):
+            request = MagicMock()
+            request.resolver_match.url_name = (
+                f"admin:{Organization._meta.app_label}_"
+                f"{Organization._meta.model_name}_changelist"
+            )
+            request.POST.get.side_effect = lambda key, default=None: (
+                "delete_selected" if key == "action" else default
+            )
+            self.assertTrue(inline.has_delete_permission(request))
+
+        with self.subTest("normal change view — delete must be blocked"):
+            request = MagicMock()
+            request.resolver_match.url_name = (
+                f"admin:{BatchUpgradeOperation._meta.app_label}_"
+                f"{BatchUpgradeOperation._meta.model_name}_change"
+            )
+            request.POST.get.return_value = None
+            self.assertFalse(inline.has_delete_permission(request))
+
+    def test_cascade_delete_integration(self):
+        self._login()
+        org = self._create_org(name="cascade-org", slug="cascade-org")
+        category = self._create_category(name="Cascade Category", organization=org)
+        build = self._create_build(category=category, version="9.9")
+        batch = BatchUpgradeOperation.objects.create(build=build)
+        delete_url = reverse(
+            f"admin:{Organization._meta.app_label}"
+            f"_{Organization._meta.model_name}_delete",
+            args=[org.pk],
+        )
+        response = self.client.post(delete_url, data={"post": "yes"}, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Organization.objects.filter(pk=org.pk).exists())
+        self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
 
 
 del TestConfigAdmin
