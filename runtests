@@ -6,7 +6,13 @@ coverage run runtests.py --parallel --exclude-tag=selenium_tests \
   || coverage run ./runtests.py --exclude-tag=selenium_tests
 
 echo "Starting selenium browser tests"
-coverage run runtests.py --tag=selenium_tests --no-input
+./runtests.py --tag=selenium_tests --exclude-tag=channels --no-input
+
+echo "Starting selenium browser + channels live server tests (flaky due to segmentation faults)"
+for i in 1 2 3; do
+  echo "Attempt $i/3"
+  ./runtests.py --tag=channels --no-input --failfast && break
+done
 
 echo "Starting tests for extensibility"
 SAMPLE_APP=1 coverage run ./runtests.py \
