@@ -30,6 +30,7 @@ from ..upgraders.openwisp import OpenWrt
 
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+Build = load_model("Build")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -38,8 +39,8 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 @tag("selenium_tests")
 class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
     browser = "chrome"
-    config_app_label = "config"
-    firmware_app_label = "firmware_upgrader"
+    config_app_label = Device._meta.app_label
+    firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
 
@@ -485,8 +486,8 @@ class TestRealTimeProgress(
     """Test real-time progress functionality with Selenium"""
 
     browser = "chrome"
-    config_app_label = "config"
-    firmware_app_label = "firmware_upgrader"
+    config_app_label = Device._meta.app_label
+    firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
     maxDiff = None
