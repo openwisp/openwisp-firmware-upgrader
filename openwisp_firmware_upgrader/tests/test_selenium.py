@@ -30,6 +30,7 @@ from ..upgraders.openwisp import OpenWrt
 
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+Build = load_model("Build")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -37,8 +38,9 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 
 @tag("selenium_tests")
 class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTestCase):
-    config_app_label = "config"
-    firmware_app_label = "firmware_upgrader"
+    browser = "chrome"
+    config_app_label = Device._meta.app_label
+    firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
 
@@ -64,11 +66,13 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         )
 
     def _get_device_firmware_dropdown_select(self):
-        select_element = self.find_element(By.ID, "id_devicefirmware-0-image")
+        select_element = self.find_element(
+            By.ID, "id_devicefirmware-0-image", wait_for="presence", timeout=10
+        )
         return Select(select_element)
 
     @capture_any_output()
-    def test_restoring_deleted_device(self):
+    def test_restoring_deleted_device(self, *args):
         org = self._get_org()
         category = self._get_category(organization=org)
         build = self._create_build(category=category, version="0.1", os=self.os)
@@ -82,7 +86,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(DeviceConnection.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)
 
-        call_command("createinitialrevisions")
+        call_command("createinitialrevisions", verbosity=0)
 
         self.login()
         device.deactivate()
@@ -92,6 +96,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             reverse(f"admin:{self.config_app_label}_device_delete", args=[device.id])
         )
         self.find_element(By.CSS_SELECTOR, '#content form input[type="submit"]').click()
+        self.wait_for_presence(By.CSS_SELECTOR, ".messagelist .success")
         self.assertEqual(Device.objects.count(), 0)
         self.assertEqual(DeviceConnection.objects.count(), 0)
         self.assertEqual(DeviceFirmware.objects.count(), 0)
@@ -119,7 +124,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(DeviceConnection.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)
 
-    @capture_any_output()
     @patch(
         "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
         return_value=True,
@@ -200,7 +204,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         )
         save_device()
 
-    @capture_any_output()
     @patch(
         "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
         return_value=True,
@@ -275,7 +278,6 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             1,
         )
 
-    @capture_any_output()
     @patch(
         "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
         return_value=True,
@@ -335,8 +337,13 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.find_element(
                 by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
             ).click()
+            self.wait_for_presence(By.ID, "batchupgradeoperation_form")
+            self.wait_for_presence(By.CSS_SELECTOR, ".messagelist .success")
             self.assertEqual(
                 UpgradeOperation.objects.filter(upgrade_options={}).count(), 1
+            )
+            self.assertEqual(
+                BatchUpgradeOperation.objects.filter(upgrade_options={}).count(), 1
             )
 
     def test_upgrade_cancel_modal(self):
@@ -358,8 +365,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
         )
         self.hide_loading_overlay()
-        # Wait for upgrade operations section to be visible
-        self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
+        # Wait for upgrade operations section to be present
+        self.wait_for_presence(By.ID, "upgradeoperation_set-group")
         # Wait for progress bars and status containers to load
         WebDriverWait(self.web_driver, 2).until(
             EC.presence_of_element_located(
@@ -440,8 +447,8 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         WebDriverWait(self.web_driver, 10).until(
             EC.presence_of_element_located((By.ID, "id_group"))
         )
-        self._assert_no_js_errors()
-        self.find_element(By.CSS_SELECTOR, ".select2-container")
+        self._assert_no_js_errors(ignore_websockets=True)
+        self.find_element(By.CSS_SELECTOR, ".select2-container", wait_for="presence")
         self.assertTrue(
             len(self.web_driver.find_elements(By.CSS_SELECTOR, ".select2-container"))
             >= 2,
@@ -471,6 +478,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
 
 
 @tag("selenium_tests")
+@tag("channels")
 class TestRealTimeProgress(
     TestUpgraderMixin,
     SeleniumTestMixin,
@@ -478,8 +486,9 @@ class TestRealTimeProgress(
 ):
     """Test real-time progress functionality with Selenium"""
 
-    config_app_label = "config"
-    firmware_app_label = "firmware_upgrader"
+    browser = "chrome"
+    config_app_label = Device._meta.app_label
+    firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
     maxDiff = None
@@ -552,7 +561,7 @@ class TestRealTimeProgress(
         self.login(username=self.admin.username, password=self.admin_password)
         self.open(f"{path}#upgradeoperation_set-group")
         self.hide_loading_overlay()
-        self.wait_for_visibility(By.ID, "upgradeoperation_set-group")
+        self.wait_for_presence(By.ID, "upgradeoperation_set-group")
         WebDriverWait(self.web_driver, 10).until(
             lambda driver: driver.execute_script(
                 "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;"
@@ -1056,11 +1065,15 @@ class TestRealTimeProgress(
                 args=[operation1.id],
             )
         )
-        progress_fill = self.wait_for_presence(
+        self.wait_for_presence(
             By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-fill"
         )
         WebDriverWait(self.web_driver, 5).until(
-            lambda d: "0%" in progress_fill.get_attribute("style")
+            EC.text_to_be_present_in_element_attribute(
+                (By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-fill"),
+                "style",
+                "width: 0%",
+            )
         )
         self._assert_no_js_errors()
 
