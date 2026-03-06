@@ -15,9 +15,11 @@ from ..exceptions import (
     ReconnectionFailed,
     RecoverableFailure,
     UpgradeAborted,
+    UpgradeCancelled,
     UpgradeNotNeeded,
 )
 from ..settings import OPENWRT_SETTINGS
+from ..utils import UpgradeProgress
 
 
 class OpenWrt(object):
@@ -126,7 +128,9 @@ class OpenWrt(object):
                 )
 
     def log(self, value, save=True):
-        self.upgrade_operation.log_line(value, save=save)
+        # Convert lazy translations to strings to avoid Redis serialization issues
+        value_str = str(value)
+        self.upgrade_operation.log_line(value_str, save=save)
 
     def connect(self):
         """
@@ -188,23 +192,42 @@ class OpenWrt(object):
                 ).format(expected=device_uuid, found=config_uuid)
             )
             raise UpgradeAborted()
-        self.log(_("Device identity verified successfully"))
+        self.log(_("Device identity verified successfully"), save=False)
+        self.upgrade_operation.update_progress(UpgradeProgress.DEVICE_VERIFIED)
 
     def upgrade(self, image):
         self._test_connection()
+        self._check_cancellation()
         self._verify_device_uuid()
+        self._check_cancellation()
         checksum = self._test_checksum(image)
+        self._check_cancellation()
         remote_path = self.get_remote_path(image)
-        self.upload(image.file, remote_path)
+        self.upload(image, remote_path)
+        self._check_cancellation()
         self._test_image(remote_path)
+        self._check_cancellation()
         self._reflash(remote_path)
         self._write_checksum(checksum)
+
+    def _check_cancellation(self):
+        """
+        Check if the upgrade operation has been cancelled.
+        """
+        self.upgrade_operation.refresh_from_db()
+        if self.upgrade_operation.status == "cancelled":
+            if self._non_critical_services_stopped:
+                self.log(_("Restarting non-critical services..."))
+                self._start_non_critical_services()
+            self.disconnect()
+            raise UpgradeCancelled("Upgrade cancelled by user")
 
     def _test_connection(self):
         result = self.connect()
         if not result:
             raise RecoverableFailure("Connection failed")
-        self.log(_("Connection successful, starting upgrade..."))
+        self.log(_("Connection successful, starting upgrade..."), save=False)
+        self.upgrade_operation.update_progress(UpgradeProgress.CONNECTION_SUCCESS)
 
     _non_critical_services = [
         "uhttpd",
@@ -366,6 +389,7 @@ class OpenWrt(object):
         )
         if exit_code == 0:
             self.log(_("Image checksum file found"), save=False)
+            self.upgrade_operation.update_progress(UpgradeProgress.CHECKSUM_VERIFIED)
             cat = f"cat {self.CHECKSUM_FILE}"
             output, code = self.exec_command(cat)
             if checksum == output.strip():
@@ -421,7 +445,8 @@ class OpenWrt(object):
         `subprocess.join(timeout=self.UPGRADE_TIMEOUT)`
         """
         self.disconnect()
-        self.log(_("Upgrade operation in progress..."))
+        self.log(_("Upgrade operation in progress..."), save=False)
+        self.upgrade_operation.update_progress(UpgradeProgress.REFLASHING)
 
         failure_queue = Queue()
         subprocess = Process(
@@ -517,12 +542,16 @@ class OpenWrt(object):
                 sleep(self.RECONNECT_RETRY_DELAY)
                 continue
             self._log_reconnecting_error(attempt)
-            self.log(_("Connected! Writing checksum " f"file to {self.CHECKSUM_FILE}"))
+            self.log(
+                _("Connected! Writing checksum " f"file to {self.CHECKSUM_FILE}"),
+                save=False,
+            )
+            self.upgrade_operation.update_progress(UpgradeProgress.RECONNECTED)
             checksum_dir = os.path.dirname(self.CHECKSUM_FILE)
             self.exec_command(f"mkdir -p {checksum_dir}")
             self.exec_command(f"echo {checksum} > {self.CHECKSUM_FILE}")
             self.disconnect()
-            self.log(_("Upgrade completed successfully."))
+            self.log(_("Upgrade completed successfully."), save=False)
             return
         # if all previous attempts failed
         raise ReconnectionFailed(
