@@ -894,6 +894,27 @@ class TestAdminTransaction(
         )
         self.assertContains(response, f'href="{generic_upgrade_changelist_url}"')
 
+    def test_upgrade_operation_change_breadcrumb_with_batch_no_permission(self, *args):
+        self.test_upgrade_all()
+        uo = UpgradeOperation.objects.first()
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+        with mock.patch(
+            "openwisp_firmware_upgrader.admin.BatchUpgradeOperationAdmin.has_view_permission",
+            return_value=False,
+        ):
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        batch_changelist_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_changelist"
+        )
+        batch_change_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+        )
+        self.assertFalse(response.context["batch_has_view_permission"])
+        self.assertNotContains(response, f'href="{batch_changelist_url}"')
+        self.assertNotContains(response, f'href="{batch_change_url}"')
+        self.assertContains(response, str(uo.batch))
+
     def test_recent_upgrades(self, *args):
         self._login()
         env = self._create_upgrade_env()
