@@ -113,7 +113,7 @@ A mass upgrade containing multiple operations.
 Client Message
 ++++++++++++++
 
-To request the current state of the mass:
+To request the current state of the batch:
 
 .. code-block:: javascript
 
