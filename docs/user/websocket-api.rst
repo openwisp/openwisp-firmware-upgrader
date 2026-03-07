@@ -96,7 +96,7 @@ After the connection is established, the server pushes
 The message structure is identical to the response returned for
 ``request_current_state``.
 
-2. Batch Upgrade Operation
+2. Mass Upgrade Operation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Connection URL:
@@ -108,12 +108,12 @@ Connection URL:
 Scope
 +++++
 
-A batch upgrade containing multiple operations.
+A mass upgrade containing multiple operations.
 
 Client Message
 ++++++++++++++
 
-To request the current state of the batch:
+To request the current state of the mass:
 
 .. code-block:: javascript
 
