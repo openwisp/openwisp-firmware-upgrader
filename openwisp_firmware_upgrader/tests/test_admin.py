@@ -911,8 +911,13 @@ class TestAdminTransaction(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
         )
         self.assertFalse(response.context["batch_has_view_permission"])
+        self.assertEqual(response.context["batch"], uo.batch)
         self.assertNotContains(response, f'href="{batch_changelist_url}"')
         self.assertNotContains(response, f'href="{batch_change_url}"')
+        generic_upgrade_changelist_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_changelist"
+        )
+        self.assertNotContains(response, f'href="{generic_upgrade_changelist_url}"')
         self.assertContains(response, str(uo.batch))
 
     def test_recent_upgrades(self, *args):
