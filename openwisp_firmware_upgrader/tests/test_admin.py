@@ -888,10 +888,7 @@ class TestAdminTransaction(
         url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        batch_changelist_url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_changelist"
-        )
-        self.assertNotContains(response, batch_changelist_url)
+        self.assertIsNone(response.context.get("batch"))
         generic_upgrade_changelist_url = reverse(
             f"admin:{self.app_label}_upgradeoperation_changelist"
         )
