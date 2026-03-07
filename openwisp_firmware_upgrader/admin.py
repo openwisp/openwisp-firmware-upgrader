@@ -406,6 +406,7 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
         )
         extra_context["django_locale"] = get_language()
         obj = self.get_object(request, object_id)
+        # for custom breadcrumbs
         if obj and obj.batch_id:
             batch_opts = BatchUpgradeOperation._meta
             batch_admin_prefix = f"admin:{batch_opts.app_label}_{batch_opts.model_name}"
@@ -429,6 +430,7 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
         return super().get_queryset(request).select_related("batch")
 
     def get_object(self, request, object_id, from_field=None):
+        """Avoids duplicating queries in change_view custom logic"""
         cache_attr = f"_cached_object_{object_id}_{from_field}"
         if not hasattr(request, cache_attr):
             setattr(
