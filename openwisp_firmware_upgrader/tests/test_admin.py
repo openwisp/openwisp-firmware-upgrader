@@ -871,6 +871,8 @@ class TestAdminTransaction(
         batch_change_url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
         )
+        self.assertTrue(response.context["batch_has_view_permission"])
+        self.assertEqual(response.context["batch"], uo.batch)
         self.assertContains(response, batch_changelist_url)
         self.assertContains(response, batch_change_url)
         self.assertContains(response, str(uo.batch))
@@ -912,13 +914,18 @@ class TestAdminTransaction(
         )
         self.assertFalse(response.context["batch_has_view_permission"])
         self.assertEqual(response.context["batch"], uo.batch)
-        self.assertNotContains(response, f'href="{batch_changelist_url}"')
-        self.assertNotContains(response, f'href="{batch_change_url}"')
+        breadcrumbs = (
+            response.content.decode()
+            .split('<div class="breadcrumbs">', 1)[1]
+            .split("</div>", 1)[0]
+        )
+        self.assertNotIn(f'href="{batch_changelist_url}"', breadcrumbs)
+        self.assertNotIn(f'href="{batch_change_url}"', breadcrumbs)
         generic_upgrade_changelist_url = reverse(
             f"admin:{self.app_label}_upgradeoperation_changelist"
         )
-        self.assertNotContains(response, f'href="{generic_upgrade_changelist_url}"')
-        self.assertContains(response, str(uo.batch))
+        self.assertNotIn(f'href="{generic_upgrade_changelist_url}"', breadcrumbs)
+        self.assertIn(str(uo.batch), breadcrumbs)
 
     def test_recent_upgrades(self, *args):
         self._login()
