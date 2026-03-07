@@ -429,7 +429,7 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
         return super().get_queryset(request).select_related("batch")
 
     def get_object(self, request, object_id, from_field=None):
-        cache_attr = f"_cached_object_{object_id}"
+        cache_attr = f"_cached_object_{object_id}_{from_field}"
         if not hasattr(request, cache_attr):
             setattr(
                 request, cache_attr, super().get_object(request, object_id, from_field)
