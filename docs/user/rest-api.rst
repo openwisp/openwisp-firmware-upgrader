@@ -202,7 +202,7 @@ Download Firmware Image
     GET /api/v1/firmware-upgrader/build/{build_id}/image/{id}/download/
 
 Perform Mass Upgrade
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
 
 Upgrades all the devices related to the specified build ID.
 
@@ -230,7 +230,7 @@ Example with filters:
     }
 
 Dry-run Mass Upgrade
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
 
 Returns a list representing the ``DeviceFirmware`` and ``Device``
 instances that would be upgraded if POST is used.

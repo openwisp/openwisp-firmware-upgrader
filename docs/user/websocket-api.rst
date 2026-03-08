@@ -97,7 +97,7 @@ The message structure is identical to the response returned for
 ``request_current_state``.
 
 2. Mass Upgrade Operation
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Connection URL:
 
