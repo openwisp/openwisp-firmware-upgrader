@@ -1492,7 +1492,7 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
                 f"{Organization._meta.app_label}_{Organization._meta.model_name}_delete"
             )
             request.POST.get.return_value = None
-            self.assertTrue(inline.has_delete_permission(request))
+            self.assertTrue(inline.has_delete_permission(request, obj=MagicMock()))
 
         with self.subTest("bulk delete via delete_selected action"):
             request = MagicMock()
@@ -1503,7 +1503,16 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
             request.POST.get.side_effect = lambda key, default=None: (
                 "delete_selected" if key == "action" else default
             )
-            self.assertTrue(inline.has_delete_permission(request))
+            self.assertTrue(inline.has_delete_permission(request, obj=MagicMock()))
+
+        with self.subTest("own delete view must be blocked"):
+            request = MagicMock()
+            request.resolver_match.url_name = (
+                f"{UpgradeOperation._meta.app_label}_"
+                f"{UpgradeOperation._meta.model_name}_delete"
+            )
+            request.POST.get.return_value = None
+            self.assertFalse(inline.has_delete_permission(request, obj=MagicMock()))
 
         with self.subTest("normal change view — delete must be blocked"):
             request = MagicMock()
@@ -1560,14 +1569,9 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
             args=[org.pk],
         )
         response = self.client.post(delete_url, data={"post": "yes"}, follow=True)
-
-        if response.status_code == 200:
-            self.assertFalse(Organization.objects.filter(pk=org.pk).exists())
-            self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
-        else:
-            self.assertEqual(response.status_code, 403)
-            self.assertTrue(Organization.objects.filter(pk=org.pk).exists())
-            self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Organization.objects.filter(pk=org.pk).exists())
+        self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
 
 
 del TestConfigAdmin
