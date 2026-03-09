@@ -306,6 +306,12 @@ Delete a Firmware Category
 List Upgrade Operations
 ~~~~~~~~~~~~~~~~~~~~~~~
 
+.. note::
+
+    This documentation uses "mass upgrade" as the descriptive term, but
+    the REST API still exposes identifiers such as
+    ``batch-upgrade-operation`` and ``batch`` for backward compatibility.
+
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/upgrade-operation/

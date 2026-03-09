@@ -99,9 +99,15 @@ The message structure is identical to the response returned for
 2. Mass Upgrade Operation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. note::
+
+    This documentation uses "mass upgrade" as the descriptive term, but
+    the WebSocket URL path still uses ``batch-upgrade-operation`` for
+    backward compatibility.
+
 Connection URL:
 
-::
+.. code-block:: text
 
     wss://<host>/ws/firmware-upgrader/batch-upgrade-operation/<batch_id>/
 
