@@ -1489,8 +1489,7 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
         with self.subTest("cascade delete via parent delete view"):
             request = MagicMock()
             request.resolver_match.url_name = (
-                f"admin:{Organization._meta.app_label}_"
-                f"{Organization._meta.model_name}_delete"
+                f"{Organization._meta.app_label}_{Organization._meta.model_name}_delete"
             )
             request.POST.get.return_value = None
             self.assertTrue(inline.has_delete_permission(request))
@@ -1498,7 +1497,7 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
         with self.subTest("bulk delete via delete_selected action"):
             request = MagicMock()
             request.resolver_match.url_name = (
-                f"admin:{Organization._meta.app_label}_"
+                f"{Organization._meta.app_label}_"
                 f"{Organization._meta.model_name}_changelist"
             )
             request.POST.get.side_effect = lambda key, default=None: (
@@ -1509,11 +1508,23 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
         with self.subTest("normal change view — delete must be blocked"):
             request = MagicMock()
             request.resolver_match.url_name = (
-                f"admin:{BatchUpgradeOperation._meta.app_label}_"
+                f"{BatchUpgradeOperation._meta.app_label}_"
                 f"{BatchUpgradeOperation._meta.model_name}_change"
             )
             request.POST.get.return_value = None
-            self.assertFalse(inline.has_delete_permission(request))
+            self.assertFalse(inline.has_delete_permission(request, obj=MagicMock()))
+
+        with self.subTest("superuser always allowed"):
+            request = MagicMock()
+            request.user.is_superuser = True
+            request.resolver_match.url_name = "any_random_view"
+            self.assertTrue(inline.has_delete_permission(request, obj=MagicMock()))
+
+        with self.subTest("obj is None fallback (internal Django check)"):
+            request = MagicMock()
+            request.user.is_superuser = False
+            request.resolver_match = None
+            self.assertTrue(inline.has_delete_permission(request, obj=None))
 
     def test_cascade_delete_integration(self):
         self._login()
@@ -1530,6 +1541,33 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Organization.objects.filter(pk=org.pk).exists())
         self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+
+    def test_cascade_delete_integration_non_superuser(self):
+        org = self._create_org(
+            name="cascade-non-superuser", slug="cascade-non-superuser"
+        )
+        user = self._create_administrator(organizations=[org])
+        delete_perm = Permission.objects.get(codename="delete_organization")
+        user.user_permissions.add(delete_perm)
+
+        category = self._create_category(name="Cat", organization=org)
+        build = self._create_build(category=category, version="1.0")
+        batch = BatchUpgradeOperation.objects.create(build=build)
+
+        self.client.force_login(user)
+        delete_url = reverse(
+            f"admin:{org._meta.app_label}_{org._meta.model_name}_delete",
+            args=[org.pk],
+        )
+        response = self.client.post(delete_url, data={"post": "yes"}, follow=True)
+
+        if response.status_code == 200:
+            self.assertFalse(Organization.objects.filter(pk=org.pk).exists())
+            self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+        else:
+            self.assertEqual(response.status_code, 403)
+            self.assertTrue(Organization.objects.filter(pk=org.pk).exists())
+            self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
 
 
 del TestConfigAdmin
