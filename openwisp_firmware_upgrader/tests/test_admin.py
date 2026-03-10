@@ -736,7 +736,10 @@ class TestAdminTransaction(
                 self.assertContains(r, '<li class="success">')
                 self.assertContains(r, "track the progress")
                 self.assertEqual(
-                    UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 2
+                    UpgradeOperation.objects.filter(
+                        upgrade_options={"c": True}
+                    ).count(),
+                    2,
                 )
                 self.assertEqual(fw.count(), 2)
 
@@ -788,7 +791,10 @@ class TestAdminTransaction(
                 self.assertContains(response, '<li class="success">')
                 self.assertContains(response, "track the progress")
                 self.assertEqual(
-                    UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 3
+                    UpgradeOperation.objects.filter(
+                        upgrade_options={"c": True}
+                    ).count(),
+                    3,
                 )
                 self.assertEqual(fw.count(), 3)
                 self.assertContains(
@@ -859,7 +865,8 @@ class TestAdminTransaction(
             self.test_upgrade_all()
             uo = UpgradeOperation.objects.first()
             url = reverse(
-                f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+                f"admin:{self.app_label}_batchupgradeoperation_change",
+                args=[uo.batch.pk],
             )
             response = self.client.get(url)
             self.assertContains(response, "Success rate")
@@ -871,14 +878,17 @@ class TestAdminTransaction(
         with mock.patch(self._mock_connect, return_value=True):
             self.test_upgrade_all()
             uo = UpgradeOperation.objects.first()
-            url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+            url = reverse(
+                f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk]
+            )
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             batch_changelist_url = reverse(
                 f"admin:{self.app_label}_batchupgradeoperation_changelist"
             )
             batch_change_url = reverse(
-                f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+                f"admin:{self.app_label}_batchupgradeoperation_change",
+                args=[uo.batch.pk],
             )
             self.assertTrue(response.context["batch_has_view_permission"])
             self.assertEqual(response.context["batch"], uo.batch)
@@ -898,7 +908,9 @@ class TestAdminTransaction(
             device_fw.save(upgrade=True)
             uo = device_fw.device.upgradeoperation_set.first()
             self.assertIsNone(uo.batch_id)
-            url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+            url = reverse(
+                f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk]
+            )
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             self.assertIsNone(response.context.get("batch"))
@@ -912,7 +924,9 @@ class TestAdminTransaction(
         with mock.patch(self._mock_connect, return_value=True):
             self.test_upgrade_all()
             uo = UpgradeOperation.objects.first()
-            url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+            url = reverse(
+                f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk]
+            )
             with mock.patch(
                 "openwisp_firmware_upgrader.admin.BatchUpgradeOperationAdmin.has_view_permission",
                 return_value=False,
@@ -923,7 +937,8 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_changelist"
             )
             batch_change_url = reverse(
-                f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+                f"admin:{self.app_label}_batchupgradeoperation_change",
+                args=[uo.batch.pk],
             )
             self.assertFalse(response.context["batch_has_view_permission"])
             self.assertEqual(response.context["batch"], uo.batch)
@@ -967,7 +982,8 @@ class TestAdminTransaction(
                 DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=None)
             )
             self.assertIn(
-                DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=device)
+                DeviceUpgradeOperationInline,
+                deviceadmin.get_inlines(request, obj=device),
             )
 
     @mock.patch(_mock_upgrade, return_value=True)
@@ -1012,7 +1028,9 @@ class TestAdminTransaction(
                 device, device_conn, image, device_fw, json.dumps(upgrade_options)
             )
             response = self.client.post(
-                reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                ),
                 data=device_params,
                 follow=True,
             )
@@ -1080,7 +1098,9 @@ class TestAdminTransaction(
                     "organization": str(device.organization.id),
                     "config-0-id": str(device.config.pk),
                     "config-0-device": str(device.id),
-                    "deviceconnection_set-0-credentials": str(device_conn.credentials_id),
+                    "deviceconnection_set-0-credentials": str(
+                        device_conn.credentials_id
+                    ),
                     "deviceconnection_set-0-id": str(device_conn.id),
                     "deviceconnection_set-0-update_strategy": (
                         conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
@@ -1246,8 +1266,12 @@ class TestAdminTransaction(
             # Create devices from different organizations
             org1 = self._create_org(name="Org1", slug="org1")
             org2 = self._create_org(name="Org2", slug="org2")
-            device1 = self._create_device(organization=org1, name="device1-combined-filter")
-            device2 = self._create_device(organization=org2, name="device2-combined-filter")
+            device1 = self._create_device(
+                organization=org1, name="device1-combined-filter"
+            )
+            device2 = self._create_device(
+                organization=org2, name="device2-combined-filter"
+            )
             self._create_config(device=device1)
             self._create_config(device=device2)
             cred1 = self._get_credentials(organization=org1)
@@ -1289,25 +1313,35 @@ class TestAdminTransaction(
             )
 
             with self.subTest("Test combined filter: org1 + success"):
-                response = self.client.get(url + f"?organization={org1.id}&status=success")
+                response = self.client.get(
+                    url + f"?organization={org1.id}&status=success"
+                )
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, org1_op.device.name)
                 self.assertNotContains(response, org2_op.device.name)
 
             with self.subTest("Test combined filter: org2 + failed"):
-                response = self.client.get(url + f"?organization={org2.id}&status=failed")
+                response = self.client.get(
+                    url + f"?organization={org2.id}&status=failed"
+                )
                 self.assertEqual(response.status_code, 200)
                 self.assertNotContains(response, org1_op.device.name)
                 self.assertContains(response, org2_op.device.name)
 
             with self.subTest("Test combined filter: org1 + failed (no results)"):
-                response = self.client.get(url + f"?organization={org1.id}&status=failed")
+                response = self.client.get(
+                    url + f"?organization={org1.id}&status=failed"
+                )
                 self.assertEqual(response.status_code, 200)
                 self.assertNotContains(response, org1_op.device.name)
                 self.assertNotContains(response, org2_op.device.name)
 
-            with self.subTest("Combined filters preserve each other in generated links"):
-                response = self.client.get(url + f"?organization={org1.id}&status=success")
+            with self.subTest(
+                "Combined filters preserve each other in generated links"
+            ):
+                response = self.client.get(
+                    url + f"?organization={org1.id}&status=success"
+                )
                 # Organization 'All' should keep status
                 self.assertContains(
                     response,
@@ -1490,7 +1524,9 @@ class TestAdminTransaction(
                 }
             )
             with self.subTest("Test actual batch upgrade with location"):
-                with mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"):
+                with mock.patch(
+                    "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"
+                ):
                     response = self.client.post(url, data, follow=True)
                     self.assertEqual(response.status_code, 200)
                 # Check that batch was created with location
@@ -1543,7 +1579,9 @@ class TestAdminTransaction(
                 self.assertEqual(response.status_code, 200)
                 # Should stay on confirmation page with error message
                 self.assertContains(response, "No devices found matching")
-                self.assertContains(response, "adjust your group and/or location filters")
+                self.assertContains(
+                    response, "adjust your group and/or location filters"
+                )
                 # No batch should be created
                 self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
@@ -1564,8 +1602,12 @@ class TestAdminTransaction(
                 name="Location 2", address="456 Oak Ave", organization=org
             )
             # Create batch operations with different locations
-            batch1 = BatchUpgradeOperation.objects.create(build=build, location=location1)
-            batch2 = BatchUpgradeOperation.objects.create(build=build, location=location2)
+            batch1 = BatchUpgradeOperation.objects.create(
+                build=build, location=location1
+            )
+            batch2 = BatchUpgradeOperation.objects.create(
+                build=build, location=location2
+            )
             batch3 = BatchUpgradeOperation.objects.create(
                 build=build, location=None  # No location
             )
