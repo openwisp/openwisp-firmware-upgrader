@@ -556,7 +556,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         verbose_name_plural = _("Mass upgrade operations")
 
     def __str__(self):
-        return f"Upgrade of {self.build} on {self.created}"
+        return f"{self.build} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
 
     def clean(self):
         super().clean()
@@ -823,6 +823,9 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         blank=True,
         null=True,
     )
+
+    def __str__(self):
+        return f"{self.device} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
 
     class Meta:
         abstract = True
