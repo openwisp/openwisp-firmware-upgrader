@@ -652,898 +652,939 @@ class TestAdmin(BaseTestAdmin, TestCase):
             )
 
 
-_mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
-_mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
-
-
-@mock.patch(_mock_upgrade, return_value=True)
-@mock.patch(_mock_connect, return_value=True)
 class TestAdminTransaction(
     BaseTestAdmin, AdminActionPermTestMixin, TransactionTestCase
 ):
+    _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
+    _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_selected_action_perms(self, *args):
-        env = self._create_upgrade_env()
-        org = env["d1"].organization
-        self._create_firmwareless_device(organization=org)
-        user = self._create_user(is_staff=True)
-        self._create_org_user(user=user, organization=org, is_admin=True)
-        # The user is redirected to the BatchUpgradeOperation page after success operation.
-        # Thus, we need to add the permission to the user.
-        user.user_permissions.add(
-            Permission.objects.get(
-                codename=f"change_{BatchUpgradeOperation._meta.model_name}"
+            env = self._create_upgrade_env()
+            org = env["d1"].organization
+            self._create_firmwareless_device(organization=org)
+            user = self._create_user(is_staff=True)
+            self._create_org_user(user=user, organization=org, is_admin=True)
+            # The user is redirected to the BatchUpgradeOperation page after success operation.
+            # Thus, we need to add the permission to the user.
+            user.user_permissions.add(
+                Permission.objects.get(
+                    codename=f"change_{BatchUpgradeOperation._meta.model_name}"
+                )
             )
-        )
-        self._test_action_permission(
-            path=self.build_list_url,
-            action="upgrade_selected",
-            user=user,
-            obj=env["build1"],
-            message=(
-                "You can track the progress of this mass upgrade operation "
-                "in this page."
-            ),
-            required_perms=["change"],
-            extra_payload={
-                "upgrade_all": "upgrade_all",
-                "upgrade_options": '{"c": true}',
-            },
-        )
+            self._test_action_permission(
+                path=self.build_list_url,
+                action="upgrade_selected",
+                user=user,
+                obj=env["build1"],
+                message=(
+                    "You can track the progress of this mass upgrade operation "
+                    "in this page."
+                ),
+                required_perms=["change"],
+                extra_payload={
+                    "upgrade_all": "upgrade_all",
+                    "upgrade_options": '{"c": true}',
+                },
+            )
 
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_related(self, *args):
-        self._login()
-        env = self._create_upgrade_env()
-        self._create_firmwareless_device(organization=env["d1"].organization)
-        # check state is good before proceeding
-        fw = DeviceFirmware.objects.filter(
-            image__build_id=env["build2"].pk
-        ).select_related("image")
-        self.assertEqual(Device.objects.count(), 3)
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-        self.assertEqual(fw.count(), 0)
+            self._login()
+            env = self._create_upgrade_env()
+            self._create_firmwareless_device(organization=env["d1"].organization)
+            # check state is good before proceeding
+            fw = DeviceFirmware.objects.filter(
+                image__build_id=env["build2"].pk
+            ).select_related("image")
+            self.assertEqual(Device.objects.count(), 3)
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
+            self.assertEqual(fw.count(), 0)
 
-        with self.subTest("Invalid upgrade_options"):
-            response = self.client.post(
-                self.build_list_url,
-                {
-                    "action": "upgrade_selected",
-                    "upgrade_related": "upgrade_related",
-                    "upgrade_options": "invalid",
-                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
-                },
-                follow=True,
-            )
-            id_attr = (
-                ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ""
-            )
-            self.assertContains(
-                response,
-                f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
-            )
+            with self.subTest("Invalid upgrade_options"):
+                response = self.client.post(
+                    self.build_list_url,
+                    {
+                        "action": "upgrade_selected",
+                        "upgrade_related": "upgrade_related",
+                        "upgrade_options": "invalid",
+                        ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                    },
+                    follow=True,
+                )
+                id_attr = (
+                    ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ""
+                )
+                self.assertContains(
+                    response,
+                    f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
+                )
 
-        with self.subTest("Test with valid upgrade_options"):
-            r = self.client.post(
-                self.build_list_url,
-                {
-                    "action": "upgrade_selected",
-                    "upgrade_related": "upgrade_related",
-                    "upgrade_options": '{"c": true}',
-                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
-                },
-                follow=True,
-            )
-            self.assertContains(r, '<li class="success">')
-            self.assertContains(r, "track the progress")
-            self.assertEqual(
-                UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 2
-            )
-            self.assertEqual(fw.count(), 2)
+            with self.subTest("Test with valid upgrade_options"):
+                r = self.client.post(
+                    self.build_list_url,
+                    {
+                        "action": "upgrade_selected",
+                        "upgrade_related": "upgrade_related",
+                        "upgrade_options": '{"c": true}',
+                        ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                    },
+                    follow=True,
+                )
+                self.assertContains(r, '<li class="success">')
+                self.assertContains(r, "track the progress")
+                self.assertEqual(
+                    UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 2
+                )
+                self.assertEqual(fw.count(), 2)
 
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_all(self, *args):
-        self._login()
-        env = self._create_upgrade_env()
-        self._create_firmwareless_device(organization=env["d1"].organization)
-        # check state is good before proceeding
-        fw = DeviceFirmware.objects.filter(
-            image__build_id=env["build2"].pk
-        ).select_related("image")
-        self.assertEqual(Device.objects.count(), 3)
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-        self.assertEqual(fw.count(), 0)
+            self._login()
+            env = self._create_upgrade_env()
+            self._create_firmwareless_device(organization=env["d1"].organization)
+            # check state is good before proceeding
+            fw = DeviceFirmware.objects.filter(
+                image__build_id=env["build2"].pk
+            ).select_related("image")
+            self.assertEqual(Device.objects.count(), 3)
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
+            self.assertEqual(fw.count(), 0)
 
-        with self.subTest("Invalid upgrade_options"):
-            response = self.client.post(
-                self.build_list_url,
-                {
-                    "action": "upgrade_selected",
-                    "upgrade_all": "upgrade_all",
-                    "upgrade_options": "invalid",
-                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
-                },
-                follow=True,
-            )
-            self.assertEqual(response.status_code, 200)
-            id_attr = (
-                ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ""
-            )
-            self.assertContains(
-                response,
-                f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
-            )
+            with self.subTest("Invalid upgrade_options"):
+                response = self.client.post(
+                    self.build_list_url,
+                    {
+                        "action": "upgrade_selected",
+                        "upgrade_all": "upgrade_all",
+                        "upgrade_options": "invalid",
+                        ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                    },
+                    follow=True,
+                )
+                self.assertEqual(response.status_code, 200)
+                id_attr = (
+                    ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ""
+                )
+                self.assertContains(
+                    response,
+                    f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
+                )
 
-        with self.subTest("Test with valid upgrade_options"):
+            with self.subTest("Test with valid upgrade_options"):
+                response = self.client.post(
+                    self.build_list_url,
+                    {
+                        "action": "upgrade_selected",
+                        "upgrade_all": "upgrade_all",
+                        "upgrade_options": '{"c": true}',
+                        ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                    },
+                    follow=True,
+                )
+                self.assertContains(response, '<li class="success">')
+                self.assertContains(response, "track the progress")
+                self.assertEqual(
+                    UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 3
+                )
+                self.assertEqual(fw.count(), 3)
+                self.assertContains(
+                    response,
+                    (
+                        '<div class="readonly"><ul class="readonly-upgrade-options">'
+                        '<li><img src="/static/admin/img/icon-yes.svg" alt="yes">'
+                        "Attempt to preserve all changed files in /etc/ (-c)</li>"
+                        '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                        "Attempt to preserve all changed files in /, except those from "
+                        "packages but including changed confs. (-o)</li>"
+                        '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                        "Do not save configuration over reflash (-n)</li>"
+                        '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                        "Skip from backup files that are equal to those in /rom (-u)</li>"
+                        '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                        "Do not attempt to restore the partition table after flash. (-p)</li>"
+                        '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                        "Include in backup a list of current installed packages at "
+                        "/etc/backup/installed_packages.txt (-k)</li>"
+                        '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                        "Flash image even if image checks fail, this is dangerous! (-F)</li></ul></div>"
+                    ),
+                    html=True,
+                )
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_mass_upgrade_shared_image(self, *args):
+            self._login()
+            shared_image = self._create_firmware_image(organization=None)
+            shared_build = shared_image.build
+            self._create_device_with_connection(
+                organization=self._create_org(name="org1"),
+                model=shared_image.boards[0],
+            )
+            self._create_device_with_connection(
+                organization=self._create_org(name="org2"),
+                model=shared_image.boards[0],
+            )
+            fw = DeviceFirmware.objects.filter(
+                image__build_id=shared_build.pk
+            ).select_related("image")
+            self.assertEqual(Device.objects.count(), 2)
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
+            self.assertEqual(fw.count(), 0)
+
             response = self.client.post(
                 self.build_list_url,
                 {
                     "action": "upgrade_selected",
                     "upgrade_all": "upgrade_all",
                     "upgrade_options": '{"c": true}',
-                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                    ACTION_CHECKBOX_NAME: (shared_build.pk,),
                 },
                 follow=True,
             )
             self.assertContains(response, '<li class="success">')
             self.assertContains(response, "track the progress")
             self.assertEqual(
-                UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 3
+                UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 2
             )
-            self.assertEqual(fw.count(), 3)
+            self.assertEqual(fw.count(), 2)
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_massive_upgrade_operation_page(self, *args):
+            self.test_upgrade_all()
+            uo = UpgradeOperation.objects.first()
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+            )
+            response = self.client.get(url)
+            self.assertContains(response, "Success rate")
+            self.assertContains(response, "Failure rate")
+            self.assertContains(response, "Abortion rate")
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_upgrade_operation_change_breadcrumb_with_batch(self, *args):
+            self.test_upgrade_all()
+            uo = UpgradeOperation.objects.first()
+            url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            batch_changelist_url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_changelist"
+            )
+            batch_change_url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+            )
+            self.assertTrue(response.context["batch_has_view_permission"])
+            self.assertEqual(response.context["batch"], uo.batch)
+            self.assertContains(response, batch_changelist_url)
+            self.assertContains(response, batch_change_url)
+            self.assertContains(response, str(uo.batch))
+            generic_upgrade_changelist_url = reverse(
+                f"admin:{self.app_label}_upgradeoperation_changelist"
+            )
+            self.assertNotContains(response, f'href="{generic_upgrade_changelist_url}"')
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_upgrade_operation_change_breadcrumb_without_batch(self, *args):
+            self._login()
+            device_fw = self._create_device_firmware()
+            device_fw.save(upgrade=True)
+            uo = device_fw.device.upgradeoperation_set.first()
+            self.assertIsNone(uo.batch_id)
+            url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertIsNone(response.context.get("batch"))
+            generic_upgrade_changelist_url = reverse(
+                f"admin:{self.app_label}_upgradeoperation_changelist"
+            )
+            self.assertContains(response, f'href="{generic_upgrade_changelist_url}"')
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_upgrade_operation_change_breadcrumb_with_batch_no_permission(self, *args):
+            self.test_upgrade_all()
+            uo = UpgradeOperation.objects.first()
+            url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+            with mock.patch(
+                "openwisp_firmware_upgrader.admin.BatchUpgradeOperationAdmin.has_view_permission",
+                return_value=False,
+            ):
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            batch_changelist_url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_changelist"
+            )
+            batch_change_url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+            )
+            self.assertFalse(response.context["batch_has_view_permission"])
+            self.assertEqual(response.context["batch"], uo.batch)
+            breadcrumbs = (
+                response.content.decode()
+                .split('<div class="breadcrumbs">', 1)[1]
+                .split("</div>", 1)[0]
+            )
+            self.assertNotIn(f'href="{batch_changelist_url}"', breadcrumbs)
+            self.assertNotIn(f'href="{batch_change_url}"', breadcrumbs)
+            generic_upgrade_changelist_url = reverse(
+                f"admin:{self.app_label}_upgradeoperation_changelist"
+            )
+            self.assertNotIn(f'href="{generic_upgrade_changelist_url}"', breadcrumbs)
+            self.assertIn(str(uo.batch), breadcrumbs)
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_recent_upgrades(self, *args):
+            self._login()
+            env = self._create_upgrade_env()
+            url = reverse(
+                f"admin:{self.config_app_label}_device_change", args=[env["d2"].pk]
+            )
+            r = self.client.get(url)
+            self.assertNotContains(r, "Recent Firmware Upgrades")
+            env["build2"].batch_upgrade(firmwareless=True)
+            r = self.client.get(url)
+            self.assertContains(r, "Recent Firmware Upgrades")
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_upgrade_operation_inline(self, *args):
+            device_fw = self._create_device_firmware()
+            device_fw.save(upgrade=True)
+            device = device_fw.device
+            request = self.make_device_admin_request(device.pk)
+            request.user = User.objects.first()
+            deviceadmin = DeviceAdmin(model=Device, admin_site=admin.site)
+            self.assertNotIn(
+                DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=None)
+            )
+            self.assertIn(
+                DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=device)
+            )
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_upgrade_operation_inline_queryset(self, *args):
+            device_fw = self._create_device_firmware()
+            device_fw.save(upgrade=True)
+            # expect only 1
+            uo = device_fw.device.upgradeoperation_set.get()
+            device = device_fw.device
+            request = self.make_device_admin_request(device.pk)
+            request.user = User.objects.first()
+            inline = DeviceUpgradeOperationInline(Device, admin.site)
+            qs = inline.get_queryset(request)
+            self.assertEqual(qs.count(), 1)
+            self.assertIn(uo, qs)
+            uo.created = localtime() - timedelta(days=30)
+            uo.modified = uo.created
+            uo.save()
+            qs = inline.get_queryset(request)
+            self.assertEqual(qs.count(), 0)
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_device_firmware_upgrade_options(self, *args):
+            self._login()
+            device_fw = self._create_device_firmware()
+            device = device_fw.device
+            device_conn = device.deviceconnection_set.first()
+            build = self._create_build(version="0.2")
+            image = self._create_firmware_image(build=build)
+            upgrade_options = {
+                "c": True,
+                "o": False,
+                "u": False,
+                "n": False,
+                "p": False,
+                "k": False,
+                "F": True,
+            }
+            device_params = self._get_device_params(
+                device, device_conn, image, device_fw, json.dumps(upgrade_options)
+            )
+            response = self.client.post(
+                reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+                data=device_params,
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(device.upgradeoperation_set.count(), 1)
+            upgrade_operation = device.upgradeoperation_set.first()
+            self.assertEqual(upgrade_operation.upgrade_options, upgrade_options)
             self.assertContains(
                 response,
                 (
-                    '<div class="readonly"><ul class="readonly-upgrade-options">'
-                    '<li><img src="/static/admin/img/icon-yes.svg" alt="yes">'
+                    '<div class="readonly"><ul class="readonly-upgrade-options"><li>'
+                    '<img src="/static/admin/img/icon-yes.svg" alt="yes">'
                     "Attempt to preserve all changed files in /etc/ (-c)</li>"
                     '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
-                    "Attempt to preserve all changed files in /, except those from "
-                    "packages but including changed confs. (-o)</li>"
-                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
-                    "Do not save configuration over reflash (-n)</li>"
-                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
-                    "Skip from backup files that are equal to those in /rom (-u)</li>"
+                    "Attempt to preserve all changed files in /, except those from packages "
+                    "but including changed confs. (-o)</li>"
+                    '<li><img src="/static/admin/img/icon-no.svg" '
+                    'alt="no">Do not save configuration over reflash (-n)</li>'
+                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">Skip from backup files '
+                    "that are equal to those in /rom (-u)</li>"
                     '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
                     "Do not attempt to restore the partition table after flash. (-p)</li>"
                     '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
                     "Include in backup a list of current installed packages at "
                     "/etc/backup/installed_packages.txt (-k)</li>"
-                    '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
+                    '<li><img src="/static/admin/img/icon-yes.svg" alt="yes">'
                     "Flash image even if image checks fail, this is dangerous! (-F)</li></ul></div>"
                 ),
                 html=True,
             )
 
-    def test_mass_upgrade_shared_image(self, *args):
-        self._login()
-        shared_image = self._create_firmware_image(organization=None)
-        shared_build = shared_image.build
-        self._create_device_with_connection(
-            organization=self._create_org(name="org1"),
-            model=shared_image.boards[0],
-        )
-        self._create_device_with_connection(
-            organization=self._create_org(name="org2"),
-            model=shared_image.boards[0],
-        )
-        fw = DeviceFirmware.objects.filter(
-            image__build_id=shared_build.pk
-        ).select_related("image")
-        self.assertEqual(Device.objects.count(), 2)
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-        self.assertEqual(fw.count(), 0)
-
-        response = self.client.post(
-            self.build_list_url,
-            {
-                "action": "upgrade_selected",
-                "upgrade_all": "upgrade_all",
-                "upgrade_options": '{"c": true}',
-                ACTION_CHECKBOX_NAME: (shared_build.pk,),
-            },
-            follow=True,
-        )
-        self.assertContains(response, '<li class="success">')
-        self.assertContains(response, "track the progress")
-        self.assertEqual(
-            UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 2
-        )
-        self.assertEqual(fw.count(), 2)
-
-    def test_massive_upgrade_operation_page(self, *args):
-        self.test_upgrade_all()
-        uo = UpgradeOperation.objects.first()
-        url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
-        )
-        response = self.client.get(url)
-        self.assertContains(response, "Success rate")
-        self.assertContains(response, "Failure rate")
-        self.assertContains(response, "Abortion rate")
-
-    def test_upgrade_operation_change_breadcrumb_with_batch(self, *args):
-        self.test_upgrade_all()
-        uo = UpgradeOperation.objects.first()
-        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        batch_changelist_url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_changelist"
-        )
-        batch_change_url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
-        )
-        self.assertTrue(response.context["batch_has_view_permission"])
-        self.assertEqual(response.context["batch"], uo.batch)
-        self.assertContains(response, batch_changelist_url)
-        self.assertContains(response, batch_change_url)
-        self.assertContains(response, str(uo.batch))
-        generic_upgrade_changelist_url = reverse(
-            f"admin:{self.app_label}_upgradeoperation_changelist"
-        )
-        self.assertNotContains(response, f'href="{generic_upgrade_changelist_url}"')
-
-    def test_upgrade_operation_change_breadcrumb_without_batch(self, *args):
-        self._login()
-        device_fw = self._create_device_firmware()
-        device_fw.save(upgrade=True)
-        uo = device_fw.device.upgradeoperation_set.first()
-        self.assertIsNone(uo.batch_id)
-        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.context.get("batch"))
-        generic_upgrade_changelist_url = reverse(
-            f"admin:{self.app_label}_upgradeoperation_changelist"
-        )
-        self.assertContains(response, f'href="{generic_upgrade_changelist_url}"')
-
-    def test_upgrade_operation_change_breadcrumb_with_batch_no_permission(self, *args):
-        self.test_upgrade_all()
-        uo = UpgradeOperation.objects.first()
-        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
-        with mock.patch(
-            "openwisp_firmware_upgrader.admin.BatchUpgradeOperationAdmin.has_view_permission",
-            return_value=False,
-        ):
-            response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        batch_changelist_url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_changelist"
-        )
-        batch_change_url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
-        )
-        self.assertFalse(response.context["batch_has_view_permission"])
-        self.assertEqual(response.context["batch"], uo.batch)
-        breadcrumbs = (
-            response.content.decode()
-            .split('<div class="breadcrumbs">', 1)[1]
-            .split("</div>", 1)[0]
-        )
-        self.assertNotIn(f'href="{batch_changelist_url}"', breadcrumbs)
-        self.assertNotIn(f'href="{batch_change_url}"', breadcrumbs)
-        generic_upgrade_changelist_url = reverse(
-            f"admin:{self.app_label}_upgradeoperation_changelist"
-        )
-        self.assertNotIn(f'href="{generic_upgrade_changelist_url}"', breadcrumbs)
-        self.assertIn(str(uo.batch), breadcrumbs)
-
-    def test_recent_upgrades(self, *args):
-        self._login()
-        env = self._create_upgrade_env()
-        url = reverse(
-            f"admin:{self.config_app_label}_device_change", args=[env["d2"].pk]
-        )
-        r = self.client.get(url)
-        self.assertNotContains(r, "Recent Firmware Upgrades")
-        env["build2"].batch_upgrade(firmwareless=True)
-        r = self.client.get(url)
-        self.assertContains(r, "Recent Firmware Upgrades")
-
-    def test_upgrade_operation_inline(self, *args):
-        device_fw = self._create_device_firmware()
-        device_fw.save(upgrade=True)
-        device = device_fw.device
-        request = self.make_device_admin_request(device.pk)
-        request.user = User.objects.first()
-        deviceadmin = DeviceAdmin(model=Device, admin_site=admin.site)
-        self.assertNotIn(
-            DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=None)
-        )
-        self.assertIn(
-            DeviceUpgradeOperationInline, deviceadmin.get_inlines(request, obj=device)
-        )
-
-    def test_upgrade_operation_inline_queryset(self, *args):
-        device_fw = self._create_device_firmware()
-        device_fw.save(upgrade=True)
-        # expect only 1
-        uo = device_fw.device.upgradeoperation_set.get()
-        device = device_fw.device
-        request = self.make_device_admin_request(device.pk)
-        request.user = User.objects.first()
-        inline = DeviceUpgradeOperationInline(Device, admin.site)
-        qs = inline.get_queryset(request)
-        self.assertEqual(qs.count(), 1)
-        self.assertIn(uo, qs)
-        uo.created = localtime() - timedelta(days=30)
-        uo.modified = uo.created
-        uo.save()
-        qs = inline.get_queryset(request)
-        self.assertEqual(qs.count(), 0)
-
-    def test_device_firmware_upgrade_options(self, *args):
-        self._login()
-        device_fw = self._create_device_firmware()
-        device = device_fw.device
-        device_conn = device.deviceconnection_set.first()
-        build = self._create_build(version="0.2")
-        image = self._create_firmware_image(build=build)
-        upgrade_options = {
-            "c": True,
-            "o": False,
-            "u": False,
-            "n": False,
-            "p": False,
-            "k": False,
-            "F": True,
-        }
-        device_params = self._get_device_params(
-            device, device_conn, image, device_fw, json.dumps(upgrade_options)
-        )
-        response = self.client.post(
-            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
-            data=device_params,
-            follow=True,
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(device.upgradeoperation_set.count(), 1)
-        upgrade_operation = device.upgradeoperation_set.first()
-        self.assertEqual(upgrade_operation.upgrade_options, upgrade_options)
-        self.assertContains(
-            response,
-            (
-                '<div class="readonly"><ul class="readonly-upgrade-options"><li>'
-                '<img src="/static/admin/img/icon-yes.svg" alt="yes">'
-                "Attempt to preserve all changed files in /etc/ (-c)</li>"
-                '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
-                "Attempt to preserve all changed files in /, except those from packages "
-                "but including changed confs. (-o)</li>"
-                '<li><img src="/static/admin/img/icon-no.svg" '
-                'alt="no">Do not save configuration over reflash (-n)</li>'
-                '<li><img src="/static/admin/img/icon-no.svg" alt="no">Skip from backup files '
-                "that are equal to those in /rom (-u)</li>"
-                '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
-                "Do not attempt to restore the partition table after flash. (-p)</li>"
-                '<li><img src="/static/admin/img/icon-no.svg" alt="no">'
-                "Include in backup a list of current installed packages at "
-                "/etc/backup/installed_packages.txt (-k)</li>"
-                '<li><img src="/static/admin/img/icon-yes.svg" alt="yes">'
-                "Flash image even if image checks fail, this is dangerous! (-F)</li></ul></div>"
-            ),
-            html=True,
-        )
-
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     @mock.patch.object(OpenWisp1, "SCHEMA", None)
     def test_using_upgrade_options_with_unsupported_upgrader(self, *args):
-        self._login()
-        device_fw = self._create_device_firmware()
-        device = device_fw.device
-        device.config.backend = "netjsonconfig.OpenWisp"
-        device.config.save()
-        device_conn = device.deviceconnection_set.first()
-        device_conn.update_strategy = conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
-        device_conn.save()
-        build = self._create_build(version="0.2")
-        image = self._create_firmware_image(build=build)
-        upgrade_options = {
-            "c": True,
-            "o": False,
-            "u": False,
-            "n": False,
-            "p": False,
-            "k": False,
-            "F": True,
-        }
-
-        device_params = self._get_device_params(
-            device, device_conn, image, device_fw, json.dumps(upgrade_options)
-        )
-        device_params.update(
-            {
-                "model": device.model,
-                "devicefirmware-0-image": str(image.id),
-                "devicefirmware-0-id": str(device_fw.id),
-                "devicefirmware-0-upgrade_options": json.dumps(upgrade_options),
-                "organization": str(device.organization.id),
-                "config-0-id": str(device.config.pk),
-                "config-0-device": str(device.id),
-                "deviceconnection_set-0-credentials": str(device_conn.credentials_id),
-                "deviceconnection_set-0-id": str(device_conn.id),
-                "deviceconnection_set-0-update_strategy": (
-                    conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
-                ),
-                "deviceconnection_set-0-enabled": True,
-                "devicefirmware-TOTAL_FORMS": 1,
-                "devicefirmware-INITIAL_FORMS": 1,
-                "upgradeoperation_set-TOTAL_FORMS": 0,
-                "upgradeoperation_set-INITIAL_FORMS": 0,
-                "upgradeoperation_set-MIN_NUM_FORMS": 0,
-                "upgradeoperation_set-MAX_NUM_FORMS": 0,
-                "_continue": True,
+            self._login()
+            device_fw = self._create_device_firmware()
+            device = device_fw.device
+            device.config.backend = "netjsonconfig.OpenWisp"
+            device.config.save()
+            device_conn = device.deviceconnection_set.first()
+            device_conn.update_strategy = conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
+            device_conn.save()
+            build = self._create_build(version="0.2")
+            image = self._create_firmware_image(build=build)
+            upgrade_options = {
+                "c": True,
+                "o": False,
+                "u": False,
+                "n": False,
+                "p": False,
+                "k": False,
+                "F": True,
             }
-        )
 
-        with self.subTest("Test DeviceFirmwareInline does not have schema defined"):
-            response = self.client.get(
-                reverse(
-                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+            device_params = self._get_device_params(
+                device, device_conn, image, device_fw, json.dumps(upgrade_options)
+            )
+            device_params.update(
+                {
+                    "model": device.model,
+                    "devicefirmware-0-image": str(image.id),
+                    "devicefirmware-0-id": str(device_fw.id),
+                    "devicefirmware-0-upgrade_options": json.dumps(upgrade_options),
+                    "organization": str(device.organization.id),
+                    "config-0-id": str(device.config.pk),
+                    "config-0-device": str(device.id),
+                    "deviceconnection_set-0-credentials": str(device_conn.credentials_id),
+                    "deviceconnection_set-0-id": str(device_conn.id),
+                    "deviceconnection_set-0-update_strategy": (
+                        conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0]
+                    ),
+                    "deviceconnection_set-0-enabled": True,
+                    "devicefirmware-TOTAL_FORMS": 1,
+                    "devicefirmware-INITIAL_FORMS": 1,
+                    "upgradeoperation_set-TOTAL_FORMS": 0,
+                    "upgradeoperation_set-INITIAL_FORMS": 0,
+                    "upgradeoperation_set-MIN_NUM_FORMS": 0,
+                    "upgradeoperation_set-MAX_NUM_FORMS": 0,
+                    "_continue": True,
+                }
+            )
+
+            with self.subTest("Test DeviceFirmwareInline does not have schema defined"):
+                response = self.client.get(
+                    reverse(
+                        f"admin:{self.config_app_label}_device_change", args=[device.id]
+                    )
                 )
-            )
-            self.assertContains(
-                response, "<script>\nvar firmwareUpgraderSchema = null\n"
-            )
+                self.assertContains(
+                    response, "<script>\nvar firmwareUpgraderSchema = null\n"
+                )
 
-        with self.subTest("Test using upgrade options with unsupported upgrader"):
-            response = self.client.post(
-                reverse(
-                    f"admin:{self.config_app_label}_device_change", args=[device.id]
-                ),
-                data=device_params,
-                follow=True,
-            )
-            self.assertContains(
-                response,
-                (
-                    '<ul class="errorlist nonfield"><li>Using upgrade '
-                    "options is not allowed with this upgrader.</li></ul>"
-                ),
-            )
+            with self.subTest("Test using upgrade options with unsupported upgrader"):
+                response = self.client.post(
+                    reverse(
+                        f"admin:{self.config_app_label}_device_change", args=[device.id]
+                    ),
+                    data=device_params,
+                    follow=True,
+                )
+                self.assertContains(
+                    response,
+                    (
+                        '<ul class="errorlist nonfield"><li>Using upgrade '
+                        "options is not allowed with this upgrader.</li></ul>"
+                    ),
+                )
 
-        with self.subTest("Test upgrading without upgrade options"):
-            del device_params["devicefirmware-0-upgrade_options"]
-            response = self.client.post(
-                reverse(
-                    f"admin:{self.config_app_label}_device_change", args=[device.id]
-                ),
-                data=device_params,
-                follow=True,
-            )
-            self.assertContains(
-                response,
-                (
-                    '<div class="readonly">Upgrade options are '
-                    "not supported for this upgrader.</div>"
-                ),
-            )
+            with self.subTest("Test upgrading without upgrade options"):
+                del device_params["devicefirmware-0-upgrade_options"]
+                response = self.client.post(
+                    reverse(
+                        f"admin:{self.config_app_label}_device_change", args=[device.id]
+                    ),
+                    data=device_params,
+                    follow=True,
+                )
+                self.assertContains(
+                    response,
+                    (
+                        '<div class="readonly">Upgrade options are '
+                        "not supported for this upgrader.</div>"
+                    ),
+                )
 
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_status_filter(self, *args):
-        """Test status filtering in batch upgrade operation admin page"""
-        self._login()
-        env = self._create_upgrade_env()
-        env["category"].organization = None
-        env["category"].save()
-        batch = env["build2"].batch_upgrade(firmwareless=True)
-        # Create upgrade operations with different statuses
-        upgrade_ops = list(batch.upgradeoperation_set.all())
-        if len(upgrade_ops) >= 2:
-            upgrade_ops[0].status = "success"
-            upgrade_ops[0].save()
-            upgrade_ops[1].status = "failed"
-            upgrade_ops[1].save()
-        url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
-        )
+            """Test status filtering in batch upgrade operation admin page"""
+            self._login()
+            env = self._create_upgrade_env()
+            env["category"].organization = None
+            env["category"].save()
+            batch = env["build2"].batch_upgrade(firmwareless=True)
+            # Create upgrade operations with different statuses
+            upgrade_ops = list(batch.upgradeoperation_set.all())
+            if len(upgrade_ops) >= 2:
+                upgrade_ops[0].status = "success"
+                upgrade_ops[0].save()
+                upgrade_ops[1].status = "failed"
+                upgrade_ops[1].save()
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
 
-        with self.subTest("Test no filter - shows all operations"):
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, "ow-filter status")
-            self.assertContains(response, "By status")
-            self.assertContains(response, "By organization")
+            with self.subTest("Test no filter - shows all operations"):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "ow-filter status")
+                self.assertContains(response, "By status")
+                self.assertContains(response, "By organization")
 
-        with self.subTest("Test status success filter"):
-            response = self.client.get(url + "?status=success")
-            self.assertEqual(response.status_code, 200)
-            success_ops = batch.upgradeoperation_set.filter(status="success")
-            for op in success_ops:
-                self.assertContains(response, op.device.name)
+            with self.subTest("Test status success filter"):
+                response = self.client.get(url + "?status=success")
+                self.assertEqual(response.status_code, 200)
+                success_ops = batch.upgradeoperation_set.filter(status="success")
+                for op in success_ops:
+                    self.assertContains(response, op.device.name)
 
-        with self.subTest("Test status failed filter"):
-            response = self.client.get(url + "?status=failed")
-            self.assertEqual(response.status_code, 200)
-            failed_ops = batch.upgradeoperation_set.filter(status="failed")
-            for op in failed_ops:
-                self.assertContains(response, op.device.name)
+            with self.subTest("Test status failed filter"):
+                response = self.client.get(url + "?status=failed")
+                self.assertEqual(response.status_code, 200)
+                failed_ops = batch.upgradeoperation_set.filter(status="failed")
+                for op in failed_ops:
+                    self.assertContains(response, op.device.name)
 
-        with self.subTest("Test status idle filter"):
-            response = self.client.get(url + "?status=idle")
-            self.assertEqual(response.status_code, 200)
-            idle_ops = batch.upgradeoperation_set.filter(status="idle")
-            for op in idle_ops:
-                self.assertContains(response, op.device.name)
+            with self.subTest("Test status idle filter"):
+                response = self.client.get(url + "?status=idle")
+                self.assertEqual(response.status_code, 200)
+                idle_ops = batch.upgradeoperation_set.filter(status="idle")
+                for op in idle_ops:
+                    self.assertContains(response, op.device.name)
 
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_organization_filter(self, *args):
-        """Test organization filtering in batch upgrade operation admin page"""
-        self._login()
-        # Create devices from different organizations
-        org1 = self._create_org(name="Org1", slug="org1")
-        org2 = self._create_org(name="Org2", slug="org2")
-        device1 = self._create_device(organization=org1, name="device1-org-filter")
-        device2 = self._create_device(organization=org2, name="device2-org-filter")
-        self._create_config(device=device1)
-        self._create_config(device=device2)
-        cred1 = self._get_credentials(organization=org1)
-        cred2 = self._get_credentials(organization=org2)
-        self._create_device_connection(device=device1, credentials=cred1)
-        self._create_device_connection(device=device2, credentials=cred2)
-        shared_category = self._create_category(
-            organization=None, name="Shared Category"
-        )
-        build = self._create_build(category=shared_category)
-        image = self._create_firmware_image(build=build)
-        self._create_device_firmware(
-            device=device1, image=image, device_connection=False
-        )
-        self._create_device_firmware(
-            device=device2, image=image, device_connection=False
-        )
-        batch = build.batch_upgrade(firmwareless=False)
-        url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
-        )
-
-        with self.subTest("Test no organization filter - shows all operations"):
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, device1.name)
-            self.assertContains(response, device2.name)
-            self.assertContains(response, "By organization")
-
-        with self.subTest("Test organization filter for org1"):
-            response = self.client.get(url + f"?organization={org1.id}")
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, device1.name)
-            self.assertNotContains(response, device2.name)
-
-        with self.subTest("Test organization filter for org2"):
-            response = self.client.get(url + f"?organization={org2.id}")
-            self.assertEqual(response.status_code, 200)
-            self.assertNotContains(response, device1.name)
-            self.assertContains(response, device2.name)
-
-    def test_batch_upgrade_operation_combined_filters(self, *args):
-        """Test combining status and organization filters"""
-        self._login()
-        # Create devices from different organizations
-        org1 = self._create_org(name="Org1", slug="org1")
-        org2 = self._create_org(name="Org2", slug="org2")
-        device1 = self._create_device(organization=org1, name="device1-combined-filter")
-        device2 = self._create_device(organization=org2, name="device2-combined-filter")
-        self._create_config(device=device1)
-        self._create_config(device=device2)
-        cred1 = self._get_credentials(organization=org1)
-        cred2 = self._get_credentials(organization=org2)
-        self._create_device_connection(device=device1, credentials=cred1)
-        self._create_device_connection(device=device2, credentials=cred2)
-
-        # Create shared build and batch upgrade that works with any organization
-        shared_category = self._create_category(
-            organization=None, name="Shared Category"
-        )
-        build = self._create_build(category=shared_category)
-        image = self._create_firmware_image(build=build)
-        self._create_device_firmware(
-            device=device1, image=image, device_connection=False
-        )
-        self._create_device_firmware(
-            device=device2, image=image, device_connection=False
-        )
-        batch = build.batch_upgrade(firmwareless=False)
-        # Set different statuses for devices from different orgs
-        upgrade_ops = list(batch.upgradeoperation_set.all())
-        org1_op = (
-            upgrade_ops[0]
-            if upgrade_ops[0].device.organization == org1
-            else upgrade_ops[1]
-        )
-        org2_op = (
-            upgrade_ops[1]
-            if upgrade_ops[1].device.organization == org2
-            else upgrade_ops[0]
-        )
-        org1_op.status = "success"
-        org1_op.save()
-        org2_op.status = "failed"
-        org2_op.save()
-        url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
-        )
-
-        with self.subTest("Test combined filter: org1 + success"):
-            response = self.client.get(url + f"?organization={org1.id}&status=success")
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, org1_op.device.name)
-            self.assertNotContains(response, org2_op.device.name)
-
-        with self.subTest("Test combined filter: org2 + failed"):
-            response = self.client.get(url + f"?organization={org2.id}&status=failed")
-            self.assertEqual(response.status_code, 200)
-            self.assertNotContains(response, org1_op.device.name)
-            self.assertContains(response, org2_op.device.name)
-
-        with self.subTest("Test combined filter: org1 + failed (no results)"):
-            response = self.client.get(url + f"?organization={org1.id}&status=failed")
-            self.assertEqual(response.status_code, 200)
-            self.assertNotContains(response, org1_op.device.name)
-            self.assertNotContains(response, org2_op.device.name)
-
-        with self.subTest("Combined filters preserve each other in generated links"):
-            response = self.client.get(url + f"?organization={org1.id}&status=success")
-            # Organization 'All' should keep status
-            self.assertContains(
-                response,
-                '<a title="All" href="?status=success">All</a>',
-                html=True,
-            )
-            # Status 'All' should keep organization
-            self.assertContains(
-                response,
-                f'<a title="All" href="?organization={org1.id}">All</a>',
-                html=True,
-            )
-
-    def test_batch_upgrade_operation_filter_search_combination(self, *args):
-        """Test combining search with filters"""
-        self._login()
-        env = self._create_upgrade_env()
-        batch = env["build2"].batch_upgrade(firmwareless=True)
-
-        upgrade_op = batch.upgradeoperation_set.first()
-        upgrade_op.device.name = "unique-test-device"
-        upgrade_op.device.save()
-        upgrade_op.status = "success"
-        upgrade_op.save()
-
-        url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
-        )
-        with self.subTest("Test search + status filter"):
-            with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
-                response = self.client.get(url + "?q=unique-test&status=success")
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, "unique-test-device")
-            self.assertContains(
-                response,
-                '<a title="All" href="?q=unique-test">All</a>',
-                html=True,
-            )
-
-        with self.subTest("Test search + status filter (no match)"):
-            response = self.client.get(url + "?q=unique-test&status=failed")
-            self.assertEqual(response.status_code, 200)
-            self.assertNotContains(response, "unique-test-device")
-
-    def test_batch_upgrade_confirmation_form_multitenancy(self, *args):
-        """Test BatchUpgradeConfirmationForm multitenancy for organization admin vs superuser."""
-        # Setup common objects
-        org1 = self._get_org()
-        org2 = self._create_org(name="Org 2", slug="org2")
-        group1 = self._create_device_group(name="Group Org1", organization=org1)
-        group2 = self._create_device_group(name="Group Org2", organization=org2)
-        location1 = Location.objects.create(
-            name="Location Org1", address="123 Test St", organization=org1
-        )
-        location2 = Location.objects.create(
-            name="Location Org2", address="456 Test St", organization=org2
-        )
-        category_org1 = self._create_category(organization=org1)
-        build_org1 = self._create_build(category=category_org1)
-        category_shared = self._create_category(organization=None)
-        build_shared = self._create_build(category=category_shared)
-        category_org2 = self._create_category(organization=org2)
-        build_org2 = self._create_build(category=category_org2)
-        superuser = self._get_admin()
-        org_admin = self._create_administrator(organizations=[org1])
-
-        with self.subTest("Superuser: Org build should shown related org objects"):
-            form = BatchUpgradeConfirmationForm(
-                initial={"build": build_org1}, user=superuser
-            )
-            self.assertIn(group1, form.fields["group"].queryset)
-            self.assertNotIn(group2, form.fields["group"].queryset)
-            self.assertIn(location1, form.fields["location"].queryset)
-            self.assertNotIn(location2, form.fields["location"].queryset)
-
-        with self.subTest("Superuser: Shared build should show all org objects"):
-            form = BatchUpgradeConfirmationForm(
-                initial={"build": build_shared}, user=superuser
-            )
-            self.assertIn(group1, form.fields["group"].queryset)
-            self.assertIn(group2, form.fields["group"].queryset)
-            self.assertIn(location1, form.fields["location"].queryset)
-            self.assertIn(location2, form.fields["location"].queryset)
-
-        with self.subTest(
-            "Org admin: Shared build should show only managed org objects"
-        ):
-            form = BatchUpgradeConfirmationForm(
-                initial={"build": build_shared}, user=org_admin
-            )
-            self.assertIn(group1, form.fields["group"].queryset)
-            self.assertNotIn(group2, form.fields["group"].queryset)
-            self.assertIn(location1, form.fields["location"].queryset)
-            self.assertNotIn(location2, form.fields["location"].queryset)
-
-        with self.subTest("Org admin: Org build should show only that org objects"):
-            form = BatchUpgradeConfirmationForm(
-                initial={"build": build_org1}, user=org_admin
-            )
-            self.assertIn(group1, form.fields["group"].queryset)
-            self.assertNotIn(group2, form.fields["group"].queryset)
-            self.assertIn(location1, form.fields["location"].queryset)
-            self.assertNotIn(location2, form.fields["location"].queryset)
-
-        with self.subTest("Org admin: Different org build should show no objects"):
-            form = BatchUpgradeConfirmationForm(
-                initial={"build": build_org2}, user=org_admin
-            )
-            self.assertEqual(form.fields["group"].queryset.count(), 0)
-            self.assertEqual(form.fields["location"].queryset.count(), 0)
-
-        with self.subTest("Location field exists and is not required"):
-            form = BatchUpgradeConfirmationForm(
-                initial={"build": build_org1}, user=superuser
-            )
-            self.assertIn("location", form.fields)
-            self.assertFalse(form.fields["location"].required)
-            self.assertIn("location", form.fields["location"].help_text)
-
-    def test_batch_upgrade_with_location_admin_action(self, *args):
-        """Test mass upgrade admin action with location filtering."""
-        self._login()
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category)
-        image = self._create_firmware_image(build=build)
-        # Create location
-        location = Location.objects.create(
-            name="Test Location", address="123 Test St", organization=org
-        )
-        # Create devices
-        device1 = self._create_device(
-            name="Device1-WithLocation",
-            organization=org,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:71",
-        )
-        device2 = self._create_device(
-            name="Device2-NoLocation",
-            organization=org,
-            model=image.boards[0],
-            mac_address="00:11:22:33:55:72",
-        )
-        # Set location for device1 only
-        DeviceLocation.objects.create(content_object=device1, location=location)
-        # Create configs and connections
-        self._create_config(device=device1)
-        self._create_config(device=device2)
-        cred1 = self._get_credentials(organization=org)
-        if not DeviceConnection.objects.filter(
-            device=device1, credentials=cred1
-        ).exists():
+            """Test organization filtering in batch upgrade operation admin page"""
+            self._login()
+            # Create devices from different organizations
+            org1 = self._create_org(name="Org1", slug="org1")
+            org2 = self._create_org(name="Org2", slug="org2")
+            device1 = self._create_device(organization=org1, name="device1-org-filter")
+            device2 = self._create_device(organization=org2, name="device2-org-filter")
+            self._create_config(device=device1)
+            self._create_config(device=device2)
+            cred1 = self._get_credentials(organization=org1)
+            cred2 = self._get_credentials(organization=org2)
             self._create_device_connection(device=device1, credentials=cred1)
-        if not DeviceConnection.objects.filter(
-            device=device2, credentials=cred1
-        ).exists():
-            self._create_device_connection(device=device2, credentials=cred1)
-        url = reverse(f"admin:{self.app_label}_build_changelist")
-        data = {
-            ACTION_CHECKBOX_NAME: [build.pk],
-            "action": "upgrade_selected",
-            "location": location.pk,
-            "upgrade_related": "on",
-        }
-        with self.subTest("Test upgrade confirmation page with location"):
-            response = self.client.post(url, data, follow=True)
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, location.name)
-        # Submit the actual upgrade with location filter
-        data.update(
-            {
-                "upgrade_all": "on",
+            self._create_device_connection(device=device2, credentials=cred2)
+            shared_category = self._create_category(
+                organization=None, name="Shared Category"
+            )
+            build = self._create_build(category=shared_category)
+            image = self._create_firmware_image(build=build)
+            self._create_device_firmware(
+                device=device1, image=image, device_connection=False
+            )
+            self._create_device_firmware(
+                device=device2, image=image, device_connection=False
+            )
+            batch = build.batch_upgrade(firmwareless=False)
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
+
+            with self.subTest("Test no organization filter - shows all operations"):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, device1.name)
+                self.assertContains(response, device2.name)
+                self.assertContains(response, "By organization")
+
+            with self.subTest("Test organization filter for org1"):
+                response = self.client.get(url + f"?organization={org1.id}")
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, device1.name)
+                self.assertNotContains(response, device2.name)
+
+            with self.subTest("Test organization filter for org2"):
+                response = self.client.get(url + f"?organization={org2.id}")
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, device1.name)
+                self.assertContains(response, device2.name)
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_batch_upgrade_operation_combined_filters(self, *args):
+            """Test combining status and organization filters"""
+            self._login()
+            # Create devices from different organizations
+            org1 = self._create_org(name="Org1", slug="org1")
+            org2 = self._create_org(name="Org2", slug="org2")
+            device1 = self._create_device(organization=org1, name="device1-combined-filter")
+            device2 = self._create_device(organization=org2, name="device2-combined-filter")
+            self._create_config(device=device1)
+            self._create_config(device=device2)
+            cred1 = self._get_credentials(organization=org1)
+            cred2 = self._get_credentials(organization=org2)
+            self._create_device_connection(device=device1, credentials=cred1)
+            self._create_device_connection(device=device2, credentials=cred2)
+
+            # Create shared build and batch upgrade that works with any organization
+            shared_category = self._create_category(
+                organization=None, name="Shared Category"
+            )
+            build = self._create_build(category=shared_category)
+            image = self._create_firmware_image(build=build)
+            self._create_device_firmware(
+                device=device1, image=image, device_connection=False
+            )
+            self._create_device_firmware(
+                device=device2, image=image, device_connection=False
+            )
+            batch = build.batch_upgrade(firmwareless=False)
+            # Set different statuses for devices from different orgs
+            upgrade_ops = list(batch.upgradeoperation_set.all())
+            org1_op = (
+                upgrade_ops[0]
+                if upgrade_ops[0].device.organization == org1
+                else upgrade_ops[1]
+            )
+            org2_op = (
+                upgrade_ops[1]
+                if upgrade_ops[1].device.organization == org2
+                else upgrade_ops[0]
+            )
+            org1_op.status = "success"
+            org1_op.save()
+            org2_op.status = "failed"
+            org2_op.save()
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
+
+            with self.subTest("Test combined filter: org1 + success"):
+                response = self.client.get(url + f"?organization={org1.id}&status=success")
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, org1_op.device.name)
+                self.assertNotContains(response, org2_op.device.name)
+
+            with self.subTest("Test combined filter: org2 + failed"):
+                response = self.client.get(url + f"?organization={org2.id}&status=failed")
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, org1_op.device.name)
+                self.assertContains(response, org2_op.device.name)
+
+            with self.subTest("Test combined filter: org1 + failed (no results)"):
+                response = self.client.get(url + f"?organization={org1.id}&status=failed")
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, org1_op.device.name)
+                self.assertNotContains(response, org2_op.device.name)
+
+            with self.subTest("Combined filters preserve each other in generated links"):
+                response = self.client.get(url + f"?organization={org1.id}&status=success")
+                # Organization 'All' should keep status
+                self.assertContains(
+                    response,
+                    '<a title="All" href="?status=success">All</a>',
+                    html=True,
+                )
+                # Status 'All' should keep organization
+                self.assertContains(
+                    response,
+                    f'<a title="All" href="?organization={org1.id}">All</a>',
+                    html=True,
+                )
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_batch_upgrade_operation_filter_search_combination(self, *args):
+            """Test combining search with filters"""
+            self._login()
+            env = self._create_upgrade_env()
+            batch = env["build2"].batch_upgrade(firmwareless=True)
+
+            upgrade_op = batch.upgradeoperation_set.first()
+            upgrade_op.device.name = "unique-test-device"
+            upgrade_op.device.save()
+            upgrade_op.status = "success"
+            upgrade_op.save()
+
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
+            with self.subTest("Test search + status filter"):
+                with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
+                    response = self.client.get(url + "?q=unique-test&status=success")
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "unique-test-device")
+                self.assertContains(
+                    response,
+                    '<a title="All" href="?q=unique-test">All</a>',
+                    html=True,
+                )
+
+            with self.subTest("Test search + status filter (no match)"):
+                response = self.client.get(url + "?q=unique-test&status=failed")
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, "unique-test-device")
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_batch_upgrade_confirmation_form_multitenancy(self, *args):
+            """Test BatchUpgradeConfirmationForm multitenancy for organization admin vs superuser."""
+            # Setup common objects
+            org1 = self._get_org()
+            org2 = self._create_org(name="Org 2", slug="org2")
+            group1 = self._create_device_group(name="Group Org1", organization=org1)
+            group2 = self._create_device_group(name="Group Org2", organization=org2)
+            location1 = Location.objects.create(
+                name="Location Org1", address="123 Test St", organization=org1
+            )
+            location2 = Location.objects.create(
+                name="Location Org2", address="456 Test St", organization=org2
+            )
+            category_org1 = self._create_category(organization=org1)
+            build_org1 = self._create_build(category=category_org1)
+            category_shared = self._create_category(organization=None)
+            build_shared = self._create_build(category=category_shared)
+            category_org2 = self._create_category(organization=org2)
+            build_org2 = self._create_build(category=category_org2)
+            superuser = self._get_admin()
+            org_admin = self._create_administrator(organizations=[org1])
+
+            with self.subTest("Superuser: Org build should shown related org objects"):
+                form = BatchUpgradeConfirmationForm(
+                    initial={"build": build_org1}, user=superuser
+                )
+                self.assertIn(group1, form.fields["group"].queryset)
+                self.assertNotIn(group2, form.fields["group"].queryset)
+                self.assertIn(location1, form.fields["location"].queryset)
+                self.assertNotIn(location2, form.fields["location"].queryset)
+
+            with self.subTest("Superuser: Shared build should show all org objects"):
+                form = BatchUpgradeConfirmationForm(
+                    initial={"build": build_shared}, user=superuser
+                )
+                self.assertIn(group1, form.fields["group"].queryset)
+                self.assertIn(group2, form.fields["group"].queryset)
+                self.assertIn(location1, form.fields["location"].queryset)
+                self.assertIn(location2, form.fields["location"].queryset)
+
+            with self.subTest(
+                "Org admin: Shared build should show only managed org objects"
+            ):
+                form = BatchUpgradeConfirmationForm(
+                    initial={"build": build_shared}, user=org_admin
+                )
+                self.assertIn(group1, form.fields["group"].queryset)
+                self.assertNotIn(group2, form.fields["group"].queryset)
+                self.assertIn(location1, form.fields["location"].queryset)
+                self.assertNotIn(location2, form.fields["location"].queryset)
+
+            with self.subTest("Org admin: Org build should show only that org objects"):
+                form = BatchUpgradeConfirmationForm(
+                    initial={"build": build_org1}, user=org_admin
+                )
+                self.assertIn(group1, form.fields["group"].queryset)
+                self.assertNotIn(group2, form.fields["group"].queryset)
+                self.assertIn(location1, form.fields["location"].queryset)
+                self.assertNotIn(location2, form.fields["location"].queryset)
+
+            with self.subTest("Org admin: Different org build should show no objects"):
+                form = BatchUpgradeConfirmationForm(
+                    initial={"build": build_org2}, user=org_admin
+                )
+                self.assertEqual(form.fields["group"].queryset.count(), 0)
+                self.assertEqual(form.fields["location"].queryset.count(), 0)
+
+            with self.subTest("Location field exists and is not required"):
+                form = BatchUpgradeConfirmationForm(
+                    initial={"build": build_org1}, user=superuser
+                )
+                self.assertIn("location", form.fields)
+                self.assertFalse(form.fields["location"].required)
+                self.assertIn("location", form.fields["location"].help_text)
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
+    def test_batch_upgrade_with_location_admin_action(self, *args):
+            """Test mass upgrade admin action with location filtering."""
+            self._login()
+            org = self._get_org()
+            category = self._create_category(organization=org)
+            build = self._create_build(category=category)
+            image = self._create_firmware_image(build=build)
+            # Create location
+            location = Location.objects.create(
+                name="Test Location", address="123 Test St", organization=org
+            )
+            # Create devices
+            device1 = self._create_device(
+                name="Device1-WithLocation",
+                organization=org,
+                model=image.boards[0],
+                mac_address="00:11:22:33:55:71",
+            )
+            device2 = self._create_device(
+                name="Device2-NoLocation",
+                organization=org,
+                model=image.boards[0],
+                mac_address="00:11:22:33:55:72",
+            )
+            # Set location for device1 only
+            DeviceLocation.objects.create(content_object=device1, location=location)
+            # Create configs and connections
+            self._create_config(device=device1)
+            self._create_config(device=device2)
+            cred1 = self._get_credentials(organization=org)
+            if not DeviceConnection.objects.filter(
+                device=device1, credentials=cred1
+            ).exists():
+                self._create_device_connection(device=device1, credentials=cred1)
+            if not DeviceConnection.objects.filter(
+                device=device2, credentials=cred1
+            ).exists():
+                self._create_device_connection(device=device2, credentials=cred1)
+            url = reverse(f"admin:{self.app_label}_build_changelist")
+            data = {
+                ACTION_CHECKBOX_NAME: [build.pk],
+                "action": "upgrade_selected",
                 "location": location.pk,
+                "upgrade_related": "on",
             }
-        )
-        with self.subTest("Test actual batch upgrade with location"):
-            with mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"):
+            with self.subTest("Test upgrade confirmation page with location"):
                 response = self.client.post(url, data, follow=True)
                 self.assertEqual(response.status_code, 200)
-            # Check that batch was created with location
-            batch = BatchUpgradeOperation.objects.first()
-            self.assertIsNotNone(batch)
-            self.assertEqual(batch.location, location)
+                self.assertContains(response, location.name)
+            # Submit the actual upgrade with location filter
+            data.update(
+                {
+                    "upgrade_all": "on",
+                    "location": location.pk,
+                }
+            )
+            with self.subTest("Test actual batch upgrade with location"):
+                with mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"):
+                    response = self.client.post(url, data, follow=True)
+                    self.assertEqual(response.status_code, 200)
+                # Check that batch was created with location
+                batch = BatchUpgradeOperation.objects.first()
+                self.assertIsNotNone(batch)
+                self.assertEqual(batch.location, location)
 
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_admin_location_field(self, *args):
-        """Test location field in BatchUpgradeOperationAdmin."""
-        self._login()
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category)
-        location = Location.objects.create(
-            name="Test Location", address="123 Test St", organization=org
-        )
-        batch = BatchUpgradeOperation.objects.create(build=build, location=location)
-        url = reverse(
-            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
-        )
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, location.name)
+            """Test location field in BatchUpgradeOperationAdmin."""
+            self._login()
+            org = self._get_org()
+            category = self._create_category(organization=org)
+            build = self._create_build(category=category)
+            location = Location.objects.create(
+                name="Test Location", address="123 Test St", organization=org
+            )
+            batch = BatchUpgradeOperation.objects.create(build=build, location=location)
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, location.name)
 
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_no_devices_error_handling(self, *args):
-        """Test admin error handling when filters don't match any devices."""
-        self._login()
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category, version="error-test")
-        # Create location and group but no devices matching both
-        location = Location.objects.create(
-            name="Empty Location", address="456 Empty St", organization=org
-        )
-        group = self._create_device_group(name="Empty Group", organization=org)
-        url = reverse(f"admin:{self.app_label}_build_changelist")
-        data = {
-            ACTION_CHECKBOX_NAME: [build.pk],
-            "action": "upgrade_selected",
-            "location": location.pk,
-            "group": group.pk,
-            "upgrade_all": "on",
-        }
-        with self.subTest("Test error message when no devices match filters"):
-            response = self.client.post(url, data, follow=True)
-            self.assertEqual(response.status_code, 200)
-            # Should stay on confirmation page with error message
-            self.assertContains(response, "No devices found matching")
-            self.assertContains(response, "adjust your group and/or location filters")
-            # No batch should be created
-            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+            """Test admin error handling when filters don't match any devices."""
+            self._login()
+            org = self._get_org()
+            category = self._create_category(organization=org)
+            build = self._create_build(category=category, version="error-test")
+            # Create location and group but no devices matching both
+            location = Location.objects.create(
+                name="Empty Location", address="456 Empty St", organization=org
+            )
+            group = self._create_device_group(name="Empty Group", organization=org)
+            url = reverse(f"admin:{self.app_label}_build_changelist")
+            data = {
+                ACTION_CHECKBOX_NAME: [build.pk],
+                "action": "upgrade_selected",
+                "location": location.pk,
+                "group": group.pk,
+                "upgrade_all": "on",
+            }
+            with self.subTest("Test error message when no devices match filters"):
+                response = self.client.post(url, data, follow=True)
+                self.assertEqual(response.status_code, 200)
+                # Should stay on confirmation page with error message
+                self.assertContains(response, "No devices found matching")
+                self.assertContains(response, "adjust your group and/or location filters")
+                # No batch should be created
+                self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
+    @mock.patch(_mock_upgrade, return_value=True)
+    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_list_location_filter(self, *args):
-        """Test location filter in BatchUpgradeOperation list view."""
-        self._login()
-        org = self._get_org()
-        category = self._create_category(
-            name="Location Filter Test Category", organization=org
-        )
-        build = self._create_build(category=category, version="location-test-1.0")
-        location1 = Location.objects.create(
-            name="Location 1", address="123 Main St", organization=org
-        )
-        location2 = Location.objects.create(
-            name="Location 2", address="456 Oak Ave", organization=org
-        )
-        # Create batch operations with different locations
-        batch1 = BatchUpgradeOperation.objects.create(build=build, location=location1)
-        batch2 = BatchUpgradeOperation.objects.create(build=build, location=location2)
-        batch3 = BatchUpgradeOperation.objects.create(
-            build=build, location=None  # No location
-        )
-        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
-        with self.subTest("Test no location filter - shows all batches"):
-            with self.assertNumQueries(5):
-                response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, str(batch1.pk))
-            self.assertContains(response, str(batch2.pk))
-            self.assertContains(response, str(batch3.pk))
+            """Test location filter in BatchUpgradeOperation list view."""
+            self._login()
+            org = self._get_org()
+            category = self._create_category(
+                name="Location Filter Test Category", organization=org
+            )
+            build = self._create_build(category=category, version="location-test-1.0")
+            location1 = Location.objects.create(
+                name="Location 1", address="123 Main St", organization=org
+            )
+            location2 = Location.objects.create(
+                name="Location 2", address="456 Oak Ave", organization=org
+            )
+            # Create batch operations with different locations
+            batch1 = BatchUpgradeOperation.objects.create(build=build, location=location1)
+            batch2 = BatchUpgradeOperation.objects.create(build=build, location=location2)
+            batch3 = BatchUpgradeOperation.objects.create(
+                build=build, location=None  # No location
+            )
+            url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+            with self.subTest("Test no location filter - shows all batches"):
+                with self.assertNumQueries(5):
+                    response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, str(batch1.pk))
+                self.assertContains(response, str(batch2.pk))
+                self.assertContains(response, str(batch3.pk))
 
-        with self.subTest("Test location1 filter"):
-            with self.assertNumQueries(4):
-                response = self.client.get(url + f"?location={location1.pk}")
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, str(batch1.pk))
-            self.assertNotContains(response, str(batch2.pk))
-            self.assertNotContains(response, str(batch3.pk))
+            with self.subTest("Test location1 filter"):
+                with self.assertNumQueries(4):
+                    response = self.client.get(url + f"?location={location1.pk}")
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, str(batch1.pk))
+                self.assertNotContains(response, str(batch2.pk))
+                self.assertNotContains(response, str(batch3.pk))
 
 
 del TestConfigAdmin
