@@ -659,8 +659,8 @@ class TestAdminTransaction(
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_selected_action_perms(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             env = self._create_upgrade_env()
             org = env["d1"].organization
             self._create_firmwareless_device(organization=org)
@@ -690,8 +690,8 @@ class TestAdminTransaction(
             )
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_related(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             env = self._create_upgrade_env()
             self._create_firmwareless_device(organization=env["d1"].organization)
@@ -741,8 +741,8 @@ class TestAdminTransaction(
                 self.assertEqual(fw.count(), 2)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_all(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             env = self._create_upgrade_env()
             self._create_firmwareless_device(organization=env["d1"].organization)
@@ -816,8 +816,8 @@ class TestAdminTransaction(
                 )
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_mass_upgrade_shared_image(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             shared_image = self._create_firmware_image(organization=None)
             shared_build = shared_image.build
@@ -854,8 +854,8 @@ class TestAdminTransaction(
             self.assertEqual(fw.count(), 2)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_massive_upgrade_operation_page(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self.test_upgrade_all()
             uo = UpgradeOperation.objects.first()
             url = reverse(
@@ -867,8 +867,8 @@ class TestAdminTransaction(
             self.assertContains(response, "Abortion rate")
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_operation_change_breadcrumb_with_batch(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self.test_upgrade_all()
             uo = UpgradeOperation.objects.first()
             url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
@@ -891,8 +891,8 @@ class TestAdminTransaction(
             self.assertNotContains(response, f'href="{generic_upgrade_changelist_url}"')
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_operation_change_breadcrumb_without_batch(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             device_fw = self._create_device_firmware()
             device_fw.save(upgrade=True)
@@ -908,8 +908,8 @@ class TestAdminTransaction(
             self.assertContains(response, f'href="{generic_upgrade_changelist_url}"')
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_operation_change_breadcrumb_with_batch_no_permission(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self.test_upgrade_all()
             uo = UpgradeOperation.objects.first()
             url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
@@ -941,8 +941,8 @@ class TestAdminTransaction(
             self.assertIn(str(uo.batch), breadcrumbs)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_recent_upgrades(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             env = self._create_upgrade_env()
             url = reverse(
@@ -955,8 +955,8 @@ class TestAdminTransaction(
             self.assertContains(r, "Recent Firmware Upgrades")
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_operation_inline(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             device_fw = self._create_device_firmware()
             device_fw.save(upgrade=True)
             device = device_fw.device
@@ -971,8 +971,8 @@ class TestAdminTransaction(
             )
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_upgrade_operation_inline_queryset(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             device_fw = self._create_device_firmware()
             device_fw.save(upgrade=True)
             # expect only 1
@@ -991,8 +991,8 @@ class TestAdminTransaction(
             self.assertEqual(qs.count(), 0)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_device_firmware_upgrade_options(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             device_fw = self._create_device_firmware()
             device = device_fw.device
@@ -1045,9 +1045,9 @@ class TestAdminTransaction(
             )
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     @mock.patch.object(OpenWisp1, "SCHEMA", None)
     def test_using_upgrade_options_with_unsupported_upgrader(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             device_fw = self._create_device_firmware()
             device = device_fw.device
@@ -1140,9 +1140,9 @@ class TestAdminTransaction(
                 )
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_status_filter(self, *args):
-            """Test status filtering in batch upgrade operation admin page"""
+        """Test status filtering in batch upgrade operation admin page"""
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             env = self._create_upgrade_env()
             env["category"].organization = None
@@ -1188,9 +1188,9 @@ class TestAdminTransaction(
                     self.assertContains(response, op.device.name)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_organization_filter(self, *args):
-            """Test organization filtering in batch upgrade operation admin page"""
+        """Test organization filtering in batch upgrade operation admin page"""
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             # Create devices from different organizations
             org1 = self._create_org(name="Org1", slug="org1")
@@ -1239,9 +1239,9 @@ class TestAdminTransaction(
                 self.assertContains(response, device2.name)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_combined_filters(self, *args):
-            """Test combining status and organization filters"""
+        """Test combining status and organization filters"""
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             # Create devices from different organizations
             org1 = self._create_org(name="Org1", slug="org1")
@@ -1322,9 +1322,9 @@ class TestAdminTransaction(
                 )
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_filter_search_combination(self, *args):
-            """Test combining search with filters"""
+        """Test combining search with filters"""
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             env = self._create_upgrade_env()
             batch = env["build2"].batch_upgrade(firmwareless=True)
@@ -1355,9 +1355,9 @@ class TestAdminTransaction(
                 self.assertNotContains(response, "unique-test-device")
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_confirmation_form_multitenancy(self, *args):
-            """Test BatchUpgradeConfirmationForm multitenancy for organization admin vs superuser."""
+        """Test BatchUpgradeConfirmationForm multitenancy for organization admin vs superuser."""
+        with mock.patch(self._mock_connect, return_value=True):
             # Setup common objects
             org1 = self._get_org()
             org2 = self._create_org(name="Org 2", slug="org2")
@@ -1432,9 +1432,9 @@ class TestAdminTransaction(
                 self.assertIn("location", form.fields["location"].help_text)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_with_location_admin_action(self, *args):
-            """Test mass upgrade admin action with location filtering."""
+        """Test mass upgrade admin action with location filtering."""
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             org = self._get_org()
             category = self._create_category(organization=org)
@@ -1499,9 +1499,9 @@ class TestAdminTransaction(
                 self.assertEqual(batch.location, location)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_admin_location_field(self, *args):
-            """Test location field in BatchUpgradeOperationAdmin."""
+        """Test location field in BatchUpgradeOperationAdmin."""
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             org = self._get_org()
             category = self._create_category(organization=org)
@@ -1518,9 +1518,9 @@ class TestAdminTransaction(
             self.assertContains(response, location.name)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_no_devices_error_handling(self, *args):
-            """Test admin error handling when filters don't match any devices."""
+        """Test admin error handling when filters don't match any devices."""
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             org = self._get_org()
             category = self._create_category(organization=org)
@@ -1548,9 +1548,9 @@ class TestAdminTransaction(
                 self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
     @mock.patch(_mock_upgrade, return_value=True)
-    @mock.patch(_mock_connect, return_value=True)
     def test_batch_upgrade_operation_list_location_filter(self, *args):
-            """Test location filter in BatchUpgradeOperation list view."""
+        """Test location filter in BatchUpgradeOperation list view."""
+        with mock.patch(self._mock_connect, return_value=True):
             self._login()
             org = self._get_org()
             category = self._create_category(
