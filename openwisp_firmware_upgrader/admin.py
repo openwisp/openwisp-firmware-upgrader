@@ -80,12 +80,18 @@ class CascadeDeletePermissionMixin:
             ):
                 return True
             # Allow bulk actions from the changelist
+            own_changelist_url_name = (
+                f"{self.model._meta.app_label}_{self.model._meta.model_name}_changelist"
+            )
+
             if (
                 url_name
                 and url_name.endswith("_changelist")
+                and url_name != own_changelist_url_name
                 and request.POST.get("action") == "delete_selected"
             ):
                 return True
+
         return False
 
 
