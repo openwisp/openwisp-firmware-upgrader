@@ -114,9 +114,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             By.XPATH, '//*[@id="device_form"]/div/div[1]/input[1]'
         ).click()
         try:
-            WebDriverWait(self.web_driver, 5).until(
-                EC.url_to_be(f"{self.live_server_url}/admin/config/device/")
+            device_changelist_url = self.live_server_url + reverse(
+                f"admin:{self.config_app_label}_device_changelist"
             )
+            WebDriverWait(self.web_driver, 5).until(EC.url_to_be(device_changelist_url))
         except TimeoutException:
             self.fail("Deleted device was not restored")
 
