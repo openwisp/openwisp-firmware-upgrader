@@ -200,12 +200,16 @@
 .batch-main-progress {
   display: flex;
   align-items: center;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 6px 20px;
   margin-left: 20px;
+  min-width: 0;
 }
 
 .batch-main-progress .upgrade-progress-bar {
-  width: 300px;
+  display: flex;
+  width: 100%;
+  max-width: 300px;
   height: 12px;
   background-color: #d9d9d9;
   border-radius: 4px;
@@ -215,8 +219,19 @@
 
 .batch-main-progress .upgrade-progress-fill {
   height: 100%;
-  border-radius: 2px;
   transition: width 0.5s ease;
+}
+
+.batch-main-progress .upgrade-progress-fill:first-child {
+  border-radius: 2px 0 0 2px;
+}
+
+.batch-main-progress .upgrade-progress-fill:last-child {
+  border-radius: 0 2px 2px 0;
+}
+
+.batch-main-progress .upgrade-progress-fill:only-child {
+  border-radius: 2px;
 }
 
 .batch-main-progress .upgrade-progress-fill.idle {
@@ -252,6 +267,43 @@
   color: var(--ow-color-black);
   font-weight: bold;
   white-space: nowrap;
+}
+
+.batch-progress-legend {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--body-quiet-color);
+}
+
+.batch-progress-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.batch-progress-legend .legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.batch-progress-legend .legend-dot.success {
+  background-color: #70bf2b;
+}
+
+.batch-progress-legend .legend-dot.failed {
+  background-color: #dc3545;
+}
+
+.batch-progress-legend .legend-dot.aborted {
+  background-color: #6c757d;
+}
+
+.batch-progress-legend .legend-dot.cancelled {
+  background-color: #8b8b8b;
 }
 
 /* Adjustments for list filters */
