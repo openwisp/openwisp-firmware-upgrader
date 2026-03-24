@@ -613,8 +613,11 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         existing related DeviceFirmware
         """
         device_firmwares = self.build._find_related_device_firmwares(
-            group=self.group, location=self.location
+            select_devices=True, group=self.group, location=self.location
         )
+        device_firmwares = device_firmwares.filter(
+            device__deviceconnection__isnull=False
+        ).distinct()
         for device_fw in device_firmwares:
             image = self.build.firmwareimage_set.filter(
                 type=device_fw.image.type
@@ -636,6 +639,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             devices = self.build._find_firmwareless_devices(
                 image.boards, group=self.group, location=self.location
             )
+            devices = devices.filter(deviceconnection__isnull=False).distinct()
             for device in devices:
                 DeviceFirmware = load_model("DeviceFirmware")
                 device_fw = DeviceFirmware(device=device, image=image)
@@ -699,12 +703,32 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             or self.build._find_related_device_firmwares(select_devices=True)
         )
         if related_device_fw:
-            return get_upgrader_class_for_device(related_device_fw.first().device)
+            candidate = (
+                related_device_fw.filter(
+                    device__deviceconnection__update_strategy__icontains="ssh",
+                    device__deviceconnection__enabled=True,
+                )
+                .select_related("device")
+                .first()
+            )
+            if candidate:
+                try:
+                    return get_upgrader_class_for_device(candidate.device)
+                except ObjectDoesNotExist:
+                    pass
         firmwareless_devices = (
             firmwareless_devices or self.build._find_firmwareless_devices()
         )
         if firmwareless_devices:
-            return get_upgrader_class_for_device(firmwareless_devices.first())
+            candidate = firmwareless_devices.filter(
+                deviceconnection__update_strategy__icontains="ssh",
+                deviceconnection__enabled=True,
+            ).first()
+            if candidate:
+                try:
+                    return get_upgrader_class_for_device(candidate)
+                except ObjectDoesNotExist:
+                    pass
 
     def _get_upgrader_schema(self, related_device_fw=None, firmwareless_devices=None):
         upgrader_class = self._get_upgrader_class(

@@ -187,6 +187,38 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         self.assertContains(r, 'name="upgrade_all"')
 
+    def test_upgrade_intermediate_page_with_missing_credentials(self):
+        self._login()
+        env = self._create_upgrade_env()
+        # Reproduce issue #302: one related device has no credentials.
+        env["d2"].deviceconnection_set.all().delete()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Confirm mass upgrade operation")
+
+    def test_upgrade_intermediate_page_firmwareless_with_missing_credentials(self):
+        self._login()
+        env = self._create_upgrade_env(device_firmware=False)
+        # Reproduce issue #302 on firmwareless path.
+        env["d2"].deviceconnection_set.all().delete()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Confirm mass upgrade operation")
+
     def test_view_device_administrator(self):
         device_fw = self._create_device_firmware()
         org = self._get_org()
@@ -739,6 +771,35 @@ class TestAdminTransaction(
             )
             self.assertEqual(fw.count(), 2)
 
+    def test_upgrade_related_with_missing_credentials(self, *args):
+        self._login()
+        env = self._create_upgrade_env()
+        # Reproduce issue #302 after confirmation submission.
+        env["d2"].deviceconnection_set.all().delete()
+
+        fw = DeviceFirmware.objects.filter(
+            image__build_id=env["build2"].pk
+        ).select_related("image")
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        self.assertEqual(fw.count(), 0)
+
+        response = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                "upgrade_related": "upgrade_related",
+                "upgrade_options": '{"c": true}',
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(response, '<li class="success">')
+        self.assertContains(response, "track the progress")
+        self.assertEqual(
+            UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 1
+        )
+        self.assertEqual(fw.count(), 1)
+
     def test_upgrade_all(self, *args):
         self._login()
         env = self._create_upgrade_env()
@@ -811,6 +872,35 @@ class TestAdminTransaction(
                 ),
                 html=True,
             )
+
+    def test_upgrade_all_with_missing_credentials(self, *args):
+        self._login()
+        env = self._create_upgrade_env(device_firmware=False)
+        # Reproduce issue #302 after confirmation submission on firmwareless path.
+        env["d2"].deviceconnection_set.all().delete()
+
+        fw = DeviceFirmware.objects.filter(
+            image__build_id=env["build2"].pk
+        ).select_related("image")
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+        self.assertEqual(fw.count(), 0)
+
+        response = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                "upgrade_all": "upgrade_all",
+                "upgrade_options": '{"c": true}',
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(response, '<li class="success">')
+        self.assertContains(response, "track the progress")
+        self.assertEqual(
+            UpgradeOperation.objects.filter(upgrade_options={"c": True}).count(), 1
+        )
+        self.assertEqual(fw.count(), 1)
 
     def test_mass_upgrade_shared_image(self, *args):
         self._login()
