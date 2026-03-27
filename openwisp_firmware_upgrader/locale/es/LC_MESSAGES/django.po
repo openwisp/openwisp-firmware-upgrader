@@ -1,0 +1,524 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-05-26 21:02+0000\n"
+"PO-Revision-Date: 2025-05-27 11:07-0300\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.6\n"
+
+#: openwisp_firmware_upgrader/admin.py:132
+#: openwisp_firmware_upgrader/admin.py:309
+msgid "organization"
+msgstr "organización"
+
+#: openwisp_firmware_upgrader/admin.py:135
+msgid "Mass-upgrade devices related to the selected build"
+msgstr ""
+"Dispositivos de actualización masiva relacionados con la compilación "
+"seleccionada"
+
+#: openwisp_firmware_upgrader/admin.py:148
+msgid ""
+"Multiple mass upgrades requested but at the moment only a single mass "
+"upgrade operation at time is supported."
+msgstr ""
+"Se han solicitado múltiples actualizaciones masivas, pero por el momento "
+"sólo se admite una única operación de actualización masiva a la vez."
+
+#: openwisp_firmware_upgrader/admin.py:172
+msgid ""
+"You can track the progress of this mass upgrade operation in this page. "
+"Refresh the page from time to time to check its progress."
+msgstr ""
+"Puede seguir el progreso de esta operación de actualización masiva en esta "
+"página. Actualice la página de vez en cuando para comprobar su progreso."
+
+#: openwisp_firmware_upgrader/admin.py:185
+msgid "Confirm mass upgrade operation"
+msgstr "Confirme la operación de actualización masiva"
+
+#: openwisp_firmware_upgrader/admin.py:236
+msgid "last updated"
+msgstr "última actualización"
+
+#: openwisp_firmware_upgrader/admin.py:256
+msgid "Upgrade options"
+msgstr "Opciones de actualización"
+
+#: openwisp_firmware_upgrader/admin.py:260
+msgid "Upgrade options are not supported for this upgrader."
+msgstr ""
+"Las opciones de actualización no son compatibles con este actualizador."
+
+#: openwisp_firmware_upgrader/admin.py:332
+msgid "completed"
+msgstr "completado"
+
+#: openwisp_firmware_upgrader/admin.py:333
+msgid "success rate"
+msgstr "tasa de éxitos"
+
+#: openwisp_firmware_upgrader/admin.py:334
+msgid "failure rate"
+msgstr "tasa de fracasos"
+
+#: openwisp_firmware_upgrader/admin.py:335
+msgid "abortion rate"
+msgstr "tasa de abortos"
+
+#: openwisp_firmware_upgrader/admin.py:395
+#: openwisp_firmware_upgrader/apps.py:34
+msgid "Firmware"
+msgstr "Firmware"
+
+#: openwisp_firmware_upgrader/admin.py:431
+msgid "Recent Firmware Upgrades"
+msgstr "Actualizaciones recientes del firmware"
+
+#: openwisp_firmware_upgrader/api/filters.py:20
+msgid "Organization"
+msgstr "Organización"
+
+#: openwisp_firmware_upgrader/api/filters.py:21
+msgid "Organization slug"
+msgstr "Slug de la Organización"
+
+#: openwisp_firmware_upgrader/api/serializers.py:32
+msgid "Only superusers can create or edit shared categories"
+msgstr "Sólo los superusuarios pueden crear o editar categorías compartidas"
+
+#: openwisp_firmware_upgrader/api/serializers.py:122
+#: openwisp_firmware_upgrader/base/models.py:308
+msgid ""
+"The organization of the image doesn't match the organization of the device"
+msgstr ""
+"La organización de la imagen no coincide con la organización del dispositivo"
+
+#: openwisp_firmware_upgrader/apps.py:15
+msgid "Firmware Management"
+msgstr "Gestión del firmware"
+
+#: openwisp_firmware_upgrader/apps.py:37
+msgid "Builds"
+msgstr "Compilaciones"
+
+#: openwisp_firmware_upgrader/apps.py:43
+msgid "Categories"
+msgstr "Categorías"
+
+#: openwisp_firmware_upgrader/apps.py:49
+msgid "Mass Upgrade Operations"
+msgstr "Operaciones de actualización masiva"
+
+#: openwisp_firmware_upgrader/base/models.py:59
+msgid "Using upgrade options is not allowed with this upgrader."
+msgstr ""
+"El uso de opciones de actualización no está permitido con este actualizador."
+
+#: openwisp_firmware_upgrader/base/models.py:82
+msgid "Firmware Category"
+msgstr "Categoría de firmware"
+
+#: openwisp_firmware_upgrader/base/models.py:83
+msgid "Firmware Categories"
+msgstr "Categorías de firmware"
+
+#: openwisp_firmware_upgrader/base/models.py:91
+msgid "firmware category"
+msgstr "categoría de firmware"
+
+#: openwisp_firmware_upgrader/base/models.py:93
+msgid ""
+"if you have different firmware types eg: (BGP routers, wifi APs, DSL "
+"gateways) create a category for each."
+msgstr ""
+"si tiene diferentes tipos de firmware, por ejemplo: (routers BGP, APs wifi, "
+"pasarelas DSL) cree una categoría para cada uno."
+
+#: openwisp_firmware_upgrader/base/models.py:100
+msgid "OS identifier"
+msgstr "Identificador del sistema operativo"
+
+#: openwisp_firmware_upgrader/base/models.py:105
+msgid ""
+"OS identifier as presented by the device, used to automatically recognize "
+"the firmware image used by new devices that register into the system"
+msgstr ""
+"Identificador del sistema operativo presentado por el dispositivo, utilizado "
+"para reconocer automáticamente la imagen de firmware utilizada por los "
+"nuevos dispositivos que se registran en el sistema"
+
+#: openwisp_firmware_upgrader/base/models.py:112
+msgid "change log"
+msgstr "registro de cambio"
+
+#: openwisp_firmware_upgrader/base/models.py:115
+msgid ""
+"descriptive text indicating what has changed since the previous version, if "
+"applicable"
+msgstr ""
+"texto descriptivo que indique qué ha cambiado desde la versión anterior, si "
+"procede"
+
+#: openwisp_firmware_upgrader/base/models.py:123
+msgid "Firmware Build"
+msgstr "Compilación de firmware"
+
+#: openwisp_firmware_upgrader/base/models.py:124
+msgid "Firmware Builds"
+msgstr "Compilaciones de firmware"
+
+#: openwisp_firmware_upgrader/base/models.py:224
+msgid ""
+"firmware image type: model or architecture. Leave blank to attempt "
+"determining automatically"
+msgstr ""
+"tipo de imagen del firmware: modelo o arquitectura. Dejar en blanco para "
+"intentar determinar automáticamente"
+
+#: openwisp_firmware_upgrader/base/models.py:232
+msgid "Firmware Image"
+msgstr "Imagen del firmware"
+
+#: openwisp_firmware_upgrader/base/models.py:233
+msgid "Firmware Images"
+msgstr "Imágenes de firmware"
+
+#: openwisp_firmware_upgrader/base/models.py:295
+msgid "Device Firmware"
+msgstr "Firmware del dispositivo"
+
+#: openwisp_firmware_upgrader/base/models.py:316
+msgid ""
+"This device does not have a related connection object defined yet and "
+"therefore it would not be possible to upgrade it, please add one in the "
+"section named \"Credentials\""
+msgstr ""
+"Este dispositivo aún no tiene definido un objeto de conexión relacionado y, "
+"por lo tanto, no sería posible actualizarlo; añada uno en la sección "
+"denominada \"Credenciales\""
+
+#: openwisp_firmware_upgrader/base/models.py:322
+msgid "Device model and image model do not match"
+msgstr "El modelo de dispositivo y el modelo de imagen no coinciden"
+
+#: openwisp_firmware_upgrader/base/models.py:436
+msgid "idle"
+msgstr "inactivo"
+
+#: openwisp_firmware_upgrader/base/models.py:437
+#: openwisp_firmware_upgrader/base/models.py:581
+msgid "in progress"
+msgstr "en progreso"
+
+#: openwisp_firmware_upgrader/base/models.py:438
+msgid "completed successfully"
+msgstr "completado con éxito"
+
+#: openwisp_firmware_upgrader/base/models.py:439
+msgid "completed with some failures"
+msgstr "completado con algunos fallos"
+
+#: openwisp_firmware_upgrader/base/models.py:447
+msgid "Mass upgrade operation"
+msgstr "Operación de actualización masiva"
+
+#: openwisp_firmware_upgrader/base/models.py:448
+msgid "Mass upgrade operations"
+msgstr "Operaciones de actualización masiva"
+
+#: openwisp_firmware_upgrader/base/models.py:582
+msgid "success"
+msgstr "éxito"
+
+#: openwisp_firmware_upgrader/base/models.py:583
+msgid "failed"
+msgstr "fallido"
+
+#: openwisp_firmware_upgrader/base/models.py:584
+msgid "aborted"
+msgstr "cancelada"
+
+#: openwisp_firmware_upgrader/filters.py:17
+#: openwisp_firmware_upgrader/filters.py:28
+msgid "category"
+msgstr "categoría"
+
+#: openwisp_firmware_upgrader/tasks.py:35
+msgid "Operation timed out."
+msgstr "La operación ha expirado."
+
+#: openwisp_firmware_upgrader/templates/admin/firmware_upgrader/change_form.html:12
+msgid "Launch mass upgrade operation"
+msgstr "Lanzamiento de la operación de actualización masiva"
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:14
+msgid "Home"
+msgstr "Inicio"
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:17
+msgid "Upgrade devices of the selected build"
+msgstr "Actualizar los dispositivos de la compilación seleccionada"
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:23
+msgid "Are you sure you want to proceed with this batch upgrade operation?"
+msgstr ""
+"¿Está seguro de que desea continuar con esta operación de actualización por "
+"lotes?"
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:25
+msgid ""
+"No devices to upgrade were found.\n"
+"     Hint: Maybe they have been all already updated previously."
+msgstr ""
+"No se han encontrado dispositivos para actualizar.\n"
+"     Sugerencia: Puede que ya se hayan actualizado previamente."
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:29
+msgid "Devices related to build"
+msgstr "Dispositivos relacionados con la compilación"
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:37
+msgid "Devices which the system has never upgraded yet"
+msgstr "Dispositivos que el sistema no ha actualizado nunca"
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:54
+msgid "Upgrade all devices"
+msgstr "Actualizar todos los dispositivos"
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:56
+msgid "Upgrade only related devices"
+msgstr "Actualizar sólo los dispositivos relacionados"
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:60
+msgid "Cancel the upgrade"
+msgstr "Cancelar la actualización"
+
+#: openwisp_firmware_upgrader/templates/admin/upgrade_selected_confirmation.html:62
+msgid "Go back"
+msgstr "Volver"
+
+#: openwisp_firmware_upgrader/upgraders/openwisp.py:28
+msgid "This image does not support sysupgrade --test, skipping this step..."
+msgstr "Esta imagen no soporta sysupgrade --test, omitiendo este paso..."
+
+#: openwisp_firmware_upgrader/upgraders/openwisp.py:37
+msgid ""
+"The version used is OpenWrt Backfire, using legacy reflash instructions."
+msgstr ""
+"La versión utilizada es OpenWrt Backfire, utilizando instrucciones de "
+"reflash heredadas."
+
+#: openwisp_firmware_upgrader/upgraders/openwisp.py:107
+msgid ""
+"Written openwisp config file in /etc/config/openwisp.\n"
+"Added entries to /etc/sysupgrade.conf:\n"
+"- /etc/config/network\n"
+"- /etc/dropbear/dropbear_rsa_host_key\n"
+msgstr ""
+"Escrito el fichero de configuración de openwisp en /etc/config/openwisp.\n"
+"Añadidas entradas a /etc/sysupgrade.conf:\n"
+"- /etc/config/network\n"
+"- /etc/dropbear/dropbear_rsa_host_key\n"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:38
+msgid "Attempt to preserve all changed files in /etc/ (-c)"
+msgstr "Intento de conservar todos los archivos modificados en /etc/ (-c)"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:45
+msgid ""
+"Attempt to preserve all changed files in /, except those from packages but "
+"including changed confs. (-o)"
+msgstr ""
+"Intenta conservar todos los archivos modificados en /, excepto los de los "
+"paquetes pero incluyendo las confs modificadas. (-o)"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:52
+msgid "Do not save configuration over reflash (-n)"
+msgstr "No guardar la configuración durante el reflash (-n)"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:58
+msgid "Skip from backup files that are equal to those in /rom (-u)"
+msgstr ""
+"Omitir de la copia de seguridad los archivos que sean iguales a los de /rom "
+"(-u)"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:65
+msgid "Do not attempt to restore the partition table after flash. (-p)"
+msgstr "No intente restaurar la tabla de particiones después del flasheo. (-p)"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:72
+msgid ""
+"Include in backup a list of current installed packages at /etc/backup/"
+"installed_packages.txt (-k)"
+msgstr ""
+"Incluir en la copia de seguridad una lista de los paquetes instalados "
+"actualmente en /etc/backup/installed_packages.txt (-k)"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:80
+msgid "Flash image even if image checks fail, this is dangerous! (-F)"
+msgstr ""
+"Flashear la imagen incluso si fallan las comprobaciones de imagen, ¡esto es "
+"peligroso! (-F)"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:115
+msgid "The \"-n\" and \"-o\" options cannot be used together"
+msgstr "Las opciones \"-n\" y \"-o\" no pueden utilizarse juntas"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:123
+msgid "The \"-n\" and \"-c\" options cannot be used together"
+msgstr "Las opciones \"-n\" y \"-c\" no pueden utilizarse juntas"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:170
+msgid "Could not read device UUID from configuration"
+msgstr "No se ha podido leer el UUID del dispositivo desde la configuración"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:186
+#, python-brace-format
+msgid ""
+"Device UUID mismatch: expected \"{expected}\", found \"{found}\" in device "
+"configuration"
+msgstr ""
+"No coincide el UUID del dispositivo: se esperaba \"{expected}\", se encontró "
+"\"{found}\" en la configuración del dispositivo"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:191
+msgid "Device identity verified successfully"
+msgstr "Identidad del dispositivo verificada correctamente"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:207
+msgid "Connection successful, starting upgrade..."
+msgstr "Conexión exitosa, iniciando actualización..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:236
+#, python-brace-format
+msgid ""
+"The image size ({file_size_mib} MiB) is greater than the available memory on "
+"the system ({free_memory_mib} MiB).\n"
+"For this reason the upgrade procedure will try to free up memory by stopping "
+"non critical services.\n"
+"WARNING: it is recommended to reboot the device is the upgrade fails "
+"unexpectedly because these services will not be restarted automatically.\n"
+"NOTE: The reboot can be avoided if the status of the upgrade becomes "
+"\"aborted\" because in this case the system will restart the services "
+"automatically."
+msgstr ""
+"El tamaño de la imagen ({file_size_mib} MiB) es mayor que la memoria "
+"disponible en el sistema ({free_memory_mib} MiB).\n"
+"Por este motivo, el procedimiento de actualización intentará liberar memoria "
+"deteniendo los servicios no críticos.\n"
+"ADVERTENCIA: se recomienda reiniciar el dispositivo si la actualización "
+"falla inesperadamente, ya que estos servicios no se reiniciarán "
+"automáticamente.\n"
+"NOTA: el reinicio puede evitarse si el estado de la actualización es "
+"\"abortado\", ya que en este caso el sistema reiniciará los servicios "
+"automáticamente."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:259
+#, python-brace-format
+msgid ""
+"Enough available memory was freed up on the system ({0} MiB)!\n"
+"Proceeding to upload of the image file..."
+msgstr ""
+"¡Se ha liberado suficiente memoria disponible en el sistema ({0} MiB)!\n"
+"Procediendo a cargar el archivo de imagen..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:267
+#, python-brace-format
+msgid ""
+"There is still not enough available memory on the system ({0} MiB).\n"
+"Starting non critical services again..."
+msgstr ""
+"Aún no hay suficiente memoria disponible en el sistema ({0} MiB).\n"
+"Iniciando de nuevo los servicios no críticos..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:273
+msgid "Non critical services started, aborting upgrade."
+msgstr "Servicios no críticos iniciados, abortando actualización."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:368
+msgid "Image checksum file found"
+msgstr "Archivo de suma de comprobación de imagen encontrado"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:373
+msgid ""
+"Firmware already upgraded previously. Identical checksum found in the "
+"filesystem, upgrade not needed."
+msgstr ""
+"Firmware ya actualizado anteriormente. Se ha encontrado una suma de "
+"comprobación idéntica en el sistema de archivos, no es necesario actualizar."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:383
+msgid "Checksum different, proceeding with the upload of the new image..."
+msgstr ""
+"Suma de comprobación diferente, procediendo a la carga de la nueva imagen..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:390
+msgid ""
+"Image checksum file not found, proceeding with the upload of the new image..."
+msgstr ""
+"No se ha encontrado el archivo de suma de comprobación de la imagen, "
+"procediendo con la carga de la nueva imagen..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:403
+msgid "Starting non critical services again..."
+msgstr "Iniciando nuevamente los servicios no críticos..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:409
+msgid ""
+"Sysupgrade test passed successfully, proceeding with the upgrade operation..."
+msgstr ""
+"Prueba de actualización del sistema superada con éxito, procediendo con la "
+"operación de actualización..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:424
+msgid "Upgrade operation in progress..."
+msgstr "Operación de actualización en curso..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:443
+#, python-brace-format
+msgid ""
+"SSH connection closed, will wait {0} seconds before attempting to "
+"reconnect..."
+msgstr ""
+"Conexión SSH cerrada, esperará {0} segundos antes de intentar reconectar..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:492
+#, python-brace-format
+msgid "Trying to reconnect to device at {addresses} (attempt n.{attempt})..."
+msgstr ""
+"Intentando reconectar al dispositivo en {addresses} (intento n.{attempt})..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:508
+msgid "connection failed"
+msgstr "conexión fallida"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:511
+#, python-brace-format
+msgid ""
+"Device not reachable yet, ({0}).\n"
+"retrying in {1} seconds..."
+msgstr ""
+"Dispositivo no alcanzable aún, ({0}).\n"
+"reintentando en {1} segundos..."
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:520
+msgid "Connected! Writing checksum "
+msgstr "Conectado! Escribiendo suma de comprobación"
+
+#: openwisp_firmware_upgrader/upgraders/openwrt.py:525
+msgid "Upgrade completed successfully."
+msgstr "Actualización completada con éxito."
