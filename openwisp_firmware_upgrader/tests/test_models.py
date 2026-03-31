@@ -177,6 +177,15 @@ class TestModels(TestUpgraderMixin, TestCase):
         else:
             self.fail("ValidationError not raised")
 
+    def test_device_fw_credentials_removed_after_assignment(self):
+        """Regression test for #250."""
+        device_fw = self._create_device_firmware()
+        device_fw.upgrade_options = {"n": True}
+        device_fw.device.deviceconnection_set.all().delete()
+        with self.assertRaises(ValidationError) as ctx:
+            device_fw.full_clean()
+        self.assertIn("connection", str(ctx.exception).lower())
+
     def test_invalid_board(self):
         image = FIRMWARE_IMAGE_MAP[self.TPLINK_4300_IMAGE]
         boards = image["boards"]
@@ -242,6 +251,20 @@ class TestModels(TestUpgraderMixin, TestCase):
                 error.exception.message_dict["upgrade_options"],
                 ['The "-n" and "-o" options cannot be used together'],
             )
+
+    def test_upgrade_operation_credentials_removed(self):
+        """Regression test for #250."""
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        uo = UpgradeOperation(
+            device=device,
+            image=device_fw.image,
+            upgrade_options={"n": True},
+        )
+        device.deviceconnection_set.all().delete()
+        with self.assertRaises(ValidationError) as ctx:
+            uo.full_clean()
+        self.assertIn("connection", str(ctx.exception).lower())
 
     def test_upgrade_operation_log_line(self):
         device_fw = self._create_device_firmware()
