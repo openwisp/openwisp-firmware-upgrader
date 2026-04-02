@@ -177,14 +177,14 @@ class TestModels(TestUpgraderMixin, TestCase):
         else:
             self.fail("ValidationError not raised")
 
-    def test_device_fw_credentials_removed_after_assignment(self):
+    def test_device_fw_save_after_credentials_removed(self):
         """Regression test for #250."""
         device_fw = self._create_device_firmware()
-        device_fw.upgrade_options = {"n": True}
         device_fw.device.deviceconnection_set.all().delete()
-        with self.assertRaises(ValidationError) as ctx:
-            device_fw.full_clean()
-        self.assertIn("connection", str(ctx.exception).lower())
+        device_fw.full_clean()
+        uo_count = UpgradeOperation.objects.count()
+        device_fw.save(upgrade=False)
+        self.assertEqual(UpgradeOperation.objects.count(), uo_count)
 
     def test_invalid_board(self):
         image = FIRMWARE_IMAGE_MAP[self.TPLINK_4300_IMAGE]

@@ -409,7 +409,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     )
                 }
             )
-        if self.device.deviceconnection_set.count() < 1:
+        if self.image_has_changed and self.device.deviceconnection_set.count() < 1:
             raise ValidationError(
                 _(
                     "This device does not have a related connection object defined "

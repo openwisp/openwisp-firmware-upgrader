@@ -1309,7 +1309,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         with self.subTest("Test device and image model validation"):
             url = reverse("upgrader:api_devicefirmware_detail", args=[device1.pk])
-            with self.assertNumQueries(18):
+            with self.assertNumQueries(17):
                 # Try to make a request when the
                 # device model does not match the image model
                 data = {"image": image1a.pk}
@@ -1490,7 +1490,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(27):
+        with self.assertNumQueries(26):
             data = {"image": image2a.pk}
             r = self.client.put(
                 f"{url}?format=api", data, content_type="application/json"
@@ -1529,7 +1529,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(27):
+        with self.assertNumQueries(26):
             data = {"image": image2a.pk}
             r = self.client.patch(
                 f"{url}?format=api", data, content_type="application/json"
