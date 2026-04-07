@@ -1,6 +1,7 @@
+from django.conf import settings
 from django.contrib.auth.management import create_permissions
 from django.contrib.auth.models import Permission
-from swapper import load_model
+from swapper import load_model, split
 
 DeviceConnection = load_model("connection", "DeviceConnection")
 DeviceFirmware = load_model("firmware_upgrader", "DeviceFirmware")
@@ -15,7 +16,10 @@ def create_default_permissions(apps, schema_editor):
 
 def create_permissions_for_default_groups(apps, schema_editor, app_label):
     create_default_permissions(apps, schema_editor)
-    Group = apps.get_model("openwisp_users", "Group")
+    group_model = getattr(
+        settings, "OPENWISP_USERS_GROUP_MODEL", "openwisp_users.Group"
+    )
+    Group = apps.get_model(*split(group_model))
 
     try:
         admin = Group.objects.get(name="Administrator")

@@ -405,9 +405,38 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
             args=["00000000-0000-0000-0000-000000000000"],
         )
         extra_context["django_locale"] = get_language()
+        obj = self.get_object(request, object_id)
+        # for custom breadcrumbs
+        if obj and obj.batch_id:
+            batch_opts = BatchUpgradeOperation._meta
+            batch_admin_prefix = f"admin:{batch_opts.app_label}_{batch_opts.model_name}"
+            extra_context["batch"] = obj.batch
+            extra_context["batch_changelist_url"] = reverse(
+                f"{batch_admin_prefix}_changelist"
+            )
+            extra_context["batch_change_url"] = reverse(
+                f"{batch_admin_prefix}_change",
+                args=[obj.batch_id],
+            )
+            batch_admin = self.admin_site._registry.get(BatchUpgradeOperation)
+            extra_context["batch_has_view_permission"] = (
+                batch_admin.has_view_permission(request) if batch_admin else False
+            )
         return super().change_view(
             request, object_id, extra_context=extra_context, **kwargs
         )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("batch")
+
+    def get_object(self, request, object_id, from_field=None):
+        """Avoids duplicating queries in change_view custom logic"""
+        cache_attr = f"_cached_object_{object_id}_{from_field}"
+        if not hasattr(request, cache_attr):
+            setattr(
+                request, cache_attr, super().get_object(request, object_id, from_field)
+            )
+        return getattr(request, cache_attr)
 
     def get_fields(self, request, obj=None):
         fields = super().get_fields(request, obj).copy()
