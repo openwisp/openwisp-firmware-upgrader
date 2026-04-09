@@ -394,6 +394,73 @@ class TestAdmin(BaseTestAdmin, TestCase):
         mocked_func.assert_not_called()
         self.assertEqual(response.status_code, 200)
 
+    def test_save_device_after_credentials_deleted(self, *args):
+        """Regression test for #250."""
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        device_params = self._get_device_params(
+            device, device_conn, device_fw.image, device_fw
+        )
+        # delete credentials
+        device.deviceconnection_set.all().delete()
+        # remove connection data from form (simulates deleted inline)
+        device_params["deviceconnection_set-TOTAL_FORMS"] = 0
+        device_params["deviceconnection_set-INITIAL_FORMS"] = 0
+        del device_params["deviceconnection_set-0-credentials"]
+        del device_params["deviceconnection_set-0-id"]
+        del device_params["deviceconnection_set-0-update_strategy"]
+        del device_params["deviceconnection_set-0-enabled"]
+        # save device without changing image — should succeed
+        response = self.client.post(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Please correct the error")
+
+    def test_change_image_and_add_credentials_together(self, *args):
+        """Regression test for #250."""
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        credentials_id = device_conn.credentials_id
+        update_strategy = device_conn.update_strategy
+        # create a new image to switch to
+        build = self._create_build(version="0.2")
+        new_image = self._create_firmware_image(build=build)
+        # delete existing connection
+        device.deviceconnection_set.all().delete()
+        # build form data: new image + new credentials in same submit
+        device_params = self._get_device_params(
+            device, device_conn, new_image, device_fw
+        )
+        device_params.update(
+            {
+                "devicefirmware-0-image": str(new_image.id),
+                "deviceconnection_set-TOTAL_FORMS": 1,
+                "deviceconnection_set-INITIAL_FORMS": 0,
+                "deviceconnection_set-0-credentials": str(credentials_id),
+                "deviceconnection_set-0-update_strategy": update_strategy,
+                "deviceconnection_set-0-enabled": True,
+            }
+        )
+        if "deviceconnection_set-0-id" in device_params:
+            del device_params["deviceconnection_set-0-id"]
+        response = self.client.post(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Please correct the error")
+        device_fw.refresh_from_db()
+        self.assertEqual(device_fw.image, new_image)
+        self.assertEqual(device.deviceconnection_set.count(), 1)
+
     def test_deactivated_firmware_image_inline(self):
         self._login()
         device = self._create_config(organization=self._get_org()).device
