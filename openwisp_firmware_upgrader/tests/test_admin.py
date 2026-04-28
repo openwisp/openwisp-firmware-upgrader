@@ -403,16 +403,13 @@ class TestAdmin(BaseTestAdmin, TestCase):
         device_params = self._get_device_params(
             device, device_conn, device_fw.image, device_fw
         )
-        # delete credentials
         device.deviceconnection_set.all().delete()
-        # remove connection data from form (simulates deleted inline)
         device_params["deviceconnection_set-TOTAL_FORMS"] = 0
         device_params["deviceconnection_set-INITIAL_FORMS"] = 0
         del device_params["deviceconnection_set-0-credentials"]
         del device_params["deviceconnection_set-0-id"]
         del device_params["deviceconnection_set-0-update_strategy"]
         del device_params["deviceconnection_set-0-enabled"]
-        # save device without changing image — should succeed
         response = self.client.post(
             reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
             data=device_params,

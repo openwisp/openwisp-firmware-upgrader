@@ -1017,9 +1017,11 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.device.devicefirmware.save(upgrade=False)
 
     def validate_upgrade_options(self):
-        if not self._state.adding:
-            return
-        super().validate_upgrade_options()
+        try:
+            super().validate_upgrade_options()
+        except ValidationError:
+            if self._state.adding:
+                raise
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
