@@ -34,11 +34,11 @@
 }
 
 .upgrade-progress-fill.failed {
-  background-color: var(--ow-btn-danger-bg);
+  background-color: var(--ow-color-danger);
 }
 
 .upgrade-progress-fill.aborted {
-  background-color: var(--ow-color-fg-dark);
+  background-color: var(--ow-color-fg-darker);
 }
 
 .upgrade-progress-fill.cancelled {

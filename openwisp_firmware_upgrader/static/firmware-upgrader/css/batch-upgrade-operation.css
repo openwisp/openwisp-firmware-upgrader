@@ -151,11 +151,11 @@
 }
 
 .upgrade-status-container .upgrade-progress-fill.failed {
-  background-color: var(--ow-btn-danger-bg);
+  background-color: var(--ow-color-danger);
 }
 
 .upgrade-status-container .upgrade-progress-fill.aborted {
-  background-color: var(--ow-color-fg-dark);
+  background-color: var(--ow-color-fg-darker);
 }
 
 .upgrade-status-container .upgrade-progress-fill.cancelled {
@@ -182,11 +182,11 @@
 }
 
 .upgrade-status-failed {
-  color: var(--ow-btn-danger-bg);
+  color: var(--ow-color-danger);
 }
 
 .upgrade-status-aborted {
-  color: var(--ow-color-fg-dark);
+  color: var(--ow-color-fg-darker);
 }
 
 .upgrade-status-cancelled {
@@ -233,11 +233,11 @@
 }
 
 .batch-main-progress .upgrade-progress-fill.failed {
-  background-color: var(--ow-btn-danger-bg);
+  background-color: var(--ow-color-danger);
 }
 
 .batch-main-progress .upgrade-progress-fill.aborted {
-  background-color: var(--ow-color-fg-dark);
+  background-color: var(--ow-color-fg-darker);
 }
 
 .batch-main-progress .upgrade-progress-fill.cancelled {
@@ -245,7 +245,7 @@
 }
 
 .batch-main-progress .upgrade-progress-fill.partial-success {
-  background-color: var(--ow-color-primary);
+  background-color: var(--ow-color-warning);
 }
 
 .batch-main-progress .upgrade-progress-text {
