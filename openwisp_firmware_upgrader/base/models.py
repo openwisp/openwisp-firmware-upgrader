@@ -51,6 +51,19 @@ logger = logging.getLogger(__name__)
 PROGRESS_MIN = 0
 PROGRESS_MAX = 100
 
+_INVALID_HEADERS = [
+    (b"\xff\xd8\xff", "JPEG image"),
+    (b"\x89PNG\r\n\x1a\n", "PNG image"),
+    (b"%PDF", "PDF document"),
+    (b"GIF87a", "GIF image"),
+    (b"GIF89a", "GIF image"),
+    (b"PK\x03\x04", "ZIP archive"),
+    (b"MZ", "Windows executable"),
+    (b"<html", "HTML file"),
+    (b"<!DOC", "HTML document"),
+    (b"<?xml", "XML file"),
+]
+
 
 class UpgradeOptionsMixin(models.Model):
     upgrade_options = models.JSONField(default=dict, blank=True)
@@ -278,6 +291,8 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         return FIRMWARE_IMAGE_MAP[self.type]["boards"]
 
     def clean(self):
+        self._validate_file_header()
+        self._validate_rootfs()
         self._clean_type()
         try:
             self.boards
@@ -328,6 +343,37 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         filename = self.file.name
         # removes leading prefix
         self.type = "-".join(filename.split("-")[1:])
+
+    def _validate_file_header(self):
+        if not self.file:
+            return
+        try:
+            self.file.seek(0)
+            header = self.file.read(16)
+            self.file.seek(0)
+        except (IOError, OSError):
+            return
+        for magic, file_type in _INVALID_HEADERS:
+            if header[: len(magic)] == magic:
+                raise ValidationError(
+                    {
+                        "file": _(
+                            "This file appears to be a %(type)s, not a firmware "
+                            "image. Please upload a valid firmware image."
+                        )
+                        % {"type": file_type}
+                    }
+                )
+
+    def _validate_rootfs(self):
+        if self.file.name and self.file.name.endswith("-rootfs.img"):
+            raise ValidationError(
+                {
+                    "file": _(
+                        "Standalone rootfs images are not valid for this operation."
+                    )
+                }
+            )
 
     @classmethod
     def build_pre_delete_handler(cls, sender, instance, **kwargs):

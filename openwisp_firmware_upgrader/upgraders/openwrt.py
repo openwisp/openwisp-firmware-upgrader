@@ -88,6 +88,7 @@ class OpenWrt(object):
     }
 
     log_lines = None
+    metadata_extractor_class = None
 
     _false_positives = [
         "Command failed: ubus call system sysupgrade "
