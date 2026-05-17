@@ -291,9 +291,9 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         return FIRMWARE_IMAGE_MAP[self.type]["boards"]
 
     def clean(self):
+        self._clean_type()
         self._validate_file_header()
         self._validate_rootfs()
-        self._clean_type()
         try:
             self.boards
         except KeyError:
@@ -366,11 +366,13 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                 )
 
     def _validate_rootfs(self):
-        if self.file.name and self.file.name.endswith("-rootfs.img"):
+        if self.file and self.file.name and self.file.name.endswith("-rootfs.img"):
             raise ValidationError(
                 {
                     "file": _(
-                        "Standalone rootfs images are not valid for this operation."
+                        "rootfs images (*-squashfs-rootfs.img) are not "
+                        "suitable for upgrades. Please upload a "
+                        "sysupgrade image instead."
                     )
                 }
             )
