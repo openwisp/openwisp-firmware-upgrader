@@ -90,40 +90,70 @@ def _try_gzip(data):
 def _try_xz(data):
     if data[:6] != b"\xfd7zXZ\x00":
         return None
+    chunks, total = [], 0
+    compressed = len(data)
+    dec = lzma.LZMADecompressor(format=lzma.FORMAT_XZ)
     try:
-        result = lzma.decompress(data, format=lzma.FORMAT_XZ)
-        _check_limits(len(result), len(data))
-        return result
+        offset = 0
+        while offset < len(data):
+            chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
+            offset += _CHUNK_SIZE
+            if chunk:
+                chunks.append(chunk)
+                total += len(chunk)
+                _check_limits(total, compressed)
     except DecompressionLimitExceeded:
         raise
     except Exception:
         return None
+    return b"".join(chunks) or None
 
 
 def _try_lzma(data):
     if data[0:1] != b"\x5d":
         return None
+    chunks, total = [], 0
+    compressed = len(data)
     try:
-        result = lzma.decompress(data, format=lzma.FORMAT_ALONE)
-        _check_limits(len(result), len(data))
-        return result
+        dec = lzma.LZMADecompressor(
+            format=lzma.FORMAT_ALONE,
+            memlimit=app_settings.MAX_DECOMPRESSED_BYTES,
+        )
+        offset = 0
+        while offset < len(data):
+            chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
+            offset += _CHUNK_SIZE
+            if chunk:
+                chunks.append(chunk)
+                total += len(chunk)
+                _check_limits(total, compressed)
     except DecompressionLimitExceeded:
         raise
     except Exception:
         return None
+    return b"".join(chunks) or None
 
 
 def _try_bz2(data):
     if data[:3] != b"BZh":
         return None
+    chunks, total = [], 0
+    compressed = len(data)
+    dec = bz2.BZ2Decompressor()
     try:
-        result = bz2.decompress(data)
-        _check_limits(len(result), len(data))
-        return result
+        offset = 0
+        while offset < len(data):
+            chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
+            offset += _CHUNK_SIZE
+            if chunk:
+                chunks.append(chunk)
+                total += len(chunk)
+                _check_limits(total, compressed)
     except DecompressionLimitExceeded:
         raise
     except Exception:
         return None
+    return b"".join(chunks) or None
 
 
 def _try_lz4(data):
@@ -131,14 +161,23 @@ def _try_lz4(data):
         return None
     if data[:4] != b"\x04\x22\x4d\x18":
         return None
+    chunks, total = [], 0
+    compressed = len(data)
     try:
-        result = lz4frame.decompress(data)
-        _check_limits(len(result), len(data))
-        return result
+        dec = lz4frame.LZ4FrameDecompressor()
+        offset = 0
+        while offset < len(data):
+            chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
+            offset += _CHUNK_SIZE
+            if chunk:
+                chunks.append(chunk)
+                total += len(chunk)
+                _check_limits(total, compressed)
     except DecompressionLimitExceeded:
         raise
     except Exception:
         return None
+    return b"".join(chunks) or None
 
 
 def _decompress(data):
@@ -311,7 +350,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                     if "kernel" in name or name.endswith(".bin"):
                         f = tf.extractfile(member)
                         if f:
-                            return f.read()
+                            return f.read(app_settings.MAX_KERNEL_BYTES)
 
         except tarfile.TarError:
             pass

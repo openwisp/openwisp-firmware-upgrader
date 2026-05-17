@@ -52,16 +52,16 @@ PROGRESS_MIN = 0
 PROGRESS_MAX = 100
 
 _INVALID_HEADERS = [
-    (b"\xff\xd8\xff", "JPEG image"),
-    (b"\x89PNG\r\n\x1a\n", "PNG image"),
-    (b"%PDF", "PDF document"),
-    (b"GIF87a", "GIF image"),
-    (b"GIF89a", "GIF image"),
-    (b"PK\x03\x04", "ZIP archive"),
-    (b"MZ", "Windows executable"),
-    (b"<html", "HTML file"),
-    (b"<!DOC", "HTML document"),
-    (b"<?xml", "XML file"),
+    (b"\xff\xd8\xff", _("JPEG image")),
+    (b"\x89PNG\r\n\x1a\n", _("PNG image")),
+    (b"%PDF", _("PDF document")),
+    (b"GIF87a", _("GIF image")),
+    (b"GIF89a", _("GIF image")),
+    (b"PK\x03\x04", _("ZIP archive")),
+    (b"MZ", _("Windows executable")),
+    (b"<html", _("HTML file")),
+    (b"<!DOC", _("HTML document")),
+    (b"<?xml", _("XML file")),
 ]
 
 
