@@ -445,8 +445,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 "deviceconnection_set-0-enabled": True,
             }
         )
-        if "deviceconnection_set-0-id" in device_params:
-            del device_params["deviceconnection_set-0-id"]
+        # `_get_device_params` populated `-0-id` from the now-deleted connection;
+        # with INITIAL_FORMS=0 the formset must treat row 0 as new, not as an edit.
+        del device_params["deviceconnection_set-0-id"]
         response = self.client.post(
             reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
             data=device_params,

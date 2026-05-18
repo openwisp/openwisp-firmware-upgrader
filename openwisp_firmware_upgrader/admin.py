@@ -671,7 +671,10 @@ class DeviceFirmwareForm(forms.ModelForm):
     def _has_credentials_in_form(self):
         if not self.data:
             return False
-        total = int(self.data.get("deviceconnection_set-TOTAL_FORMS", 0))
+        try:
+            total = int(self.data.get("deviceconnection_set-TOTAL_FORMS", 0))
+        except (TypeError, ValueError):
+            return False
         for i in range(total):
             prefix = f"deviceconnection_set-{i}"
             has_cred = self.data.get(f"{prefix}-credentials")

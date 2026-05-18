@@ -67,7 +67,7 @@ class UpgradeOptionsMixin(models.Model):
             raise ValidationError(
                 _("No related connection or credentials found for this device.")
             )
-        if not getattr(upgrader_class, "SCHEMA", None):
+        if not getattr(upgrader_class, "SCHEMA"):
             raise ValidationError(
                 _("Using upgrade options is not allowed with this upgrader.")
             )
@@ -409,9 +409,16 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     )
                 }
             )
+        # When an admin adds credentials and changes the firmware image in the
+        # same save, the new credentials haven't been persisted yet at the time
+        # this check runs, so without `_skip_connection_check` the form would
+        # wrongly reject the change with "please add credentials".
+        # `DeviceFirmwareForm` sets the flag when it sees credentials in the
+        # submitted data.
+        skip_connection_check = getattr(self, "_skip_connection_check", False)
         if (
             self.image_has_changed
-            and not getattr(self, "_skip_connection_check", False)
+            and not skip_connection_check
             and self.device.deviceconnection_set.count() < 1
         ):
             raise ValidationError(
@@ -1015,13 +1022,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         if installed:
             self.device.devicefirmware.installed = True
             self.device.devicefirmware.save(upgrade=False)
-
-    def validate_upgrade_options(self):
-        try:
-            super().validate_upgrade_options()
-        except ValidationError:
-            if self._state.adding:
-                raise
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
