@@ -416,8 +416,9 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         # `DeviceFirmwareForm` sets the flag when it sees credentials in the
         # submitted data.
         skip_connection_check = getattr(self, "_skip_connection_check", False)
+        will_start_upgrade = self.image_has_changed or not self.installed
         if (
-            self.image_has_changed
+            will_start_upgrade
             and not skip_connection_check
             and self.device.deviceconnection_set.count() < 1
         ):

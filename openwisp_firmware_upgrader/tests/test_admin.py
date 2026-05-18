@@ -397,7 +397,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_save_device_after_credentials_deleted(self, *args):
         """Regression test for #250."""
         self._login()
-        device_fw = self._create_device_firmware()
+        device_fw = self._create_device_firmware(installed=True)
         device = device_fw.device
         device_conn = device.deviceconnection_set.first()
         device_params = self._get_device_params(
