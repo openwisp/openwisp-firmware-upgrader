@@ -95,7 +95,7 @@ def _try_xz(data):
     dec = lzma.LZMADecompressor(format=lzma.FORMAT_XZ)
     try:
         offset = 0
-        while offset < len(data):
+        while offset < len(data) and not dec.eof:
             chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
             offset += _CHUNK_SIZE
             if chunk:
@@ -120,7 +120,7 @@ def _try_lzma(data):
             memlimit=app_settings.MAX_DECOMPRESSED_BYTES,
         )
         offset = 0
-        while offset < len(data):
+        while offset < len(data) and not dec.eof:
             chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
             offset += _CHUNK_SIZE
             if chunk:
@@ -142,7 +142,7 @@ def _try_bz2(data):
     dec = bz2.BZ2Decompressor()
     try:
         offset = 0
-        while offset < len(data):
+        while offset < len(data) and not dec.eof:
             chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
             offset += _CHUNK_SIZE
             if chunk:
@@ -166,7 +166,7 @@ def _try_lz4(data):
     try:
         dec = lz4frame.LZ4FrameDecompressor()
         offset = 0
-        while offset < len(data):
+        while offset < len(data) and not dec.eof:
             chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
             offset += _CHUNK_SIZE
             if chunk:
