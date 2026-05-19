@@ -352,7 +352,24 @@ class DeviceFirmwareForm(forms.ModelForm):
             device, device_firmware=self.instance
         )
 
+    def _has_credentials_in_form(self):
+        if not self.data:
+            return False
+        try:
+            total = int(self.data.get("deviceconnection_set-TOTAL_FORMS", 0))
+        except (TypeError, ValueError):
+            return False
+        for i in range(total):
+            prefix = f"deviceconnection_set-{i}"
+            has_cred = self.data.get(f"{prefix}-credentials")
+            is_deleted = self.data.get(f"{prefix}-DELETE")
+            if has_cred and not is_deleted:
+                return True
+        return False
+
     def full_clean(self):
+        if self._has_credentials_in_form():
+            self.instance._skip_connection_check = True
         super().full_clean()
         if not self.errors and hasattr(self, "cleaned_data"):
             upgrade_op = UpgradeOperation(
