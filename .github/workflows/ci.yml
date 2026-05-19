@@ -74,7 +74,7 @@ jobs:
                        libspatialite-dev \
                        spatialite-bin \
                        libsqlite3-mod-spatialite
-          pip install -U pip wheel setuptools
+          pip install -U pip wheel "setuptools<82"
           pip install -U -r requirements-test.txt
           pip install -U -e .
           pip install -U ${{ matrix.django-version }}
