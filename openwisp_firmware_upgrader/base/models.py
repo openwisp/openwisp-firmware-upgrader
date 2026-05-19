@@ -1024,6 +1024,19 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.device.devicefirmware.installed = True
             self.device.devicefirmware.save(upgrade=False)
 
+    def validate_upgrade_options(self):
+        """Validate options only for new upgrade operations.
+
+        Pre-existing upgrade operations are readonly, but validation of relationship
+        can become complex and generate a lot of edge cases, in order to keep things
+        simple this validation step is skipped for pre-existing objects.
+        """
+        try:
+            super().validate_upgrade_options()
+        except ValidationError:
+            if self._state.adding:
+                raise
+
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # when an operation is completed
