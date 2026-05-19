@@ -11,6 +11,7 @@ on:
       - master
       - "1.2"
       - gsoc26-persistent-scheduled-upgrades
+      - gsoc26-metadata-extraction
 
 jobs:
   build:
