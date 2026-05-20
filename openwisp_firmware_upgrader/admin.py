@@ -24,7 +24,11 @@ from reversion.admin import VersionAdmin
 
 from openwisp_controller.config.admin import DeactivatedDeviceReadOnlyMixin, DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
-from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
+from openwisp_utils.admin import (
+    BlockDeleteAllowCascadeMixin,
+    ReadOnlyAdmin,
+    TimeReadonlyAdminMixin,
+)
 
 from .filters import (
     BuildCategoryFilter,
@@ -51,48 +55,6 @@ DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Organization = swapper.load_model("openwisp_users", "Organization")
 Location = swapper.load_model("geo", "Location")
 DeviceGroup = swapper.load_model("config", "DeviceGroup")
-
-
-class CascadeDeletePermissionMixin:
-    """
-    Mixin that allows cascade/bulk deletions while blocking
-    single-row deletion in the change view.
-    """
-
-    def has_delete_permission(self, request, obj=None):
-        # Superusers can always delete
-        if getattr(getattr(request, "user", None), "is_superuser", False) is True:
-            return True
-        # Allow if obj is None (general permission check or cascade confirmation)
-        if obj is None:
-            return True
-        # Check if this is a cascade delete from a parent view or bulk action
-        if request.resolver_match:
-            url_name = request.resolver_match.url_name
-            own_delete_url_name = (
-                f"{self.model._meta.app_label}_{self.model._meta.model_name}_delete"
-            )
-            # Allow cascade deletions from parent delete views
-            if (
-                url_name
-                and url_name.endswith("_delete")
-                and url_name != own_delete_url_name
-            ):
-                return True
-            # Allow bulk actions from the changelist
-            own_changelist_url_name = (
-                f"{self.model._meta.app_label}_{self.model._meta.model_name}_changelist"
-            )
-
-            if (
-                url_name
-                and url_name.endswith("_changelist")
-                and url_name != own_changelist_url_name
-                and request.POST.get("action") == "delete_selected"
-            ):
-                return True
-
-        return False
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -359,7 +321,7 @@ class UpgradeOperationForm(forms.ModelForm):
         labels = {"modified": _("last updated")}
 
 
-class UpgradeOperationInline(CascadeDeletePermissionMixin, admin.StackedInline):
+class UpgradeOperationInline(BlockDeleteAllowCascadeMixin, admin.StackedInline):
     model = UpgradeOperation
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
@@ -402,7 +364,11 @@ class ReadonlyUpgradeOptionsMixin:
 
 
 @admin.register(UpgradeOperation)
-class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+class UpgradeOperationAdmin(
+    ReadonlyUpgradeOptionsMixin,
+    ReadOnlyAdmin,
+    BaseAdmin,
+):
     form = UpgradeOperationForm
     list_display = ["device", "status", "image", "modified"]
     list_filter = ["status"]
@@ -486,13 +452,9 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
     def has_add_permission(self, request):
         return False
 
-    def has_delete_permission(self, request, obj=None):
-        return False
-
 
 @admin.register(BatchUpgradeOperation)
 class BatchUpgradeOperationAdmin(
-    CascadeDeletePermissionMixin,
     ReadonlyUpgradeOptionsMixin,
     ReadOnlyAdmin,
     BaseAdmin,

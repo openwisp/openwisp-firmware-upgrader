@@ -23,6 +23,7 @@ from openwisp_firmware_upgrader.admin import (
     DeviceFirmwareInline,
     DeviceUpgradeOperationInline,
     FirmwareImageInline,
+    UpgradeOperationAdmin,
     UpgradeOperationInline,
     admin,
 )
@@ -1674,17 +1675,17 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
             request.POST.get.return_value = None
             self.assertFalse(inline.has_delete_permission(request, obj=MagicMock()))
 
-        with self.subTest("superuser always allowed"):
+        with self.subTest("unrelated admin URL returns False"):
             request = MagicMock()
             request.user.is_superuser = True
             request.resolver_match.url_name = "any_random_view"
-            self.assertTrue(inline.has_delete_permission(request, obj=MagicMock()))
+            self.assertFalse(inline.has_delete_permission(request, obj=MagicMock()))
 
-        with self.subTest("obj is None fallback (internal Django check)"):
+        with self.subTest("no resolver_match returns False"):
             request = MagicMock()
             request.user.is_superuser = False
             request.resolver_match = None
-            self.assertTrue(inline.has_delete_permission(request, obj=None))
+            self.assertFalse(inline.has_delete_permission(request, obj=None))
 
     def test_cascade_delete_integration(self):
         self._login()
@@ -1692,6 +1693,10 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
         category = self._create_category(name="Cascade Category", organization=org)
         build = self._create_build(category=category, version="9.9")
         batch = BatchUpgradeOperation.objects.create(build=build)
+        device = self._create_device_with_connection(organization=org)
+        device.deactivate()
+        device.config.set_status_deactivated()
+        operation = UpgradeOperation.objects.create(device=device, batch=batch)
         delete_url = reverse(
             f"admin:{Organization._meta.app_label}"
             f"_{Organization._meta.model_name}_delete",
@@ -1701,6 +1706,16 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Organization.objects.filter(pk=org.pk).exists())
         self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+        self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_upgrade_operation_admin_allows_parent_cascade_delete(self):
+        modeladmin = UpgradeOperationAdmin(UpgradeOperation, AdminSite())
+        request = MagicMock()
+        request.user.is_superuser = True
+        request.resolver_match.url_name = (
+            f"{Organization._meta.app_label}_{Organization._meta.model_name}_delete"
+        )
+        self.assertTrue(modeladmin.has_delete_permission(request, obj=MagicMock()))
 
     def test_cascade_delete_integration_non_superuser(self):
         org = self._create_org(
