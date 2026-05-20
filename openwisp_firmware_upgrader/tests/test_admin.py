@@ -399,6 +399,137 @@ class TestAdmin(BaseTestAdmin, TestCase):
         mocked_func.assert_not_called()
         self.assertEqual(response.status_code, 200)
 
+    def test_save_device_after_credentials_deleted(self, *args):
+        """Regression test for #250."""
+        self._login()
+        device_fw = self._create_device_firmware(installed=True)
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        device_params = self._get_device_params(
+            device, device_conn, device_fw.image, device_fw
+        )
+        device.deviceconnection_set.all().delete()
+        device_params["deviceconnection_set-TOTAL_FORMS"] = 0
+        device_params["deviceconnection_set-INITIAL_FORMS"] = 0
+        del device_params["deviceconnection_set-0-credentials"]
+        del device_params["deviceconnection_set-0-id"]
+        del device_params["deviceconnection_set-0-update_strategy"]
+        del device_params["deviceconnection_set-0-enabled"]
+        response = self.client.post(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Please correct the error")
+
+    def test_change_image_and_add_credentials_together(self, *args):
+        """Regression test for #250."""
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        credentials_id = device_conn.credentials_id
+        update_strategy = device_conn.update_strategy
+        # create a new image to switch to
+        build = self._create_build(version="0.2")
+        new_image = self._create_firmware_image(build=build)
+        # delete existing connection
+        device.deviceconnection_set.all().delete()
+        # build form data: new image + new credentials in same submit
+        device_params = self._get_device_params(
+            device, device_conn, new_image, device_fw
+        )
+        device_params.update(
+            {
+                "devicefirmware-0-image": str(new_image.id),
+                "deviceconnection_set-TOTAL_FORMS": 1,
+                "deviceconnection_set-INITIAL_FORMS": 0,
+                "deviceconnection_set-0-credentials": str(credentials_id),
+                "deviceconnection_set-0-update_strategy": update_strategy,
+                "deviceconnection_set-0-enabled": True,
+            }
+        )
+        # `_get_device_params` populated `-0-id` from the now-deleted connection;
+        # with INITIAL_FORMS=0 the formset must treat row 0 as new, not as an edit.
+        del device_params["deviceconnection_set-0-id"]
+        response = self.client.post(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Please correct the error")
+        device_fw.refresh_from_db()
+        self.assertEqual(device_fw.image, new_image)
+        self.assertEqual(device.deviceconnection_set.count(), 1)
+
+    def test_add_credentials_with_cancelled_upgrade_operation(self, *args):
+        """Regression test for adding credentials while a cancelled upgrade is shown."""
+        with mock.patch(
+            "openwisp_controller.connection.models.DeviceConnection.connect",
+            return_value=True,
+        ), mock.patch(
+            "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
+            return_value=True,
+        ):
+            self._login()
+            device = self._create_config(organization=self._get_org()).device
+            device_conn = self._create_device_connection(device=device)
+            credentials_id = device_conn.credentials_id
+            update_strategy = device_conn.update_strategy
+            image = self._create_firmware_image(organization=device.organization)
+            device_params = self._get_device_params(
+                device,
+                device_conn,
+                image,
+                upgrade_options=json.dumps({"c": True}),
+            )
+            response = self.client.post(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                ),
+                data=device_params,
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(device.upgradeoperation_set.count(), 1)
+            # cancel upgrade operation and remove DeviceConnection object
+            upgrade_operation = device.upgradeoperation_set.get()
+            upgrade_operation.cancel()
+            device_fw = device.devicefirmware
+            device.deviceconnection_set.all().delete()
+            # submit form creating a new credential
+            device_params = self._get_device_params(
+                device, device_conn, image, device_fw
+            )
+            device_params.update(
+                {
+                    "deviceconnection_set-TOTAL_FORMS": 1,
+                    "deviceconnection_set-INITIAL_FORMS": 0,
+                    "deviceconnection_set-0-credentials": str(credentials_id),
+                    "deviceconnection_set-0-update_strategy": update_strategy,
+                    "deviceconnection_set-0-enabled": True,
+                    "upgradeoperation_set-TOTAL_FORMS": 1,
+                    "upgradeoperation_set-INITIAL_FORMS": 1,
+                    "upgradeoperation_set-0-id": str(upgrade_operation.id),
+                    "upgradeoperation_set-0-device": str(device.id),
+                }
+            )
+            del device_params["deviceconnection_set-0-id"]
+            response = self.client.post(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                ),
+                data=device_params,
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(
+                response, "No related connection or credentials found for this device."
+            )
+            self.assertEqual(device.deviceconnection_set.count(), 1)
+
     def test_deactivated_firmware_image_inline(self):
         self._login()
         device = self._create_config(organization=self._get_org()).device
