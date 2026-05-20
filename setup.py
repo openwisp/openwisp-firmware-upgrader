@@ -24,6 +24,7 @@ setup(
             "https://github.com/openwisp/openwisp-controller/archive/refs/heads/1.3.tar.gz"
         ),
         "django-private-storage~=3.1.0",
+        "fdt",
     ],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
