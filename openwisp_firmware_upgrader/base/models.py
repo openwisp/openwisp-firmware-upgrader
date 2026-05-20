@@ -74,12 +74,18 @@ class UpgradeOptionsMixin(models.Model):
     def validate_upgrade_options(self):
         if not self.upgrade_options:
             return
-        if not getattr(self.upgrader_class, "SCHEMA"):
+        try:
+            upgrader_class = self.upgrader_class
+        except ObjectDoesNotExist:
+            raise ValidationError(
+                _("No related connection or credentials found for this device.")
+            )
+        if not getattr(upgrader_class, "SCHEMA"):
             raise ValidationError(
                 _("Using upgrade options is not allowed with this upgrader.")
             )
         try:
-            self.upgrader_class.validate_upgrade_options(self.upgrade_options)
+            upgrader_class.validate_upgrade_options(self.upgrade_options)
         except jsonschema.ValidationError:
             raise ValidationError("The upgrade options are invalid")
         except FirmwareUpgradeOptionsException as error:
@@ -451,7 +457,19 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     )
                 }
             )
-        if self.device.deviceconnection_set.count() < 1:
+        # When an admin adds credentials and changes the firmware image in the
+        # same save, the new credentials haven't been persisted yet at the time
+        # this check runs, so without `_skip_connection_check` the form would
+        # wrongly reject the change with "please add credentials".
+        # `DeviceFirmwareForm` sets the flag when it sees credentials in the
+        # submitted data.
+        skip_connection_check = getattr(self, "_skip_connection_check", False)
+        will_start_upgrade = self.image_has_changed or not self.installed
+        if (
+            will_start_upgrade
+            and not skip_connection_check
+            and self.device.deviceconnection_set.count() < 1
+        ):
             raise ValidationError(
                 _(
                     "This device does not have a related connection object defined "
@@ -1053,6 +1071,19 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         if installed:
             self.device.devicefirmware.installed = True
             self.device.devicefirmware.save(upgrade=False)
+
+    def validate_upgrade_options(self):
+        """Validate options only for new upgrade operations.
+
+        Pre-existing upgrade operations are readonly, but validation of relationship
+        can become complex and generate a lot of edge cases, in order to keep things
+        simple this validation step is skipped for pre-existing objects.
+        """
+        try:
+            super().validate_upgrade_options()
+        except ValidationError:
+            if self._state.adding:
+                raise
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
