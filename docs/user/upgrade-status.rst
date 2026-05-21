@@ -181,5 +181,6 @@ these updates.
 **Upgrade Logs**: Each status change is logged with detailed information
 about what occurred during the upgrade process.
 
-**Batch Operations**: When performing mass upgrades, you can monitor the
-status of individual device upgrades within the batch operation.
+**Mass Upgrade Operations**: When performing mass upgrades, you can
+monitor the status of individual device upgrades within the mass upgrade
+operation.

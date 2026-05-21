@@ -80,7 +80,7 @@ List Mass Upgrade Operations
 
 **Available filters**
 
-The list of batch upgrade operations provides the following filters:
+The list of mass upgrade operations provides the following filters:
 
 - ``build`` (Firmware build ID)
 - ``status`` (One of: idle, in-progress, success, failed, cancelled)
@@ -201,8 +201,8 @@ Download Firmware Image
 
     GET /api/v1/firmware-upgrader/build/{build_id}/image/{id}/download/
 
-Perform Batch Upgrade
-~~~~~~~~~~~~~~~~~~~~~
+Perform Mass Upgrade
+~~~~~~~~~~~~~~~~~~~~
 
 Upgrades all the devices related to the specified build ID.
 
@@ -212,7 +212,7 @@ Upgrades all the devices related to the specified build ID.
 
 **Optional Parameters**
 
-The batch upgrade operation accepts the following optional parameters in
+The mass upgrade operation accepts the following optional parameters in
 the request body:
 
 - ``group`` (Device group ID): limit the upgrade to devices belonging to a
@@ -229,8 +229,8 @@ Example with filters:
         "location": "{location_id}"
     }
 
-Dry-run Batch Upgrade
-~~~~~~~~~~~~~~~~~~~~~
+Dry-run Mass Upgrade
+~~~~~~~~~~~~~~~~~~~~
 
 Returns a list representing the ``DeviceFirmware`` and ``Device``
 instances that would be upgraded if POST is used.
@@ -244,7 +244,7 @@ exists for a device which would be upgraded.
 
 **Optional Query Parameters**
 
-The dry-run batch upgrade operation accepts the following optional query
+The dry-run mass upgrade operation accepts the following optional query
 parameters:
 
 - ``group`` (Device group ID): limit the preview to devices belonging to a
@@ -305,6 +305,12 @@ Delete a Firmware Category
 
 List Upgrade Operations
 ~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note::
+
+    This documentation uses "mass upgrade" as the descriptive term, but
+    the REST API still exposes identifiers such as
+    ``batch-upgrade-operation`` and ``batch`` for backward compatibility.
 
 .. code-block:: text
 

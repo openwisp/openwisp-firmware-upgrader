@@ -96,19 +96,25 @@ After the connection is established, the server pushes
 The message structure is identical to the response returned for
 ``request_current_state``.
 
-2. Batch Upgrade Operation
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+2. Mass Upgrade Operation
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note::
+
+    This documentation uses "mass upgrade" as the descriptive term, but
+    the WebSocket URL path still uses ``batch-upgrade-operation`` for
+    backward compatibility.
 
 Connection URL:
 
-::
+.. code-block:: text
 
     wss://<host>/ws/firmware-upgrader/batch-upgrade-operation/<batch_id>/
 
 Scope
 +++++
 
-A batch upgrade containing multiple operations.
+A mass upgrade containing multiple operations.
 
 Client Message
 ++++++++++++++
