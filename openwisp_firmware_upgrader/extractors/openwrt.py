@@ -78,6 +78,9 @@ def _extract_fwtool_metadata(firmware_path):
             continue
         data_start = offset - (size - TRAILER_SIZE)
         data_end = offset
+        if data_start >= offset:
+            offset -= 1
+            continue
         if data_start < 0:
             offset -= 1
             continue
