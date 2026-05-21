@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.test import TestCase
 
 from ..extractors.base import BaseMetadataExtractor
@@ -66,8 +68,6 @@ class TestBaseMetadataExtractor(TestCase):
             extractor.extract_from_dtb()
 
     def test_image_path_stored_as_string(self):
-        from pathlib import Path
-
         extractor = ConcreteSuccessExtractor(Path("/fake/path.bin"))
         self.assertIsInstance(extractor.image_path, str)
         self.assertEqual(extractor.image_path, "/fake/path.bin")

@@ -5,7 +5,6 @@ import json
 import lzma
 import os
 import struct
-import subprocess
 import tarfile
 
 import fdt
@@ -27,7 +26,6 @@ except ImportError:
 
 
 _X86_SUFFIXES = (".img", ".vdi", ".vmdk")
-_SUBPROCESS_TIMEOUT = 30
 
 DTB_MAGIC = b"\xd0\x0d\xfe\xed"
 DTB_MIN_SIZE = 64
@@ -35,6 +33,66 @@ DTB_MAX_SIZE = 10 * 1024 * 1024
 UIMAGE_MAGIC = b"\x27\x05\x19\x56"
 UIMAGE_HEADER_SIZE = 64
 _CHUNK_SIZE = 64 * 1024
+FWIMAGE_MAGIC = 0x46577830
+FWIMAGE_INFO = 1
+TRAILER_FORMAT = ">IIB3sI"
+TRAILER_SIZE = struct.calcsize(TRAILER_FORMAT)
+HEADER_FORMAT = ">II"
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+_CRC32_POLYNOMIAL = 0xEDB88320
+
+
+def _crc32_filltable():
+    table = []
+    for i in range(256):
+        c = i
+        for _ in range(8):
+            c = ((c >> 1) ^ _CRC32_POLYNOMIAL) if (c & 1) else (c >> 1)
+        table.append(c)
+    return table
+
+
+_CRC32_TABLE = _crc32_filltable()
+
+
+def _crc32_block(val, data):
+    for byte in data:
+        val = _CRC32_TABLE[(val & 0xFF) ^ byte] ^ (val >> 8)
+    return val
+
+
+def _extract_fwtool_metadata(firmware_path):
+    with open(firmware_path, "rb") as f:
+        data = f.read()
+    file_size = len(data)
+    offset = file_size - TRAILER_SIZE
+    while offset >= 0:
+        trailer_data = data[offset : offset + TRAILER_SIZE]
+        if len(trailer_data) < TRAILER_SIZE:
+            break
+        magic, crc32_val, type_val, _pad, size = struct.unpack(
+            TRAILER_FORMAT, trailer_data
+        )
+        if magic != FWIMAGE_MAGIC:
+            offset -= 1
+            continue
+        data_start = offset - (size - TRAILER_SIZE)
+        data_end = offset
+        if data_start < 0:
+            offset -= 1
+            continue
+        if _crc32_block(0xFFFFFFFF, data[:data_end]) != crc32_val:
+            offset = data_start
+            continue
+        if type_val == FWIMAGE_INFO:
+            metadata_bytes = data[data_start + HEADER_SIZE : data_end]
+            try:
+                return json.loads(metadata_bytes.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                offset = data_start
+                continue
+        offset = data_start
+    return None
 
 
 def _parse_supported_devices(meta):
@@ -92,7 +150,9 @@ def _try_xz(data):
         return None
     chunks, total = [], 0
     compressed = len(data)
-    dec = lzma.LZMADecompressor(format=lzma.FORMAT_XZ)
+    dec = lzma.LZMADecompressor(
+        format=lzma.FORMAT_XZ, memlimit=app_settings.MAX_DECOMPRESSED_BYTES
+    )
     try:
         offset = 0
         while offset < len(data) and not dec.eof:
@@ -289,24 +349,6 @@ def _metadata_from_dtb(dtb_bytes):
 
 
 class OpenWrtMetadataExtractor(BaseMetadataExtractor):
-    def _run_command(self, cmd):
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=_SUBPROCESS_TIMEOUT,
-            )
-        except FileNotFoundError:
-            raise ExtractionError(f"Command not found: {cmd[0]}")
-        except subprocess.TimeoutExpired:
-            raise ExtractionError(f"Command timed out: {' '.join(cmd)}")
-        if result.returncode != 0:
-            raise ExtractionError(
-                f"Command exited with {result.returncode}: {result.stderr.strip()}"
-            )
-        return result.stdout
 
     def _detect_image_type(self):
         _, ext = os.path.splitext(self.image_path)
@@ -316,13 +358,9 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             raise UnsupportedImageError("armsr image type not supported")
 
     def _extract_from_fwtool(self):
-        output = self._run_command(["fwtool", "-q", "-i", "-", self.image_path])
-        try:
-            meta = json.loads(output)
-        except (json.JSONDecodeError, ValueError) as e:
-            raise ExtractionError(f"Invalid JSON from fwtool: {e}")
-        if not meta:
-            raise ExtractionError("fwtool returned empty metadata")
+        meta = _extract_fwtool_metadata(self.image_path)
+        if meta is None:
+            raise ExtractionError("No fwtool metadata found in image")
         version = meta.get("version", {})
         return {
             "model": version.get("board", ""),

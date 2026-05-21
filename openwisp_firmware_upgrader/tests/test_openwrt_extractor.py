@@ -2,8 +2,9 @@ import bz2
 import gzip
 import json
 import lzma
+import os
 import struct
-import subprocess
+import tempfile
 from unittest import mock
 
 from django.test import TestCase
@@ -16,11 +17,18 @@ from ..extractors.exceptions import (
 from ..extractors.openwrt import (
     DTB_MAGIC,
     DTB_MIN_SIZE,
+    FWIMAGE_INFO,
+    FWIMAGE_MAGIC,
+    HEADER_SIZE,
+    TRAILER_FORMAT,
+    TRAILER_SIZE,
     UIMAGE_HEADER_SIZE,
     UIMAGE_MAGIC,
     OpenWrtMetadataExtractor,
     _check_limits,
+    _crc32_block,
     _decompress,
+    _extract_fwtool_metadata,
     _locate_dtb,
     _parse_supported_devices,
     _strip_uimage_header,
@@ -54,45 +62,6 @@ class TestParseSupportedDevices(TestCase):
         self.assertEqual(_parse_supported_devices(meta), ["tplink,tl-wdr4300-v1"])
 
 
-class TestRunCommand(TestCase):
-    def setUp(self):
-        self.extractor = OpenWrtMetadataExtractor("/fake/path.bin")
-
-    def test_returns_stdout_on_success(self):
-        with mock.patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock.Mock(
-                returncode=0, stdout='{"key": "val"}', stderr=""
-            )
-            result = self.extractor._run_command(
-                ["fwtool", "-q", "-i", "-", "/fake/path.bin"]
-            )
-        self.assertEqual(result, '{"key": "val"}')
-
-    def test_nonzero_exit_raises_extraction_error(self):
-        with mock.patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock.Mock(returncode=1, stdout="", stderr="error")
-            with self.assertRaises(ExtractionError):
-                self.extractor._run_command(
-                    ["fwtool", "-q", "-i", "-", "/fake/path.bin"]
-                )
-
-    def test_timeout_raises_extraction_error(self):
-        with mock.patch(
-            "subprocess.run", side_effect=subprocess.TimeoutExpired("fwtool", 30)
-        ):
-            with self.assertRaises(ExtractionError):
-                self.extractor._run_command(
-                    ["fwtool", "-q", "-i", "-", "/fake/path.bin"]
-                )
-
-    def test_missing_binary_raises_extraction_error(self):
-        with mock.patch("subprocess.run", side_effect=FileNotFoundError):
-            with self.assertRaises(ExtractionError):
-                self.extractor._run_command(
-                    ["fwtool", "-q", "-i", "-", "/fake/path.bin"]
-                )
-
-
 class TestDetectImageType(TestCase):
     def test_x86_img_raises_unsupported(self):
         extractor = OpenWrtMetadataExtractor("/path/to/image.img")
@@ -122,13 +91,12 @@ class TestDetectImageType(TestCase):
 
 
 class TestExtractFromImage(TestCase):
+    _PATH = "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
+    _MOCK = "openwisp_firmware_upgrader.extractors.openwrt._extract_fwtool_metadata"
+
     def _mock_fwtool(self, meta_dict):
-        extractor = OpenWrtMetadataExtractor(
-            "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
-        )
-        with mock.patch.object(
-            extractor, "_run_command", return_value=json.dumps(meta_dict)
-        ):
+        extractor = OpenWrtMetadataExtractor(self._PATH)
+        with mock.patch(self._MOCK, return_value=meta_dict):
             return extractor.extract_from_image()
 
     def test_happy_path(self):
@@ -147,19 +115,9 @@ class TestExtractFromImage(TestCase):
         self.assertEqual(result["version"], "SNAPSHOT")
         self.assertEqual(result["source"], "fwtool")
 
-    def test_invalid_json_raises_extraction_error(self):
-        extractor = OpenWrtMetadataExtractor(
-            "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
-        )
-        with mock.patch.object(extractor, "_run_command", return_value="not-json"):
-            with self.assertRaises(ExtractionError):
-                extractor.extract_from_image()
-
-    def test_empty_meta_raises_extraction_error(self):
-        extractor = OpenWrtMetadataExtractor(
-            "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
-        )
-        with mock.patch.object(extractor, "_run_command", return_value="{}"):
+    def test_none_meta_raises_extraction_error(self):
+        extractor = OpenWrtMetadataExtractor(self._PATH)
+        with mock.patch(self._MOCK, return_value=None):
             with self.assertRaises(ExtractionError):
                 extractor.extract_from_image()
 
@@ -297,12 +255,10 @@ class TestDecompress(TestCase):
 
 
 class TestExtractOverride(TestCase):
-    DEFAULT_SYSUPGRADE_PATH = (
-        "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
-    )
+    _PATH = "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
 
     def _make_extractor(self, path=None):
-        return OpenWrtMetadataExtractor(path or self.DEFAULT_SYSUPGRADE_PATH)
+        return OpenWrtMetadataExtractor(path or self._PATH)
 
     def test_fwtool_success_returns_fwtool_result(self):
         extractor = self._make_extractor()
@@ -386,3 +342,61 @@ class TestExtractOverride(TestCase):
             with self.assertRaises(UnsupportedImageError):
                 extractor.extract()
         mock_dtb.assert_not_called()
+
+
+class TestExtractFwtoolMetadata(TestCase):
+    def _build_image(self, meta_dict, prefix=b"\x00" * 32):
+        json_bytes = json.dumps(meta_dict).encode("utf-8")
+        header = b"\x00" * HEADER_SIZE
+        data_block = prefix + header + json_bytes
+        size = HEADER_SIZE + len(json_bytes) + TRAILER_SIZE
+        crc = _crc32_block(0xFFFFFFFF, data_block)
+        trailer = struct.pack(
+            TRAILER_FORMAT, FWIMAGE_MAGIC, crc, FWIMAGE_INFO, b"\x00\x00\x00", size
+        )
+        return data_block + trailer
+
+    def _write_image(self, data):
+        f = tempfile.NamedTemporaryFile(suffix=".bin", delete=False)
+        f.write(data)
+        f.close()
+        return f.name
+
+    def test_extracts_metadata_from_valid_trailer(self):
+        meta = {
+            "version": {
+                "board": "tplink,tl-wdr4300-v1",
+                "target": "ath79/generic",
+                "version": "SNAPSHOT",
+            },
+            "compat_version": "1.0",
+            "supported_devices": ["tplink,tl-wdr4300-v1"],
+        }
+        path = self._write_image(self._build_image(meta))
+        try:
+            result = _extract_fwtool_metadata(path)
+        finally:
+            os.unlink(path)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["version"]["board"], "tplink,tl-wdr4300-v1")
+        self.assertEqual(result["compat_version"], "1.0")
+
+    def test_returns_none_when_no_trailer(self):
+        path = self._write_image(b"\x00" * 256)
+        try:
+            result = _extract_fwtool_metadata(path)
+        finally:
+            os.unlink(path)
+        self.assertIsNone(result)
+
+    def test_returns_none_on_corrupt_crc(self):
+        meta = {"version": {"board": "x", "target": "x", "version": "x"}}
+        image = bytearray(self._build_image(meta))
+        # Flip a byte in the CRC field (bytes 4-7 of the trailer)
+        image[-TRAILER_SIZE + 4] ^= 0xFF
+        path = self._write_image(bytes(image))
+        try:
+            result = _extract_fwtool_metadata(path)
+        finally:
+            os.unlink(path)
+        self.assertIsNone(result)
