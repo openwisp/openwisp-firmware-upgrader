@@ -458,6 +458,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         )
         if batch:
             operation.batch = batch
+            operation.is_persistent = batch.is_persistent
         operation.full_clean()
         operation.save()
         # launch ``upgrade_firmware`` in the background (celery)
@@ -566,6 +567,15 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     )
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
+    )
+    is_persistent = models.BooleanField(
+        default=True,
+        verbose_name=_("persistent"),
+        help_text=_(
+            "if enabled, the mass upgrade keeps retrying "
+            "offline devices until they come back online "
+            "or the operation is cancelled"
+        ),
     )
 
     class Meta:
@@ -840,6 +850,31 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         on_delete=models.CASCADE,
         blank=True,
         null=True,
+    )
+    is_persistent = models.BooleanField(
+        default=False,
+        verbose_name=_("persistent"),
+        help_text=_(
+            "if enabled, the operation stays pending and retries "
+            "when the device comes back online"
+        ),
+    )
+    retry_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_("retry count"),
+        help_text=_(
+            "number of times the operation has gone from in-progress to pending"
+        ),
+    )
+    next_retry_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name=_("next retry at"),
+        help_text=_(
+            "when the periodic scanner should next retry this "
+            "pending operation, null if no retry is queued"
+        ),
     )
 
     def __str__(self):
