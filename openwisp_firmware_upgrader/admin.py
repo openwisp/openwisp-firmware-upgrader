@@ -12,6 +12,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
+from django.forms.formsets import DELETION_FIELD_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.templatetags.static import static
@@ -328,15 +329,6 @@ class UpgradeOperationInline(admin.StackedInline):
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
-
-    def has_delete_permission(self, request, obj):
-        # allow deleting except if in-progress, in which case operation must
-        # be cancelled first or wait until resolved (success/failed).
-        if not super().has_delete_permission(request, obj):
-            return False
-        if self.get_queryset(request).filter(status=IN_PROGRESS_STATUS).exists():
-            return False
-        return True
 
     def has_add_permission(self, request, obj):
         return False
@@ -765,6 +757,19 @@ class DeviceFormSet(forms.BaseInlineFormSet):
         return kwargs
 
 
+class DeviceUpgradeOperationFormSet(DeviceFormSet):
+    """Disable inline deletion of in-progress operations server-side."""
+
+    def add_fields(self, form, index):
+        super().add_fields(form, index)
+        if (
+            form.instance.pk
+            and form.instance.status == IN_PROGRESS_STATUS
+            and DELETION_FIELD_NAME in form.fields
+        ):
+            form.fields[DELETION_FIELD_NAME].disabled = True
+
+
 class DeviceFirmwareInline(
     MultitenantAdminMixin, DeactivatedDeviceReadOnlyMixin, admin.StackedInline
 ):
@@ -824,7 +829,7 @@ class DeviceUpgradeOperationForm(UpgradeOperationForm):
 class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperationInline):
     verbose_name = _("Recent Firmware Upgrades")
     verbose_name_plural = verbose_name
-    formset = DeviceFormSet
+    formset = DeviceUpgradeOperationFormSet
     form = DeviceUpgradeOperationForm
     # hack for openwisp-monitoring integration
     # TODO: remove when this issue solved:

@@ -800,6 +800,12 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         return params
 
+    def _get_input_tag(self, content, name):
+        name_index = content.index(f'name="{name}"')
+        input_start = content.rfind("<input", 0, name_index)
+        input_end = content.index(">", name_index) + 1
+        return content[input_start:input_end]
+
     def test_device_bulk_delete_with_upgrade_operation(self):
         self._login()
         org = self._create_org(name="bulk-delete-org", slug="bulk-delete-org")
@@ -940,7 +946,10 @@ class TestAdmin(BaseTestAdmin, TestCase):
         with self.subTest("in-progress operation cannot be deleted inline"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
-            self.assertNotContains(response, 'name="upgradeoperation_set-0-DELETE"')
+            delete_input = self._get_input_tag(
+                response.content.decode(), "upgradeoperation_set-0-DELETE"
+            )
+            self.assertIn("disabled", delete_input)
             response = self.client.post(
                 url,
                 data=self._get_device_upgrade_operation_delete_params(
@@ -966,6 +975,32 @@ class TestAdmin(BaseTestAdmin, TestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_device_upgrade_operation_inline_delete_mixed_statuses(self):
+        self._login()
+        device = self._create_device_with_connection()
+        self._create_device_firmware(device=device, device_connection=False)
+        in_progress_operation = UpgradeOperation.objects.create(device=device)
+        failed_operation = UpgradeOperation.objects.create(
+            device=device, status="failed"
+        )
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+        response = self.client.get(url)
+        content = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f'value="{failed_operation.pk}"', content)
+        self.assertIn(f'value="{in_progress_operation.pk}"', content)
+        failed_index = content.index(f'value="{failed_operation.pk}"')
+        in_progress_index = content.index(f'value="{in_progress_operation.pk}"')
+        failed_delete_input = self._get_input_tag(
+            content, "upgradeoperation_set-0-DELETE"
+        )
+        in_progress_delete_input = self._get_input_tag(
+            content, "upgradeoperation_set-1-DELETE"
+        )
+        self.assertNotIn("disabled", failed_delete_input)
+        self.assertIn("disabled", in_progress_delete_input)
+        self.assertLess(failed_index, in_progress_index)
 
 
 class TestAdminTransaction(
