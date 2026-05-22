@@ -851,6 +851,32 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '<option value="delete_selected">')
 
+    def test_upgrade_operation_admin_delete_by_status(self):
+        self._login()
+        device = self._create_device_with_connection()
+        operation = UpgradeOperation.objects.create(device=device)
+        change_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_change", args=[operation.pk]
+        )
+        delete_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_delete", args=[operation.pk]
+        )
+
+        with self.subTest("in-progress operation does not show delete button"):
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, delete_url)
+
+        with self.subTest("failed operation can be deleted"):
+            operation.status = "failed"
+            operation.save(update_fields=["status"])
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, delete_url)
+            response = self.client.post(delete_url, {"post": "yes"}, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
     def test_upgrade_operation_admin_bulk_delete_in_progress_not_allowed(self):
         self._login()
         device = self._create_device_with_connection()
@@ -886,6 +912,32 @@ class TestAdmin(BaseTestAdmin, TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '<option value="delete_selected">')
+
+    def test_batch_upgrade_operation_admin_delete_by_status(self):
+        self._login()
+        build = self._create_build()
+        batch = BatchUpgradeOperation.objects.create(build=build, status="in-progress")
+        change_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        delete_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_delete", args=[batch.pk]
+        )
+
+        with self.subTest("in-progress batch does not show delete button"):
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, delete_url)
+
+        with self.subTest("failed batch can be deleted"):
+            batch.status = "failed"
+            batch.save(update_fields=["status"])
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, delete_url)
+            response = self.client.post(delete_url, {"post": "yes"}, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
 
     def test_batch_upgrade_operation_admin_bulk_delete_by_status(self):
         self._login()
