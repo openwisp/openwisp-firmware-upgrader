@@ -7,6 +7,7 @@ import swapper
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
+from django.contrib.admin.actions import delete_selected
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
@@ -51,6 +52,10 @@ DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Organization = swapper.load_model("openwisp_users", "Organization")
 Location = swapper.load_model("geo", "Location")
 DeviceGroup = swapper.load_model("config", "DeviceGroup")
+
+IN_PROGRESS_DELETE_MESSAGE = _(
+    "In-progress operations cannot be deleted. Cancel or complete them first."
+)
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -324,7 +329,13 @@ class UpgradeOperationInline(admin.StackedInline):
     extra = 0
 
     def has_delete_permission(self, request, obj):
-        return False
+        # allow deleting except if in-progress, in which case operation must
+        # be cancelled first or wait until resolved (success/failed).
+        if not super().has_delete_permission(request, obj):
+            return False
+        if self.get_queryset(request).filter(status="in-progress").exists():
+            return False
+        return True
 
     def has_add_permission(self, request, obj):
         return False
@@ -362,8 +373,36 @@ class ReadonlyUpgradeOptionsMixin:
         )
 
 
+class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+    actions = ["delete_selected"]
+
+    def get_actions(self, request):
+        # skip ReadOnlyAdmin
+        return super(ReadOnlyAdmin, self).get_actions(request)
+
+    def delete_model(self, request, obj):
+        # skip ReadOnlyAdmin
+        super(ReadOnlyAdmin, self).delete_model(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        # allow deleting except if in-progress, in which case operation must
+        # be cancelled first or wait until resolved (success/failed).
+        if not super(ReadOnlyAdmin, self).has_delete_permission(request, obj):
+            return False
+        if obj and obj.status == "in-progress":
+            return False
+        return True
+
+    @admin.action(description=delete_selected.short_description, permissions=["delete"])
+    def delete_selected(self, request, queryset):
+        if queryset.filter(status="in-progress").exists():
+            self.message_user(request, IN_PROGRESS_DELETE_MESSAGE, messages.ERROR)
+            return None
+        return delete_selected(self, request, queryset)
+
+
 @admin.register(UpgradeOperation)
-class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+class UpgradeOperationAdmin(BaseUpgradeAdmin):
     form = UpgradeOperationForm
     list_display = ["device", "status", "image", "modified"]
     list_filter = ["status"]
@@ -447,12 +486,9 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
     def has_add_permission(self, request):
         return False
 
-    def has_delete_permission(self, request, obj=None):
-        return False
-
 
 @admin.register(BatchUpgradeOperation)
-class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
     list_display = ["build", "organization", "status", "created", "modified"]
     list_filter = [
         BuildCategoryOrganizationFilter,
