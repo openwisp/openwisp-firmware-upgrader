@@ -828,6 +828,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         ("failed", _("failed")),  # failed at late stage or can't reconnect
         ("cancelled", _("cancelled")),  # cancelled by the user
         ("aborted", _("aborted")),  # aborted due to prerequisites not met
+        ("pending", _("pending")),  # offline device; waiting for periodic retry
     )
     device = models.ForeignKey(
         swapper.get_model_name("config", "Device"), on_delete=models.CASCADE
