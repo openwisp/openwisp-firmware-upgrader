@@ -614,6 +614,21 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                     )
                 }
             )
+        if not self._state.adding:
+            stored_status, stored_is_persistent = (
+                load_model("BatchUpgradeOperation")
+                .objects.values_list("status", "is_persistent")
+                .get(pk=self.pk)
+            )
+            if stored_status != "idle" and self.is_persistent != stored_is_persistent:
+                raise ValidationError(
+                    {
+                        "is_persistent": _(
+                            "Persistent cannot be changed after the mass "
+                            "upgrade has started"
+                        )
+                    }
+                )
 
     def upgrade(self, firmwareless):
         self.status = "in-progress"
@@ -877,6 +892,24 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             "pending operation, null if no retry is queued"
         ),
     )
+
+    def clean(self):
+        super().clean()
+        if not self._state.adding:
+            stored_is_persistent = (
+                load_model("UpgradeOperation")
+                .objects.values_list("is_persistent", flat=True)
+                .get(pk=self.pk)
+            )
+            if self.is_persistent != stored_is_persistent:
+                raise ValidationError(
+                    {
+                        "is_persistent": _(
+                            "Persistent cannot be changed after the "
+                            "upgrade operation has been saved"
+                        )
+                    }
+                )
 
     def __str__(self):
         return f"{self.device} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
