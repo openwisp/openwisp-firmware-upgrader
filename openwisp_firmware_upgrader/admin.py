@@ -56,6 +56,7 @@ DeviceGroup = swapper.load_model("config", "DeviceGroup")
 IN_PROGRESS_DELETE_MESSAGE = _(
     "In-progress operations cannot be deleted. Cancel or complete them first."
 )
+IN_PROGRESS_STATUS = UpgradeOperation._CANCELLABLE_STATUS
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -333,7 +334,7 @@ class UpgradeOperationInline(admin.StackedInline):
         # be cancelled first or wait until resolved (success/failed).
         if not super().has_delete_permission(request, obj):
             return False
-        if self.get_queryset(request).filter(status="in-progress").exists():
+        if self.get_queryset(request).filter(status=IN_PROGRESS_STATUS).exists():
             return False
         return True
 
@@ -389,13 +390,13 @@ class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
         # be cancelled first or wait until resolved (success/failed).
         if not super(ReadOnlyAdmin, self).has_delete_permission(request, obj):
             return False
-        if obj and obj.status == "in-progress":
+        if obj and obj.status == IN_PROGRESS_STATUS:
             return False
         return True
 
     @admin.action(description=delete_selected.short_description, permissions=["delete"])
     def delete_selected(self, request, queryset):
-        if queryset.filter(status="in-progress").exists():
+        if queryset.filter(status=IN_PROGRESS_STATUS).exists():
             self.message_user(request, IN_PROGRESS_DELETE_MESSAGE, messages.ERROR)
             return None
         return delete_selected(self, request, queryset)

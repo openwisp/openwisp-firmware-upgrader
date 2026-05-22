@@ -191,17 +191,18 @@ Upgrade operations and batch upgrade operations can be deleted from the
 admin interface only after they leave the ``in-progress`` state.
 
 Deleting an operation while it is still running is intentionally blocked
-because the upgrade may be uploading or flashing a firmware image, restarting
-services, or waiting for the device to reconnect. Removing the operation at
-that point would make the outcome harder to track and would introduce risky
-edge cases around partially completed upgrades.
+because the upgrade may be uploading or flashing a firmware image,
+restarting services, or waiting for the device to reconnect. Removing the
+operation at that point would make the outcome harder to track and would
+introduce risky edge cases around partially completed upgrades.
 
 If an upgrade is still in progress and the firmware image has not started
 flashing yet, cancel the operation instead. If cancellation is no longer
-available, wait until the operation completes and reaches one of the terminal
-states before deleting it.
+available, wait until the operation completes and reaches one of the
+terminal states before deleting it.
 
-The same rule applies to mass upgrades: a batch upgrade operation cannot be
-deleted while it is still ``in-progress``. Once the batch reaches a terminal
-state such as ``success``, ``failed``, or ``cancelled``, it can be deleted
-from the admin interface if the user has the required delete permission.
+The same rule applies to mass upgrades: a batch upgrade operation cannot
+be deleted while it is still ``in-progress``. Once the batch reaches a
+terminal state such as ``success``, ``failed``, or ``cancelled``, it can
+be deleted from the admin interface if the user has the required delete
+permission.
