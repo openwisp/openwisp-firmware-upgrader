@@ -583,6 +583,90 @@ class TestModels(TestUpgraderMixin, TestCase):
         expected = f"{uo.device} ({timezone.localtime(uo.created).strftime('%Y-%m-%d %H:%M:%S')})"
         self.assertEqual(str(uo), expected)
 
+    def test_is_persistent_field_defaults(self):
+        build = self._create_build()
+        batch = BatchUpgradeOperation(build=build)
+        self.assertTrue(batch.is_persistent)
+
+        device_fw = self._create_device_firmware()
+        uo = UpgradeOperation(device=device_fw.device, image=device_fw.image)
+        self.assertFalse(uo.is_persistent)
+        self.assertEqual(uo.retry_count, 0)
+        self.assertIsNone(uo.next_retry_at)
+
+    def test_next_retry_at_has_db_index(self):
+        field = UpgradeOperation._meta.get_field("next_retry_at")
+        self.assertTrue(field.db_index)
+        self.assertTrue(field.null)
+        self.assertTrue(field.blank)
+
+    def test_is_persistent_propagation_from_batch(self):
+        device_fw = self._create_device_firmware()
+        build = device_fw.image.build
+        with mock.patch(
+            f"{self.app_label}.models.UpgradeOperation.upgrade", return_value=None
+        ):
+            with self.subTest("is_persistent=True batch propagates True to child"):
+                batch = BatchUpgradeOperation.objects.create(
+                    build=build, is_persistent=True
+                )
+                op = device_fw.create_upgrade_operation(batch, upgrade_options={})
+                self.assertTrue(op.is_persistent)
+                self.assertEqual(op.batch, batch)
+
+            with self.subTest("is_persistent=False batch propagates False to child"):
+                batch = BatchUpgradeOperation.objects.create(
+                    build=build, is_persistent=False
+                )
+                op = device_fw.create_upgrade_operation(batch, upgrade_options={})
+                self.assertFalse(op.is_persistent)
+
+            with self.subTest("no batch keeps the per-operation default False"):
+                op = device_fw.create_upgrade_operation(batch=None, upgrade_options={})
+                self.assertFalse(op.is_persistent)
+                self.assertIsNone(op.batch)
+
+    def test_is_persistent_immutable_on_upgrade_operation(self):
+        device_fw = self._create_device_firmware()
+        with mock.patch(
+            f"{self.app_label}.models.UpgradeOperation.upgrade", return_value=None
+        ):
+            op = device_fw.create_upgrade_operation(batch=None, upgrade_options={})
+        op.is_persistent = True
+        with self.assertRaises(ValidationError) as ctx:
+            op.full_clean()
+        self.assertIn("is_persistent", ctx.exception.message_dict)
+
+    def test_is_persistent_immutable_on_batch_upgrade_operation(self):
+        build = self._create_build()
+        batch = BatchUpgradeOperation.objects.create(build=build, is_persistent=True)
+
+        with self.subTest("changing is_persistent while batch is idle is allowed"):
+            batch.is_persistent = False
+            batch.full_clean()
+
+        with self.subTest("changing is_persistent after launch raises"):
+            batch.refresh_from_db()
+            batch.status = "in-progress"
+            batch.save()
+            batch.is_persistent = False
+            with self.assertRaises(ValidationError) as ctx:
+                batch.full_clean()
+            self.assertIn("is_persistent", ctx.exception.message_dict)
+
+    def test_full_clean_on_unsaved_instances(self):
+        """Regression: full_clean() on a brand-new UUID-pk instance must not query for a stored value."""
+        device_fw = self._create_device_firmware()
+        with self.subTest("brand-new UpgradeOperation"):
+            op = UpgradeOperation(device=device_fw.device, image=device_fw.image)
+            self.assertTrue(op._state.adding)
+            op.full_clean()
+
+        with self.subTest("brand-new BatchUpgradeOperation"):
+            batch = BatchUpgradeOperation(build=device_fw.image.build)
+            self.assertTrue(batch._state.adding)
+            batch.full_clean()
+
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
