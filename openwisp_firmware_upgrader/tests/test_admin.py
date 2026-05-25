@@ -1756,6 +1756,9 @@ class TestAdminTransaction(
                 self.assertNotContains(response, str(batch2.pk))
                 self.assertNotContains(response, str(batch3.pk))
 
+    @mock.patch(
+        "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
+    )
     def test_device_firmware_inline_deactivated_device(self, *args):
         self._login()
         device_fw = self._create_device_firmware()

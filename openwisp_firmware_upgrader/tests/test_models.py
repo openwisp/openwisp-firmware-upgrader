@@ -1064,6 +1064,10 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             batch.refresh_from_db()
             self.assertEqual(batch.status, "success")
 
+    @mock.patch(
+        "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
+    )
+    @mock.patch("openwisp_firmware_upgrader.websockets._run_coroutine_safely")
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
     def test_batch_upgrade_excludes_deactivated_devices(self, *args):
         env = self._create_upgrade_env()
@@ -1102,7 +1106,10 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             firmwareless_device.pk, device_ids
         )  # deactivated firmwareless device excluded
 
-    def test_deactivated_device_validation(self):
+    @mock.patch(
+        "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
+    )
+    def test_deactivated_device_validation(self, *_args):
         device_fw = self._create_device_firmware()
         device = device_fw.device
         # Test DeviceFirmware validation

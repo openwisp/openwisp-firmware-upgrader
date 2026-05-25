@@ -8,11 +8,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import filters, generics, pagination, serializers, status
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import NotFound
 from rest_framework.request import clone_request
 from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
 
+from openwisp_controller.mixins import RelatedDeviceProtectedAPIMixin
 from openwisp_firmware_upgrader import private_storage
 from openwisp_users.api.mixins import FilterByOrganizationManaged, IsOrganizationManager
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
@@ -64,6 +65,29 @@ class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
             # when uuid is not valid
             qs = []
         return qs
+
+
+class RelatedDeviceAPIMixin(ProtectedAPIMixin):
+    related_device_permission_class = RelatedDeviceProtectedAPIMixin.permission_classes[
+        -1
+    ]
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        if self.request.method not in ("GET", "HEAD", "OPTIONS"):
+            permissions.append(self.related_device_permission_class())
+        return permissions
+
+    def assert_parent_exists(self):
+        parent_queryset = self.get_parent_queryset()
+        if not self.request.user.is_superuser:
+            parent_queryset = parent_queryset.filter(
+                organization__in=self.request.user.organizations_managed
+            )
+        try:
+            assert parent_queryset.exists()
+        except (AssertionError, ValidationError):
+            raise NotFound(detail="device not found")
 
 
 class BuildListView(ProtectedAPIMixin, generics.ListCreateAPIView):
@@ -277,7 +301,7 @@ class DeviceUpgradeOperationListView(DeviceUpgradeOperationMixin, generics.ListA
 
 
 class DeviceFirmwareDetailView(
-    ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIView
+    RelatedDeviceAPIMixin, generics.RetrieveUpdateDestroyAPIView
 ):
     serializer_class = DeviceFirmwareSerializer
     queryset = DeviceFirmware.objects.select_related("device", "image")
@@ -285,16 +309,13 @@ class DeviceFirmwareDetailView(
     lookup_url_kwarg = "pk"
     organization_field = "device__organization"
 
-    def get_object(self):
-        obj = super().get_object()
-        if self.request.method not in ("GET", "HEAD") and obj.device.is_deactivated():
-            raise PermissionDenied
-        return obj
-
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context.update({"device_id": self.kwargs["pk"]})
         return context
+
+    def get_parent_queryset(self):
+        return Device.objects.filter(pk=self.kwargs["pk"])
 
     def get_serializer(self, *args, **kwargs):
         serializer = super().get_serializer(*args, **kwargs)
@@ -364,6 +385,7 @@ class DeviceFirmwareDetailView(
                 # relevant permissions, as if this was a POST request. This
                 # will either raise a PermissionDenied exception, or simply
                 # return None.
+                self.assert_parent_exists()
                 self.check_permissions(clone_request(self.request, "POST"))
             else:
                 # PATCH requests where the object does not exist should still

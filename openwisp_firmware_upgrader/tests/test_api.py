@@ -1348,6 +1348,21 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             response = self.client.delete(url)
             self.assertEqual(response.status_code, 403)
 
+    def test_deactivated_device_put_as_create(self):
+        env = self._create_upgrade_env(device_firmware=False)
+        url = reverse("upgrader:api_devicefirmware_detail", args=[env["d1"].pk])
+        env["d1"].deactivate()
+
+        response = self.client.put(
+            url,
+            data={"image": env["image1a"].pk},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(DeviceFirmware.objects.count(), 0)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+
     def test_device_firmware_detail_delete(self):
         device_fw = self._create_device_firmware()
         self.assertEqual(DeviceFirmware.objects.count(), 1)
