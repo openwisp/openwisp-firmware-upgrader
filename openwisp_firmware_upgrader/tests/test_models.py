@@ -194,6 +194,12 @@ class TestModels(TestUpgraderMixin, TestCase):
             device_fw.full_clean()
         self.assertIn("related connection", str(ctx.exception))
 
+    def test_device_firmware_missing_required_fields(self):
+        with self.assertRaises(ValidationError) as cm:
+            DeviceFirmware().full_clean()
+        self.assertIn("device", cm.exception.message_dict)
+        self.assertIn("image", cm.exception.message_dict)
+
     def test_invalid_board(self):
         image = FIRMWARE_IMAGE_MAP[self.TPLINK_4300_IMAGE]
         boards = image["boards"]
@@ -1057,3 +1063,62 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(len(upgrade_ops), 1)
             batch.refresh_from_db()
             self.assertEqual(batch.status, "success")
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    def test_batch_upgrade_excludes_deactivated_devices(self, *args):
+        env = self._create_upgrade_env()
+        # Test firmwareless=False case (devices with existing DeviceFirmware)
+        env["d1"].deactivate()
+        batch = env["build2"].batch_upgrade(firmwareless=False)
+        ops = UpgradeOperation.objects.filter(batch=batch)
+        # Should only have operations for non-deactivated devices
+        device_ids = [op.device.pk for op in ops]
+        self.assertNotIn(env["d1"].pk, device_ids)  # deactivated device excluded
+        self.assertIn(env["d2"].pk, device_ids)  # active device included
+
+        # Clean up for next test
+        UpgradeOperation.objects.all().delete()
+        BatchUpgradeOperation.objects.all().delete()
+
+        # Test firmwareless=True case (devices without existing DeviceFirmware)
+        # Create a new device without DeviceFirmware and deactivate it
+        firmwareless_device = self._create_device(
+            name="FirmwarelessDevice",
+            organization=env["d1"].organization,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:44:55",
+        )
+        self._create_config(device=firmwareless_device)
+        self._create_device_connection(
+            device=firmwareless_device,
+            credentials=env["d1"].deviceconnection_set.first().credentials,
+        )
+        firmwareless_device.deactivate()
+        batch = env["build2"].batch_upgrade(firmwareless=True)
+        ops = UpgradeOperation.objects.filter(batch=batch)
+        # Deactivated firmwareless device should be excluded
+        device_ids = [op.device.pk for op in ops]
+        self.assertNotIn(
+            firmwareless_device.pk, device_ids
+        )  # deactivated firmwareless device excluded
+
+    def test_deactivated_device_validation(self):
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        # Test DeviceFirmware validation
+        device.deactivate()
+        with self.assertRaises(ValidationError) as cm:
+            new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
+            new_device_fw.full_clean()
+        self.assertIn(
+            "Cannot create or modify firmware object for deactivated device",
+            str(cm.exception),
+        )
+        # Test UpgradeOperation validation
+        with self.assertRaises(ValidationError) as cm:
+            operation = UpgradeOperation(device=device, image=device_fw.image)
+            operation.full_clean()
+        self.assertIn(
+            "Cannot create or modify upgrade operation for deactivated device",
+            str(cm.exception),
+        )

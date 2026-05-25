@@ -528,6 +528,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_deactivated_firmware_image_inline(self):
         self._login()
         device = self._create_config(organization=self._get_org()).device
+        self._create_device_firmware(device=device)
         device.deactivate()
         response = self.client.get(
             reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
@@ -538,10 +539,6 @@ class TestAdmin(BaseTestAdmin, TestCase):
             response,
             '<input type="hidden" name="devicefirmware-MAX_NUM_FORMS"'
             ' value="0" id="id_devicefirmware-MAX_NUM_FORMS">',
-        )
-        self._create_device_firmware(device=device)
-        response = self.client.get(
-            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
         )
         # Ensure that a deactivated device's existing DeviceFirmwareImage
         # is displayed as readonly in the admin interface.
@@ -1758,6 +1755,57 @@ class TestAdminTransaction(
                 self.assertContains(response, str(batch1.pk))
                 self.assertNotContains(response, str(batch2.pk))
                 self.assertNotContains(response, str(batch3.pk))
+
+    def test_device_firmware_inline_deactivated_device(self, *args):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        device.deactivate()
+        # Record initial state before attempting to modify deactivated device
+        initial_device_fw_count = DeviceFirmware.objects.filter(device=device).count()
+        initial_upgrade_op_count = UpgradeOperation.objects.filter(
+            device=device
+        ).count()
+        initial_total_device_fw_count = DeviceFirmware.objects.count()
+        initial_total_upgrade_op_count = UpgradeOperation.objects.count()
+        # Try to add a new DeviceFirmware via admin interface
+        device_params = self._get_device_params(device, device_conn, device_fw.image)
+        device_params.update(
+            {
+                "devicefirmware-0-image": str(device_fw.image.id),
+                "devicefirmware-TOTAL_FORMS": 1,
+                "devicefirmware-INITIAL_FORMS": 0,
+            }
+        )
+        response = self.client.post(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 403)
+
+        # Verify no database side effects occurred
+        self.assertEqual(
+            DeviceFirmware.objects.filter(device=device).count(),
+            initial_device_fw_count,
+            "DeviceFirmware count for deactivated device should remain unchanged",
+        )
+        self.assertEqual(
+            UpgradeOperation.objects.filter(device=device).count(),
+            initial_upgrade_op_count,
+            "UpgradeOperation count for deactivated device should remain unchanged",
+        )
+        self.assertEqual(
+            DeviceFirmware.objects.count(),
+            initial_total_device_fw_count,
+            "Total DeviceFirmware count should remain unchanged",
+        )
+        self.assertEqual(
+            UpgradeOperation.objects.count(),
+            initial_total_upgrade_op_count,
+            "Total UpgradeOperation count should remain unchanged",
+        )
 
 
 del TestConfigAdmin
