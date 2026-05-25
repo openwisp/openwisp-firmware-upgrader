@@ -66,28 +66,28 @@ class TestDetectImageType(TestCase):
     def test_x86_img_raises_unsupported(self):
         extractor = OpenWrtMetadataExtractor("/path/to/image.img")
         with self.assertRaises(UnsupportedImageError):
-            extractor._detect_image_type()
+            extractor._validate_image_type()
 
     def test_vmdk_raises_unsupported(self):
         extractor = OpenWrtMetadataExtractor("/path/to/image.vmdk")
         with self.assertRaises(UnsupportedImageError):
-            extractor._detect_image_type()
+            extractor._validate_image_type()
 
     def test_vdi_raises_unsupported(self):
         extractor = OpenWrtMetadataExtractor("/path/to/image.vdi")
         with self.assertRaises(UnsupportedImageError):
-            extractor._detect_image_type()
+            extractor._validate_image_type()
 
     def test_armsr_raises_unsupported(self):
         extractor = OpenWrtMetadataExtractor("/path/to/armsr-image.bin")
         with self.assertRaises(UnsupportedImageError):
-            extractor._detect_image_type()
+            extractor._validate_image_type()
 
     def test_sysupgrade_passes(self):
         extractor = OpenWrtMetadataExtractor(
             "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
         )
-        extractor._detect_image_type()  # must not raise
+        extractor._validate_image_type()  # must not raise
 
 
 class TestExtractFromImage(TestCase):

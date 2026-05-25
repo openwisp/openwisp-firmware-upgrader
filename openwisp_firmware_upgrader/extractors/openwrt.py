@@ -353,7 +353,7 @@ def _metadata_from_dtb(dtb_bytes):
 
 class OpenWrtMetadataExtractor(BaseMetadataExtractor):
 
-    def _detect_image_type(self):
+    def _validate_image_type(self):
         _, ext = os.path.splitext(self.image_path)
         if ext.lower() in _X86_SUFFIXES:
             raise UnsupportedImageError(f"x86 image type not supported: {ext}")
@@ -375,7 +375,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         }
 
     def extract_from_image(self):
-        self._detect_image_type()
+        self._validate_image_type()
         return self._extract_from_fwtool()
 
     def _read_kernel_bytes(self):
