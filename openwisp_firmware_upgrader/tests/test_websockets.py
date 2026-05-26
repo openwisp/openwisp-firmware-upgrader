@@ -400,11 +400,12 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
-            publisher.publish_batch_status("success", 5, 10)
+            publisher.publish_batch_status("in-progress", 5, 10, 2)
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[1]["data"]["type"], "batch_status")
-            self.assertEqual(call_args[1]["data"]["status"], "success")
+            self.assertEqual(call_args[1]["data"]["status"], "in-progress")
             self.assertEqual(call_args[1]["data"]["completed"], 5)
+            self.assertEqual(call_args[1]["data"]["pending"], 2)
             self.assertEqual(call_args[1]["data"]["total"], 10)
 
     async def test_websocket_connection_errors(self):
