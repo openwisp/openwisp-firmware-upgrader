@@ -503,12 +503,13 @@ class BatchUpgradeProgressPublisher:
             )
         self.publish_progress(progress_data)
 
-    def publish_batch_status(self, status, completed, total):
+    def publish_batch_status(self, status, completed, total, pending=0):
         self.publish_progress(
             {
                 "type": "batch_status",
                 "status": status,
                 "completed": completed,
+                "pending": pending,
                 "total": total,
             }
         )
@@ -521,6 +522,7 @@ class BatchUpgradeProgressPublisher:
             batch_status,
             stats["completed"],
             stats["total_operations"],
+            stats["pending"],
         )
 
     @classmethod
