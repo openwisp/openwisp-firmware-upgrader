@@ -251,7 +251,12 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                 # Calculate counts
                 total_operations = len(operations_list)
                 completed_operations = sum(
-                    1 for op in operations_list if op.status != "in-progress"
+                    1
+                    for op in operations_list
+                    if op.status not in ("in-progress", "pending")
+                )
+                pending_operations = sum(
+                    1 for op in operations_list if op.status == "pending"
                 )
                 # Send everything in ONE message
                 await self.send_json(
@@ -260,6 +265,7 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                         "batch_status": {
                             "status": batch_operation.status,
                             "completed": completed_operations,
+                            "pending": pending_operations,
                             "total": total_operations,
                         },
                         "operations": operations_data,
@@ -327,6 +333,7 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                         device_id=self.pk_,
                         status__in=[
                             "in-progress",
+                            "pending",
                             "success",
                             "failed",
                             "aborted",
