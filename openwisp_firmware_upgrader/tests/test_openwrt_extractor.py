@@ -48,7 +48,9 @@ def _get_firmware(key):
             return cached
         cached.unlink()
     try:
-        urllib.request.urlretrieve(entry["url"], cached)
+        with urllib.request.urlopen(entry["url"], timeout=60) as resp:
+            with open(cached, "wb") as out:
+                out.write(resp.read())
     except Exception:
         return None
     with open(cached, "rb") as f:

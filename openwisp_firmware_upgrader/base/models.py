@@ -326,7 +326,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         # Delete the directory if empty
         try:
             dir_path = str(Path(file_path).parent)
-            if not dir or dir_path == ".":
+            if not dir_path or dir_path == ".":
                 return True
             dirs, files = storage.listdir(dir_path)
             if dirs or files:
