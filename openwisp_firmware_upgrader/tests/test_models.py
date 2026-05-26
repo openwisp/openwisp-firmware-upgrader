@@ -13,6 +13,7 @@ from django.utils import timezone
 from openwisp_utils.tests import capture_any_output
 
 from .. import settings as app_settings
+from ..exceptions import RecoverableFailure
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..tasks import upgrade_firmware
@@ -666,6 +667,76 @@ class TestModels(TestUpgraderMixin, TestCase):
             batch = BatchUpgradeOperation(build=device_fw.image.build)
             self.assertTrue(batch._state.adding)
             batch.full_clean()
+
+    def _make_persistent_op(self, is_persistent):
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            is_persistent=is_persistent,
+        )
+        return op
+
+    def test_recoverable_failure_handler_recoverable_branch_unchanged(self):
+        op = self._make_persistent_op(is_persistent=True)
+        with self.assertRaises(RecoverableFailure):
+            op._recoverable_failure_handler(
+                recoverable=True, error=RecoverableFailure("transient")
+            )
+        self.assertEqual(op.status, "in-progress")
+        self.assertEqual(op.retry_count, 0)
+        self.assertIsNone(op.next_retry_at)
+
+    def test_recoverable_failure_handler_persistent_schedules_retry(self):
+        op = self._make_persistent_op(is_persistent=True)
+        before = timezone.now()
+        op._recoverable_failure_handler(
+            recoverable=False, error=RecoverableFailure("device offline")
+        )
+        self.assertEqual(op.status, "pending")
+        self.assertEqual(op.retry_count, 1)
+        self.assertIsNotNone(op.next_retry_at)
+        self.assertGreater(op.next_retry_at, before)
+        self.assertIn("Scheduled persistent retry", op.log)
+
+    def test_recoverable_failure_handler_persistent_non_recoverable_error(self):
+        op = self._make_persistent_op(is_persistent=True)
+        op._recoverable_failure_handler(
+            recoverable=False, error=ValueError("unrecognised failure")
+        )
+        self.assertEqual(op.status, "failed")
+        self.assertEqual(op.retry_count, 0)
+        self.assertIsNone(op.next_retry_at)
+
+    def test_recoverable_failure_handler_non_persistent(self):
+        op = self._make_persistent_op(is_persistent=False)
+        op._recoverable_failure_handler(
+            recoverable=False, error=RecoverableFailure("device offline")
+        )
+        self.assertEqual(op.status, "failed")
+        self.assertEqual(op.retry_count, 0)
+        self.assertIsNone(op.next_retry_at)
+
+    def test_calculate_next_retry_backoff(self):
+        op = self._make_persistent_op(is_persistent=True)
+        base = app_settings.PERSISTENT_RETRY_BASE_DELAY
+        multiplier = app_settings.PERSISTENT_RETRY_MULTIPLIER
+        jitter = app_settings.PERSISTENT_RETRY_JITTER
+        max_delay = app_settings.PERSISTENT_RETRY_MAX_DELAY
+        for retry_count in (1, 2, 3, 7):
+            op.retry_count = retry_count
+            before = timezone.now()
+            scheduled = op._calculate_next_retry()
+            delta = (scheduled - before).total_seconds()
+            expected = base * (multiplier ** (retry_count - 1))
+            self.assertGreaterEqual(delta, expected * (1 - jitter) - 1)
+            self.assertLessEqual(delta, expected * (1 + jitter) + 1)
+        with self.subTest("delay is capped at PERSISTENT_RETRY_MAX_DELAY"):
+            op.retry_count = 20
+            before = timezone.now()
+            scheduled = op._calculate_next_retry()
+            delta = (scheduled - before).total_seconds()
+            self.assertLessEqual(delta, max_delay * (1 + jitter) + 1)
 
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
