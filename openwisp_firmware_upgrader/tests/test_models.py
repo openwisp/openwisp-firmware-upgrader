@@ -745,8 +745,16 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         with redirect_stdout(io.StringIO()):
             env["build2"].batch_upgrade(firmwareless=False)
         batch = BatchUpgradeOperation.objects.first()
-        self.assertEqual(batch.status, "failed")
+        # Default is_persistent=True propagates to children, so a failed
+        # connection sends each child to "pending" via the failure handler
+        # instead of "failed"; the batch stays at in-progress until the
+        # periodic retry pipeline either upgrades or cancels them.
         self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
+        self.assertEqual(batch.status, "in-progress")
+        for op in batch.upgradeoperation_set.all():
+            self.assertEqual(op.status, "pending")
+            self.assertGreater(op.retry_count, 0)
+            self.assertIsNotNone(op.next_retry_at)
 
     @mock.patch(_mock_updrade, return_value=True)
     def test_upgrade_related_devices_existing_fw(self, *args):

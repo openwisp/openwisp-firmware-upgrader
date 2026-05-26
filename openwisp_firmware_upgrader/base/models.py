@@ -1,4 +1,6 @@
 import logging
+import random
+from datetime import timedelta
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
@@ -980,12 +982,34 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.refresh_from_db()
             self.log_line(_("Upgrade operation has been cancelled by user"))
 
+    def _calculate_next_retry(self):
+        exponent = max(self.retry_count - 1, 0)
+        delay = min(
+            app_settings.PERSISTENT_RETRY_BASE_DELAY
+            * (app_settings.PERSISTENT_RETRY_MULTIPLIER**exponent),
+            app_settings.PERSISTENT_RETRY_MAX_DELAY,
+        )
+        jitter = app_settings.PERSISTENT_RETRY_JITTER
+        jittered = delay * random.uniform(1 - jitter, 1 + jitter)
+        return timezone.now() + timedelta(seconds=jittered)
+
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
         if recoverable:
             self.log_line(f"Detected a recoverable failure: {cause}.\n", save=False)
             self.log_line("The upgrade operation will be retried soon.")
             raise error
+        if self.is_persistent and isinstance(error, RecoverableFailure):
+            self.status = "pending"
+            self.retry_count += 1
+            self.next_retry_at = self._calculate_next_retry()
+            self.log_line(
+                f"All immediate retries exhausted: {cause}. "
+                f"Scheduled persistent retry #{self.retry_count} "
+                f"at {self.next_retry_at}.",
+                save=False,
+            )
+            return
         self.status = "failed"
         self.log_line(f"Max retries exceeded. Upgrade failed: {cause}.", save=False)
 
