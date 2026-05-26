@@ -696,11 +696,20 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self.upgrade_operations.count()
 
     @property
+    def pending_count(self):
+        return self.upgrade_operations.filter(status="pending").count()
+
+    @property
     def progress_report(self):
-        completed = self.upgrade_operations.exclude(
-            status__in=("in-progress", "pending")
-        ).count()
-        return _(f"{completed} out of {self.total_operations}")
+        stats = self.upgrade_operations.aggregate(
+            completed=models.Count(
+                "id", filter=~models.Q(status__in=("in-progress", "pending"))
+            ),
+            pending=models.Count("id", filter=models.Q(status="pending")),
+        )
+        if stats["pending"]:
+            return _(f"{stats['completed']} complete, {stats['pending']} pending")
+        return _(f"{stats['completed']} out of {self.total_operations}")
 
     @property
     def success_rate(self):
@@ -781,7 +790,13 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             total_operations=models.Count("id"),
             in_progress=models.Count(
                 models.Case(
-                    models.When(status__in=("in-progress", "pending"), then=1),
+                    models.When(status="in-progress", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
+            pending=models.Count(
+                models.Case(
+                    models.When(status="pending", then=1),
                     output_field=models.IntegerField(),
                 )
             ),
@@ -819,7 +834,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             ),
         )
         # Determine overall batch status based on individual operation statuses
-        if stats["in_progress"] > 0:
+        if stats["in_progress"] > 0 or stats["pending"] > 0:
             new_status = "in-progress"
         elif stats["failed"] > 0 or stats["aborted"] > 0:
             new_status = "failed"

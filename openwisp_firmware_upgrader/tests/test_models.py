@@ -757,13 +757,15 @@ class TestModels(TestUpgraderMixin, TestCase):
             is_persistent=True,
         )
 
-        with self.subTest("progress_report excludes pending from completed count"):
-            self.assertEqual(str(batch.progress_report), "1 out of 2")
+        with self.subTest("progress_report shows pending separately"):
+            self.assertEqual(str(batch.progress_report), "1 complete, 1 pending")
+            self.assertEqual(batch.pending_count, 1)
 
         with self.subTest("calculate_and_update_status keeps the batch active"):
             new_status, stats = batch.calculate_and_update_status()
             self.assertEqual(new_status, "in-progress")
-            self.assertEqual(stats["in_progress"], 1)
+            self.assertEqual(stats["in_progress"], 0)
+            self.assertEqual(stats["pending"], 1)
             self.assertEqual(stats["successful"], 1)
             self.assertEqual(stats["completed"], 1)
 
