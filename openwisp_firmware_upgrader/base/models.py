@@ -697,7 +697,9 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
     @property
     def progress_report(self):
-        completed = self.upgrade_operations.exclude(status="in-progress").count()
+        completed = self.upgrade_operations.exclude(
+            status__in=("in-progress", "pending")
+        ).count()
         return _(f"{completed} out of {self.total_operations}")
 
     @property
@@ -768,7 +770,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         Returns tuple of (status, stats_dict) for WebSocket publishing.
 
         Status determination rules:
-        - 'in-progress': If any operation is still in progress
+        - 'in-progress': If any operation is still in progress or pending
         - 'cancelled': If completed and any operation was cancelled
         - 'failed': If completed and any operation failed or aborted
         - 'success': If all operations completed successfully
@@ -779,13 +781,15 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             total_operations=models.Count("id"),
             in_progress=models.Count(
                 models.Case(
-                    models.When(status="in-progress", then=1),
+                    models.When(status__in=("in-progress", "pending"), then=1),
                     output_field=models.IntegerField(),
                 )
             ),
             completed=models.Count(
                 models.Case(
-                    models.When(~models.Q(status="in-progress"), then=1),
+                    models.When(
+                        ~models.Q(status__in=("in-progress", "pending")), then=1
+                    ),
                     output_field=models.IntegerField(),
                 )
             ),
@@ -838,7 +842,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
-    CANCELLABLE_STATUS = "in-progress"
+    CANCELLABLE_STATUS = ("in-progress", "pending")
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
@@ -956,13 +960,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             # By using an UPDATE query, we avoid such situation.
             updated = self._meta.model.objects.filter(
                 pk=self.pk,
-                status=self.CANCELLABLE_STATUS,
+                status__in=self.CANCELLABLE_STATUS,
                 progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
             ).update(status="cancelled")
             if not updated:
                 # The cancellation did not succeed, check why
                 self.refresh_from_db(fields=["status", "progress"])
-                if self.status != self.CANCELLABLE_STATUS:
+                if self.status not in self.CANCELLABLE_STATUS:
                     raise ValueError(
                         _("Cannot cancel operation with status: %(status)s")
                         % {"status": self.status}
@@ -1054,7 +1058,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # the same device running at the same time
         qs = (
             load_model("UpgradeOperation")
-            .objects.filter(device=self.device, status="in-progress")
+            .objects.filter(device=self.device, status__in=("in-progress", "pending"))
             .exclude(pk=self.pk)
         )
         if qs.exists():
