@@ -59,6 +59,7 @@ _INVALID_HEADERS = [
     (b"GIF89a", _("GIF image")),
     (b"PK\x03\x04", _("ZIP archive")),
     (b"MZ", _("Windows executable")),
+    (b"\x7fELF", _("ELF binary")),
     (b"<html", _("HTML file")),
     (b"<!DOC", _("HTML document")),
     (b"<?xml", _("XML file")),
@@ -372,7 +373,11 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                 )
 
     def _validate_rootfs(self):
-        if self.file and self.file.name and self.file.name.endswith("-rootfs.img"):
+        if (
+            self.file
+            and self.file.name
+            and self.file.name.lower().endswith("-rootfs.img")
+        ):
             raise ValidationError(
                 {
                     "file": _(

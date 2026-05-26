@@ -591,6 +591,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             (b"%PDF" + b"\x00" * 20, "PDF"),
             (b"\x89PNG\r\n\x1a\n" + b"\x00" * 20, "PNG"),
             (b"PK\x03\x04" + b"\x00" * 20, "ZIP"),
+            (b"\x7fELF" + b"\x00" * 20, "ELF"),
         ]
         for content, label in invalid_headers:
             with self.subTest(file_type=label):
@@ -1164,6 +1165,18 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
                 filename=f"openwrt-{self.TPLINK_4300_IMAGE}",
             )
             fw._validate_rootfs()  # must not raise
+
+        with self.subTest("uppercase rootfs filename raises ValidationError"):
+            fw = self._make_firmware_image(
+                b"\x00" * 16,
+                filename="openwrt-ath79-generic-device-rootfs.IMG",
+            )
+            try:
+                fw._validate_rootfs()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+            else:
+                self.fail("ValidationError not raised for uppercase rootfs filename")
 
         with self.subTest("clean() calls _validate_rootfs"):
             fw = self._make_firmware_image(
