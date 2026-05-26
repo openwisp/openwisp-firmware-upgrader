@@ -701,3 +701,50 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         # Assert that we received exactly ONE log message (not duplicates)
         self.assertEqual(len(messages), 1)
         await communicator.disconnect()
+
+    async def test_batch_consumer_snapshot_counts_pending_separately(self):
+        build = await sync_to_async(self._get_build)()
+        device_fw = await sync_to_async(self._create_device_firmware)()
+        batch = await sync_to_async(BatchUpgradeOperation.objects.create)(
+            build=build, is_persistent=True, status="in-progress"
+        )
+        await sync_to_async(UpgradeOperation.objects.create)(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+        await sync_to_async(UpgradeOperation.objects.create)(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="pending",
+            is_persistent=True,
+        )
+        communicator = await self._get_batch_upgrade_progress_communicator(
+            str(batch.pk)
+        )
+        await communicator.send_json_to({"type": "request_current_state"})
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "batch_state")
+        self.assertEqual(response["batch_status"]["completed"], 1)
+        self.assertEqual(response["batch_status"]["pending"], 1)
+        self.assertEqual(response["batch_status"]["total"], 2)
+        await communicator.disconnect()
+
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_device_consumer_snapshot_includes_pending(self, *args):
+        _, device_id = await self._create_test_device_with_upgrade()
+        op = await sync_to_async(
+            lambda: UpgradeOperation.objects.filter(device_id=device_id).first()
+        )()
+        op.status = "pending"
+        op.is_persistent = True
+        await sync_to_async(op.save)()
+        communicator = await self._get_device_upgrade_progress_communicator(device_id)
+        await communicator.send_json_to({"type": "request_current_state"})
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "operation_update")
+        self.assertEqual(response["operation"]["status"], "pending")
+        await communicator.disconnect()

@@ -798,6 +798,59 @@ class TestModels(TestUpgraderMixin, TestCase):
             )
             self.assertIn(still_pending.pk, list(blocking))
 
+    def test_pending_count_property(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(
+            build=device_fw.image.build, is_persistent=True, status="in-progress"
+        )
+        self.assertEqual(batch.pending_count, 0)
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="pending",
+            is_persistent=True,
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="pending",
+            is_persistent=True,
+        )
+        self.assertEqual(batch.pending_count, 2)
+
+    def test_cancel_in_progress_below_threshold_succeeds(self):
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            status="in-progress",
+            progress=0,
+        )
+        op.cancel()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "cancelled")
+
+    def test_cancel_on_terminal_status_raises(self):
+        device_fw = self._create_device_firmware()
+        for terminal_status in ("success", "failed", "aborted", "cancelled"):
+            with self.subTest(status=terminal_status):
+                op = UpgradeOperation.objects.create(
+                    device=device_fw.device,
+                    image=device_fw.image,
+                    status=terminal_status,
+                )
+                with self.assertRaises(ValueError) as ctx:
+                    op.cancel()
+                self.assertIn(terminal_status, str(ctx.exception))
+
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
