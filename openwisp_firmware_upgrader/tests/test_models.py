@@ -738,6 +738,64 @@ class TestModels(TestUpgraderMixin, TestCase):
             delta = (scheduled - before).total_seconds()
             self.assertLessEqual(delta, max_delay * (1 + jitter) + 1)
 
+    def test_batch_with_mixed_success_and_pending_children(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(
+            build=device_fw.image.build, is_persistent=True, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+        pending_op = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="pending",
+            is_persistent=True,
+        )
+
+        with self.subTest("progress_report excludes pending from completed count"):
+            self.assertEqual(str(batch.progress_report), "1 out of 2")
+
+        with self.subTest("calculate_and_update_status keeps the batch active"):
+            new_status, stats = batch.calculate_and_update_status()
+            self.assertEqual(new_status, "in-progress")
+            self.assertEqual(stats["in_progress"], 1)
+            self.assertEqual(stats["successful"], 1)
+            self.assertEqual(stats["completed"], 1)
+
+        with self.subTest("pending operation is cancellable"):
+            pending_op.cancel()
+            pending_op.refresh_from_db()
+            self.assertEqual(pending_op.status, "cancelled")
+
+        with self.subTest("another upgrade for same device is blocked while pending"):
+            still_pending = UpgradeOperation.objects.create(
+                device=device_fw.device,
+                image=device_fw.image,
+                batch=batch,
+                status="pending",
+                is_persistent=True,
+            )
+            new_op = UpgradeOperation.objects.create(
+                device=device_fw.device,
+                image=device_fw.image,
+                batch=batch,
+                status="in-progress",
+            )
+            blocking = (
+                UpgradeOperation.objects.filter(
+                    device=device_fw.device,
+                    status__in=("in-progress", "pending"),
+                )
+                .exclude(pk=new_op.pk)
+                .values_list("pk", flat=True)
+            )
+            self.assertIn(still_pending.pk, list(blocking))
+
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
