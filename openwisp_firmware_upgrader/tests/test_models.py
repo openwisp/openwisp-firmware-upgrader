@@ -596,10 +596,21 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIsNone(uo.next_retry_at)
 
     def test_next_retry_at_has_db_index(self):
+        from django.db import connection
+
         field = UpgradeOperation._meta.get_field("next_retry_at")
         self.assertTrue(field.db_index)
         self.assertTrue(field.null)
         self.assertTrue(field.blank)
+        indexes = connection.introspection.get_constraints(
+            connection.cursor(), UpgradeOperation._meta.db_table
+        )
+        self.assertTrue(
+            any(
+                info["columns"] == ["next_retry_at"] and info["index"]
+                for info in indexes.values()
+            )
+        )
 
     def test_is_persistent_propagation_from_batch(self):
         device_fw = self._create_device_firmware()
@@ -637,6 +648,10 @@ class TestModels(TestUpgraderMixin, TestCase):
         with self.assertRaises(ValidationError) as ctx:
             op.full_clean()
         self.assertIn("is_persistent", ctx.exception.message_dict)
+        self.assertIn(
+            "after the upgrade operation has been saved",
+            str(ctx.exception.message_dict["is_persistent"][0]),
+        )
 
     def test_is_persistent_immutable_on_batch_upgrade_operation(self):
         build = self._create_build()
@@ -654,6 +669,10 @@ class TestModels(TestUpgraderMixin, TestCase):
             with self.assertRaises(ValidationError) as ctx:
                 batch.full_clean()
             self.assertIn("is_persistent", ctx.exception.message_dict)
+            self.assertIn(
+                "after the mass upgrade has started",
+                str(ctx.exception.message_dict["is_persistent"][0]),
+            )
 
     def test_full_clean_on_unsaved_instances(self):
         """Regression: full_clean() on a brand-new UUID-pk instance must not query for a stored value."""
