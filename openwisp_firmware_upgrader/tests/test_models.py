@@ -7,13 +7,19 @@ from unittest.mock import MagicMock, patch
 import swapper
 from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from openwisp_utils.tests import capture_any_output
 
 from .. import settings as app_settings
-from ..exceptions import RecoverableFailure
+from ..exceptions import (
+    ReconnectionFailed,
+    RecoverableFailure,
+    UpgradeAborted,
+    UpgradeCancelled,
+)
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..tasks import upgrade_firmware
@@ -596,8 +602,6 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIsNone(uo.next_retry_at)
 
     def test_next_retry_at_has_db_index(self):
-        from django.db import connection
-
         field = UpgradeOperation._meta.get_field("next_retry_at")
         self.assertTrue(field.db_index)
         self.assertTrue(field.null)
@@ -750,7 +754,17 @@ class TestModels(TestUpgraderMixin, TestCase):
             expected = base * (multiplier ** (retry_count - 1))
             self.assertGreaterEqual(delta, expected * (1 - jitter) - 1)
             self.assertLessEqual(delta, expected * (1 + jitter) + 1)
-        with self.subTest("delay is capped at PERSISTENT_RETRY_MAX_DELAY"):
+        with self.subTest("retry_count=8 is the first to hit the cap"):
+            op.retry_count = 8
+            uncapped = base * (multiplier ** (op.retry_count - 1))
+            self.assertGreater(uncapped, max_delay)
+            before = timezone.now()
+            scheduled = op._calculate_next_retry()
+            delta = (scheduled - before).total_seconds()
+            self.assertGreaterEqual(delta, max_delay * (1 - jitter) - 1)
+            self.assertLessEqual(delta, max_delay * (1 + jitter) + 1)
+
+        with self.subTest("delay stays capped well beyond the boundary"):
             op.retry_count = 20
             before = timezone.now()
             scheduled = op._calculate_next_retry()
@@ -800,12 +814,6 @@ class TestModels(TestUpgraderMixin, TestCase):
     def test_recoverable_failure_handler_only_routes_recoverable_failure_to_pending(
         self,
     ):
-        from ..exceptions import (
-            ReconnectionFailed,
-            UpgradeAborted,
-            UpgradeCancelled,
-        )
-
         op = self._make_persistent_op(is_persistent=True)
         for error_type in (
             UpgradeAborted,
@@ -874,15 +882,48 @@ class TestModels(TestUpgraderMixin, TestCase):
                 batch=batch,
                 status="in-progress",
             )
-            blocking = (
-                UpgradeOperation.objects.filter(
-                    device=device_fw.device,
-                    status__in=("in-progress", "pending"),
-                )
-                .exclude(pk=new_op.pk)
-                .values_list("pk", flat=True)
+            with mock.patch(
+                "openwisp_controller.connection.models.DeviceConnection."
+                "get_working_connection",
+                return_value=mock.MagicMock(),
+            ):
+                new_op.upgrade()
+            new_op.refresh_from_db()
+            self.assertEqual(new_op.status, "aborted")
+            self.assertIn("Another upgrade operation is in progress", new_op.log)
+            still_pending.refresh_from_db()
+            self.assertEqual(still_pending.status, "pending")
+
+    def test_progress_report_format_depends_on_pending(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(
+            build=device_fw.image.build, is_persistent=True, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+
+        with self.subTest("no pending children: legacy X out of Y wording"):
+            self.assertEqual(str(batch.progress_report), "2 out of 2")
+
+        with self.subTest("at least one pending child: X complete, Y pending"):
+            UpgradeOperation.objects.create(
+                device=device_fw.device,
+                image=device_fw.image,
+                batch=batch,
+                status="pending",
+                is_persistent=True,
             )
-            self.assertIn(still_pending.pk, list(blocking))
+            self.assertEqual(str(batch.progress_report), "2 complete, 1 pending")
 
     def test_pending_count_property(self):
         device_fw = self._create_device_firmware()
