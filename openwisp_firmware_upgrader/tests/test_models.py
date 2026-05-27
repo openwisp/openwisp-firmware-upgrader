@@ -757,6 +757,73 @@ class TestModels(TestUpgraderMixin, TestCase):
             delta = (scheduled - before).total_seconds()
             self.assertLessEqual(delta, max_delay * (1 + jitter) + 1)
 
+    def test_calculate_next_retry_honours_setting_overrides(self):
+        op = self._make_persistent_op(is_persistent=True)
+        op.retry_count = 1
+        with mock.patch.multiple(
+            app_settings,
+            PERSISTENT_RETRY_BASE_DELAY=120,
+            PERSISTENT_RETRY_MULTIPLIER=3,
+            PERSISTENT_RETRY_JITTER=0,
+            PERSISTENT_RETRY_MAX_DELAY=999999,
+        ):
+            before = timezone.now()
+            scheduled = op._calculate_next_retry()
+            self.assertAlmostEqual((scheduled - before).total_seconds(), 120, delta=1)
+            op.retry_count = 3
+            before = timezone.now()
+            scheduled = op._calculate_next_retry()
+            self.assertAlmostEqual(
+                (scheduled - before).total_seconds(), 120 * 9, delta=1
+            )
+        with mock.patch.multiple(
+            app_settings,
+            PERSISTENT_RETRY_MAX_DELAY=60,
+            PERSISTENT_RETRY_JITTER=0,
+        ):
+            op.retry_count = 10
+            before = timezone.now()
+            scheduled = op._calculate_next_retry()
+            self.assertAlmostEqual((scheduled - before).total_seconds(), 60, delta=1)
+
+    def test_calculate_next_retry_safe_when_retry_count_zero(self):
+        op = self._make_persistent_op(is_persistent=True)
+        op.retry_count = 0
+        before = timezone.now()
+        scheduled = op._calculate_next_retry()
+        delta = (scheduled - before).total_seconds()
+        base = app_settings.PERSISTENT_RETRY_BASE_DELAY
+        jitter = app_settings.PERSISTENT_RETRY_JITTER
+        self.assertGreaterEqual(delta, base * (1 - jitter) - 1)
+        self.assertLessEqual(delta, base * (1 + jitter) + 1)
+
+    def test_recoverable_failure_handler_only_routes_recoverable_failure_to_pending(
+        self,
+    ):
+        from ..exceptions import (
+            ReconnectionFailed,
+            UpgradeAborted,
+            UpgradeCancelled,
+        )
+
+        op = self._make_persistent_op(is_persistent=True)
+        for error_type in (
+            UpgradeAborted,
+            UpgradeCancelled,
+            ReconnectionFailed,
+            Exception,
+        ):
+            with self.subTest(error=error_type.__name__):
+                op.status = "in-progress"
+                op.retry_count = 0
+                op.next_retry_at = None
+                op._recoverable_failure_handler(
+                    recoverable=False, error=error_type("simulated")
+                )
+                self.assertEqual(op.status, "failed")
+                self.assertEqual(op.retry_count, 0)
+                self.assertIsNone(op.next_retry_at)
+
     def test_batch_with_mixed_success_and_pending_children(self):
         device_fw = self._create_device_firmware()
         batch = BatchUpgradeOperation.objects.create(
