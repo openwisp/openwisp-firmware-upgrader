@@ -1,9 +1,11 @@
 import logging
+import random
 
 import swapper
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from openwisp_utils.tasks import OpenwispCeleryTask
@@ -97,3 +99,41 @@ def delete_firmware_files(files_to_delete):
     FirmwareImage = load_model("FirmwareImage")
     for file_path in files_to_delete:
         FirmwareImage._remove_file(file_path)
+
+
+@shared_task(base=OpenwispCeleryTask)
+def retry_pending_upgrade(operation_id):
+    UpgradeOperation = load_model("UpgradeOperation")
+    updated = UpgradeOperation.objects.filter(pk=operation_id, status="pending").update(
+        status="in-progress"
+    )
+    if not updated:
+        return
+    operation = UpgradeOperation.objects.select_related("device").get(pk=operation_id)
+    operation.log_line(
+        _("Persistent retry #%(count)s starting.") % {"count": operation.retry_count},
+        save=False,
+    )
+    if operation.device.is_deactivated():
+        operation.status = "failed"
+        operation.log_line(
+            _("Device has been deactivated; persistent retry aborted."),
+            save=False,
+        )
+        operation.save()
+        return
+    operation.save()
+    upgrade_firmware.delay(operation.pk)
+
+
+@shared_task(base=OpenwispCeleryTask)
+def check_pending_upgrades():
+    UpgradeOperation = load_model("UpgradeOperation")
+    due_ids = UpgradeOperation.objects.filter(
+        status="pending", next_retry_at__lte=timezone.now()
+    ).values_list("pk", flat=True)
+    jitter = app_settings.PERSISTENT_RETRY_DISPATCH_JITTER
+    for op_id in due_ids:
+        retry_pending_upgrade.apply_async(
+            args=[op_id], countdown=random.uniform(0, jitter)
+        )

@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import timedelta
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TESTING = os.environ.get("TESTING", False) or sys.argv[1:2] == ["test"]
@@ -186,6 +187,13 @@ else:
     CELERY_TASK_EAGER_PROPAGATES = True
     CELERY_BROKER_URL = "memory://"
     CELERY_RESULT_BACKEND = "cache+memory://"
+
+CELERY_BEAT_SCHEDULE = {
+    "check_pending_upgrades": {
+        "task": "openwisp_firmware_upgrader.tasks.check_pending_upgrades",
+        "schedule": timedelta(seconds=600),
+    },
+}
 
 LOGGING = {
     "version": 1,
