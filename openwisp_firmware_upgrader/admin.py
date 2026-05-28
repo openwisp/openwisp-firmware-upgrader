@@ -55,9 +55,10 @@ Location = swapper.load_model("geo", "Location")
 DeviceGroup = swapper.load_model("config", "DeviceGroup")
 
 IN_PROGRESS_DELETE_MESSAGE = _(
-    "In-progress operations cannot be deleted. Cancel or complete them first."
+    "Some selected operations are still in progress and cannot be deleted. "
+    "Remove them from the selection and try again."
 )
-IN_PROGRESS_STATUS = UpgradeOperation._CANCELLABLE_STATUS
+IN_PROGRESS_STATUS = UpgradeOperation.CANCELLABLE_STATUS
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -388,6 +389,7 @@ class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
 
     @admin.action(description=delete_selected.short_description, permissions=["delete"])
     def delete_selected(self, request, queryset):
+        """Overrides default delete_selected action of from Django admin"""
         if queryset.filter(status=IN_PROGRESS_STATUS).exists():
             self.message_user(request, IN_PROGRESS_DELETE_MESSAGE, messages.ERROR)
             return None

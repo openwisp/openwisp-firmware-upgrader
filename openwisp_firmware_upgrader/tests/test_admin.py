@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import timedelta
 from unittest import mock
 
@@ -7,7 +8,7 @@ import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.test import RequestFactory, TestCase, TransactionTestCase
+from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils.timezone import localtime
 
@@ -120,6 +121,7 @@ class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
         return reverse(f"admin:{self.app_label}_build_changelist")
 
 
+@override_settings(LANGUAGE_CODE="en")
 class TestAdmin(BaseTestAdmin, TestCase):
     def test_build_list(self):
         self._login()
@@ -555,6 +557,18 @@ class TestAdmin(BaseTestAdmin, TestCase):
             '<select name="devicefirmware-0-image" id="id_devicefirmware-0-image">',
         )
 
+    def test_deactivated_device_upgrade_operation_readonly(self):
+        self._login()
+        device = self._create_config(organization=self._get_org()).device
+        device.deactivate()
+        operation = UpgradeOperation.objects.create(device=device, status="failed")
+        response = self.client.get(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
+        )
+        self.assertContains(response, str(operation.pk))
+        # deactivated devices are readonly
+        self.assertNotContains(response, 'name="upgradeoperation_set-0-DELETE"')
+
     def test_device_upgrade_shared_firmware(self, *args):
         org = self._get_org()
         administrator = self._create_administrator(organizations=[org])
@@ -801,10 +815,10 @@ class TestAdmin(BaseTestAdmin, TestCase):
         return params
 
     def _get_input_tag(self, content, name):
-        name_index = content.index(f'name="{name}"')
-        input_start = content.rfind("<input", 0, name_index)
-        input_end = content.index(">", name_index) + 1
-        return content[input_start:input_end]
+        match = re.search(rf'<input\b[^>]*\bname="{re.escape(name)}"[^>]*>', content)
+        if not match:
+            raise ValueError(f'Input with name="{name}" not found')
+        return match.group(0)
 
     def test_device_bulk_delete_with_upgrade_operation(self):
         self._login()
@@ -897,7 +911,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            "In-progress operations cannot be deleted. Cancel or complete them first.",
+            "Some selected operations are still in progress and cannot be deleted. "
+            "Remove them from the selection and try again.",
         )
         self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
         self.assertTrue(
@@ -962,7 +977,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertContains(
                 response,
-                "In-progress operations cannot be deleted. Cancel or complete them first.",
+                "Some selected operations are still in progress and cannot be deleted. "
+                "Remove them from the selection and try again.",
             )
             self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
             self.assertTrue(
