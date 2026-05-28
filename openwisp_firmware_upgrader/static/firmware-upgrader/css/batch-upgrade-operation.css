@@ -1,6 +1,14 @@
 #batchupgradeoperation_form .submit-row {
   display: none;
 }
+#batchupgradeoperation_form .submit-row:first-child,
+#batchupgradeoperation_form .submit-row:first-child .deletelink-box {
+  display: block;
+}
+/* hide empty submit rows */
+#batchupgradeoperation_form .submit-row:not(:has(*)) {
+  display: none !important;
+}
 
 .upgrade-operations-title {
   font-size: 22px;
