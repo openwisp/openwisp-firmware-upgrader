@@ -40,6 +40,7 @@ from ..tasks import (
     batch_upgrade_operation,
     create_all_device_firmwares,
     create_device_firmware,
+    retry_pending_upgrade,
     upgrade_firmware,
 )
 from ..utils import (
@@ -1031,6 +1032,26 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         jitter = options["jitter"]
         jittered = delay * random.uniform(1 - jitter, 1 + jitter)
         return timezone.now() + timedelta(seconds=jittered)
+
+    @classmethod
+    def handle_health_status_changed(cls, sender, instance, status, **kwargs):
+        """
+        Dispatches retries for pending upgrades when device health recovers.
+        """
+        if status != "ok":
+            return
+        pending_pks = list(
+            cls.objects.filter(device=instance.device, status="pending").values_list(
+                "pk", flat=True
+            )
+        )
+        if not pending_pks:
+            return
+        jitter = app_settings.PERSISTENT_RETRY_OPTIONS["signal_jitter"]
+        for pk in pending_pks:
+            retry_pending_upgrade.apply_async(
+                args=[pk], countdown=random.uniform(0, jitter)
+            )
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)

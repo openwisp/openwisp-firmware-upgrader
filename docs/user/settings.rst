@@ -72,6 +72,7 @@ application.
         jitter=0.25,
         max_delay=43200,
         dispatch_jitter=300,
+        signal_jitter=120,
     )
 
 Backoff settings for persistent retries.
@@ -90,6 +91,13 @@ this dict:
 - ``dispatch_jitter`` (seconds): when the Beat scanner fans out a batch of
   due retries, each one is delayed by a random ``[0, dispatch_jitter]``
   interval so the worker isn't slammed all at once.
+- ``signal_jitter`` (seconds): same idea as ``dispatch_jitter`` but for
+  the openwisp-monitoring ``health_status_changed`` wake-up path: when a
+  network outage recovers and many devices come back online together, each
+  pending op's retry is delayed by a random ``[0, signal_jitter]``
+  interval. Smaller than ``dispatch_jitter`` because the signal wake-up is
+  meant to feel fast. Has no effect when ``openwisp-monitoring`` is not
+  installed.
 
 ``OPENWISP_FIRMWARE_UPGRADER_CHECK_PENDING_UPGRADES_PERIOD``
 ------------------------------------------------------------
