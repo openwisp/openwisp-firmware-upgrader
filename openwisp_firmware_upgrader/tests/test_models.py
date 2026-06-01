@@ -742,10 +742,11 @@ class TestModels(TestUpgraderMixin, TestCase):
 
     def test_calculate_next_retry_backoff(self):
         op = self._make_persistent_op(is_persistent=True)
-        base = app_settings.PERSISTENT_RETRY_BASE_DELAY
-        multiplier = app_settings.PERSISTENT_RETRY_MULTIPLIER
-        jitter = app_settings.PERSISTENT_RETRY_JITTER
-        max_delay = app_settings.PERSISTENT_RETRY_MAX_DELAY
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        base = options["base_delay"]
+        multiplier = options["multiplier"]
+        jitter = options["jitter"]
+        max_delay = options["max_delay"]
         for retry_count in (1, 2, 3, 7):
             op.retry_count = retry_count
             before = timezone.now()
@@ -774,12 +775,16 @@ class TestModels(TestUpgraderMixin, TestCase):
     def test_calculate_next_retry_honours_setting_overrides(self):
         op = self._make_persistent_op(is_persistent=True)
         op.retry_count = 1
-        with mock.patch.multiple(
+        with mock.patch.object(
             app_settings,
-            PERSISTENT_RETRY_BASE_DELAY=120,
-            PERSISTENT_RETRY_MULTIPLIER=3,
-            PERSISTENT_RETRY_JITTER=0,
-            PERSISTENT_RETRY_MAX_DELAY=999999,
+            "PERSISTENT_RETRY_OPTIONS",
+            dict(
+                base_delay=120,
+                multiplier=3,
+                jitter=0,
+                max_delay=999999,
+                dispatch_jitter=0,
+            ),
         ):
             before = timezone.now()
             scheduled = op._calculate_next_retry()
@@ -790,10 +795,16 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.assertAlmostEqual(
                 (scheduled - before).total_seconds(), 120 * 9, delta=1
             )
-        with mock.patch.multiple(
+        with mock.patch.object(
             app_settings,
-            PERSISTENT_RETRY_MAX_DELAY=60,
-            PERSISTENT_RETRY_JITTER=0,
+            "PERSISTENT_RETRY_OPTIONS",
+            dict(
+                base_delay=600,
+                multiplier=2,
+                jitter=0,
+                max_delay=60,
+                dispatch_jitter=0,
+            ),
         ):
             op.retry_count = 10
             before = timezone.now()
@@ -806,8 +817,9 @@ class TestModels(TestUpgraderMixin, TestCase):
         before = timezone.now()
         scheduled = op._calculate_next_retry()
         delta = (scheduled - before).total_seconds()
-        base = app_settings.PERSISTENT_RETRY_BASE_DELAY
-        jitter = app_settings.PERSISTENT_RETRY_JITTER
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        base = options["base_delay"]
+        jitter = options["jitter"]
         self.assertGreaterEqual(delta, base * (1 - jitter) - 1)
         self.assertLessEqual(delta, base * (1 + jitter) + 1)
 

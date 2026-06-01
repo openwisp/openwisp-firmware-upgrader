@@ -616,21 +616,32 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                     )
                 }
             )
-        if not self._state.adding:
-            stored_status, stored_is_persistent = (
-                load_model("BatchUpgradeOperation")
-                .objects.values_list("status", "is_persistent")
-                .get(pk=self.pk)
+        self._validate_is_persistent_immutable()
+
+    def _validate_is_persistent_immutable(self):
+        """
+        Reject changes to ``is_persistent`` once the batch has left ``idle``.
+        Idle batches haven't dispatched anything yet, so the flag can still
+        flip; after that the retry pipeline relies on it staying stable.
+        """
+        if self._state.adding:
+            return
+        stored_status, stored_is_persistent = (
+            load_model("BatchUpgradeOperation")
+            .objects.values_list("status", "is_persistent")
+            .get(pk=self.pk)
+        )
+        if stored_status == "idle":
+            return
+        if self.is_persistent != stored_is_persistent:
+            raise ValidationError(
+                {
+                    "is_persistent": _(
+                        "Persistent cannot be changed after the mass "
+                        "upgrade has started"
+                    )
+                }
             )
-            if stored_status != "idle" and self.is_persistent != stored_is_persistent:
-                raise ValidationError(
-                    {
-                        "is_persistent": _(
-                            "Persistent cannot be changed after the mass "
-                            "upgrade has started"
-                        )
-                    }
-                )
 
     def upgrade(self, firmwareless):
         self.status = "in-progress"
@@ -916,21 +927,30 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     def clean(self):
         super().clean()
-        if not self._state.adding:
-            stored_is_persistent = (
-                load_model("UpgradeOperation")
-                .objects.values_list("is_persistent", flat=True)
-                .get(pk=self.pk)
+        self._validate_is_persistent_immutable()
+
+    def _validate_is_persistent_immutable(self):
+        """
+        Reject changes to ``is_persistent`` after the operation is saved.
+        Flipping it on an existing row would orphan a pending retry chain
+        or silently re-arm a finished operation.
+        """
+        if self._state.adding:
+            return
+        stored_is_persistent = (
+            load_model("UpgradeOperation")
+            .objects.values_list("is_persistent", flat=True)
+            .get(pk=self.pk)
+        )
+        if self.is_persistent != stored_is_persistent:
+            raise ValidationError(
+                {
+                    "is_persistent": _(
+                        "Persistent cannot be changed after the "
+                        "upgrade operation has been saved"
+                    )
+                }
             )
-            if self.is_persistent != stored_is_persistent:
-                raise ValidationError(
-                    {
-                        "is_persistent": _(
-                            "Persistent cannot be changed after the "
-                            "upgrade operation has been saved"
-                        )
-                    }
-                )
 
     def __str__(self):
         return f"{self.device} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
@@ -1002,13 +1022,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.log_line(_("Upgrade operation has been cancelled by user"))
 
     def _calculate_next_retry(self):
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
         exponent = max(self.retry_count - 1, 0)
         delay = min(
-            app_settings.PERSISTENT_RETRY_BASE_DELAY
-            * (app_settings.PERSISTENT_RETRY_MULTIPLIER**exponent),
-            app_settings.PERSISTENT_RETRY_MAX_DELAY,
+            options["base_delay"] * (options["multiplier"] ** exponent),
+            options["max_delay"],
         )
-        jitter = app_settings.PERSISTENT_RETRY_JITTER
+        jitter = options["jitter"]
         jittered = delay * random.uniform(1 - jitter, 1 + jitter)
         return timezone.now() + timedelta(seconds=jittered)
 
