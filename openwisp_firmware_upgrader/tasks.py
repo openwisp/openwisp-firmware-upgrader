@@ -109,7 +109,15 @@ def retry_pending_upgrade(operation_id):
     )
     if not updated:
         return
-    operation = UpgradeOperation.objects.select_related("device").get(pk=operation_id)
+    try:
+        operation = UpgradeOperation.objects.select_related("device").get(
+            pk=operation_id
+        )
+    except ObjectDoesNotExist:
+        logger.warning(
+            f"The UpgradeOperation object with id {operation_id} has been deleted"
+        )
+        return
     operation.log_line(
         _("Persistent retry #%(count)s starting.") % {"count": operation.retry_count},
         save=False,
