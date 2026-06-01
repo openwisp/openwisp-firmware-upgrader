@@ -19,3 +19,24 @@ input.special {
 .select2-input + .select2 .select2-selection {
   min-width: auto !important;
 }
+fieldset.aligned label.is-persistent-checkbox {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 0;
+  border-top: 1px solid var(--ow-color-fg-light);
+  font-weight: normal;
+  color: inherit;
+  cursor: pointer;
+}
+fieldset.aligned label.is-persistent-checkbox input[type="checkbox"] {
+  flex-shrink: 0;
+  margin: 0;
+}
+fieldset.aligned label.is-persistent-checkbox span {
+  flex: 1;
+}

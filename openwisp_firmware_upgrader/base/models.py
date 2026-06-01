@@ -176,7 +176,12 @@ class AbstractBuild(TimeStampedEditableModel):
             )
 
     def batch_upgrade(
-        self, firmwareless, upgrade_options=None, group=None, location=None
+        self,
+        firmwareless,
+        upgrade_options=None,
+        group=None,
+        location=None,
+        is_persistent=True,
     ):
         upgrade_options = upgrade_options or {}
         # Check if there are any devices to upgrade with the given filters
@@ -195,7 +200,11 @@ class AbstractBuild(TimeStampedEditableModel):
                 )
             )
         batch = load_model("BatchUpgradeOperation")(
-            build=self, upgrade_options=upgrade_options, group=group, location=location
+            build=self,
+            upgrade_options=upgrade_options,
+            group=group,
+            location=location,
+            is_persistent=is_persistent,
         )
         batch.full_clean()
         batch.save()
