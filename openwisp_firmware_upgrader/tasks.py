@@ -1,12 +1,16 @@
 import logging
 import random
+from datetime import timedelta
 
 import swapper
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
+from openwisp_notifications.signals import notify
 
 from openwisp_utils.tasks import OpenwispCeleryTask
 
@@ -144,4 +148,43 @@ def check_pending_upgrades():
     for op_id in due_ids:
         retry_pending_upgrade.apply_async(
             args=[op_id], countdown=random.uniform(0, jitter)
+        )
+
+
+@shared_task(base=OpenwispCeleryTask)
+def send_pending_upgrade_reminders():
+    BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+    period = app_settings.PERSISTENT_REMINDER_PERIOD
+    threshold = timezone.now() - timedelta(seconds=period)
+    due_condition = Q(last_reminder_at__lte=threshold) | Q(
+        last_reminder_at__isnull=True, created__lte=threshold
+    )
+    qs = (
+        BatchUpgradeOperation.objects.filter(
+            status="in-progress", upgradeoperation__status="pending"
+        )
+        .filter(due_condition)
+        .distinct()
+    )
+    for batch in qs:
+        claimed = (
+            BatchUpgradeOperation.objects.filter(pk=batch.pk)
+            .filter(due_condition)
+            .update(last_reminder_at=timezone.now())
+        )
+        if not claimed:
+            continue
+        pending_count = batch.upgradeoperation_set.filter(status="pending").count()
+        if not pending_count:
+            continue
+        notify.send(
+            sender=batch,
+            type="generic_message",
+            target=batch,
+            description=ngettext(
+                "%(count)d device is still pending in mass upgrade %(batch)s.",
+                "%(count)d devices are still pending in mass upgrade %(batch)s.",
+                pending_count,
+            )
+            % {"count": pending_count, "batch": batch},
         )
