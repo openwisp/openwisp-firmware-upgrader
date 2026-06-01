@@ -33,6 +33,7 @@ PERSISTENT_RETRY_OPTIONS = getattr(
         jitter=0.25,
         max_delay=43200,
         dispatch_jitter=300,
+        signal_jitter=120,
     ),
 )
 CHECK_PENDING_UPGRADES_PERIOD = getattr(
