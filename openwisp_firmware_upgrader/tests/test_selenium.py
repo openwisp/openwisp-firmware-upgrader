@@ -991,6 +991,58 @@ class TestRealTimeProgress(
         self.assertIn("width: 100%", style)
         self._assert_no_js_errors()
 
+    def test_batch_completion_text_pending_branch(self):
+        """Test batch completion field renders pending count and switches formats via websocket"""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="success",
+        )
+        UpgradeOperation.objects.create(
+            device=self.device2,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+        )
+        UpgradeOperation.objects.create(
+            device=self.device3,
+            image=self.image2,
+            batch=batch_operation,
+            status="pending",
+            is_persistent=True,
+        )
+        self._prepare_batch(batch_operation)
+        WebDriverWait(self.web_driver, 10).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".field-completed .readonly"),
+                "1 complete, 1 pending",
+            )
+        )
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        publisher.publish_batch_status(
+            status="in-progress", completed=1, total=3, pending=2
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".field-completed .readonly"),
+                "1 complete, 2 pending",
+            )
+        )
+        publisher.publish_batch_status(
+            status="success", completed=3, total=3, pending=0
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".field-completed .readonly"),
+                "3 out of 3",
+            )
+        )
+        self._assert_no_js_errors()
+
     def test_individual_operation_progress_updates(self):
         """Test individual operation progress updates within batch upgrade"""
         batch_operation = BatchUpgradeOperation.objects.create(
