@@ -108,7 +108,9 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(dispatched_args["args"], [due.pk])
         countdown = dispatched_args["countdown"]
         self.assertGreaterEqual(countdown, 0)
-        self.assertLessEqual(countdown, app_settings.PERSISTENT_RETRY_DISPATCH_JITTER)
+        self.assertLessEqual(
+            countdown, app_settings.PERSISTENT_RETRY_OPTIONS["dispatch_jitter"]
+        )
 
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
     def test_retry_pending_upgrade_happy_path(self, mocked_upgrade):

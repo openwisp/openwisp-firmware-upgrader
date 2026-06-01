@@ -132,7 +132,7 @@ def check_pending_upgrades():
     due_ids = UpgradeOperation.objects.filter(
         status="pending", next_retry_at__lte=timezone.now()
     ).values_list("pk", flat=True)
-    jitter = app_settings.PERSISTENT_RETRY_DISPATCH_JITTER
+    jitter = app_settings.PERSISTENT_RETRY_OPTIONS["dispatch_jitter"]
     for op_id in due_ids:
         retry_pending_upgrade.apply_async(
             args=[op_id], countdown=random.uniform(0, jitter)
