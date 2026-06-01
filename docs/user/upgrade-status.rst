@@ -33,6 +33,30 @@ file upload, and firmware flashing.
 progress, but only before the firmware flashing phase begins (typically
 when progress is below 65%).
 
+Pending
+~~~~~~~
+
+**Status**: ``pending``
+
+**Description**: The device was unreachable when the upgrade was last
+attempted. The operation keeps a future ``next_retry_at`` and a Celery
+Beat task picks it up later. This is the status that persistent mass
+upgrades use while a device is offline.
+
+**What happens during this status:**
+
+- ``retry_count`` is incremented and ``next_retry_at`` is scheduled with
+  an exponential backoff (10m → 20m → 40m → ..., capped at 12 hours, with
+  ±25% jitter)
+- A periodic Beat task scans for pending operations whose
+  ``next_retry_at`` has elapsed and re-dispatches them
+- A device deactivated while pending is set to ``failed`` and not retried
+
+**User Actions**: Pending operations can be cancelled the same way as
+in-progress ones, both from the admin and the REST API. Starting another
+upgrade on the same device is blocked while one is pending, so the device
+cannot be flashed twice.
+
 Success
 ~~~~~~~
 
