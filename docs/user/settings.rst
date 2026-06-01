@@ -54,6 +54,60 @@ the available slots in a background queue and prevent other tasks from
 being executed, which will end up affecting negatively the rest of the
 application.
 
+``OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS``
+-------------------------------------------------------
+
+============ =========
+**type**:    ``dict``
+**default**: see below
+============ =========
+
+.. code-block:: python
+
+    # default value of OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS:
+
+    dict(
+        base_delay=600,
+        multiplier=2,
+        jitter=0.25,
+        max_delay=43200,
+        dispatch_jitter=300,
+    )
+
+Backoff settings for persistent retries.
+
+When an upgrade operation has its ``is_persistent`` flag set and the
+device is unreachable, the operation transitions to ``pending`` rather
+than ``failed``. ``next_retry_at`` is then scheduled using the values in
+this dict:
+
+- ``base_delay`` (seconds): delay before the first persistent retry.
+- ``multiplier``: exponential factor applied per retry. With the defaults
+  the delays grow 10m → 20m → 40m → ...
+- ``jitter`` (0–1): random fraction added or subtracted from each delay,
+  so retries for many devices don't all fire at the same instant.
+- ``max_delay`` (seconds): upper bound for any single retry delay.
+- ``dispatch_jitter`` (seconds): when the Beat scanner fans out a batch of
+  due retries, each one is delayed by a random ``[0, dispatch_jitter]``
+  interval so the worker isn't slammed all at once.
+
+``OPENWISP_FIRMWARE_UPGRADER_CHECK_PENDING_UPGRADES_PERIOD``
+------------------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``600``
+============ =======
+
+Seconds between consecutive runs of the ``check_pending_upgrades`` Celery
+Beat task. The task scans for pending operations whose ``next_retry_at``
+has elapsed and re-dispatches them.
+
+Retry delays are typically minutes-to-hours, so 10-minute granularity is
+plenty in production. Deployers register the task in their own
+``CELERY_BEAT_SCHEDULE``; see the docker-openwisp and ansible-openwisp2
+recipes for the snippet.
+
 .. _openwisp_custom_openwrt_images:
 
 ``OPENWISP_CUSTOM_OPENWRT_IMAGES``
