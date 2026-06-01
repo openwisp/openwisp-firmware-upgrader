@@ -99,20 +99,23 @@ this dict:
   meant to feel fast. Has no effect when ``openwisp-monitoring`` is not
   installed.
 
-``OPENWISP_FIRMWARE_UPGRADER_CHECK_PENDING_UPGRADES_PERIOD``
-------------------------------------------------------------
+``OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD``
+---------------------------------------------------------
 
-============ =======
+============ =====================
 **type**:    ``int``
-**default**: ``600``
-============ =======
+**default**: ``5184000`` (60 days)
+============ =====================
 
-Seconds between consecutive runs of the ``check_pending_upgrades`` Celery
-Beat task. The task scans for pending operations whose ``next_retry_at``
-has elapsed and re-dispatches them.
+Seconds between consecutive reminders for a single persistent batch that
+still has pending children. The first reminder fires when the batch is
+older than this period; subsequent reminders fire when the same period has
+elapsed since the previous send. The reminder itself goes out as a
+``generic_message`` notification to the batch's organization admins and
+all superusers.
 
-Retry delays are typically minutes-to-hours, so 10-minute granularity is
-plenty in production. Deployers register the task in their own
+The Beat task that drives these reminders
+(``send_pending_upgrade_reminders``) is registered in the deployment's own
 ``CELERY_BEAT_SCHEDULE``; see the docker-openwisp and ansible-openwisp2
 recipes for the snippet.
 

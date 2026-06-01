@@ -193,6 +193,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "openwisp_firmware_upgrader.tasks.check_pending_upgrades",
         "schedule": timedelta(seconds=600),
     },
+    "send_pending_upgrade_reminders": {
+        "task": "openwisp_firmware_upgrader.tasks.send_pending_upgrade_reminders",
+        "schedule": timedelta(seconds=604800),
+    },
 }
 
 LOGGING = {

@@ -14,6 +14,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from openwisp_notifications.signals import notify
 from private_storage.fields import PrivateFileField
 
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
@@ -580,6 +581,15 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             "or the operation is cancelled"
         ),
     )
+    last_reminder_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("last reminder at"),
+        help_text=_(
+            "timestamp of the last pending-upgrade reminder fired for "
+            "this batch, null if no reminder has been sent yet"
+        ),
+    )
 
     class Meta:
         abstract = True
@@ -706,6 +716,10 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     @cached_property
     def total_operations(self):
         return self.upgrade_operations.count()
+
+    @property
+    def organization_id(self):
+        return self.build.category.organization_id
 
     @property
     def pending_count(self):
@@ -1052,6 +1066,34 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             retry_pending_upgrade.apply_async(
                 args=[pk], countdown=random.uniform(0, jitter)
             )
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        if "status" in field_names:
+            instance._previous_status = instance.status
+        return instance
+
+    @classmethod
+    def notify_on_failed_persistent_upgrade(cls, sender, instance, created, **kwargs):
+        """
+        Fires a notification when a persistent upgrade transitions to failed.
+        """
+        if created or not instance.is_persistent:
+            return
+        if instance.status != "failed":
+            return
+        if getattr(instance, "_previous_status", None) == "failed":
+            return
+        notify.send(
+            sender=instance,
+            type="generic_message",
+            target=instance.device,
+            level="error",
+            description=_("Persistent upgrade for device %(device)s failed.")
+            % {"device": instance.device},
+        )
+        instance._previous_status = instance.status
 
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
