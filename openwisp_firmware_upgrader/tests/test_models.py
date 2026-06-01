@@ -584,51 +584,6 @@ class TestModels(TestUpgraderMixin, TestCase):
         expected = f"{uo.device} ({timezone.localtime(uo.created).strftime('%Y-%m-%d %H:%M:%S')})"
         self.assertEqual(str(uo), expected)
 
-    def test_firmware_image_rejects_invalid_file_headers(self):
-        build = self._get_build()
-        invalid_headers = [
-            (b"\xff\xd8\xff" + b"\x00" * 20, "JPEG"),
-            (b"%PDF" + b"\x00" * 20, "PDF"),
-            (b"\x89PNG\r\n\x1a\n" + b"\x00" * 20, "PNG"),
-            (b"PK\x03\x04" + b"\x00" * 20, "ZIP"),
-            (b"\x7fELF" + b"\x00" * 20, "ELF"),
-        ]
-        for content, label in invalid_headers:
-            with self.subTest(file_type=label):
-                fw = FirmwareImage(
-                    build=build,
-                    type=self.TPLINK_4300_IMAGE,
-                    file=SimpleUploadedFile(
-                        name=f"openwrt-{self.TPLINK_4300_IMAGE}",
-                        content=content,
-                        content_type="application/octet-stream",
-                    ),
-                )
-                try:
-                    fw.full_clean()
-                except ValidationError as e:
-                    self.assertIn("file", e.message_dict)
-                else:
-                    self.fail(f"ValidationError not raised for {label} file")
-
-    def test_firmware_image_rejects_rootfs_image(self):
-        build = self._get_build()
-        fw = FirmwareImage(
-            build=build,
-            type=self.TPLINK_4300_IMAGE,
-            file=SimpleUploadedFile(
-                name="ath79-generic-tplink_tl-wdr4300-v1-squashfs-rootfs.img",
-                content=b"\x00" * 100,
-                content_type="application/octet-stream",
-            ),
-        )
-        try:
-            fw.full_clean()
-        except ValidationError as e:
-            self.assertIn("file", e.message_dict)
-        else:
-            self.fail("ValidationError not raised for rootfs image")
-
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
@@ -1119,6 +1074,33 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
                 self.assertIn("PDF", str(e))
             else:
                 self.fail("ValidationError not raised for PDF header")
+
+        with self.subTest("png header raises ValidationError"):
+            fw = self._make_firmware_image(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+            else:
+                self.fail("ValidationError not raised for PNG header")
+
+        with self.subTest("zip header raises ValidationError"):
+            fw = self._make_firmware_image(b"PK\x03\x04" + b"\x00" * 12)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+            else:
+                self.fail("ValidationError not raised for ZIP header")
+
+        with self.subTest("elf header raises ValidationError"):
+            fw = self._make_firmware_image(b"\x7fELF" + b"\x00" * 12)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+            else:
+                self.fail("ValidationError not raised for ELF header")
 
         with self.subTest("valid squashfs header passes"):
             fw = self._make_firmware_image(b"sqsh" + b"\x00" * 12)

@@ -7,6 +7,7 @@ import os
 import struct
 import tempfile
 import urllib.request
+import zlib
 from pathlib import Path
 from unittest import mock
 
@@ -459,7 +460,7 @@ class TestExtractFwtoolMetadata(TestCase):
         header = b"\x00" * HEADER_SIZE
         data_block = prefix + header + json_bytes
         size = HEADER_SIZE + len(json_bytes) + TRAILER_SIZE
-        crc = self.extractor._crc32_block(0xFFFFFFFF, data_block)
+        crc = zlib.crc32(data_block) ^ 0xFFFFFFFF
         trailer = struct.pack(
             TRAILER_FORMAT, FWIMAGE_MAGIC, crc, FWIMAGE_INFO, b"\x00\x00\x00", size
         )

@@ -6,6 +6,7 @@ import lzma
 import os
 import struct
 import tarfile
+import zlib
 
 import fdt
 import lz4.frame as lz4frame
@@ -32,20 +33,6 @@ TRAILER_FORMAT = ">IIB3sI"
 TRAILER_SIZE = struct.calcsize(TRAILER_FORMAT)
 HEADER_FORMAT = ">II"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
-_CRC32_POLYNOMIAL = 0xEDB88320
-
-
-def _crc32_filltable():
-    table = []
-    for i in range(256):
-        c = i
-        for _ in range(8):
-            c = ((c >> 1) ^ _CRC32_POLYNOMIAL) if (c & 1) else (c >> 1)
-        table.append(c)
-    return table
-
-
-_CRC32_TABLE = _crc32_filltable()
 
 
 class OpenWrtMetadataExtractor(BaseMetadataExtractor):
@@ -58,14 +45,10 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         if "x86" in name or "armsr" in name:
             raise UnsupportedImageError(f"Unsupported image type: {name}")
 
-    def _crc32_block(self, val, data):
-        for byte in data:
-            val = _CRC32_TABLE[(val & 0xFF) ^ byte] ^ (val >> 8)
-        return val
-
     def _extract_fwtool_metadata(self):
         with open(self.image_path, "rb") as f:
             data = f.read(app_settings.MAX_FILE_SIZE + 1)
+        # reads full file at once; a tail-only seek could reduce memory usage
         if len(data) > app_settings.MAX_FILE_SIZE:
             raise DecompressionLimitExceeded(
                 f"Firmware file exceeds limit of "
@@ -91,7 +74,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             if data_start < 0:
                 offset -= 1
                 continue
-            if self._crc32_block(0xFFFFFFFF, data[:data_end]) != crc32_val:
+            if zlib.crc32(data[:data_end]) ^ 0xFFFFFFFF != crc32_val:
                 offset = data_start
                 continue
             if type_val == FWIMAGE_INFO:
@@ -110,8 +93,11 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         return meta.get("supported_devices", [])
 
     def _strip_uimage_header(self, data):
-        if data[:4] == UIMAGE_MAGIC and len(data) > UIMAGE_HEADER_SIZE:
+        if data[:4] == UIMAGE_MAGIC and len(data) >= UIMAGE_HEADER_SIZE:
             payload_size = struct.unpack_from(">I", data, 12)[0]
+            available_payload = len(data) - UIMAGE_HEADER_SIZE
+            if payload_size > available_payload:
+                return data
             return data[UIMAGE_HEADER_SIZE : UIMAGE_HEADER_SIZE + payload_size]
         return data
 
@@ -133,7 +119,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
     def _try_gzip(self, data):
         if data[:2] != b"\x1f\x8b":
             return None
-        chunks, total = [], 0
+        buf, total = bytearray(), 0
         compressed = len(data)
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(data)) as gz:
@@ -141,19 +127,19 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                     chunk = gz.read(_CHUNK_SIZE)
                     if not chunk:
                         break
-                    chunks.append(chunk)
+                    buf.extend(chunk)
                     total += len(chunk)
                     self._check_limits(total, compressed)
         except DecompressionLimitExceeded:
             raise
         except Exception:
             return None
-        return b"".join(chunks) or None
+        return bytes(buf) or None
 
     def _try_xz(self, data):
         if data[:6] != b"\xfd7zXZ\x00":
             return None
-        chunks, total = [], 0
+        buf, total = bytearray(), 0
         compressed = len(data)
         dec = lzma.LZMADecompressor(
             format=lzma.FORMAT_XZ, memlimit=app_settings.MAX_DECOMPRESSED_BYTES
@@ -164,19 +150,19 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
                 offset += _CHUNK_SIZE
                 if chunk:
-                    chunks.append(chunk)
+                    buf.extend(chunk)
                     total += len(chunk)
                     self._check_limits(total, compressed)
         except DecompressionLimitExceeded:
             raise
         except Exception:
             return None
-        return b"".join(chunks) or None
+        return bytes(buf) or None
 
     def _try_lzma(self, data):
         if data[0:1] != b"\x5d":
             return None
-        chunks, total = [], 0
+        buf, total = bytearray(), 0
         compressed = len(data)
         try:
             dec = lzma.LZMADecompressor(
@@ -188,19 +174,19 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
                 offset += _CHUNK_SIZE
                 if chunk:
-                    chunks.append(chunk)
+                    buf.extend(chunk)
                     total += len(chunk)
                     self._check_limits(total, compressed)
         except DecompressionLimitExceeded:
             raise
         except Exception:
             return None
-        return b"".join(chunks) or None
+        return bytes(buf) or None
 
     def _try_bz2(self, data):
         if data[:3] != b"BZh":
             return None
-        chunks, total = [], 0
+        buf, total = bytearray(), 0
         compressed = len(data)
         dec = bz2.BZ2Decompressor()
         try:
@@ -209,19 +195,19 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
                 offset += _CHUNK_SIZE
                 if chunk:
-                    chunks.append(chunk)
+                    buf.extend(chunk)
                     total += len(chunk)
                     self._check_limits(total, compressed)
         except DecompressionLimitExceeded:
             raise
         except Exception:
             return None
-        return b"".join(chunks) or None
+        return bytes(buf) or None
 
     def _try_lz4(self, data):
         if data[:4] != b"\x04\x22\x4d\x18":
             return None
-        chunks, total = [], 0
+        buf, total = bytearray(), 0
         compressed = len(data)
         try:
             dec = lz4frame.LZ4FrameDecompressor()
@@ -230,14 +216,14 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
                 offset += _CHUNK_SIZE
                 if chunk:
-                    chunks.append(chunk)
+                    buf.extend(chunk)
                     total += len(chunk)
                     self._check_limits(total, compressed)
         except DecompressionLimitExceeded:
             raise
         except Exception:
             return None
-        return b"".join(chunks) or None
+        return bytes(buf) or None
 
     def _decompress(self, data):
         for fn in (
@@ -337,7 +323,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             if prop.name == "model":
                 model = self._prop_str(prop.value)
             elif prop.name == "compatible":
-                compatible = self._prop_strlist(prop.value)
+                compatible = self._prop_strlist(prop.data)
         return {
             "model": model,
             "compatible": compatible,
@@ -419,7 +405,6 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             raise
         except ExtractionError:
             return self.extract_from_dtb()
-
         if not fwtool_result.get("compatible") or not fwtool_result.get("model"):
             try:
                 dtb_result = self.extract_from_dtb()
@@ -429,5 +414,4 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                     fwtool_result["compatible"] = dtb_result["compatible"]
             except (ExtractionError, UnsupportedImageError):
                 pass
-
         return fwtool_result
