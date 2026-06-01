@@ -146,3 +146,18 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.status, "failed")
         self.assertIn("Device has been deactivated", op.log)
         mocked_upgrade.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.logger.warning")
+    def test_retry_pending_upgrade_resilience(self, mocked_logger, mocked_upgrade):
+        op = self._create_pending_op()
+        mocked_qs = mock.MagicMock()
+        mocked_qs.get.side_effect = UpgradeOperation.DoesNotExist
+        with mock.patch.object(
+            UpgradeOperation.objects, "select_related", return_value=mocked_qs
+        ):
+            tasks.retry_pending_upgrade.run(op.pk)
+        mocked_logger.assert_called_with(
+            f"The UpgradeOperation object with id {op.pk} has been deleted"
+        )
+        mocked_upgrade.assert_not_called()
