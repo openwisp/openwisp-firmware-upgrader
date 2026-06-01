@@ -79,6 +79,10 @@
               {{ form.upgrade_options }}
             </div>
           </div>
+          <label class="is-persistent-checkbox" for="{{ form.is_persistent.id_for_label }}">
+            {{ form.is_persistent }}
+            <span>{{ form.is_persistent.label }}</span>
+          </label>
         </fieldset>
         <input
           type="submit"

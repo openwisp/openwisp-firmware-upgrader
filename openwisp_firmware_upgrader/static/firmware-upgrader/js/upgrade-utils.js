@@ -7,6 +7,7 @@ const FW_UPGRADE_STATUS = {
   ABORTED: "aborted",
   CANCELLED: "cancelled",
   IN_PROGRESS: "in-progress",
+  PENDING: "pending",
 };
 
 // Display statuses
@@ -16,6 +17,7 @@ const FW_UPGRADE_DISPLAY_STATUS = {
   ABORTED: gettext("aborted"),
   CANCELLED: gettext("cancelled"),
   IN_PROGRESS: gettext("in progress"),
+  PENDING: gettext("pending"),
   COMPLETED_SUCCESSFULLY: gettext("completed successfully"),
   COMPLETED_WITH_FAILURES: gettext("completed with some failures"),
   COMPLETED_WITH_CANCELLATIONS: gettext("completed with some cancellations"),
@@ -30,6 +32,7 @@ const FW_UPGRADE_CSS_CLASSES = {
   IN_PROGRESS: "in-progress",
   SUCCESS: "success",
   ABORTED: "aborted",
+  PENDING: "pending",
 };
 
 const VALID_FW_STATUSES = new Set(Object.values(FW_UPGRADE_STATUS));
@@ -85,6 +88,7 @@ const STATUS_TO_CSS_CLASS = {
   [FW_UPGRADE_STATUS.FAILED]: FW_UPGRADE_CSS_CLASSES.FAILED,
   [FW_UPGRADE_STATUS.ABORTED]: FW_UPGRADE_CSS_CLASSES.ABORTED,
   [FW_UPGRADE_STATUS.CANCELLED]: FW_UPGRADE_CSS_CLASSES.CANCELLED,
+  [FW_UPGRADE_STATUS.PENDING]: FW_UPGRADE_CSS_CLASSES.PENDING,
 };
 
 // Statuses that should show 100% progress

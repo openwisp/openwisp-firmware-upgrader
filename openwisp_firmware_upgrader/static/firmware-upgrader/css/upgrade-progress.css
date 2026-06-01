@@ -49,6 +49,10 @@
   background-color: var(--ow-color-success);
 }
 
+.upgrade-progress-fill.pending {
+  background-color: #f5a623;
+}
+
 .upgrade-progress-text {
   color: var(--ow-color-black);
   font-weight: bold;

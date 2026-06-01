@@ -200,6 +200,87 @@ class TestAdmin(BaseTestAdmin, TestCase):
         r = self.client.get(url)
         self.assertContains(r, str(device_fw.image_id))
 
+    def test_confirmation_page_renders_is_persistent_checkbox(self):
+        self._login()
+        env = self._create_upgrade_env()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(r, 'name="is_persistent"')
+        self.assertTrue(r.context["form"].fields["is_persistent"].initial)
+
+    def test_upgrade_operation_admin_filter_by_is_persistent(self):
+        self._login()
+        env = self._create_upgrade_env()
+        persistent_op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="in-progress",
+            is_persistent=True,
+        )
+        non_persistent_op = UpgradeOperation.objects.create(
+            device=env["d2"],
+            image=env["image1b"],
+            status="in-progress",
+            is_persistent=False,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        r = self.client.get(url, {"is_persistent__exact": "1"})
+        self.assertContains(r, str(persistent_op.pk))
+        self.assertNotContains(r, str(non_persistent_op.pk))
+
+    def test_upgrade_operation_admin_filter_by_status_pending(self):
+        self._login()
+        env = self._create_upgrade_env()
+        pending_op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="pending",
+            is_persistent=True,
+        )
+        running_op = UpgradeOperation.objects.create(
+            device=env["d2"],
+            image=env["image1b"],
+            status="in-progress",
+            is_persistent=True,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        r = self.client.get(url, {"status__exact": "pending"})
+        self.assertContains(r, str(pending_op.pk))
+        self.assertNotContains(r, str(running_op.pk))
+
+    def test_upgrade_operation_admin_detail_exposes_persistence_fields(self):
+        self._login()
+        env = self._create_upgrade_env()
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="pending",
+            is_persistent=True,
+            retry_count=3,
+            next_retry_at=localtime() + timedelta(minutes=10),
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
+        r = self.client.get(url)
+        self.assertContains(r, "field-is_persistent")
+        self.assertContains(r, "field-retry_count")
+        self.assertContains(r, "field-next_retry_at")
+
+    def test_batch_upgrade_operation_admin_list_shows_is_persistent(self):
+        self._login()
+        env = self._create_upgrade_env()
+        BatchUpgradeOperation.objects.create(
+            build=env["build2"], status="in-progress", is_persistent=True
+        )
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        r = self.client.get(url)
+        self.assertContains(r, "column-is_persistent")
+
     def test_firmware_image_has_change_permission(self):
         request = MockRequest()
         request.user = User.objects.first()
@@ -2046,6 +2127,53 @@ class TestAdminTransaction(
                 self.assertContains(response, str(batch1.pk))
                 self.assertNotContains(response, str(batch2.pk))
                 self.assertNotContains(response, str(batch3.pk))
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_upgrade_with_is_persistent_true(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
+            self._login()
+            env = self._create_upgrade_env()
+            r = self.client.post(
+                self.build_list_url,
+                {
+                    "action": "upgrade_selected",
+                    "upgrade_related": "upgrade_related",
+                    "is_persistent": "on",
+                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(r, '<li class="success">')
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertTrue(batch.is_persistent)
+            child_flags = list(
+                batch.upgradeoperation_set.values_list("is_persistent", flat=True)
+            )
+            self.assertTrue(child_flags)
+            self.assertTrue(all(child_flags))
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_upgrade_with_is_persistent_false(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
+            self._login()
+            env = self._create_upgrade_env()
+            r = self.client.post(
+                self.build_list_url,
+                {
+                    "action": "upgrade_selected",
+                    "upgrade_related": "upgrade_related",
+                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(r, '<li class="success">')
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertFalse(batch.is_persistent)
+            child_flags = list(
+                batch.upgradeoperation_set.values_list("is_persistent", flat=True)
+            )
+            self.assertTrue(child_flags)
+            self.assertFalse(any(child_flags))
 
 
 del TestConfigAdmin
