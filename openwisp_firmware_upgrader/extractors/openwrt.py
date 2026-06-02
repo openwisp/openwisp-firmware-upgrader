@@ -133,7 +133,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         except DecompressionLimitExceeded:
             raise
         except Exception:
-            return None
+            pass
         return bytes(buf) or None
 
     def _try_xz(self, data):
@@ -160,7 +160,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         return bytes(buf) or None
 
     def _try_lzma(self, data):
-        if data[0:1] != b"\x5d":
+        if not data:
             return None
         buf, total = bytearray(), 0
         compressed = len(data)
@@ -237,6 +237,49 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             if result is not None:
                 return result
         return data
+
+    def _deep_scan_for_dtb(self, data):
+        decompress_map = {
+            b"\x1f\x8b": self._try_gzip,
+            b"\xfd7zXZ\x00": self._try_xz,
+            b"BZh": self._try_bz2,
+            b"\x04\x22\x4d\x18": self._try_lz4,
+        }
+        for magic, decompress_fn in decompress_map.items():
+            offset = 1
+            while True:
+                pos = data.find(magic, offset)
+                if pos == -1:
+                    break
+                try:
+                    decompressed = decompress_fn(data[pos:])
+                    if decompressed:
+                        dtb = self._locate_dtb(decompressed)
+                        if dtb is not None:
+                            return dtb
+                except DecompressionLimitExceeded:
+                    raise
+                except Exception:
+                    pass
+                offset = pos + 1
+        for dict_sig in (b"\x00\x00\x80\x00", b"\x00\x00\x40\x00", b"\x00\x00\x00\x01"):
+            offset = 2
+            while True:
+                pos = data.find(dict_sig, offset)
+                if pos == -1:
+                    break
+                try:
+                    decompressed = self._try_lzma(data[pos - 1 :])
+                    if decompressed:
+                        dtb = self._locate_dtb(decompressed)
+                        if dtb is not None:
+                            return dtb
+                except DecompressionLimitExceeded:
+                    raise
+                except Exception:
+                    pass
+                offset = pos + 1
+        return None
 
     def _dtb_from_fit(self, data):
         offset = 4
@@ -375,6 +418,14 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             pass
         return None
 
+    def _try_extract_dtb_from_kernel(self, kernel_data):
+        stripped = self._strip_uimage_header(kernel_data)
+        decompressed = self._decompress(stripped)
+        dtb = self._locate_dtb(decompressed)
+        if dtb is None:
+            dtb = self._deep_scan_for_dtb(decompressed)
+        return dtb
+
     def extract_from_dtb(self):
         kernel_data = None
         try:
@@ -384,16 +435,12 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         except OSError:
             pass
         if kernel_data is not None:
-            kernel_data = self._strip_uimage_header(kernel_data)
-            kernel_data = self._decompress(kernel_data)
-            dtb = self._locate_dtb(kernel_data)
+            dtb = self._try_extract_dtb_from_kernel(kernel_data)
             if dtb is not None:
                 return self._metadata_from_dtb(dtb)
         tar_kernel = self._read_kernel_from_tar()
         if tar_kernel is not None:
-            tar_kernel = self._strip_uimage_header(tar_kernel)
-            tar_kernel = self._decompress(tar_kernel)
-            dtb = self._locate_dtb(tar_kernel)
+            dtb = self._try_extract_dtb_from_kernel(tar_kernel)
             if dtb is not None:
                 return self._metadata_from_dtb(dtb)
         raise UnsupportedImageError("No DTB found in image")
@@ -405,13 +452,12 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             raise
         except ExtractionError:
             return self.extract_from_dtb()
-        if not fwtool_result.get("compatible") or not fwtool_result.get("model"):
-            try:
-                dtb_result = self.extract_from_dtb()
-                if not fwtool_result.get("model") and dtb_result.get("model"):
-                    fwtool_result["model"] = dtb_result["model"]
-                if not fwtool_result.get("compatible") and dtb_result.get("compatible"):
-                    fwtool_result["compatible"] = dtb_result["compatible"]
-            except (ExtractionError, UnsupportedImageError):
-                pass
+        try:
+            dtb_result = self.extract_from_dtb()
+            if dtb_result.get("model"):
+                fwtool_result["model"] = dtb_result["model"]
+            if not fwtool_result.get("compatible") and dtb_result.get("compatible"):
+                fwtool_result["compatible"] = dtb_result["compatible"]
+        except (ExtractionError, UnsupportedImageError):
+            pass
         return fwtool_result

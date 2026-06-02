@@ -355,7 +355,12 @@ class TestExtractOverride(TestCase):
         with mock.patch.object(
             extractor, "extract_from_image", return_value=fwtool_result
         ):
-            result = extractor.extract()
+            with mock.patch.object(
+                extractor,
+                "extract_from_dtb",
+                side_effect=UnsupportedImageError("no dtb"),
+            ):
+                result = extractor.extract()
         self.assertEqual(result["source"], "fwtool")
 
     def test_fwtool_failure_falls_back_to_dtb(self):
@@ -416,6 +421,34 @@ class TestExtractOverride(TestCase):
             ):
                 result = extractor.extract()
         self.assertIn("enriched,compat", result["compatible"])
+        self.assertEqual(result["source"], "fwtool")
+
+    def test_dtb_model_overrides_fwtool_board_id(self):
+        extractor = self._make_extractor()
+        fwtool_result = {
+            "model": "tplink_archer-c6-v3",
+            "compatible": ["tplink,archer-c6-v3"],
+            "target": "ramips/mt7621",
+            "version": "24.10.6",
+            "compat_version": "1.0",
+            "source": "fwtool",
+        }
+        dtb_result = {
+            "model": "TP-Link Archer C6 v3",
+            "compatible": ["tplink,archer-c6-v3"],
+            "target": "",
+            "version": "",
+            "compat_version": "1.0",
+            "source": "dtb",
+        }
+        with mock.patch.object(
+            extractor, "extract_from_image", return_value=fwtool_result
+        ):
+            with mock.patch.object(
+                extractor, "extract_from_dtb", return_value=dtb_result
+            ):
+                result = extractor.extract()
+        self.assertEqual(result["model"], "TP-Link Archer C6 v3")
         self.assertEqual(result["source"], "fwtool")
 
     def test_unsupported_image_error_propagates_without_dtb_attempt(self):
