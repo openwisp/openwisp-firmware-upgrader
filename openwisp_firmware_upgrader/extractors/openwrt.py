@@ -47,12 +47,12 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
 
     def _extract_fwtool_metadata(self):
         with open(self.image_path, "rb") as f:
-            data = f.read(app_settings.MAX_FILE_SIZE + 1)
+            data = f.read(app_settings.MAX_KERNEL_BYTES + 1)
         # reads full file at once; a tail-only seek could reduce memory usage
-        if len(data) > app_settings.MAX_FILE_SIZE:
+        if len(data) > app_settings.MAX_KERNEL_BYTES:
             raise DecompressionLimitExceeded(
                 f"Firmware file exceeds limit of "
-                f"{app_settings.MAX_FILE_SIZE // (1024 * 1024)}MB."
+                f"{app_settings.MAX_KERNEL_BYTES // (1024 * 1024)}MB."
             )
         file_size = len(data)
         offset = file_size - TRAILER_SIZE
