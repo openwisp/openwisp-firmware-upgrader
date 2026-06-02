@@ -7,7 +7,7 @@ from django.utils.translation import gettext_lazy as _
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import filters, generics, pagination, serializers, status
+from rest_framework import filters, generics, serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.request import clone_request
 from rest_framework.response import Response
@@ -17,6 +17,7 @@ from openwisp_firmware_upgrader import private_storage
 from openwisp_users.api.mixins import FilterByOrganizationManaged, IsOrganizationManager
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 from openwisp_users.api.permissions import DjangoModelPermissions
+from openwisp_utils.api.pagination import OpenWispPagination
 
 from ..swapper import load_model
 from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
@@ -43,15 +44,9 @@ DeviceFirmware = load_model("DeviceFirmware")
 Device = swapper.load_model("config", "Device")
 
 
-class ListViewPagination(pagination.PageNumberPagination):
-    page_size = 10
-    page_size_query_param = "page_size"
-    max_page_size = 100
-
-
 class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
     throttle_scope = "firmware_upgrader"
-    pagination_class = ListViewPagination
+    pagination_class = OpenWispPagination
 
     def get_queryset(self):
         qs = super().get_queryset()

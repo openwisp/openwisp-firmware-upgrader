@@ -104,6 +104,13 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                "mediatek-filogic-netgear_wax220-squashfs-sysupgrade.bin",
+                {
+                    "label": "Netgear WAX220",
+                    "boards": ("Netgear WAX220",),
+                },
+            ),
+            (
                 "ath79-generic-netgear_wndap360-squashfs-sysupgrade.bin",
                 {
                     "label": "Netgear WNDAP360",
@@ -231,6 +238,34 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 {
                     "label": "TP-Link EAP225-Outdoor v3",
                     "boards": ("TP-Link EAP225-Outdoor v3",),
+                },
+            ),
+            (
+                "ath79-generic-tplink_tl-mr6400-v1-squashfs-sysupgrade.bin",
+                {
+                    "label": "TP-Link TL-MR6400 v1",
+                    "boards": ("TP-Link TL-MR6400 v1",),
+                },
+            ),
+            (
+                "ramips-mt76x8-tplink_tl-mr6400-v4-squashfs-sysupgrade.bin",
+                {
+                    "label": "TP-Link TL-MR6400 v4",
+                    "boards": ("TP-Link TL-MR6400 v4",),
+                },
+            ),
+            (
+                "ramips-mt76x8-tplink_tl-mr6400-v5-squashfs-sysupgrade.bin",
+                {
+                    "label": "TP-Link TL-MR6400 v5",
+                    "boards": ("TP-Link TL-MR6400 v5",),
+                },
+            ),
+            (
+                "ramips-mt76x8-tplink_tl-mr6400-v7-squashfs-sysupgrade.bin",
+                {
+                    "label": "TP-Link TL-MR6400 v7",
+                    "boards": ("TP-Link TL-MR6400 v7",),
                 },
             ),
             (
@@ -431,19 +466,65 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                     "boards": ("Picostation M (XM)",),
                 },
             ),
-            # Ubiquiti Unifi
+            # Ubiquiti Unifi 6 Plus
+            (
+                "mediatek-filogic-ubnt_unifi-6-plus-squashfs-sysupgrade.bin",
+                {
+                    "label": "Ubiquiti UniFi 6 Plus",
+                    "boards": ("Ubiquiti UniFi 6 Plus"),
+                },
+            ),
+            # Ubiquiti Unifi 6 Lite
+            (
+                "ramips-mt7621-ubnt_unifi-6-lite-squashfs-sysupgrade.bin",
+                {
+                    "label": "Ubiquiti UniFi 6 Lite",
+                    "boards": ("Ubiquiti UniFi 6 Lite"),
+                },
+            ),
+            # Ubiquiti Unifi 6 LR
+            (
+                "mediatek-mt7622-ubnt_unifi-6-lr-v1-squashfs-sysupgrade.bin",
+                {
+                    "label": "Ubiquiti Unifi 6 LR v1",
+                    "boards": ("Ubiquiti UniFi 6 LR v1"),
+                },
+            ),
+            (
+                "mediatek-mt7622-ubnt_unifi-6-lr-v2-squashfs-sysupgrade.bin",
+                {
+                    "label": "Ubiquiti Unifi 6 LR v2",
+                    "boards": ("Ubiquiti UniFi 6 LR v2"),
+                },
+            ),
+            (
+                "mediatek-mt7622-ubnt_unifi-6-lr-v3-squashfs-sysupgrade.bin",
+                {
+                    "label": "Ubiquiti Unifi 6 LR v3",
+                    "boards": ("Ubiquiti UniFi 6 LR v3"),
+                },
+            ),
+            # Ubiquiti Unifi AP
             (
                 "ath79-generic-ubnt_unifi-ap-squashfs-sysupgrade.bin",
                 {
-                    "label": "Ubiquiti UniFi (OpenWRT 19.07 and later)",
+                    "label": "Ubiquiti UniFi AP (OpenWRT 19.07 and later)",
                     "boards": ("Ubiquiti UniFi", "Ubiquiti UniFi AP"),
+                },
+            ),
+            # Ubiquiti UniFi AP LR ATH79
+            (
+                "ath79-generic-ubnt_unifi-ap-lr-squashfs-sysupgrade.bin",
+                {
+                    "label": "Ubiquiti UniFi AP-LR",
+                    "boards": ("Ubiquiti UniFi", "Ubiquiti UniFi AP LR"),
                 },
             ),
             # Ubiquiti UniFi AC LR ATH79
             (
                 "ath79-generic-ubnt_unifiac-lr-squashfs-sysupgrade.bin",
                 {
-                    "label": "Ubiquiti UniFi AC LR (OpenWrt 19.07 and later)",
+                    "label": "Ubiquiti UniFi AC-LR (OpenWrt 19.07 and later)",
                     "boards": ("Ubiquiti UniFi AC LR",),
                 },
             ),

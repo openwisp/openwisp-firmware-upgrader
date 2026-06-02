@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import timedelta
 from unittest import mock
 
@@ -7,7 +8,7 @@ import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.test import RequestFactory, TestCase, TransactionTestCase
+from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils.timezone import localtime
 
@@ -120,6 +121,7 @@ class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
         return reverse(f"admin:{self.app_label}_build_changelist")
 
 
+@override_settings(LANGUAGE_CODE="en")
 class TestAdmin(BaseTestAdmin, TestCase):
     def test_build_list(self):
         self._login()
@@ -394,6 +396,137 @@ class TestAdmin(BaseTestAdmin, TestCase):
         mocked_func.assert_not_called()
         self.assertEqual(response.status_code, 200)
 
+    def test_save_device_after_credentials_deleted(self, *args):
+        """Regression test for #250."""
+        self._login()
+        device_fw = self._create_device_firmware(installed=True)
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        device_params = self._get_device_params(
+            device, device_conn, device_fw.image, device_fw
+        )
+        device.deviceconnection_set.all().delete()
+        device_params["deviceconnection_set-TOTAL_FORMS"] = 0
+        device_params["deviceconnection_set-INITIAL_FORMS"] = 0
+        del device_params["deviceconnection_set-0-credentials"]
+        del device_params["deviceconnection_set-0-id"]
+        del device_params["deviceconnection_set-0-update_strategy"]
+        del device_params["deviceconnection_set-0-enabled"]
+        response = self.client.post(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Please correct the error")
+
+    def test_change_image_and_add_credentials_together(self, *args):
+        """Regression test for #250."""
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        device_conn = device.deviceconnection_set.first()
+        credentials_id = device_conn.credentials_id
+        update_strategy = device_conn.update_strategy
+        # create a new image to switch to
+        build = self._create_build(version="0.2")
+        new_image = self._create_firmware_image(build=build)
+        # delete existing connection
+        device.deviceconnection_set.all().delete()
+        # build form data: new image + new credentials in same submit
+        device_params = self._get_device_params(
+            device, device_conn, new_image, device_fw
+        )
+        device_params.update(
+            {
+                "devicefirmware-0-image": str(new_image.id),
+                "deviceconnection_set-TOTAL_FORMS": 1,
+                "deviceconnection_set-INITIAL_FORMS": 0,
+                "deviceconnection_set-0-credentials": str(credentials_id),
+                "deviceconnection_set-0-update_strategy": update_strategy,
+                "deviceconnection_set-0-enabled": True,
+            }
+        )
+        # `_get_device_params` populated `-0-id` from the now-deleted connection;
+        # with INITIAL_FORMS=0 the formset must treat row 0 as new, not as an edit.
+        del device_params["deviceconnection_set-0-id"]
+        response = self.client.post(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id]),
+            data=device_params,
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Please correct the error")
+        device_fw.refresh_from_db()
+        self.assertEqual(device_fw.image, new_image)
+        self.assertEqual(device.deviceconnection_set.count(), 1)
+
+    def test_add_credentials_with_cancelled_upgrade_operation(self, *args):
+        """Regression test for adding credentials while a cancelled upgrade is shown."""
+        with mock.patch(
+            "openwisp_controller.connection.models.DeviceConnection.connect",
+            return_value=True,
+        ), mock.patch(
+            "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
+            return_value=True,
+        ):
+            self._login()
+            device = self._create_config(organization=self._get_org()).device
+            device_conn = self._create_device_connection(device=device)
+            credentials_id = device_conn.credentials_id
+            update_strategy = device_conn.update_strategy
+            image = self._create_firmware_image(organization=device.organization)
+            device_params = self._get_device_params(
+                device,
+                device_conn,
+                image,
+                upgrade_options=json.dumps({"c": True}),
+            )
+            response = self.client.post(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                ),
+                data=device_params,
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(device.upgradeoperation_set.count(), 1)
+            # cancel upgrade operation and remove DeviceConnection object
+            upgrade_operation = device.upgradeoperation_set.get()
+            upgrade_operation.cancel()
+            device_fw = device.devicefirmware
+            device.deviceconnection_set.all().delete()
+            # submit form creating a new credential
+            device_params = self._get_device_params(
+                device, device_conn, image, device_fw
+            )
+            device_params.update(
+                {
+                    "deviceconnection_set-TOTAL_FORMS": 1,
+                    "deviceconnection_set-INITIAL_FORMS": 0,
+                    "deviceconnection_set-0-credentials": str(credentials_id),
+                    "deviceconnection_set-0-update_strategy": update_strategy,
+                    "deviceconnection_set-0-enabled": True,
+                    "upgradeoperation_set-TOTAL_FORMS": 1,
+                    "upgradeoperation_set-INITIAL_FORMS": 1,
+                    "upgradeoperation_set-0-id": str(upgrade_operation.id),
+                    "upgradeoperation_set-0-device": str(device.id),
+                }
+            )
+            del device_params["deviceconnection_set-0-id"]
+            response = self.client.post(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                ),
+                data=device_params,
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(
+                response, "No related connection or credentials found for this device."
+            )
+            self.assertEqual(device.deviceconnection_set.count(), 1)
+
     def test_deactivated_firmware_image_inline(self):
         self._login()
         device = self._create_config(organization=self._get_org()).device
@@ -423,6 +556,18 @@ class TestAdmin(BaseTestAdmin, TestCase):
             response,
             '<select name="devicefirmware-0-image" id="id_devicefirmware-0-image">',
         )
+
+    def test_deactivated_device_upgrade_operation_readonly(self):
+        self._login()
+        device = self._create_config(organization=self._get_org()).device
+        device.deactivate()
+        operation = UpgradeOperation.objects.create(device=device, status="failed")
+        response = self.client.get(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
+        )
+        self.assertContains(response, str(operation.pk))
+        # deactivated devices are readonly
+        self.assertNotContains(response, 'name="upgradeoperation_set-0-DELETE"')
 
     def test_device_upgrade_shared_firmware(self, *args):
         org = self._get_org()
@@ -651,6 +796,280 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 html=True,
             )
 
+    def _get_device_upgrade_operation_delete_params(
+        self, device, device_conn, device_fw, operation
+    ):
+        params = self._get_device_params(
+            device, device_conn, device_fw.image, device_fw
+        )
+        params.update(
+            {
+                "upgradeoperation_set-TOTAL_FORMS": 1,
+                "upgradeoperation_set-INITIAL_FORMS": 1,
+                "upgradeoperation_set-MIN_NUM_FORMS": 0,
+                "upgradeoperation_set-MAX_NUM_FORMS": 0,
+                "upgradeoperation_set-0-id": str(operation.pk),
+                "upgradeoperation_set-0-DELETE": "on",
+            }
+        )
+        return params
+
+    def _get_input_tag(self, content, name):
+        match = re.search(rf'<input\b[^>]*\bname="{re.escape(name)}"[^>]*>', content)
+        if not match:
+            raise ValueError(f'Input with name="{name}" not found')
+        return match.group(0)
+
+    def test_device_bulk_delete_with_upgrade_operation(self):
+        self._login()
+        org = self._create_org(name="bulk-delete-org", slug="bulk-delete-org")
+        device = self._create_device_with_connection(organization=org)
+        device.deactivate()
+        device.config.set_status_deactivated()
+        operation = UpgradeOperation.objects.create(device=device)
+        changelist_url = reverse(f"admin:{self.config_app_label}_device_changelist")
+        payload = {
+            "action": "delete_selected",
+            ACTION_CHECKBOX_NAME: [str(device.pk)],
+        }
+
+        with self.subTest("in-progress operation blocks device bulk delete"):
+            response = self.client.post(changelist_url, data=payload)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "Cannot delete Device")
+            self.assertContains(response, "upgrade operation")
+            self.assertIn("upgrade operation", response.context["perms_lacking"])
+            self.assertTrue(Device.objects.filter(pk=device.pk).exists())
+            self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+        with self.subTest("failed operation allows device bulk delete"):
+            operation.status = "failed"
+            operation.save(update_fields=["status"])
+            response = self.client.post(changelist_url, data=payload)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, "Cannot delete")
+            self.assertNotContains(response, "upgrade operation")
+            self.assertEqual(response.context["perms_lacking"], set())
+            payload["post"] = "yes"
+            response = self.client.post(changelist_url, data=payload, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(Device.objects.filter(pk=device.pk).exists())
+            self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_upgrade_operation_admin_delete_selected_action_present(self):
+        self._login()
+        device = self._create_device_with_connection()
+        UpgradeOperation.objects.create(device=device, status="failed")
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<option value="delete_selected">')
+
+    def test_upgrade_operation_admin_delete_by_status(self):
+        self._login()
+        device = self._create_device_with_connection()
+        operation = UpgradeOperation.objects.create(device=device)
+        change_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_change", args=[operation.pk]
+        )
+        delete_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_delete", args=[operation.pk]
+        )
+
+        with self.subTest("in-progress operation does not show delete button"):
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, delete_url)
+
+        with self.subTest("failed operation can be deleted"):
+            operation.status = "failed"
+            operation.save(update_fields=["status"])
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, delete_url)
+            response = self.client.post(delete_url, {"post": "yes"}, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_upgrade_operation_admin_bulk_delete_in_progress_not_allowed(self):
+        self._login()
+        device = self._create_device_with_connection()
+        operation = UpgradeOperation.objects.create(device=device)
+        failed_operation = UpgradeOperation.objects.create(
+            device=device, status="failed"
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        response = self.client.post(
+            url,
+            data={
+                "action": "delete_selected",
+                ACTION_CHECKBOX_NAME: [str(operation.pk), str(failed_operation.pk)],
+                "post": "yes",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Some selected operations are still in progress and cannot be deleted. "
+            "Remove them from the selection and try again.",
+        )
+        self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+        self.assertTrue(
+            UpgradeOperation.objects.filter(pk=failed_operation.pk).exists()
+        )
+
+    def test_batch_upgrade_operation_admin_delete_selected_action_present(self):
+        self._login()
+        build = self._create_build()
+        BatchUpgradeOperation.objects.create(build=build, status="failed")
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<option value="delete_selected">')
+
+    def test_batch_upgrade_operation_admin_delete_by_status(self):
+        self._login()
+        build = self._create_build()
+        batch = BatchUpgradeOperation.objects.create(build=build, status="in-progress")
+        change_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        delete_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_delete", args=[batch.pk]
+        )
+
+        with self.subTest("in-progress batch does not show delete button"):
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, delete_url)
+
+        with self.subTest("failed batch can be deleted"):
+            batch.status = "failed"
+            batch.save(update_fields=["status"])
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, delete_url)
+            response = self.client.post(delete_url, {"post": "yes"}, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+
+    def test_batch_upgrade_operation_admin_bulk_delete_by_status(self):
+        self._login()
+        org = self._get_org()
+        build = self._create_build(category=self._create_category(organization=org))
+        batch = BatchUpgradeOperation.objects.create(build=build, status="in-progress")
+        device = self._create_device_with_connection(organization=org)
+        operation = UpgradeOperation.objects.create(device=device, batch=batch)
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        payload = {
+            "action": "delete_selected",
+            ACTION_CHECKBOX_NAME: [str(batch.pk)],
+        }
+
+        with self.subTest("in-progress batch cannot be deleted"):
+            failed_batch = BatchUpgradeOperation.objects.create(
+                build=build, status="failed"
+            )
+            payload[ACTION_CHECKBOX_NAME].append(str(failed_batch.pk))
+            payload["post"] = "yes"
+            response = self.client.post(url, data=payload, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(
+                response,
+                "Some selected operations are still in progress and cannot be deleted. "
+                "Remove them from the selection and try again.",
+            )
+            self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+            self.assertTrue(
+                BatchUpgradeOperation.objects.filter(pk=failed_batch.pk).exists()
+            )
+            self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+            payload[ACTION_CHECKBOX_NAME].remove(str(failed_batch.pk))
+            payload.pop("post")
+            failed_batch.delete()
+
+        with self.subTest("failed batch can be deleted"):
+            operation.status = "failed"
+            operation.save(update_fields=["status"])
+            batch.refresh_from_db()
+            self.assertEqual(batch.status, "failed")
+            response = self.client.post(url, data=payload)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, "Cannot delete")
+            payload["post"] = "yes"
+            response = self.client.post(url, data=payload, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+            self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_device_upgrade_operation_inline_delete_by_status(self):
+        self._login()
+        device = self._create_device_with_connection()
+        device_conn = device.deviceconnection_set.first()
+        device_fw = self._create_device_firmware(device=device, device_connection=False)
+        operation = UpgradeOperation.objects.create(device=device)
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+
+        with self.subTest("in-progress operation cannot be deleted inline"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            delete_input = self._get_input_tag(
+                response.content.decode(), "upgradeoperation_set-0-DELETE"
+            )
+            self.assertIn("disabled", delete_input)
+            response = self.client.post(
+                url,
+                data=self._get_device_upgrade_operation_delete_params(
+                    device, device_conn, device_fw, operation
+                ),
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+        with self.subTest("failed operation can be deleted inline"):
+            operation.status = "failed"
+            operation.save(update_fields=["status"])
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, 'name="upgradeoperation_set-0-DELETE"')
+            response = self.client.post(
+                url,
+                data=self._get_device_upgrade_operation_delete_params(
+                    device, device_conn, device_fw, operation
+                ),
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_device_upgrade_operation_inline_delete_mixed_statuses(self):
+        self._login()
+        device = self._create_device_with_connection()
+        self._create_device_firmware(device=device, device_connection=False)
+        in_progress_operation = UpgradeOperation.objects.create(device=device)
+        failed_operation = UpgradeOperation.objects.create(
+            device=device, status="failed"
+        )
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+        response = self.client.get(url)
+        content = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f'value="{failed_operation.pk}"', content)
+        self.assertIn(f'value="{in_progress_operation.pk}"', content)
+        failed_index = content.index(f'value="{failed_operation.pk}"')
+        in_progress_index = content.index(f'value="{in_progress_operation.pk}"')
+        failed_delete_input = self._get_input_tag(
+            content, "upgradeoperation_set-0-DELETE"
+        )
+        in_progress_delete_input = self._get_input_tag(
+            content, "upgradeoperation_set-1-DELETE"
+        )
+        self.assertNotIn("disabled", failed_delete_input)
+        self.assertIn("disabled", in_progress_delete_input)
+        self.assertLess(failed_index, in_progress_index)
+
 
 class TestAdminTransaction(
     BaseTestAdmin, AdminActionPermTestMixin, TransactionTestCase
@@ -878,14 +1297,17 @@ class TestAdminTransaction(
         with mock.patch(self._mock_connect, return_value=True):
             self.test_upgrade_all()
             uo = UpgradeOperation.objects.first()
-            url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+            url = reverse(
+                f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk]
+            )
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             batch_changelist_url = reverse(
                 f"admin:{self.app_label}_batchupgradeoperation_changelist"
             )
             batch_change_url = reverse(
-                f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+                f"admin:{self.app_label}_batchupgradeoperation_change",
+                args=[uo.batch.pk],
             )
             self.assertTrue(response.context["batch_has_view_permission"])
             self.assertEqual(response.context["batch"], uo.batch)
@@ -905,7 +1327,9 @@ class TestAdminTransaction(
             device_fw.save(upgrade=True)
             uo = device_fw.device.upgradeoperation_set.first()
             self.assertIsNone(uo.batch_id)
-            url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+            url = reverse(
+                f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk]
+            )
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             self.assertIsNone(response.context.get("batch"))
@@ -919,7 +1343,9 @@ class TestAdminTransaction(
         with mock.patch(self._mock_connect, return_value=True):
             self.test_upgrade_all()
             uo = UpgradeOperation.objects.first()
-            url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk])
+            url = reverse(
+                f"admin:{self.app_label}_upgradeoperation_change", args=[uo.pk]
+            )
             with mock.patch(
                 "openwisp_firmware_upgrader.admin.BatchUpgradeOperationAdmin.has_view_permission",
                 return_value=False,
@@ -930,7 +1356,8 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_changelist"
             )
             batch_change_url = reverse(
-                f"admin:{self.app_label}_batchupgradeoperation_change", args=[uo.batch.pk]
+                f"admin:{self.app_label}_batchupgradeoperation_change",
+                args=[uo.batch.pk],
             )
             self.assertFalse(response.context["batch_has_view_permission"])
             self.assertEqual(response.context["batch"], uo.batch)
@@ -1115,7 +1542,7 @@ class TestAdminTransaction(
                     )
                 )
                 self.assertContains(
-                    response, "<script>\nvar firmwareUpgraderSchema = null\n</script>"
+                    response, "<script>\nvar firmwareUpgraderSchema = null\n"
                 )
 
             with self.subTest("Test using upgrade options with unsupported upgrader"):
@@ -1258,8 +1685,12 @@ class TestAdminTransaction(
             # Create devices from different organizations
             org1 = self._create_org(name="Org1", slug="org1")
             org2 = self._create_org(name="Org2", slug="org2")
-            device1 = self._create_device(organization=org1, name="device1-combined-filter")
-            device2 = self._create_device(organization=org2, name="device2-combined-filter")
+            device1 = self._create_device(
+                organization=org1, name="device1-combined-filter"
+            )
+            device2 = self._create_device(
+                organization=org2, name="device2-combined-filter"
+            )
             self._create_config(device=device1)
             self._create_config(device=device2)
             cred1 = self._get_credentials(organization=org1)
@@ -1301,25 +1732,35 @@ class TestAdminTransaction(
             )
 
             with self.subTest("Test combined filter: org1 + success"):
-                response = self.client.get(url + f"?organization={org1.id}&status=success")
+                response = self.client.get(
+                    url + f"?organization={org1.id}&status=success"
+                )
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, org1_op.device.name)
                 self.assertNotContains(response, org2_op.device.name)
 
             with self.subTest("Test combined filter: org2 + failed"):
-                response = self.client.get(url + f"?organization={org2.id}&status=failed")
+                response = self.client.get(
+                    url + f"?organization={org2.id}&status=failed"
+                )
                 self.assertEqual(response.status_code, 200)
                 self.assertNotContains(response, org1_op.device.name)
                 self.assertContains(response, org2_op.device.name)
 
             with self.subTest("Test combined filter: org1 + failed (no results)"):
-                response = self.client.get(url + f"?organization={org1.id}&status=failed")
+                response = self.client.get(
+                    url + f"?organization={org1.id}&status=failed"
+                )
                 self.assertEqual(response.status_code, 200)
                 self.assertNotContains(response, org1_op.device.name)
                 self.assertNotContains(response, org2_op.device.name)
 
-            with self.subTest("Combined filters preserve each other in generated links"):
-                response = self.client.get(url + f"?organization={org1.id}&status=success")
+            with self.subTest(
+                "Combined filters preserve each other in generated links"
+            ):
+                response = self.client.get(
+                    url + f"?organization={org1.id}&status=success"
+                )
                 # Organization 'All' should keep status
                 self.assertContains(
                     response,
@@ -1502,7 +1943,9 @@ class TestAdminTransaction(
                 }
             )
             with self.subTest("Test actual batch upgrade with location"):
-                with mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"):
+                with mock.patch(
+                    "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"
+                ):
                     response = self.client.post(url, data, follow=True)
                     self.assertEqual(response.status_code, 200)
                 # Check that batch was created with location
@@ -1555,7 +1998,9 @@ class TestAdminTransaction(
                 self.assertEqual(response.status_code, 200)
                 # Should stay on confirmation page with error message
                 self.assertContains(response, "No devices found matching")
-                self.assertContains(response, "adjust your group and/or location filters")
+                self.assertContains(
+                    response, "adjust your group and/or location filters"
+                )
                 # No batch should be created
                 self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
@@ -1576,8 +2021,12 @@ class TestAdminTransaction(
                 name="Location 2", address="456 Oak Ave", organization=org
             )
             # Create batch operations with different locations
-            batch1 = BatchUpgradeOperation.objects.create(build=build, location=location1)
-            batch2 = BatchUpgradeOperation.objects.create(build=build, location=location2)
+            batch1 = BatchUpgradeOperation.objects.create(
+                build=build, location=location1
+            )
+            batch2 = BatchUpgradeOperation.objects.create(
+                build=build, location=location2
+            )
             batch3 = BatchUpgradeOperation.objects.create(
                 build=build, location=None  # No location
             )

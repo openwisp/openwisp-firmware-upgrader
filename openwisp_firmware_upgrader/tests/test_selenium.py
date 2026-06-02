@@ -43,6 +43,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
+    _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
     def _set_up_env(self):
@@ -126,20 +127,16 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(DeviceConnection.objects.count(), 1)
         self.assertEqual(DeviceFirmware.objects.count(), 1)
 
-    @patch(
-        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
-        return_value=True,
-    )
+    @patch(_mock_upgrade, return_value=True)
     def test_device_firmware_upgrade_options(self, *args):
+        def save_device():
+            self.find_element(
+                by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
+            ).click()
+            self.wait_for_visibility(By.CSS_SELECTOR, "#devicefirmware-group")
+            self.hide_loading_overlay()
+
         with patch(self._mock_connect, return_value=True):
-
-            def save_device():
-                self.find_element(
-                    by=By.XPATH, value='//*[@id="device_form"]/div/div[1]/input[3]'
-                ).click()
-                self.wait_for_visibility(By.CSS_SELECTOR, "#devicefirmware-group")
-                self.hide_loading_overlay()
-
             _, _, _, _, _, image, device = self._set_up_env()
             self.login()
             self.open(
@@ -204,10 +201,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
             save_device()
 
-    @patch(
-        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
-        return_value=True,
-    )
+    @patch(_mock_upgrade, return_value=True)
     def test_batch_upgrade_upgrade_options(self, *args):
         with patch(self._mock_connect, return_value=True):
             _, _, _, build2, _, _, _ = self._set_up_env()
@@ -281,10 +275,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 1,
             )
 
-    @patch(
-        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
-        return_value=True,
-    )
+    @patch(_mock_upgrade, return_value=True)
     @patch.object(OpenWrt, "SCHEMA", None)
     def test_upgrader_with_unsupported_upgrade_options(self, *args):
         with patch(self._mock_connect, return_value=True):
@@ -324,7 +315,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 self.open(
                     reverse(
                         f"admin:{self.firmware_app_label}_build_change",
-                        args=[build2.id]
+                        args=[build2.id],
                     )
                 )
                 # Launch mass upgrade operation
@@ -459,26 +450,21 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             "Both group and location Select2 widgets are initialized",
         )
 
-    @patch(
-        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
-        return_value=True,
-    )
-    @patch(
-        "openwisp_controller.connection.models.DeviceConnection.connect",
-        return_value=True,
-    )
+    @patch(_mock_upgrade, return_value=True)
     def test_upgrade_operation_admin_no_submit_row(self, *args):
         """Test that UpgradeOperation admin change page does not display submit-row"""
-        # Create device firmware and upgrade
-        self._create_device_firmware(upgrade=True)
-        uo = UpgradeOperation.objects.first()
-        self.login()
-        self.open(
-            reverse(
-                f"admin:{self.firmware_app_label}_upgradeoperation_change", args=[uo.pk]
+        with patch(self._mock_connect, return_value=True):
+            # Create device firmware and upgrade
+            self._create_device_firmware(upgrade=True)
+            uo = UpgradeOperation.objects.first()
+            self.login()
+            self.open(
+                reverse(
+                    f"admin:{self.firmware_app_label}_upgradeoperation_change",
+                    args=[uo.pk],
+                )
             )
-        )
-        self.wait_for_invisibility(By.CSS_SELECTOR, ".submit-row")
+            self.wait_for_invisibility(By.CSS_SELECTOR, ".submit-row")
 
 
 @tag("selenium_tests")
