@@ -46,6 +46,7 @@ UpgradeOperation = load_model("UpgradeOperation")
 class TestAdmin(BaseTestAdmin):
     app_label = "sample_firmware_upgrader"
     config_app_label = "config"
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
     build_list_url = reverse(f"admin:{app_label}_build_changelist")
 
     def test_category_details(self):

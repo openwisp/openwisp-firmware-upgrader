@@ -123,6 +123,9 @@ class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
 
 @override_settings(LANGUAGE_CODE="en")
 class TestAdmin(BaseTestAdmin, TestCase):
+    _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
+    _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
+
     def test_build_list(self):
         self._login()
         build = self._create_build()
@@ -463,12 +466,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
 
     def test_add_credentials_with_cancelled_upgrade_operation(self, *args):
         """Regression test for adding credentials while a cancelled upgrade is shown."""
-        with mock.patch(
-            "openwisp_controller.connection.models.DeviceConnection.connect",
-            return_value=True,
-        ), mock.patch(
-            "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
-            return_value=True,
+        with mock.patch(self._mock_connect, return_value=True), mock.patch(
+            self._mock_upgrade, return_value=True
         ):
             self._login()
             device = self._create_config(organization=self._get_org()).device
