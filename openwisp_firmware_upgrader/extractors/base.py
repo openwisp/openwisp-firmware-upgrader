@@ -2,7 +2,11 @@ from abc import ABC, abstractmethod
 
 from django.utils.translation import gettext_lazy as _
 
-from .exceptions import ExtractionError, UnsupportedImageError
+from .exceptions import (
+    DecompressionLimitExceeded,
+    ExtractionError,
+    UnsupportedImageError,
+)
 
 
 class BaseMetadataExtractor(ABC):
@@ -13,7 +17,7 @@ class BaseMetadataExtractor(ABC):
     def extract(self):
         try:
             return self.extract_from_image()
-        except UnsupportedImageError:
+        except (UnsupportedImageError, DecompressionLimitExceeded):
             raise
         except ExtractionError:
             return self.extract_from_dtb()

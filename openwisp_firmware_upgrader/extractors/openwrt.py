@@ -448,10 +448,12 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
     def extract(self):
         try:
             fwtool_result = self.extract_from_image()
-        except UnsupportedImageError:
+        except (UnsupportedImageError, DecompressionLimitExceeded):
             raise
         except ExtractionError:
             return self.extract_from_dtb()
+        # DTB overrides fwtool model with human-readable label; compatible is
+        # backfilled only if missing
         try:
             dtb_result = self.extract_from_dtb()
             if dtb_result.get("model"):
