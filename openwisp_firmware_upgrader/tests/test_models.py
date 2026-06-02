@@ -1081,6 +1081,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
                 fw._validate_file_header()
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
+                self.assertIn("PNG", str(e))
             else:
                 self.fail("ValidationError not raised for PNG header")
 
@@ -1090,6 +1091,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
                 fw._validate_file_header()
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
+                self.assertIn("ZIP", str(e))
             else:
                 self.fail("ValidationError not raised for ZIP header")
 
@@ -1099,6 +1101,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
                 fw._validate_file_header()
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
+                self.assertIn("ELF", str(e))
             else:
                 self.fail("ValidationError not raised for ELF header")
 
