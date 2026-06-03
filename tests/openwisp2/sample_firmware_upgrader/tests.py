@@ -44,10 +44,8 @@ UpgradeOperation = load_model("UpgradeOperation")
 
 
 class TestAdmin(BaseTestAdmin):
-    app_label = "sample_firmware_upgrader"
-    config_app_label = "config"
     _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
-    build_list_url = reverse(f"admin:{app_label}_build_changelist")
+    build_list_url = reverse(f"admin:{BaseTestAdmin.app_label}_build_changelist")
 
     def test_category_details(self):
         self._login()
@@ -116,10 +114,10 @@ class TestAdmin(BaseTestAdmin):
 
 
 class TestAdminTransaction(BaseTestAdminTransaction):
-    app_label = "sample_firmware_upgrader"
-    config_app_label = "config"
     _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
-    build_list_url = reverse(f"admin:{app_label}_build_changelist")
+    build_list_url = reverse(
+        f"admin:{BaseTestAdminTransaction.app_label}_build_changelist"
+    )
 
 
 class TestModels(BaseTestModels):
@@ -140,8 +138,6 @@ class TestPrivateStorage(BaseTestPrivateStorage):
 
 
 class TestDeviceAdmin(BaseTestDeviceAdmin):
-    config_app_label = "config"
-    firmware_app_label = "sample_firmware_upgrader"
     _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
     pass
 
