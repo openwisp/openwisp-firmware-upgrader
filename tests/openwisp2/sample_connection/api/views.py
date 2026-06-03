@@ -14,7 +14,7 @@ from openwisp_controller.connection.api.views import (
     DeviceConnectionDetailView as BaseDeviceConnectionDetailView,
 )
 from openwisp_controller.connection.api.views import (
-    DeviceConnenctionListCreateView as BaseDeviceConnenctionListCreateView,
+    DeviceConnenctionListCreateView as BaseDeviceConnectionListCreateView,
 )
 
 
@@ -34,7 +34,7 @@ class CredentialDetailView(BaseCredentialDetailView):
     pass
 
 
-class DeviceConnenctionListCreateView(BaseDeviceConnenctionListCreateView):
+class DeviceConnenctionListCreateView(BaseDeviceConnectionListCreateView):
     pass
 
 
