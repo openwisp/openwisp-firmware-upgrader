@@ -546,7 +546,6 @@ class TestExtractFwtoolMetadata(TestCase):
 
 
 class TestRealFirmwareExtraction(TestCase):
-
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

@@ -20,7 +20,6 @@ from .exceptions import (
 )
 
 _X86_SUFFIXES = (".vdi", ".vmdk")
-
 DTB_MAGIC = b"\xd0\x0d\xfe\xed"
 DTB_MIN_SIZE = 64
 DTB_MAX_SIZE = 10 * 1024 * 1024
@@ -36,7 +35,6 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
 
 class OpenWrtMetadataExtractor(BaseMetadataExtractor):
-
     def _validate_image_type(self):
         name = os.path.basename(self.image_path).lower()
         _, ext = os.path.splitext(name)
