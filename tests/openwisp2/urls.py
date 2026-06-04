@@ -22,10 +22,6 @@ if os.environ.get("SAMPLE_APP", False):
     urlpatterns += [
         path(
             "",
-            include(("openwisp_controller.config.urls", "config"), namespace="config"),
-        ),
-        path(
-            "api/v1/",
             include(
                 (
                     get_connection_api_urls(connection_api_views),
