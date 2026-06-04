@@ -97,6 +97,7 @@ const STATUSES_WITH_FULL_PROGRESS = new Set([
   FW_UPGRADE_STATUS.FAILED,
   FW_UPGRADE_STATUS.ABORTED,
   FW_UPGRADE_STATUS.CANCELLED,
+  FW_UPGRADE_STATUS.PENDING,
 ]);
 
 // returns the object key of statusMap corresponding to value
