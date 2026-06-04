@@ -394,14 +394,14 @@ class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
         # be cancelled first or wait until resolved (success/failed).
         if not super(ReadOnlyAdmin, self).has_delete_permission(request, obj):
             return False
-        if obj and obj.status == IN_PROGRESS_STATUS:
+        if obj and obj.status in IN_PROGRESS_STATUS:
             return False
         return True
 
     @admin.action(description=delete_selected.short_description, permissions=["delete"])
     def delete_selected(self, request, queryset):
         """Overrides default delete_selected action of from Django admin"""
-        if queryset.filter(status=IN_PROGRESS_STATUS).exists():
+        if queryset.filter(status__in=IN_PROGRESS_STATUS).exists():
             self.message_user(request, IN_PROGRESS_DELETE_MESSAGE, messages.ERROR)
             return None
         return delete_selected(self, request, queryset)
@@ -806,7 +806,7 @@ class DeviceUpgradeOperationFormSet(DeviceFormSet):
         super().add_fields(form, index)
         if (
             form.instance.pk
-            and form.instance.status == IN_PROGRESS_STATUS
+            and form.instance.status in IN_PROGRESS_STATUS
             and DELETION_FIELD_NAME in form.fields
         ):
             form.fields[DELETION_FIELD_NAME].disabled = True
