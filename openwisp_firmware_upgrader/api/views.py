@@ -95,11 +95,15 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         )
         serializer.is_valid(raise_exception=True)
         upgrade_all = serializer.validated_data.get("upgrade_all", False)
+        is_persistent = serializer.validated_data.get("is_persistent", True)
         group = serializer.validated_data.get("group")
         location = serializer.validated_data.get("location")
         try:
             batch = instance.batch_upgrade(
-                firmwareless=upgrade_all, group=group, location=location
+                firmwareless=upgrade_all,
+                group=group,
+                location=location,
+                is_persistent=is_persistent,
             )
         except ValidationError as e:
             return Response(

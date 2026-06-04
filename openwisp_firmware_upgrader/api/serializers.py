@@ -85,9 +85,10 @@ class BuildSerializer(BaseSerializer):
 
 class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
     upgrade_all = serializers.BooleanField(required=False, default=False)
+    is_persistent = serializers.BooleanField(required=False, default=True)
 
     class Meta:
-        fields = ("upgrade_all", "group", "location")
+        fields = ("upgrade_all", "is_persistent", "group", "location")
         model = BatchUpgradeOperation
         extra_kwargs = {
             "group": {"required": False, "allow_null": True},
@@ -102,18 +103,46 @@ class UpgradeOperationSerializer(serializers.ModelSerializer):
             "id",
             "device",
             "image",
+            "is_persistent",
+            "retry_count",
+            "next_retry_at",
             "status",
             "log",
             "progress",
             "modified",
             "created",
         )
+        read_only_fields = ("retry_count", "next_retry_at")
+
+    def update(self, instance, validated_data):
+        if "is_persistent" in validated_data:
+            raise serializers.ValidationError(
+                {
+                    "is_persistent": _(
+                        "is_persistent cannot be changed after the upgrade "
+                        "operation has been saved."
+                    )
+                }
+            )
+        return super().update(instance, validated_data)
 
 
 class DeviceUpgradeOperationSerializer(serializers.ModelSerializer):
     class Meta:
         model = UpgradeOperation
-        fields = ("id", "device", "image", "status", "log", "progress", "modified")
+        fields = (
+            "id",
+            "device",
+            "image",
+            "is_persistent",
+            "retry_count",
+            "next_retry_at",
+            "status",
+            "log",
+            "progress",
+            "modified",
+        )
+        read_only_fields = ("retry_count", "next_retry_at")
 
 
 class BatchUpgradeOperationListSerializer(BaseSerializer):
@@ -137,6 +166,18 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
     class Meta:
         model = BatchUpgradeOperation
         fields = "__all__"
+
+    def update(self, instance, validated_data):
+        if "is_persistent" in validated_data:
+            raise serializers.ValidationError(
+                {
+                    "is_persistent": _(
+                        "is_persistent cannot be changed after the batch "
+                        "upgrade has left the idle state."
+                    )
+                }
+            )
+        return super().update(instance, validated_data)
 
 
 class DeviceFirmwareSerializer(ValidatedModelSerializer):
