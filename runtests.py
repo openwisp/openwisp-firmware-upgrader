@@ -42,9 +42,8 @@ if __name__ == "__main__":
         app_dir = "tests/openwisp2/"
     # Run Django tests
     django_tests = run_tests(args, "openwisp2.settings", test_app)
-    # Run pytest tests
-    if not exclude_pytest:
+    # Run pytest tests (only when testing extensions and if not explicltly excluded)
+    if os.environ.get("SAMPLE_APP", False) and not exclude_pytest:
         # Used to test django-channels
         sys.exit(pytest.main([app_dir]))
-    else:
-        sys.exit(django_tests)
+    sys.exit(django_tests)
