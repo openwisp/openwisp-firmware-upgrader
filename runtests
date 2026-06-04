@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -e
 
 echo "Starting standard tests"
 coverage run runtests.py --parallel --exclude-tag=selenium_tests \
