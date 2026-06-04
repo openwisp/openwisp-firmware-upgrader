@@ -619,9 +619,7 @@ class TestModels(TestUpgraderMixin, TestCase):
     def test_is_persistent_propagation_from_batch(self):
         device_fw = self._create_device_firmware()
         build = device_fw.image.build
-        with mock.patch(
-            f"{self.app_label}.models.UpgradeOperation.upgrade", return_value=None
-        ):
+        with mock.patch.object(UpgradeOperation, "upgrade", return_value=None):
             with self.subTest("is_persistent=True batch propagates True to child"):
                 batch = BatchUpgradeOperation.objects.create(
                     build=build, is_persistent=True
@@ -644,9 +642,7 @@ class TestModels(TestUpgraderMixin, TestCase):
 
     def test_is_persistent_immutable_on_upgrade_operation(self):
         device_fw = self._create_device_firmware()
-        with mock.patch(
-            f"{self.app_label}.models.UpgradeOperation.upgrade", return_value=None
-        ):
+        with mock.patch.object(UpgradeOperation, "upgrade", return_value=None):
             op = device_fw.create_upgrade_operation(batch=None, upgrade_options={})
         op.is_persistent = True
         with self.assertRaises(ValidationError) as ctx:
