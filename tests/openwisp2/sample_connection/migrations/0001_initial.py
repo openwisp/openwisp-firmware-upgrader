@@ -20,11 +20,13 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("config", "0001_squashed_0002_config_settings_uuid"),
         swapper.dependency(
             *swapper.split(settings.AUTH_USER_MODEL), version="0004_default_groups"
         ),
-        swapper.dependency("config", "Device"),
+        swapper.dependency(
+            *swapper.split(settings.CONFIG_DEVICE_MODEL),
+            version="0004_add_device_model",
+        ),
     ]
 
     operations = [
@@ -182,7 +184,7 @@ class Migration(migrations.Migration):
                     "device",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to="config.Device",
+                        to=swapper.get_model_name("config", "Device"),
                     ),
                 ),
             ],
