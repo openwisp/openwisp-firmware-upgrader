@@ -1,3 +1,7 @@
+:root {
+  --ow-color-danger: var(--ow-color-primary);
+}
+
 .field-status .readonly {
   min-height: 25px;
   display: flex;
