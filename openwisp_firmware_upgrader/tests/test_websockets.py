@@ -182,6 +182,10 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
                         "status": "in-progress",
                         "completed": 0,
                         "total": 2,
+                        "successful": 0,
+                        "failed": 0,
+                        "aborted": 0,
+                        "cancelled": 0,
                     },
                 },
             )
@@ -190,6 +194,34 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(response["status"], "in-progress")
             self.assertEqual(response["completed"], 0)
             self.assertEqual(response["total"], 2)
+            self.assertEqual(response["successful"], 0)
+            self.assertEqual(response["failed"], 0)
+            self.assertEqual(response["aborted"], 0)
+            self.assertEqual(response["cancelled"], 0)
+
+            with patch.object(
+                BatchUpgradeOperation,
+                "calculate_and_update_status",
+                return_value=(
+                    "in-progress",
+                    {
+                        "total_operations": 5,
+                        "completed": 2,
+                        "successful": 1,
+                        "failed": 1,
+                        "aborted": 0,
+                        "cancelled": 0,
+                    },
+                ),
+            ):
+                await communicator.send_json_to({"type": "request_current_state"})
+                response = await communicator.receive_json_from()
+                self.assertEqual(response["type"], "batch_state")
+                self.assertEqual(response["batch_status"]["successful"], 1)
+                self.assertEqual(response["batch_status"]["failed"], 1)
+                self.assertEqual(response["batch_status"]["aborted"], 0)
+                self.assertEqual(response["batch_status"]["cancelled"], 0)
+
             # Send operation progress message
             await channel_layer.group_send(
                 group_name,
@@ -400,12 +432,24 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
-            publisher.publish_batch_status("success", 5, 10)
+            publisher.publish_batch_status(
+                "success",
+                5,
+                10,
+                successful=4,
+                failed=1,
+                aborted=0,
+                cancelled=0,
+            )
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[1]["data"]["type"], "batch_status")
             self.assertEqual(call_args[1]["data"]["status"], "success")
             self.assertEqual(call_args[1]["data"]["completed"], 5)
             self.assertEqual(call_args[1]["data"]["total"], 10)
+            self.assertEqual(call_args[1]["data"]["successful"], 4)
+            self.assertEqual(call_args[1]["data"]["failed"], 1)
+            self.assertEqual(call_args[1]["data"]["aborted"], 0)
+            self.assertEqual(call_args[1]["data"]["cancelled"], 0)
 
     async def test_websocket_connection_errors(self):
         """Test WebSocket connection error handling."""
