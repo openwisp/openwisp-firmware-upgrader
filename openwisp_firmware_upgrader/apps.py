@@ -1,5 +1,6 @@
 from django.db.models.signals import post_save, pre_delete
 from django.utils.translation import gettext_lazy as _
+from openwisp_notifications.types import register_notification_type
 from swapper import get_model_name, load_model
 
 from openwisp_utils.admin_theme.menu import register_menu_group
@@ -26,6 +27,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
     def ready(self, *args, **kwargs):
         super().ready(*args, **kwargs)
         self.register_menu_groups()
+        self.register_notification_types()
         self.connect_device_signals()
         self.connect_upgrade_signals()
         self.connect_delete_signals()
@@ -58,6 +60,39 @@ class FirmwareUpdaterConfig(ApiAppConfig):
                 },
                 "icon": "ow-firmware",
             },
+        )
+
+    def register_notification_types(self):
+        BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+        Device = load_model("config", "Device")
+        register_notification_type(
+            "pending_upgrade_reminder",
+            {
+                "verbose_name": "Pending Firmware Upgrade Reminder",
+                "verb": "still pending",
+                "level": "info",
+                "email_subject": (
+                    "[{site.name}] Pending firmware upgrades in mass upgrade "
+                    "{notification.target}"
+                ),
+                "message": "{notification.description}",
+            },
+            models=[BatchUpgradeOperation],
+        )
+        register_notification_type(
+            "persistent_upgrade_failed",
+            {
+                "verbose_name": "Persistent Firmware Upgrade Failed",
+                "verb": "failed",
+                "level": "error",
+                "email_subject": (
+                    "[{site.name}] Persistent firmware upgrade FAILED for device "
+                    "{notification.target}"
+                ),
+                "message": "{notification.description}",
+            },
+            models=[UpgradeOperation, Device],
         )
 
     def connect_device_signals(self):

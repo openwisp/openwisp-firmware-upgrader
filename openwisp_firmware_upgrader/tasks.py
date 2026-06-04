@@ -179,7 +179,7 @@ def send_pending_upgrade_reminders():
             continue
         notify.send(
             sender=batch,
-            type="generic_message",
+            type="pending_upgrade_reminder",
             target=batch,
             description=ngettext(
                 "%(count)d device is still pending in mass upgrade %(batch)s.",
