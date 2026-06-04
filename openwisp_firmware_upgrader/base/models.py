@@ -1096,9 +1096,8 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             return
         notify.send(
             sender=instance,
-            type="generic_message",
+            type="persistent_upgrade_failed",
             target=instance.device,
-            level="error",
             description=_("Persistent upgrade for device %(device)s failed.")
             % {"device": instance.device},
         )
