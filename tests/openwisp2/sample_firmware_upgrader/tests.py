@@ -30,6 +30,9 @@ from openwisp_firmware_upgrader.tests.test_openwrt_upgrader import (
 from openwisp_firmware_upgrader.tests.test_private_storage import (
     TestPrivateStorage as BaseTestPrivateStorage,
 )
+from openwisp_firmware_upgrader.tests.test_selenium import (
+    TestDeviceAdmin as BaseTestDeviceAdmin,
+)
 from openwisp_firmware_upgrader.tests.test_tasks import TestTasks as BaseTestTasks
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -41,8 +44,8 @@ UpgradeOperation = load_model("UpgradeOperation")
 
 
 class TestAdmin(BaseTestAdmin):
-    app_label = "sample_firmware_upgrader"
-    build_list_url = reverse(f"admin:{app_label}_build_changelist")
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
+    build_list_url = reverse(f"admin:{BaseTestAdmin.app_label}_build_changelist")
 
     def test_category_details(self):
         self._login()
@@ -111,8 +114,10 @@ class TestAdmin(BaseTestAdmin):
 
 
 class TestAdminTransaction(BaseTestAdminTransaction):
-    app_label = "sample_firmware_upgrader"
-    build_list_url = reverse(f"admin:{app_label}_build_changelist")
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
+    build_list_url = reverse(
+        f"admin:{BaseTestAdminTransaction.app_label}_build_changelist"
+    )
 
 
 class TestModels(BaseTestModels):
@@ -120,6 +125,7 @@ class TestModels(BaseTestModels):
 
 
 class TestModelsTransaction(BaseTestModelsTransaction):
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
     pass
 
 
@@ -131,7 +137,13 @@ class TestPrivateStorage(BaseTestPrivateStorage):
     pass
 
 
+class TestDeviceAdmin(BaseTestDeviceAdmin):
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
+    pass
+
+
 class TestTasks(BaseTestTasks):
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
     pass
 
 
@@ -162,6 +174,7 @@ del BaseTestAdminTransaction
 del BaseTestModelsTransaction
 del BaseTestOpenwrtUpgrader
 del BaseTestPrivateStorage
+del BaseTestDeviceAdmin
 del BaseTestTasks
 del BaseTestBuildViews
 del BaseTestCategoryViews
