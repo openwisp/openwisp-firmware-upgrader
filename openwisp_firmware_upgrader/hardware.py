@@ -241,6 +241,34 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 },
             ),
             (
+                "ath79-generic-tplink_tl-mr6400-v1-squashfs-sysupgrade.bin",
+                {
+                    "label": "TP-Link TL-MR6400 v1",
+                    "boards": ("TP-Link TL-MR6400 v1",),
+                },
+            ),
+            (
+                "ramips-mt76x8-tplink_tl-mr6400-v4-squashfs-sysupgrade.bin",
+                {
+                    "label": "TP-Link TL-MR6400 v4",
+                    "boards": ("TP-Link TL-MR6400 v4",),
+                },
+            ),
+            (
+                "ramips-mt76x8-tplink_tl-mr6400-v5-squashfs-sysupgrade.bin",
+                {
+                    "label": "TP-Link TL-MR6400 v5",
+                    "boards": ("TP-Link TL-MR6400 v5",),
+                },
+            ),
+            (
+                "ramips-mt76x8-tplink_tl-mr6400-v7-squashfs-sysupgrade.bin",
+                {
+                    "label": "TP-Link TL-MR6400 v7",
+                    "boards": ("TP-Link TL-MR6400 v7",),
+                },
+            ),
+            (
                 "ar71xx-generic-tl-wdr3600-v1-squashfs-sysupgrade.bin",
                 {
                     "label": "TP-Link WDR3600 v1 (OpenWrt 19.07 and earlier)",

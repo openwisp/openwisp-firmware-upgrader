@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import timedelta
 from unittest import mock
 
@@ -7,7 +8,7 @@ import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.test import RequestFactory, TestCase, TransactionTestCase
+from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils.timezone import localtime
 
@@ -120,6 +121,7 @@ class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
         return reverse(f"admin:{self.app_label}_build_changelist")
 
 
+@override_settings(LANGUAGE_CODE="en")
 class TestAdmin(BaseTestAdmin, TestCase):
     def test_build_list(self):
         self._login()
@@ -552,6 +554,18 @@ class TestAdmin(BaseTestAdmin, TestCase):
             '<select name="devicefirmware-0-image" id="id_devicefirmware-0-image">',
         )
 
+    def test_deactivated_device_upgrade_operation_readonly(self):
+        self._login()
+        device = self._create_config(organization=self._get_org()).device
+        device.deactivate()
+        operation = UpgradeOperation.objects.create(device=device, status="failed")
+        response = self.client.get(
+            reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
+        )
+        self.assertContains(response, str(operation.pk))
+        # deactivated devices are readonly
+        self.assertNotContains(response, 'name="upgradeoperation_set-0-DELETE"')
+
     def test_device_upgrade_shared_firmware(self, *args):
         org = self._get_org()
         administrator = self._create_administrator(organizations=[org])
@@ -778,6 +792,280 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 '<a title="All" href="?q=testsearch">All</a>',
                 html=True,
             )
+
+    def _get_device_upgrade_operation_delete_params(
+        self, device, device_conn, device_fw, operation
+    ):
+        params = self._get_device_params(
+            device, device_conn, device_fw.image, device_fw
+        )
+        params.update(
+            {
+                "upgradeoperation_set-TOTAL_FORMS": 1,
+                "upgradeoperation_set-INITIAL_FORMS": 1,
+                "upgradeoperation_set-MIN_NUM_FORMS": 0,
+                "upgradeoperation_set-MAX_NUM_FORMS": 0,
+                "upgradeoperation_set-0-id": str(operation.pk),
+                "upgradeoperation_set-0-DELETE": "on",
+            }
+        )
+        return params
+
+    def _get_input_tag(self, content, name):
+        match = re.search(rf'<input\b[^>]*\bname="{re.escape(name)}"[^>]*>', content)
+        if not match:
+            raise ValueError(f'Input with name="{name}" not found')
+        return match.group(0)
+
+    def test_device_bulk_delete_with_upgrade_operation(self):
+        self._login()
+        org = self._create_org(name="bulk-delete-org", slug="bulk-delete-org")
+        device = self._create_device_with_connection(organization=org)
+        device.deactivate()
+        device.config.set_status_deactivated()
+        operation = UpgradeOperation.objects.create(device=device)
+        changelist_url = reverse(f"admin:{self.config_app_label}_device_changelist")
+        payload = {
+            "action": "delete_selected",
+            ACTION_CHECKBOX_NAME: [str(device.pk)],
+        }
+
+        with self.subTest("in-progress operation blocks device bulk delete"):
+            response = self.client.post(changelist_url, data=payload)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "Cannot delete Device")
+            self.assertContains(response, "upgrade operation")
+            self.assertIn("upgrade operation", response.context["perms_lacking"])
+            self.assertTrue(Device.objects.filter(pk=device.pk).exists())
+            self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+        with self.subTest("failed operation allows device bulk delete"):
+            operation.status = "failed"
+            operation.save(update_fields=["status"])
+            response = self.client.post(changelist_url, data=payload)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, "Cannot delete")
+            self.assertNotContains(response, "upgrade operation")
+            self.assertEqual(response.context["perms_lacking"], set())
+            payload["post"] = "yes"
+            response = self.client.post(changelist_url, data=payload, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(Device.objects.filter(pk=device.pk).exists())
+            self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_upgrade_operation_admin_delete_selected_action_present(self):
+        self._login()
+        device = self._create_device_with_connection()
+        UpgradeOperation.objects.create(device=device, status="failed")
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<option value="delete_selected">')
+
+    def test_upgrade_operation_admin_delete_by_status(self):
+        self._login()
+        device = self._create_device_with_connection()
+        operation = UpgradeOperation.objects.create(device=device)
+        change_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_change", args=[operation.pk]
+        )
+        delete_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_delete", args=[operation.pk]
+        )
+
+        with self.subTest("in-progress operation does not show delete button"):
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, delete_url)
+
+        with self.subTest("failed operation can be deleted"):
+            operation.status = "failed"
+            operation.save(update_fields=["status"])
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, delete_url)
+            response = self.client.post(delete_url, {"post": "yes"}, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_upgrade_operation_admin_bulk_delete_in_progress_not_allowed(self):
+        self._login()
+        device = self._create_device_with_connection()
+        operation = UpgradeOperation.objects.create(device=device)
+        failed_operation = UpgradeOperation.objects.create(
+            device=device, status="failed"
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        response = self.client.post(
+            url,
+            data={
+                "action": "delete_selected",
+                ACTION_CHECKBOX_NAME: [str(operation.pk), str(failed_operation.pk)],
+                "post": "yes",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Some selected operations are still in progress and cannot be deleted. "
+            "Remove them from the selection and try again.",
+        )
+        self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+        self.assertTrue(
+            UpgradeOperation.objects.filter(pk=failed_operation.pk).exists()
+        )
+
+    def test_batch_upgrade_operation_admin_delete_selected_action_present(self):
+        self._login()
+        build = self._create_build()
+        BatchUpgradeOperation.objects.create(build=build, status="failed")
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<option value="delete_selected">')
+
+    def test_batch_upgrade_operation_admin_delete_by_status(self):
+        self._login()
+        build = self._create_build()
+        batch = BatchUpgradeOperation.objects.create(build=build, status="in-progress")
+        change_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        delete_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_delete", args=[batch.pk]
+        )
+
+        with self.subTest("in-progress batch does not show delete button"):
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, delete_url)
+
+        with self.subTest("failed batch can be deleted"):
+            batch.status = "failed"
+            batch.save(update_fields=["status"])
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, delete_url)
+            response = self.client.post(delete_url, {"post": "yes"}, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+
+    def test_batch_upgrade_operation_admin_bulk_delete_by_status(self):
+        self._login()
+        org = self._get_org()
+        build = self._create_build(category=self._create_category(organization=org))
+        batch = BatchUpgradeOperation.objects.create(build=build, status="in-progress")
+        device = self._create_device_with_connection(organization=org)
+        operation = UpgradeOperation.objects.create(device=device, batch=batch)
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        payload = {
+            "action": "delete_selected",
+            ACTION_CHECKBOX_NAME: [str(batch.pk)],
+        }
+
+        with self.subTest("in-progress batch cannot be deleted"):
+            failed_batch = BatchUpgradeOperation.objects.create(
+                build=build, status="failed"
+            )
+            payload[ACTION_CHECKBOX_NAME].append(str(failed_batch.pk))
+            payload["post"] = "yes"
+            response = self.client.post(url, data=payload, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(
+                response,
+                "Some selected operations are still in progress and cannot be deleted. "
+                "Remove them from the selection and try again.",
+            )
+            self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+            self.assertTrue(
+                BatchUpgradeOperation.objects.filter(pk=failed_batch.pk).exists()
+            )
+            self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+            payload[ACTION_CHECKBOX_NAME].remove(str(failed_batch.pk))
+            payload.pop("post")
+            failed_batch.delete()
+
+        with self.subTest("failed batch can be deleted"):
+            operation.status = "failed"
+            operation.save(update_fields=["status"])
+            batch.refresh_from_db()
+            self.assertEqual(batch.status, "failed")
+            response = self.client.post(url, data=payload)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, "Cannot delete")
+            payload["post"] = "yes"
+            response = self.client.post(url, data=payload, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+            self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_device_upgrade_operation_inline_delete_by_status(self):
+        self._login()
+        device = self._create_device_with_connection()
+        device_conn = device.deviceconnection_set.first()
+        device_fw = self._create_device_firmware(device=device, device_connection=False)
+        operation = UpgradeOperation.objects.create(device=device)
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+
+        with self.subTest("in-progress operation cannot be deleted inline"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            delete_input = self._get_input_tag(
+                response.content.decode(), "upgradeoperation_set-0-DELETE"
+            )
+            self.assertIn("disabled", delete_input)
+            response = self.client.post(
+                url,
+                data=self._get_device_upgrade_operation_delete_params(
+                    device, device_conn, device_fw, operation
+                ),
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+        with self.subTest("failed operation can be deleted inline"):
+            operation.status = "failed"
+            operation.save(update_fields=["status"])
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, 'name="upgradeoperation_set-0-DELETE"')
+            response = self.client.post(
+                url,
+                data=self._get_device_upgrade_operation_delete_params(
+                    device, device_conn, device_fw, operation
+                ),
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_device_upgrade_operation_inline_delete_mixed_statuses(self):
+        self._login()
+        device = self._create_device_with_connection()
+        self._create_device_firmware(device=device, device_connection=False)
+        in_progress_operation = UpgradeOperation.objects.create(device=device)
+        failed_operation = UpgradeOperation.objects.create(
+            device=device, status="failed"
+        )
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+        response = self.client.get(url)
+        content = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f'value="{failed_operation.pk}"', content)
+        self.assertIn(f'value="{in_progress_operation.pk}"', content)
+        failed_index = content.index(f'value="{failed_operation.pk}"')
+        in_progress_index = content.index(f'value="{in_progress_operation.pk}"')
+        failed_delete_input = self._get_input_tag(
+            content, "upgradeoperation_set-0-DELETE"
+        )
+        in_progress_delete_input = self._get_input_tag(
+            content, "upgradeoperation_set-1-DELETE"
+        )
+        self.assertNotIn("disabled", failed_delete_input)
+        self.assertIn("disabled", in_progress_delete_input)
+        self.assertLess(failed_index, in_progress_index)
 
 
 class TestAdminTransaction(

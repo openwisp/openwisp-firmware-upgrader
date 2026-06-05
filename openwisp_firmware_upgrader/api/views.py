@@ -20,6 +20,7 @@ from openwisp_firmware_upgrader import private_storage
 from openwisp_users.api.mixins import FilterByOrganizationManaged, IsOrganizationManager
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 from openwisp_users.api.permissions import DjangoModelPermissions
+from openwisp_utils.api.pagination import OpenWispPagination
 
 from ..swapper import load_model
 from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
@@ -46,15 +47,9 @@ DeviceFirmware = load_model("DeviceFirmware")
 Device = swapper.load_model("config", "Device")
 
 
-class ListViewPagination(pagination.PageNumberPagination):
-    page_size = 10
-    page_size_query_param = "page_size"
-    max_page_size = 100
-
-
 class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
     throttle_scope = "firmware_upgrader"
-    pagination_class = ListViewPagination
+    pagination_class = OpenWispPagination
 
     def get_queryset(self):
         qs = super().get_queryset()
