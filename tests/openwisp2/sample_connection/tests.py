@@ -1,4 +1,5 @@
 from django.urls import reverse
+from swapper import load_model
 
 from openwisp_controller.connection import settings as conn_settings
 from openwisp_controller.connection.tests.test_admin import (
@@ -25,22 +26,25 @@ from openwisp_controller.connection.tests.test_notifications import (
 from openwisp_controller.connection.tests.test_ssh import TestSsh as BaseTestSsh
 from openwisp_controller.connection.tests.test_tasks import TestTasks as BaseTestTasks
 
+Device = load_model("config", "Device")
+DeviceConnection = load_model("connection", "DeviceConnection")
+
 
 class TestConnectionAdmin(BaseTestConnectionAdmin):
-    config_app_label = "config"
-    app_label = "sample_connection"
+    config_app_label = Device._meta.app_label
+    app_label = DeviceConnection._meta.app_label
 
 
 class TestCommandInlines(BaseTestCommandInlines):
-    config_app_label = "config"
+    config_app_label = Device._meta.app_label
 
 
 class TestModels(BaseTestModels):
-    app_label = "sample_connection"
+    app_label = DeviceConnection._meta.app_label
 
 
 class TestModelsTransaction(BaseTestModelsTransaction):
-    app_label = "sample_connection"
+    app_label = DeviceConnection._meta.app_label
 
 
 class TestTasks(BaseTestTasks):
@@ -52,13 +56,13 @@ class TestSsh(BaseTestSsh):
 
 
 class TestNotifications(BaseTestNotifications):
-    app_label = "sample_connection"
-    config_app_label = "config"
+    app_label = DeviceConnection._meta.app_label
+    config_app_label = Device._meta.app_label
 
 
 class TestNotificationTransaction(BaseTestNotificationTransaction):
-    app_label = "sample_connection"
-    config_app_label = "config"
+    app_label = DeviceConnection._meta.app_label
+    config_app_label = Device._meta.app_label
 
 
 class TestConnectionApi(BaseTestConnectionApi):
