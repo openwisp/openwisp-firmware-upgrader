@@ -2074,7 +2074,6 @@ class TestAdminTransaction(
             follow=True,
         )
         self.assertEqual(response.status_code, 403)
-
         # Verify no database side effects occurred
         self.assertEqual(
             DeviceFirmware.objects.filter(device=device).count(),

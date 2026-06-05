@@ -65,6 +65,12 @@ class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
 
 
 class RelatedDeviceModelPermission(BaseRelatedDeviceModelPermission):
+    """
+    Reuse related-device model permissions without blocking deactivated devices.
+
+    The view handles deactivated devices so API clients get a clear error.
+    """
+
     def _has_permissions(self, request, view, perm, obj=None):
         if request.method in self.READ_ONLY_METHOD:
             return perm
@@ -72,6 +78,9 @@ class RelatedDeviceModelPermission(BaseRelatedDeviceModelPermission):
 
 
 class RelatedDeviceAPIMixin(ProtectedAPIMixin):
+    """
+    Resolve and cache the device used by nested device firmware API views.
+    """
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
@@ -82,17 +91,17 @@ class RelatedDeviceAPIMixin(ProtectedAPIMixin):
         ]
 
     def assert_parent_exists(self):
-        parent_object = getattr(self, "_parent_object", None)
-        if parent_object is not None:
+        device = getattr(self, "_device", None)
+        if device is not None:
             return
         parent_queryset = self.get_parent_queryset()
         if not self.request.user.is_superuser:
             parent_queryset = parent_queryset.filter(
                 organization__in=self.request.user.organizations_managed
             )
-        parent_object = parent_queryset.first()
-        self._parent_object = parent_object
-        if not parent_object:
+        device = parent_queryset.first()
+        self._device = device
+        if not device:
             raise NotFound(detail=_("device not found"))
 
 
@@ -331,10 +340,10 @@ class DeviceFirmwareDetailView(
             )
             serializer.fields["image"].queryset = image_qs
         else:
-            device = getattr(self, "_parent_object", None)
+            device = getattr(self, "_device", None)
             if device is None:
                 device = self._get_device_object(serializer.context.get("device_id"))
-                self._parent_object = device
+                self._device = device
             image_qs = self._get_image_queryset(device=device)
             serializer.fields["image"].queryset = image_qs
         return serializer
@@ -395,7 +404,7 @@ class DeviceFirmwareDetailView(
                 # will either raise a PermissionDenied exception, or simply
                 # return None.
                 self.assert_parent_exists()
-                if self._parent_object.is_deactivated():
+                if self._device.is_deactivated():
                     raise PermissionDenied(
                         _("Firmware upgrades are not allowed for deactivated devices.")
                     )

@@ -1386,13 +1386,11 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         env = self._create_upgrade_env(device_firmware=False)
         url = reverse("upgrader:api_devicefirmware_detail", args=[env["d1"].pk])
         env["d1"].deactivate()
-
         response = self.client.put(
             url,
             data={"image": env["image1a"].pk},
             content_type="application/json",
         )
-
         self.assertEqual(response.status_code, 403)
         self.assertEqual(
             response.data["detail"],
