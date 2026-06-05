@@ -123,6 +123,9 @@ class BaseTestAdmin(TestMultitenantAdminMixin, TestUpgraderMixin):
 
 @override_settings(LANGUAGE_CODE="en")
 class TestAdmin(BaseTestAdmin, TestCase):
+    _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
+    _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
+
     def test_build_list(self):
         self._login()
         build = self._create_build()
@@ -380,7 +383,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         "openwisp_firmware_upgrader.utils.get_upgrader_class_from_device_connection"
     )
     def test_device_firmware_upgrade_without_device_connection(
-        self, captured_stderr, mocked_func, *args
+        self, captured_stderr, mocked_func
     ):
         self._login()
         device_fw = self._create_device_firmware()
@@ -396,7 +399,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         mocked_func.assert_not_called()
         self.assertEqual(response.status_code, 200)
 
-    def test_save_device_after_credentials_deleted(self, *args):
+    def test_save_device_after_credentials_deleted(self):
         """Regression test for #250."""
         self._login()
         device_fw = self._create_device_firmware(installed=True)
@@ -420,7 +423,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Please correct the error")
 
-    def test_change_image_and_add_credentials_together(self, *args):
+    def test_change_image_and_add_credentials_together(self):
         """Regression test for #250."""
         self._login()
         device_fw = self._create_device_firmware()
@@ -461,14 +464,10 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(device_fw.image, new_image)
         self.assertEqual(device.deviceconnection_set.count(), 1)
 
-    def test_add_credentials_with_cancelled_upgrade_operation(self, *args):
+    def test_add_credentials_with_cancelled_upgrade_operation(self):
         """Regression test for adding credentials while a cancelled upgrade is shown."""
-        with mock.patch(
-            "openwisp_controller.connection.models.DeviceConnection.connect",
-            return_value=True,
-        ), mock.patch(
-            "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
-            return_value=True,
+        with mock.patch(self._mock_connect, return_value=True), mock.patch(
+            self._mock_upgrade, return_value=True
         ):
             self._login()
             device = self._create_config(organization=self._get_org()).device
@@ -569,7 +568,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         # deactivated devices are readonly
         self.assertNotContains(response, 'name="upgradeoperation_set-0-DELETE"')
 
-    def test_device_upgrade_shared_firmware(self, *args):
+    def test_device_upgrade_shared_firmware(self):
         org = self._get_org()
         administrator = self._create_administrator(organizations=[org])
         shared_image = self._create_firmware_image(organization=None)
@@ -746,7 +745,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertNotContains(response, "By organization")
 
-    def test_batch_upgrade_operation_filters(self, *args):
+    def test_batch_upgrade_operation_filters(self):
         """Test that filter UI elements are displayed correctly for organization admin"""
         env = self._create_upgrade_env()
         org_admin = self._create_administrator(organizations=[env["d1"].organization])
