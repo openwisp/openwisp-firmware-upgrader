@@ -134,39 +134,15 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             pass
         return bytes(buf) or None
 
-    def _try_xz(self, data):
-        if data[:6] != b"\xfd7zXZ\x00":
+    def _try_decompress(self, data, magic, make_decompressor):
+        if magic is not None and data[: len(magic)] != magic:
             return None
-        buf, total = bytearray(), 0
-        compressed = len(data)
-        dec = lzma.LZMADecompressor(
-            format=lzma.FORMAT_XZ, memlimit=app_settings.MAX_DECOMPRESSED_BYTES
-        )
-        try:
-            offset = 0
-            while offset < len(data) and not dec.eof:
-                chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
-                offset += _CHUNK_SIZE
-                if chunk:
-                    buf.extend(chunk)
-                    total += len(chunk)
-                    self._check_limits(total, compressed)
-        except DecompressionLimitExceeded:
-            raise
-        except Exception:
-            return None
-        return bytes(buf) or None
-
-    def _try_lzma(self, data):
         if not data:
             return None
         buf, total = bytearray(), 0
         compressed = len(data)
         try:
-            dec = lzma.LZMADecompressor(
-                format=lzma.FORMAT_ALONE,
-                memlimit=app_settings.MAX_DECOMPRESSED_BYTES,
-            )
+            dec = make_decompressor()
             offset = 0
             while offset < len(data) and not dec.eof:
                 chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
@@ -180,70 +156,35 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         except Exception:
             return None
         return bytes(buf) or None
-
-    def _try_bz2(self, data):
-        if data[:3] != b"BZh":
-            return None
-        buf, total = bytearray(), 0
-        compressed = len(data)
-        dec = bz2.BZ2Decompressor()
-        try:
-            offset = 0
-            while offset < len(data) and not dec.eof:
-                chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
-                offset += _CHUNK_SIZE
-                if chunk:
-                    buf.extend(chunk)
-                    total += len(chunk)
-                    self._check_limits(total, compressed)
-        except DecompressionLimitExceeded:
-            raise
-        except Exception:
-            return None
-        return bytes(buf) or None
-
-    def _try_lz4(self, data):
-        if data[:4] != b"\x04\x22\x4d\x18":
-            return None
-        buf, total = bytearray(), 0
-        compressed = len(data)
-        try:
-            dec = lz4frame.LZ4FrameDecompressor()
-            offset = 0
-            while offset < len(data) and not dec.eof:
-                chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
-                offset += _CHUNK_SIZE
-                if chunk:
-                    buf.extend(chunk)
-                    total += len(chunk)
-                    self._check_limits(total, compressed)
-        except DecompressionLimitExceeded:
-            raise
-        except Exception:
-            return None
-        return bytes(buf) or None
-
-    def _decompress(self, data):
-        for fn in (
-            self._try_gzip,
-            self._try_xz,
-            self._try_lzma,
-            self._try_bz2,
-            self._try_lz4,
-        ):
-            result = fn(data)
-            if result is not None:
-                return result
-        return data
 
     def _deep_scan_for_dtb(self, data):
-        decompress_map = {
-            b"\x1f\x8b": self._try_gzip,
-            b"\xfd7zXZ\x00": self._try_xz,
-            b"BZh": self._try_bz2,
-            b"\x04\x22\x4d\x18": self._try_lz4,
-        }
-        for magic, decompress_fn in decompress_map.items():
+        memlimit = app_settings.MAX_DECOMPRESSED_BYTES
+        scan_targets = [
+            (b"\x1f\x8b", self._try_gzip),
+            (
+                b"\xfd7zXZ\x00",
+                lambda d: self._try_decompress(
+                    d,
+                    b"\xfd7zXZ\x00",
+                    lambda: lzma.LZMADecompressor(
+                        format=lzma.FORMAT_XZ, memlimit=memlimit
+                    ),
+                ),
+            ),
+            (
+                b"BZh",
+                lambda d: self._try_decompress(
+                    d, b"BZh", lambda: bz2.BZ2Decompressor()
+                ),
+            ),
+            (
+                b"\x04\x22\x4d\x18",
+                lambda d: self._try_decompress(
+                    d, b"\x04\x22\x4d\x18", lambda: lz4frame.LZ4FrameDecompressor()
+                ),
+            ),
+        ]
+        for magic, decompress_fn in scan_targets:
             offset = 1
             while True:
                 pos = data.find(magic, offset)
@@ -267,7 +208,13 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 if pos == -1:
                     break
                 try:
-                    decompressed = self._try_lzma(data[pos - 1 :])
+                    decompressed = self._try_decompress(
+                        data[pos - 1 :],
+                        None,
+                        lambda: lzma.LZMADecompressor(
+                            format=lzma.FORMAT_ALONE, memlimit=memlimit
+                        ),
+                    )
                     if decompressed:
                         dtb = self._locate_dtb(decompressed)
                         if dtb is not None:
@@ -417,8 +364,30 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         return None
 
     def _try_extract_dtb_from_kernel(self, kernel_data):
+        memlimit = app_settings.MAX_DECOMPRESSED_BYTES
         stripped = self._strip_uimage_header(kernel_data)
-        decompressed = self._decompress(stripped)
+        decompressed = (
+            self._try_gzip(stripped)
+            or self._try_decompress(
+                stripped,
+                b"\xfd7zXZ\x00",
+                lambda: lzma.LZMADecompressor(format=lzma.FORMAT_XZ, memlimit=memlimit),
+            )
+            or self._try_decompress(
+                stripped,
+                None,
+                lambda: lzma.LZMADecompressor(
+                    format=lzma.FORMAT_ALONE, memlimit=memlimit
+                ),
+            )
+            or self._try_decompress(stripped, b"BZh", lambda: bz2.BZ2Decompressor())
+            or self._try_decompress(
+                stripped,
+                b"\x04\x22\x4d\x18",
+                lambda: lz4frame.LZ4FrameDecompressor(),
+            )
+            or stripped
+        )
         dtb = self._locate_dtb(decompressed)
         if dtb is None:
             dtb = self._deep_scan_for_dtb(decompressed)

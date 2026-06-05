@@ -11,6 +11,7 @@ import zlib
 from pathlib import Path
 from unittest import mock
 
+import fdt
 import lz4.frame as lz4frame
 from django.test import TestCase
 
@@ -250,90 +251,133 @@ class TestLocateDtb(TestCase):
         self.assertIsNone(self.extractor._locate_dtb(b"\x00" * 100 + bad_dtb))
 
 
-class TestIndividualDecompressors(TestCase):
+class TestTryExtractDtbFromKernel(TestCase):
+    @staticmethod
+    def _make_dtb(model="Test Router v1", compatible="test,router-v1"):
+        tree = fdt.FDT()
+        tree.header.version = 17
+        tree.header.last_comp_version = 16
+        tree.root.set_property("model", model)
+        tree.root.set_property("compatible", compatible)
+        return tree.to_dtb()
+
     def setUp(self):
         self.extractor = OpenWrtMetadataExtractor(
             "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
         )
 
-    def test_try_gzip_decompresses(self):
-        original = b"Hello OpenWrt gzip"
-        result = self.extractor._try_gzip(gzip.compress(original))
-        self.assertEqual(result, original)
+    def _kernel_with_dtb(self, compress_fn, model="Test Router v1"):
+        dtb = self._make_dtb(model=model)
+        return compress_fn(b"\x00" * 128 + dtb + b"\x00" * 64)
 
-    def test_try_gzip_returns_none_for_wrong_magic(self):
-        self.assertIsNone(self.extractor._try_gzip(b"\x00" * 20))
-
-    def test_try_xz_decompresses(self):
-        original = b"Hello OpenWrt xz"
-        compressed = lzma.compress(original, format=lzma.FORMAT_XZ)
-        result = self.extractor._try_xz(compressed)
-        self.assertEqual(result, original)
-
-    def test_try_xz_returns_none_for_wrong_magic(self):
-        self.assertIsNone(self.extractor._try_xz(b"\x00" * 20))
-
-    def test_try_lzma_decompresses(self):
-        original = b"Hello OpenWrt lzma"
-        compressed = lzma.compress(original, format=lzma.FORMAT_ALONE)
-        result = self.extractor._try_lzma(compressed)
-        self.assertEqual(result, original)
-
-    def test_try_lzma_returns_none_for_wrong_magic(self):
-        self.assertIsNone(self.extractor._try_lzma(b"\x00" * 20))
-
-    def test_try_bz2_decompresses(self):
-        original = b"Hello OpenWrt bz2"
-        result = self.extractor._try_bz2(bz2.compress(original))
-        self.assertEqual(result, original)
-
-    def test_try_bz2_returns_none_for_wrong_magic(self):
-        self.assertIsNone(self.extractor._try_bz2(b"\x00" * 20))
-
-    def test_try_lz4_decompresses(self):
-        original = b"Hello OpenWrt lz4"
-        compressed = lz4frame.compress(original)
-        result = self.extractor._try_lz4(compressed)
-        self.assertEqual(result, original)
-
-    def test_try_lz4_returns_none_for_wrong_magic(self):
-        self.assertIsNone(self.extractor._try_lz4(b"\x00" * 20))
-
-
-class TestDecompress(TestCase):
-    def setUp(self):
-        self.extractor = OpenWrtMetadataExtractor(
-            "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
+    def test_gzip_kernel_extracts_dtb(self):
+        kernel = self._kernel_with_dtb(gzip.compress, model="Gzip Router")
+        result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            self.extractor._metadata_from_dtb(result)["model"], "Gzip Router"
         )
 
-    def test_gzip_decompressed(self):
-        original = b"Hello OpenWrt firmware!"
-        result = self.extractor._decompress(gzip.compress(original))
-        self.assertEqual(result, original)
-
-    def test_xz_decompressed(self):
-        original = b"Hello OpenWrt firmware!"
-        result = self.extractor._decompress(
-            lzma.compress(original, format=lzma.FORMAT_XZ)
+    def test_xz_kernel_extracts_dtb(self):
+        kernel = self._kernel_with_dtb(
+            lambda d: lzma.compress(d, format=lzma.FORMAT_XZ), model="XZ Router"
         )
-        self.assertEqual(result, original)
-
-    def test_bz2_decompressed(self):
-        original = b"Hello OpenWrt firmware!"
-        result = self.extractor._decompress(bz2.compress(original))
-        self.assertEqual(result, original)
-
-    def test_lzma_decompressed(self):
-        original = b"Hello OpenWrt firmware!"
-        result = self.extractor._decompress(
-            lzma.compress(original, format=lzma.FORMAT_ALONE)
+        result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            self.extractor._metadata_from_dtb(result)["model"], "XZ Router"
         )
-        self.assertEqual(result, original)
 
-    def test_unrecognised_format_returned_as_is(self):
-        data = b"\x00\x01\x02\x03" * 10
-        result = self.extractor._decompress(data)
-        self.assertEqual(result, data)
+    def test_bz2_kernel_extracts_dtb(self):
+        kernel = self._kernel_with_dtb(bz2.compress, model="BZ2 Router")
+        result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            self.extractor._metadata_from_dtb(result)["model"], "BZ2 Router"
+        )
+
+    def test_lzma_kernel_extracts_dtb(self):
+        kernel = self._kernel_with_dtb(
+            lambda d: lzma.compress(d, format=lzma.FORMAT_ALONE), model="LZMA Router"
+        )
+        result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            self.extractor._metadata_from_dtb(result)["model"], "LZMA Router"
+        )
+
+    def test_lz4_kernel_extracts_dtb(self):
+        kernel = self._kernel_with_dtb(lz4frame.compress, model="LZ4 Router")
+        result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            self.extractor._metadata_from_dtb(result)["model"], "LZ4 Router"
+        )
+
+    def test_uimage_header_stripped_before_decompress(self):
+        dtb = self._make_dtb(model="UImage Device")
+        payload = gzip.compress(b"\x00" * 64 + dtb + b"\x00" * 32)
+        header = bytearray(UIMAGE_HEADER_SIZE)
+        header[:4] = UIMAGE_MAGIC
+        struct.pack_into(">I", header, 12, len(payload))
+        kernel = bytes(header) + payload
+        result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            self.extractor._metadata_from_dtb(result)["model"], "UImage Device"
+        )
+
+    def test_no_dtb_in_payload_returns_none(self):
+        kernel = gzip.compress(b"\xff" * 256)
+        self.assertIsNone(self.extractor._try_extract_dtb_from_kernel(kernel))
+
+    def test_unrecognized_data_returns_none(self):
+        self.assertIsNone(
+            self.extractor._try_extract_dtb_from_kernel(b"\xde\xad\xbe\xef" * 50)
+        )
+
+    def test_decompression_hard_limit_exceeded_propagates(self):
+        kernel = gzip.compress(b"\x00" * 600)
+        with mock.patch(
+            "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_BYTES", 512
+        ):
+            with self.assertRaises(DecompressionLimitExceeded) as cm:
+                self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIn("MB", str(cm.exception))
+
+    def test_decompression_ratio_limit_exceeded_propagates(self):
+        kernel = gzip.compress(b"\x00" * 1100)
+        with mock.patch(
+            "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_RATIO", 10
+        ):
+            with self.assertRaises(DecompressionLimitExceeded) as cm:
+                self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIn("ratio", str(cm.exception).lower())
+
+    def test_nested_compressed_dtb_found_via_deep_scan(self):
+        dtb = self._make_dtb(model="Nested Device")
+        inner = gzip.compress(b"\xff" * 128 + dtb + b"\xff" * 64)
+        outer = b"\x00" * 200 + inner + b"\x00" * 50
+        result = self.extractor._try_extract_dtb_from_kernel(outer)
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            self.extractor._metadata_from_dtb(result)["model"], "Nested Device"
+        )
+
+    def test_fit_image_with_embedded_dtb_extracts_model(self):
+        inner_dtb = self._make_dtb(model="FIT Device")
+        fit = fdt.FDT()
+        fit.header.version = 17
+        fit.header.last_comp_version = 16
+        fit.root.append(fdt.Node("images"))
+        fit_bytes = bytearray(fit.to_dtb())
+        struct.pack_into(">I", fit_bytes, 4, len(fit_bytes) + len(inner_dtb))
+        kernel = bytes(fit_bytes) + inner_dtb
+        result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            self.extractor._metadata_from_dtb(result)["model"], "FIT Device"
+        )
 
 
 class TestExtractOverride(TestCase):
