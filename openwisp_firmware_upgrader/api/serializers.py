@@ -153,7 +153,7 @@ class DeviceFirmwareSerializer(ValidatedModelSerializer):
         device = data.get("device")
         if device and device.is_deactivated():
             raise ValidationError(
-                _("Cannot create or modify firmware object for deactivated device")
+                _("Firmware upgrades are not allowed for deactivated devices.")
             )
         image = data.get("image")
         if (

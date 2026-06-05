@@ -400,7 +400,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             return
         if self.device.is_deactivated():
             raise ValidationError(
-                _("Cannot create or modify firmware object for deactivated device")
+                _("Firmware upgrades are not allowed for deactivated devices.")
             )
         if (
             self.image.build.category.organization is not None
@@ -857,7 +857,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         super().clean()
         if hasattr(self, "device") and self.device and self.device.is_deactivated():
             raise ValidationError(
-                _("Cannot create or modify upgrade operation for deactivated device")
+                _("Upgrade operations are not allowed for deactivated devices.")
             )
 
     def log_line(self, line, save=True):
@@ -935,6 +935,14 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     def upgrade(self, recoverable=True):
         # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
         if self.status != "in-progress":
+            return
+        if self.device.is_deactivated():
+            self.status = "aborted"
+            self.log_line(
+                _("Upgrade aborted because the device has been deactivated."),
+                save=False,
+            )
+            self.save()
             return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:

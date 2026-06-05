@@ -7,8 +7,8 @@ from django.utils.translation import gettext_lazy as _
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import filters, generics, pagination, serializers, status
-from rest_framework.exceptions import NotFound
+from rest_framework import filters, generics, serializers, status
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.request import clone_request
 from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
@@ -65,22 +65,10 @@ class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
 
 
 class RelatedDeviceModelPermission(BaseRelatedDeviceModelPermission):
-
-    def _get_parent_object(self, view):
-        parent_object = getattr(view, "_parent_object", None)
-        if parent_object is None:
-            parent_object = view.get_parent_queryset().first()
-            view._parent_object = parent_object
-        return parent_object
-
     def _has_permissions(self, request, view, perm, obj=None):
         if request.method in self.READ_ONLY_METHOD:
             return perm
-        if obj:
-            device = getattr(obj, self._device_field)
-        else:
-            device = self._get_parent_object(view)
-        return perm and device and not device.is_deactivated()
+        return perm
 
 
 class RelatedDeviceAPIMixin(ProtectedAPIMixin):
@@ -94,6 +82,9 @@ class RelatedDeviceAPIMixin(ProtectedAPIMixin):
         ]
 
     def assert_parent_exists(self):
+        parent_object = getattr(self, "_parent_object", None)
+        if parent_object is not None:
+            return
         parent_queryset = self.get_parent_queryset()
         if not self.request.user.is_superuser:
             parent_queryset = parent_queryset.filter(
@@ -343,6 +334,7 @@ class DeviceFirmwareDetailView(
             device = getattr(self, "_parent_object", None)
             if device is None:
                 device = self._get_device_object(serializer.context.get("device_id"))
+                self._parent_object = device
             image_qs = self._get_image_queryset(device=device)
             serializer.fields["image"].queryset = image_qs
         return serializer
@@ -403,11 +395,23 @@ class DeviceFirmwareDetailView(
                 # will either raise a PermissionDenied exception, or simply
                 # return None.
                 self.assert_parent_exists()
+                if self._parent_object.is_deactivated():
+                    raise PermissionDenied(
+                        _("Firmware upgrades are not allowed for deactivated devices.")
+                    )
                 self.check_permissions(clone_request(self.request, "POST"))
             else:
                 # PATCH requests where the object does not exist should still
                 # return a 404 response.
                 raise
+
+    def get_object(self):
+        obj = super().get_object()
+        if self.request.method not in ("GET", "HEAD") and obj.device.is_deactivated():
+            raise PermissionDenied(
+                _("Firmware upgrades are not allowed for deactivated devices.")
+            )
+        return obj
 
 
 class UpgradeOperationCancelPermission(DjangoModelPermissions):

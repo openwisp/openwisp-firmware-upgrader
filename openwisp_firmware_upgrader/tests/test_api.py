@@ -354,6 +354,15 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.data, {"device_firmwares": device_fw_list, "devices": []})
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
+    def test_build_upgradeable_excludes_deactivated_devices(self):
+        env = self._create_upgrade_env()
+        env["d1"].deactivate()
+        url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(str(env["device_fw1"].pk), r.data["device_firmwares"])
+        self.assertIn(str(env["device_fw2"].pk), r.data["device_firmwares"])
+
     def test_api_shared_build_batch_upgrade(self):
         shared_image = self._create_firmware_image(organization=None)
         org1_device = self._create_device_with_connection(
@@ -1343,10 +1352,18 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
                 content_type="application/json",
             )
             self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "Firmware upgrades are not allowed for deactivated devices.",
+            )
 
         with self.subTest("Test deleting DeviceFirmwareImage"):
             response = self.client.delete(url)
             self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "Firmware upgrades are not allowed for deactivated devices.",
+            )
 
     def test_deactivated_device_put_as_create(self):
         env = self._create_upgrade_env(device_firmware=False)
@@ -1360,6 +1377,10 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.data["detail"],
+            "Firmware upgrades are not allowed for deactivated devices.",
+        )
         self.assertEqual(DeviceFirmware.objects.count(), 0)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
@@ -1640,7 +1661,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertEqual(
             str(serializer.errors["non_field_errors"][0]),
-            "Cannot create or modify firmware object for deactivated device"
+            "Firmware upgrades are not allowed for deactivated devices.",
         )
 
 

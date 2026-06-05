@@ -342,6 +342,19 @@ class TestModels(TestUpgraderMixin, TestCase):
             uo.update_progress(75.7)
             self.assertEqual(uo.progress, 75)
 
+    def test_upgrade_operation_aborts_when_device_deactivated_before_worker_runs(self):
+        device_fw = self._create_device_firmware()
+        operation = UpgradeOperation(device=device_fw.device, image=device_fw.image)
+        operation.full_clean()
+        operation.save()
+        device_fw.device.deactivate()
+        with mock.patch.object(DeviceConnection, "get_working_connection") as mocked:
+            operation.upgrade()
+        mocked.assert_not_called()
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "aborted")
+        self.assertIn("deactivated", operation.log)
+
     def test_concurrent_cancellation_race_condition(self):
         """Test that concurrent cancellation attempts don't cause errors."""
         self._create_device_firmware(upgrade=True)
@@ -1134,7 +1147,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
             new_device_fw.full_clean()
         self.assertIn(
-            "Cannot create or modify firmware object for deactivated device",
+            "Firmware upgrades are not allowed for deactivated devices.",
             str(cm.exception),
         )
         # Test UpgradeOperation validation
@@ -1142,6 +1155,6 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             operation = UpgradeOperation(device=device, image=device_fw.image)
             operation.full_clean()
         self.assertIn(
-            "Cannot create or modify upgrade operation for deactivated device",
+            "Upgrade operations are not allowed for deactivated devices.",
             str(cm.exception),
         )
