@@ -6,12 +6,12 @@ on:
     branches:
       - master
       - "1.2"
-      - "gsoc26-*"
   pull_request:
     branches:
       - master
       - "1.2"
-      - "gsoc26-*"
+      - gsoc26-persistent-scheduled-upgrades
+      - gsoc26-metadata-extraction
 
 jobs:
   build:
@@ -95,7 +95,7 @@ jobs:
         with:
           parallel: true
           format: cobertura
-          flag-name: python-${{ matrix.python-version }}-${{ matrix.django-version }}
+          flag-name: python-${{ matrix.env.env }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-error: false
 
