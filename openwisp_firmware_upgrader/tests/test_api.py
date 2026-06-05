@@ -1445,7 +1445,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest("Test when device firmware does not exist"):
             DeviceFirmware.objects.all().delete()
             url = reverse("upgrader:api_devicefirmware_detail", args=[device1.pk])
-            with self.assertNumQueries(8):
+            with self.assertNumQueries(6):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 404)
             repsonse = r.content.decode()
