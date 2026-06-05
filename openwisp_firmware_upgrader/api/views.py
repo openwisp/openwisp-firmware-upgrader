@@ -93,7 +93,7 @@ class RelatedDeviceAPIMixin(ProtectedAPIMixin):
         parent_object = parent_queryset.first()
         self._parent_object = parent_object
         if not parent_object:
-            raise NotFound(detail="device not found")
+            raise NotFound(detail=_("device not found"))
 
 
 class BuildListView(ProtectedAPIMixin, generics.ListCreateAPIView):

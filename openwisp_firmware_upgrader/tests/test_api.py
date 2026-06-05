@@ -357,11 +357,28 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
     def test_build_upgradeable_excludes_deactivated_devices(self):
         env = self._create_upgrade_env()
         env["d1"].deactivate()
+        firmwareless_device = self._create_device(
+            name="deactivated-firmwareless",
+            organization=env["d1"].organization,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:44:57",
+        )
+        self._create_config(device=firmwareless_device)
+        firmwareless_device.deactivate()
+        active_firmwareless_device = self._create_device(
+            name="active-firmwareless",
+            organization=env["d1"].organization,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:44:58",
+        )
+        self._create_config(device=active_firmwareless_device)
         url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
         r = self.client.get(url)
         self.assertEqual(r.status_code, 200)
         self.assertNotIn(str(env["device_fw1"].pk), r.data["device_firmwares"])
         self.assertIn(str(env["device_fw2"].pk), r.data["device_firmwares"])
+        self.assertNotIn(str(firmwareless_device.pk), r.data["devices"])
+        self.assertIn(str(active_firmwareless_device.pk), r.data["devices"])
 
     def test_api_shared_build_batch_upgrade(self):
         shared_image = self._create_firmware_image(organization=None)
