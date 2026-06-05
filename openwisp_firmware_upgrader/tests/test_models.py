@@ -1098,6 +1098,19 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             credentials=env["d1"].deviceconnection_set.first().credentials,
         )
         firmwareless_device.deactivate()
+
+        active_firmwareless_device = self._create_device(
+            name="ActiveFirmwarelessDevice",
+            organization=env["d1"].organization,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:44:56",
+        )
+        self._create_config(device=active_firmwareless_device)
+        self._create_device_connection(
+            device=active_firmwareless_device,
+            credentials=env["d1"].deviceconnection_set.first().credentials,
+        )
+
         batch = env["build2"].batch_upgrade(firmwareless=True)
         ops = UpgradeOperation.objects.filter(batch=batch)
         # Deactivated firmwareless device should be excluded
@@ -1105,6 +1118,9 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertNotIn(
             firmwareless_device.pk, device_ids
         )  # deactivated firmwareless device excluded
+        self.assertIn(
+            active_firmwareless_device.pk, device_ids
+        )  # active firmwareless device included
 
     @mock.patch(
         "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"

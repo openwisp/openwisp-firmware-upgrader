@@ -13,7 +13,9 @@ from rest_framework.request import clone_request
 from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
 
-from openwisp_controller.mixins import RelatedDeviceProtectedAPIMixin
+from openwisp_controller.mixins import (
+    RelatedDeviceModelPermission as BaseRelatedDeviceModelPermission,
+)
 from openwisp_firmware_upgrader import private_storage
 from openwisp_users.api.mixins import FilterByOrganizationManaged, IsOrganizationManager
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
@@ -67,16 +69,34 @@ class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
         return qs
 
 
+class RelatedDeviceModelPermission(BaseRelatedDeviceModelPermission):
+
+    def _get_parent_object(self, view):
+        parent_object = getattr(view, "_parent_object", None)
+        if parent_object is None:
+            parent_object = view.get_parent_queryset().first()
+            view._parent_object = parent_object
+        return parent_object
+
+    def _has_permissions(self, request, view, perm, obj=None):
+        if request.method in self.READ_ONLY_METHOD:
+            return perm
+        if obj:
+            device = getattr(obj, self._device_field)
+        else:
+            device = self._get_parent_object(view)
+        return perm and device and not device.is_deactivated()
+
+
 class RelatedDeviceAPIMixin(ProtectedAPIMixin):
-    related_device_permission_class = RelatedDeviceProtectedAPIMixin.permission_classes[
-        -1
-    ]
 
     def get_permissions(self):
-        permissions = super().get_permissions()
-        if self.request.method not in ("GET", "HEAD", "OPTIONS"):
-            permissions.append(self.related_device_permission_class())
-        return permissions
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return super().get_permissions()
+        return [
+            IsOrganizationManager(),
+            RelatedDeviceModelPermission(),
+        ]
 
     def assert_parent_exists(self):
         parent_queryset = self.get_parent_queryset()
@@ -84,9 +104,9 @@ class RelatedDeviceAPIMixin(ProtectedAPIMixin):
             parent_queryset = parent_queryset.filter(
                 organization__in=self.request.user.organizations_managed
             )
-        try:
-            assert parent_queryset.exists()
-        except (AssertionError, ValidationError):
+        parent_object = parent_queryset.first()
+        self._parent_object = parent_object
+        if not parent_object:
             raise NotFound(detail="device not found")
 
 
@@ -325,7 +345,9 @@ class DeviceFirmwareDetailView(
             )
             serializer.fields["image"].queryset = image_qs
         else:
-            device = self._get_device_object(serializer.context.get("device_id"))
+            device = getattr(self, "_parent_object", None)
+            if device is None:
+                device = self._get_device_object(serializer.context.get("device_id"))
             image_qs = self._get_image_queryset(device=device)
             serializer.fields["image"].queryset = image_qs
         return serializer

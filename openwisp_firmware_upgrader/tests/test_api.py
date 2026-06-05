@@ -1628,6 +1628,21 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertContains(r, f"{image2}</option>")
             self.assertNotContains(r, f"{image1}</option>")
 
+    def test_serializer_validation_deactivated_device(self):
+        device_fw = self._create_device_firmware()
+        device_fw.device.deactivate()
+        serializer = DeviceFirmwareSerializer(
+            instance=device_fw,
+            data={"image": device_fw.image.pk},
+            context={"device_id": device_fw.device.pk},
+            partial=True,
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertEqual(
+            str(serializer.errors["non_field_errors"][0]),
+            "Cannot create or modify firmware object for deactivated device"
+        )
+
 
 class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
     def _serialize_device_upgrade_operation(self, device_uo):
