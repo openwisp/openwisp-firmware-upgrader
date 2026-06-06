@@ -19,6 +19,10 @@ from openwisp_users.mixins import ShareableOrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
+from ..constants import (
+    DEACTIVATED_DEVICE_FIRMWARE_ERROR,
+    DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR,
+)
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
     ReconnectionFailed,
@@ -399,9 +403,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if not hasattr(self, "image") or not hasattr(self, "device"):
             return
         if self.device.is_deactivated():
-            raise ValidationError(
-                _("Firmware upgrades are not allowed for deactivated devices.")
-            )
+            raise ValidationError(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
         if (
             self.image.build.category.organization is not None
             and self.image.build.category.organization != self.device.organization
@@ -856,9 +858,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     def clean(self):
         super().clean()
         if hasattr(self, "device") and self.device and self.device.is_deactivated():
-            raise ValidationError(
-                _("Upgrade operations are not allowed for deactivated devices.")
-            )
+            raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
 
     def log_line(self, line, save=True):
         if self.log:

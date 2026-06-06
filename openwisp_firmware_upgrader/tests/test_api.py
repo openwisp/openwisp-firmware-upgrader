@@ -1335,7 +1335,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         with self.subTest("Test device and image model validation"):
             url = reverse("upgrader:api_devicefirmware_detail", args=[device1.pk])
-            with self.assertNumQueries(15):
+            with self.assertNumQueries(13):
                 # Try to make a request when the
                 # device model does not match the image model
                 data = {"image": image1a.pk}
@@ -1425,7 +1425,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             url = reverse(
                 "upgrader:api_devicefirmware_detail", args=[device_fw1.device.pk]
             )
-            with self.assertNumQueries(9):
+            with self.assertNumQueries(8):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw1)
@@ -1473,7 +1473,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 0)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(26):
+        with self.assertNumQueries(25):
             data = {"image": image1a.pk}
             # This API view allows the creation
             # of new devicefirmware objects with
@@ -1511,7 +1511,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
         self.client.force_login(self.administrator)
-        with self.assertNumQueries(25):
+        with self.assertNumQueries(24):
             data = {"image": shared_image.pk}
             r = self.client.put(
                 f"{path}?format=api", data, content_type="application/json"
@@ -1541,7 +1541,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(24):
+        with self.assertNumQueries(22):
             data = {"image": image2a.pk}
             r = self.client.put(
                 f"{url}?format=api", data, content_type="application/json"
@@ -1580,7 +1580,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(24):
+        with self.assertNumQueries(22):
             data = {"image": image2a.pk}
             r = self.client.patch(
                 f"{url}?format=api", data, content_type="application/json"
@@ -1648,7 +1648,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest("Test device firmware detail org admin"):
             self._login("org_admin", "tester")
             url = reverse("upgrader:api_devicefirmware_detail", args=[d1.pk])
-            with self.assertNumQueries(6):
+            with self.assertNumQueries(5):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw1)
@@ -1656,7 +1656,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertContains(r, f"{image1}</option>")
             self.assertNotContains(r, f"{image2}</option>")
             url = reverse("upgrader:api_devicefirmware_detail", args=[d2.pk])
-            with self.assertNumQueries(6):
+            with self.assertNumQueries(5):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw2)
@@ -1670,13 +1670,13 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         serializer = DeviceFirmwareSerializer(
             instance=device_fw,
             data={"image": device_fw.image.pk},
-            context={"device_id": device_fw.device.pk},
+            context={"device": device_fw.device},
             partial=True,
         )
         self.assertFalse(serializer.is_valid())
-        self.assertEqual(
-            str(serializer.errors["non_field_errors"][0]),
+        self.assertIn(
             "Firmware upgrades are not allowed for deactivated devices.",
+            str(serializer.errors),
         )
 
 

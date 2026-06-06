@@ -1,5 +1,3 @@
-import swapper
-from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
@@ -15,9 +13,6 @@ Category = load_model("Category")
 FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
-Device = swapper.load_model("config", "Device")
-DeviceGroup = swapper.load_model("config", "DeviceGroup")
-Location = swapper.load_model("geo", "Location")
 
 
 class BaseMeta:
@@ -147,34 +142,5 @@ class DeviceFirmwareSerializer(ValidatedModelSerializer):
 
     def validate(self, data):
         if not data.get("device"):
-            device_id = self.context.get("device_id")
-            device = self._get_device_object(device_id)
-            data.update({"device": device})
-        device = data.get("device")
-        if device and device.is_deactivated():
-            raise ValidationError(
-                _("Firmware upgrades are not allowed for deactivated devices.")
-            )
-        image = data.get("image")
-        if (
-            image
-            and device
-            and image.build.category.organization is not None
-            and image.build.category.organization != device.organization
-        ):
-            raise ValidationError(
-                {
-                    "image": _(
-                        "The organization of the image doesn't "
-                        "match the organization of the device"
-                    )
-                }
-            )
+            data.update({"device": self.context.get("device")})
         return super().validate(data)
-
-    def _get_device_object(self, device_id):
-        try:
-            device = Device.objects.get(id=device_id)
-            return device
-        except Device.DoesNotExist:
-            return None
