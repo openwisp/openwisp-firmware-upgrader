@@ -167,15 +167,15 @@ def send_pending_upgrade_reminders():
         .distinct()
     )
     for batch in qs:
+        pending_count = batch.upgradeoperation_set.filter(status="pending").count()
+        if not pending_count:
+            continue
         claimed = (
             BatchUpgradeOperation.objects.filter(pk=batch.pk)
-            .filter(due_condition)
+            .filter(due_condition, upgradeoperation__status="pending")
             .update(last_reminder_at=timezone.now())
         )
         if not claimed:
-            continue
-        pending_count = batch.upgradeoperation_set.filter(status="pending").count()
-        if not pending_count:
             continue
         notify.send(
             sender=batch,

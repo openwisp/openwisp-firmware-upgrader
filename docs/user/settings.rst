@@ -111,8 +111,8 @@ Seconds between consecutive reminders for a single persistent batch that
 still has pending children. The first reminder fires when the batch is
 older than this period; subsequent reminders fire when the same period has
 elapsed since the previous send. The reminder itself goes out as a
-``generic_message`` notification to the batch's organization admins and
-all superusers.
+``pending_upgrade_reminder`` notification to the batch's organization
+admins and all superusers.
 
 The Beat task that drives these reminders
 (``send_pending_upgrade_reminders``) is registered in the deployment's own

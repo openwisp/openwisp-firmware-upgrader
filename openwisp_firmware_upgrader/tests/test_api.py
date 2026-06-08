@@ -2204,17 +2204,28 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
             serializer.save()
         self.assertIn("is_persistent", str(ctx.exception))
 
-    def test_batch_serializer_rejects_is_persistent_update(self):
+    def test_batch_serializer_allows_is_persistent_update_while_idle(self):
         env = self._create_upgrade_env()
         env["build2"].batch_upgrade(firmwareless=False)
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.status, "idle")
         serializer = BatchUpgradeOperationSerializer(
             batch, data={"is_persistent": not batch.is_persistent}, partial=True
         )
         self.assertTrue(serializer.is_valid(), serializer.errors)
-        with self.assertRaises(DRFValidationError) as ctx:
-            serializer.save()
-        self.assertIn("is_persistent", str(ctx.exception))
+        serializer.save()
+
+    def test_batch_serializer_rejects_is_persistent_update(self):
+        env = self._create_upgrade_env()
+        env["build2"].batch_upgrade(firmwareless=False)
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        batch.status = "in-progress"
+        batch.save(update_fields=["status"])
+        serializer = BatchUpgradeOperationSerializer(
+            batch, data={"is_persistent": not batch.is_persistent}, partial=True
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("is_persistent", serializer.errors)
 
 
 class TestFirmwareDownloadPermissions(

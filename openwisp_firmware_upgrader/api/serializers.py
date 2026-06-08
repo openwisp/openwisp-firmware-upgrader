@@ -168,7 +168,7 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
         fields = "__all__"
 
     def update(self, instance, validated_data):
-        if "is_persistent" in validated_data:
+        if "is_persistent" in validated_data and instance.status != "idle":
             raise serializers.ValidationError(
                 {
                     "is_persistent": _(

@@ -24,17 +24,16 @@ RETRY_OPTIONS = getattr(
 
 TASK_TIMEOUT = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT", 1500)
 
-PERSISTENT_RETRY_OPTIONS = getattr(
-    settings,
-    "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS",
-    dict(
-        base_delay=600,
-        multiplier=2,
-        jitter=0.25,
-        max_delay=43200,
-        dispatch_jitter=300,
-        signal_jitter=120,
-    ),
+PERSISTENT_RETRY_OPTIONS = dict(
+    base_delay=600,
+    multiplier=2,
+    jitter=0.25,
+    max_delay=43200,
+    dispatch_jitter=300,
+    signal_jitter=120,
+)
+PERSISTENT_RETRY_OPTIONS.update(
+    getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS", {})
 )
 PERSISTENT_REMINDER_PERIOD = getattr(
     settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD", 5184000

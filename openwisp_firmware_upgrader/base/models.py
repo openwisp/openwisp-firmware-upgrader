@@ -743,8 +743,14 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             pending=models.Count("id", filter=models.Q(status="pending")),
         )
         if stats["pending"]:
-            return _(f"{stats['completed']} complete, {stats['pending']} pending")
-        return _(f"{stats['completed']} out of {self.total_operations}")
+            return _("%(completed)s complete, %(pending)s pending") % {
+                "completed": stats["completed"],
+                "pending": stats["pending"],
+            }
+        return _("%(completed)s out of %(total)s") % {
+            "completed": stats["completed"],
+            "total": self.total_operations,
+        }
 
     @property
     def success_rate(self):
