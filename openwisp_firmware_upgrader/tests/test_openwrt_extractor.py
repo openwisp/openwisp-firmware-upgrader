@@ -1,10 +1,12 @@
 import bz2
 import gzip
 import hashlib
+import io
 import json
 import lzma
 import os
 import struct
+import tarfile
 import tempfile
 import urllib.request
 import zlib
@@ -612,6 +614,37 @@ class TestExtractFwtoolMetadata(TestCase):
         finally:
             os.unlink(path)
         self.assertIsNone(result)
+
+
+class TestReadKernelFromTar(TestCase):
+    def _write_tar(self, members):
+        f = tempfile.NamedTemporaryFile(suffix=".tar", delete=False)
+        f.close()
+        with tarfile.open(f.name, mode="w") as tf:
+            for name, content in members:
+                info = tarfile.TarInfo(name)
+                info.size = len(content)
+                tf.addfile(info, io.BytesIO(content))
+        return f.name
+
+    def test_returns_kernel_bytes_for_matching_member(self):
+        payload = DTB_MAGIC + b"\x00" * 60
+        path = self._write_tar([("sysupgrade-kernel", payload)])
+        try:
+            result = OpenWrtMetadataExtractor(path)._read_kernel_from_tar()
+        finally:
+            os.unlink(path)
+        self.assertEqual(result, payload)
+
+    def test_oversized_tar_member_raises(self):
+        path = self._write_tar([("kernel.bin", b"\x00" * 128)])
+        try:
+            extractor = OpenWrtMetadataExtractor(path)
+            with mock.patch("openwisp_firmware_upgrader.settings.MAX_KERNEL_BYTES", 64):
+                with self.assertRaises(DecompressionLimitExceeded):
+                    extractor._read_kernel_from_tar()
+        finally:
+            os.unlink(path)
 
 
 class TestRealFirmwareExtraction(TestCase):

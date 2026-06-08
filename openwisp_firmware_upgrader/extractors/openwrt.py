@@ -157,9 +157,9 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             return None
         return bytes(buf) or None
 
-    def _deep_scan_for_dtb(self, data):
+    def _decompressors(self):
         memlimit = app_settings.MAX_DECOMPRESSED_BYTES
-        scan_targets = [
+        return [
             (b"\x1f\x8b", self._try_gzip),
             (
                 b"\xfd7zXZ\x00",
@@ -184,7 +184,10 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 ),
             ),
         ]
-        for magic, decompress_fn in scan_targets:
+
+    def _deep_scan_for_dtb(self, data):
+        memlimit = app_settings.MAX_DECOMPRESSED_BYTES
+        for magic, decompress_fn in self._decompressors():
             offset = 0
             while True:
                 pos = data.find(magic, offset)
@@ -376,28 +379,21 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
     def _try_extract_dtb_from_kernel(self, kernel_data):
         memlimit = app_settings.MAX_DECOMPRESSED_BYTES
         stripped = self._strip_uimage_header(kernel_data)
-        decompressed = (
-            self._try_gzip(stripped)
-            or self._try_decompress(
-                stripped,
-                b"\xfd7zXZ\x00",
-                lambda: lzma.LZMADecompressor(format=lzma.FORMAT_XZ, memlimit=memlimit),
-            )
-            or self._try_decompress(
+        decompressed = None
+        for _, decompress_fn in self._decompressors():
+            decompressed = decompress_fn(stripped)
+            if decompressed is not None:
+                break
+        if decompressed is None:
+            decompressed = self._try_decompress(
                 stripped,
                 None,
                 lambda: lzma.LZMADecompressor(
                     format=lzma.FORMAT_ALONE, memlimit=memlimit
                 ),
             )
-            or self._try_decompress(stripped, b"BZh", lambda: bz2.BZ2Decompressor())
-            or self._try_decompress(
-                stripped,
-                b"\x04\x22\x4d\x18",
-                lambda: lz4frame.LZ4FrameDecompressor(),
-            )
-            or stripped
-        )
+        if decompressed is None:
+            decompressed = stripped
         dtb = self._locate_dtb(decompressed)
         if dtb is None:
             dtb = self._deep_scan_for_dtb(decompressed)
