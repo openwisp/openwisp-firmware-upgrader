@@ -55,7 +55,10 @@ upgrades use while a device is offline.
 **User Actions**: Pending operations can be cancelled the same way as
 in-progress ones, both from the admin and the REST API. Starting another
 upgrade on the same device is blocked while one is pending, so the device
-cannot be flashed twice.
+cannot be flashed twice. ``pending`` is treated as an active, non-terminal
+state by the deletion guard: a pending operation cannot be deleted
+directly and must be cancelled or left to reach a terminal state first
+(see :ref:`Deleting Upgrade Operations <deleting_upgrade_operations>`).
 
 Success
 ~~~~~~~
@@ -208,11 +211,16 @@ about what occurred during the upgrade process.
 **Batch Operations**: When performing mass upgrades, you can monitor the
 status of individual device upgrades within the batch operation.
 
+.. _deleting_upgrade_operations:
+
 Deleting Upgrade Operations
 ---------------------------
 
 Upgrade operations and batch upgrade operations can be deleted from the
-admin interface only after they leave the ``in-progress`` state.
+admin interface only after they leave the ``in-progress`` state. The
+``pending`` state is guarded the same way: a pending operation is still
+active (it is waiting to be retried), so it cannot be deleted until it is
+cancelled or reaches a terminal state.
 
 Deleting an operation while it is still running is intentionally blocked
 because the upgrade may be uploading or flashing a firmware image,

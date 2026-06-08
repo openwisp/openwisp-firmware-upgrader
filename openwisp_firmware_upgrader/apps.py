@@ -69,10 +69,10 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         register_notification_type(
             "pending_upgrade_reminder",
             {
-                "verbose_name": "Pending Firmware Upgrade Reminder",
-                "verb": "still pending",
+                "verbose_name": _("Pending Firmware Upgrade Reminder"),
+                "verb": _("still pending"),
                 "level": "info",
-                "email_subject": (
+                "email_subject": _(
                     "[{site.name}] Pending firmware upgrades in mass upgrade "
                     "{notification.target}"
                 ),
@@ -83,10 +83,10 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         register_notification_type(
             "persistent_upgrade_failed",
             {
-                "verbose_name": "Persistent Firmware Upgrade Failed",
-                "verb": "failed",
+                "verbose_name": _("Persistent Firmware Upgrade Failed"),
+                "verb": _("failed"),
                 "level": "error",
-                "email_subject": (
+                "email_subject": _(
                     "[{site.name}] Persistent firmware upgrade FAILED for device "
                     "{notification.target}"
                 ),
@@ -164,7 +164,13 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         """
         try:
             from openwisp_monitoring.device.signals import health_status_changed
-        except ImportError:
+        except ModuleNotFoundError as error:
+            if error.name not in (
+                "openwisp_monitoring",
+                "openwisp_monitoring.device",
+                "openwisp_monitoring.device.signals",
+            ):
+                raise
             return
         UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
         health_status_changed.connect(
