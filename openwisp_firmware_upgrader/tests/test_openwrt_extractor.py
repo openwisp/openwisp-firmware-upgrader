@@ -166,6 +166,20 @@ class TestExtractFromImage(TestCase):
             with self.assertRaises(ExtractionError):
                 extractor.extract_from_image()
 
+    def test_non_dict_meta_raises_extraction_error(self):
+        extractor = OpenWrtMetadataExtractor(self._PATH)
+        with mock.patch.object(extractor, "_extract_fwtool_metadata", return_value=[]):
+            with self.assertRaises(ExtractionError):
+                extractor.extract_from_image()
+
+    def test_non_dict_version_raises_extraction_error(self):
+        extractor = OpenWrtMetadataExtractor(self._PATH)
+        with mock.patch.object(
+            extractor, "_extract_fwtool_metadata", return_value={"version": []}
+        ):
+            with self.assertRaises(ExtractionError):
+                extractor.extract_from_image()
+
     def test_dsa_migration_compat_v2(self):
         meta = {
             "version": {"board": "x", "target": "x", "version": "x"},
@@ -312,6 +326,17 @@ class TestTryExtractDtbFromKernel(TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(
             self.extractor._metadata_from_dtb(result)["model"], "LZ4 Router"
+        )
+
+    def test_double_decompressed_gzip_xz_kernel_extracts_dtb(self):
+        dtb = self._make_dtb(model="Double Compressed Router")
+        inner = lzma.compress(b"\x00" * 128 + dtb + b"\x00" * 64, format=lzma.FORMAT_XZ)
+        kernel = gzip.compress(inner)
+        result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            self.extractor._metadata_from_dtb(result)["model"],
+            "Double Compressed Router",
         )
 
     def test_uimage_header_stripped_before_decompress(self):

@@ -185,7 +185,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             ),
         ]
         for magic, decompress_fn in scan_targets:
-            offset = 1
+            offset = 0
             while True:
                 pos = data.find(magic, offset)
                 if pos == -1:
@@ -202,7 +202,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                     pass
                 offset = pos + 1
         for dict_sig in (b"\x00\x00\x80\x00", b"\x00\x00\x40\x00", b"\x00\x00\x00\x01"):
-            offset = 2
+            offset = 1
             while True:
                 pos = data.find(dict_sig, offset)
                 if pos == -1:
@@ -325,7 +325,11 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         meta = self._extract_fwtool_metadata()
         if meta is None:
             raise ExtractionError("No fwtool metadata found in image")
+        if not isinstance(meta, dict):
+            raise ExtractionError("Malformed fwtool metadata")
         version = meta.get("version", {})
+        if not isinstance(version, dict):
+            raise ExtractionError("Malformed fwtool metadata")
         return {
             "model": version.get("board", ""),
             "compatible": self._parse_supported_devices(meta),
@@ -357,7 +361,13 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                     if "kernel" in name or name.endswith(".bin"):
                         f = tf.extractfile(member)
                         if f:
-                            return f.read(app_settings.MAX_KERNEL_BYTES)
+                            data = f.read(app_settings.MAX_KERNEL_BYTES + 1)
+                            if len(data) > app_settings.MAX_KERNEL_BYTES:
+                                raise DecompressionLimitExceeded(
+                                    f"Kernel data exceeds limit of "
+                                    f"{app_settings.MAX_KERNEL_BYTES // (1024 * 1024)}MB."
+                                )
+                            return data
 
         except tarfile.TarError:
             pass
