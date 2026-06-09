@@ -9,8 +9,9 @@ from openwisp_utils.tests import capture_any_output
 
 from .. import settings as app_settings
 from .. import tasks
+from ..exceptions import RecoverableFailure
 from ..swapper import load_model
-from .base import TestUpgraderMixin
+from .base import TestUpgraderMixin, time_travel
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 UpgradeOperation = load_model("UpgradeOperation")
@@ -161,3 +162,61 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             f"The UpgradeOperation object with id {op.pk} has been deleted"
         )
         mocked_upgrade.assert_not_called()
+
+    def test_persistence_loop_offline_then_back_online(self):
+        # offline op pends, the Beat scan retries it only once due, it pends
+        # again with a later next_retry_at, then succeeds once reachable
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            status="in-progress",
+            is_persistent=True,
+        )
+        start = timezone.now()
+        with time_travel(start):
+            op._recoverable_failure_handler(
+                recoverable=False, error=RecoverableFailure("device offline")
+            )
+            op.save()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "pending")
+        self.assertEqual(op.retry_count, 1)
+        self.assertGreater(op.next_retry_at, start)
+        first_due = op.next_retry_at
+
+        with time_travel(start), mock.patch(
+            "openwisp_firmware_upgrader.tasks.retry_pending_upgrade.apply_async"
+        ) as dispatch:
+            tasks.check_pending_upgrades.run()
+            dispatch.assert_not_called()
+
+        def fail_again(operation_id):
+            offline = UpgradeOperation.objects.get(pk=operation_id)
+            offline._recoverable_failure_handler(
+                recoverable=False, error=RecoverableFailure("device offline")
+            )
+            offline.save()
+
+        with time_travel(first_due + timedelta(seconds=1)), mock.patch(
+            "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay",
+            side_effect=fail_again,
+        ):
+            tasks.check_pending_upgrades.run()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "pending")
+        self.assertEqual(op.retry_count, 2)
+        self.assertGreater(op.next_retry_at, first_due)
+
+        def succeed(operation_id):
+            online = UpgradeOperation.objects.get(pk=operation_id)
+            online.status = "success"
+            online.save()
+
+        with time_travel(op.next_retry_at + timedelta(seconds=1)), mock.patch(
+            "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay",
+            side_effect=succeed,
+        ):
+            tasks.check_pending_upgrades.run()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "success")

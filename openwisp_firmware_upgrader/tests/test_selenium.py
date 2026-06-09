@@ -276,6 +276,40 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
 
     @patch(_mock_upgrade, return_value=True)
+    def test_mass_upgrade_persistent_checkbox_propagates(self, *args):
+        with patch(self._mock_connect, return_value=True):
+            _, _, _, build2, _, _, _ = self._set_up_env()
+            self.login()
+            self.open(
+                reverse(
+                    f"admin:{self.firmware_app_label}_build_change", args=[build2.id]
+                )
+            )
+            # Launch mass upgrade operation
+            self.find_element(
+                by=By.CSS_SELECTOR,
+                value='.title-wrapper .object-tools form button[type="submit"]',
+            ).click()
+            # the persistent checkbox is rendered pre-checked
+            checkbox = self.wait_for_presence(By.NAME, "is_persistent")
+            self.assertTrue(checkbox.is_selected())
+            # Upgrade all devices
+            self.find_element(
+                by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
+            ).click()
+            try:
+                WebDriverWait(self.web_driver, 5).until(
+                    EC.url_contains("batchupgradeoperation")
+                )
+            except TimeoutException:
+                self.fail("User was not redirected to Mass upgrade operations page")
+            batch = BatchUpgradeOperation.objects.get(build=build2)
+            self.assertTrue(batch.is_persistent)
+            children = batch.upgradeoperation_set.all()
+            self.assertTrue(children.exists())
+            self.assertTrue(all(op.is_persistent for op in children))
+
+    @patch(_mock_upgrade, return_value=True)
     @patch.object(OpenWrt, "SCHEMA", None)
     def test_upgrader_with_unsupported_upgrade_options(self, *args):
         with patch(self._mock_connect, return_value=True):
@@ -1039,6 +1073,28 @@ class TestRealTimeProgress(
             EC.text_to_be_present_in_element(
                 (By.CSS_SELECTOR, ".field-completed .readonly"),
                 "3 out of 3",
+            )
+        )
+        self._assert_no_js_errors()
+
+    def test_pending_operation_renders_orange_indicator(self):
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="pending",
+            is_persistent=True,
+        )
+        self._prepare_batch(batch_operation)
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    "#result_list .status-cell .upgrade-progress-fill.pending",
+                )
             )
         )
         self._assert_no_js_errors()
