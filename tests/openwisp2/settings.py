@@ -110,7 +110,7 @@ if not TESTING or "--exclude-tag=selenium_tests" not in sys.argv:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [f"{REDIS_URL}/7"]},
+            "CONFIG": {"hosts": [f"{REDIS_URL}/3"]},
         }
     }
 else:
@@ -165,22 +165,31 @@ if TESTING:
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
             "LOCATION": "firmware-upgrader",
-        }
+        },
+        "sessions": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "firmware-upgrader-sessions",
+        },
     }
 else:
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"{REDIS_URL}/6",
+            "LOCATION": f"{REDIS_URL}/0",
             "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
-        }
+        },
+        "sessions": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"{REDIS_URL}/1",
+            "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+        },
     }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
-SESSION_CACHE_ALIAS = "default"
+SESSION_CACHE_ALIAS = "sessions"
 # Force Redis for development to ensure async task execution
 if not TESTING:
-    CELERY_BROKER_URL = f"{REDIS_URL}/1"
+    CELERY_BROKER_URL = f"{REDIS_URL}/2"
 else:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
