@@ -3,7 +3,11 @@ from pathlib import Path
 from django.test import TestCase
 
 from ..extractors.base import BaseMetadataExtractor
-from ..extractors.exceptions import ExtractionError, UnsupportedImageError
+from ..extractors.exceptions import (
+    DecompressionLimitExceeded,
+    ExtractionError,
+    UnsupportedImageError,
+)
 
 
 class ConcreteSuccessExtractor(BaseMetadataExtractor):
@@ -26,6 +30,11 @@ class ConcreteFailExtractor(BaseMetadataExtractor):
 class ConcreteUnsupportedExtractor(BaseMetadataExtractor):
     def extract_from_image(self):
         raise UnsupportedImageError("not supported")
+
+
+class ConcreteDecompressionLimitExtractor(BaseMetadataExtractor):
+    def extract_from_image(self):
+        raise DecompressionLimitExceeded("decompression limit exceeded")
 
 
 class ConcreteDTBExtractor(ConcreteFailExtractor):
@@ -60,6 +69,11 @@ class TestBaseMetadataExtractor(TestCase):
     def test_unsupported_image_error_not_caught_by_extract(self):
         extractor = ConcreteUnsupportedExtractor("/fake/path.bin")
         with self.assertRaises(UnsupportedImageError):
+            extractor.extract()
+
+    def test_decompression_limit_exceeded_not_caught_by_extract(self):
+        extractor = ConcreteDecompressionLimitExtractor("/fake/path.bin")
+        with self.assertRaises(DecompressionLimitExceeded):
             extractor.extract()
 
     def test_extract_from_dtb_raises_by_default(self):

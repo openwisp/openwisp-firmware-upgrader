@@ -1178,8 +1178,35 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
                 fw._validate_rootfs()
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
+                self.assertIn("rootfs", str(e))
             else:
                 self.fail("ValidationError not raised for uppercase rootfs filename")
+
+        with self.subTest("rootfs .bin filename raises ValidationError"):
+            fw = self._make_firmware_image(
+                b"\x00" * 16,
+                filename="openwrt-ath79-generic-device-rootfs.bin",
+            )
+            try:
+                fw._validate_rootfs()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("rootfs", str(e))
+            else:
+                self.fail("ValidationError not raised for rootfs .bin filename")
+
+        with self.subTest("compressed rootfs tarball raises ValidationError"):
+            fw = self._make_firmware_image(
+                b"\x00" * 16,
+                filename="openwrt-ath79-generic-device-rootfs.tar.gz",
+            )
+            try:
+                fw._validate_rootfs()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("rootfs", str(e))
+            else:
+                self.fail("ValidationError not raised for rootfs .tar.gz filename")
 
         with self.subTest("clean() calls _validate_rootfs"):
             fw = self._make_firmware_image(
@@ -1190,3 +1217,6 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
                 fw.full_clean()
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
+                self.assertIn("rootfs", str(e))
+            else:
+                self.fail("ValidationError not raised through full_clean()")

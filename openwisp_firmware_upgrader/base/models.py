@@ -373,17 +373,16 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                 )
 
     def _validate_rootfs(self):
-        if (
-            self.file
-            and self.file.name
-            and self.file.name.lower().endswith("-rootfs.img")
-        ):
+        if not (self.file and self.file.name):
+            return
+        filename = self.file.name.lower().rsplit("/", 1)[-1]
+        image_type = filename.rsplit("-", 1)[-1].split(".", 1)[0]
+        if image_type == "rootfs":
             raise ValidationError(
                 {
                     "file": _(
-                        "rootfs images (*-squashfs-rootfs.img) are not "
-                        "suitable for upgrades. Please upload a "
-                        "sysupgrade image instead."
+                        "rootfs images are not suitable for upgrades. "
+                        "Please upload a sysupgrade image instead."
                     )
                 }
             )
