@@ -19,7 +19,7 @@ from .exceptions import (
     UnsupportedImageError,
 )
 
-_X86_SUFFIXES = (".vdi", ".vmdk")
+_VIRTUAL_DISK_IMAGES = (".vdi", ".vmdk")
 DTB_MAGIC = b"\xd0\x0d\xfe\xed"
 DTB_MIN_SIZE = 64
 DTB_MAX_SIZE = 10 * 1024 * 1024
@@ -35,11 +35,13 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
 
 class OpenWrtMetadataExtractor(BaseMetadataExtractor):
+    """Extract OpenWrt firmware metadata from the fwtool trailer, falls back to DTB."""
+
     def _validate_image_type(self):
         name = os.path.basename(self.image_path).lower()
         _, ext = os.path.splitext(name)
-        if ext in _X86_SUFFIXES:
-            raise UnsupportedImageError(f"x86 image type not supported: {ext}")
+        if ext in _VIRTUAL_DISK_IMAGES:
+            raise UnsupportedImageError(f"Virtual disk image type not supported: {ext}")
         if "x86" in name or "armsr" in name:
             raise UnsupportedImageError(f"Unsupported image type: {name}")
 
