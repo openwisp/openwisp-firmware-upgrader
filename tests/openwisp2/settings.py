@@ -240,6 +240,19 @@ if os.environ.get("SAMPLE_APP", False):
         "sample_firmware_upgrader.UpgradeOperation"
     )
 
+    # For controller extended apps:
+    # Replace Connection
+    connection_index = INSTALLED_APPS.index("openwisp_controller.connection")
+    INSTALLED_APPS.remove("openwisp_controller.connection")
+    INSTALLED_APPS.insert(connection_index, "openwisp2.sample_connection")
+    # Extended apps
+    EXTENDED_APPS.append("openwisp_controller.connection")
+    # Swapper
+    CONNECTION_CREDENTIALS_MODEL = "sample_connection.Credentials"
+    CONNECTION_DEVICECONNECTION_MODEL = "sample_connection.DeviceConnection"
+    CONNECTION_COMMAND_MODEL = "sample_connection.Command"
+
+
 TEST_RUNNER = "openwisp_utils.tests.TimeLoggingTestRunner"
 
 # local settings must be imported before test runner otherwise they'll be ignored
