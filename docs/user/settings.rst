@@ -108,6 +108,53 @@ images, e.g.:
 
 - Value must be specified in bytes. ``None`` means unlimited.
 
+``OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES``
+-----------------------------------------------
+
+============ ==============================
+**type**:    ``int``
+**default**: ``256 * 1024 * 1024`` (256 MB)
+============ ==============================
+
+Maximum number of bytes read from a firmware image during metadata
+extraction, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES = 512 * 1024 * 1024  # 512MB
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES``
+-----------------------------------------------------
+
+============ ==============================
+**type**:    ``int``
+**default**: ``512 * 1024 * 1024`` (512 MB)
+============ ==============================
+
+Maximum total bytes allowed when decompressing a firmware image during
+metadata extraction. This limit prevents excessively large or malformed
+images from consuming all available memory, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES = 768 * 1024 * 1024  # 768MB
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_RATIO``
+-----------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``100``
+============ =======
+
+Maximum allowed ratio of decompressed size to compressed input size during
+metadata extraction. This limit prevents malformed compressed images from
+consuming all available memory, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_RATIO = 150
+
 .. _openwisp_firmware_upgrader_api:
 
 ``OPENWISP_FIRMWARE_UPGRADER_API``
