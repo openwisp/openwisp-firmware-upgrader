@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import swapper
 from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
@@ -1057,3 +1058,165 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(len(upgrade_ops), 1)
             batch.refresh_from_db()
             self.assertEqual(batch.status, "success")
+
+
+class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
+    def _make_firmware_image(self, content, filename=None):
+        if filename is None:
+            filename = f"openwrt-{self.TPLINK_4300_IMAGE}"
+        return FirmwareImage(
+            build=self._get_build(),
+            file=SimpleUploadedFile(
+                filename, content, content_type="application/octet-stream"
+            ),
+            type=self.TPLINK_4300_IMAGE,
+        )
+
+    def test_validate_file_header(self):
+        with self.subTest("jpeg header raises ValidationError"):
+            fw = self._make_firmware_image(b"\xff\xd8\xff\xe0" + b"\x00" * 12)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("JPEG", str(e))
+            else:
+                self.fail("ValidationError not raised for JPEG header")
+
+        with self.subTest("pdf header raises ValidationError"):
+            fw = self._make_firmware_image(b"%PDF-1.4" + b"\x00" * 8)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("PDF", str(e))
+            else:
+                self.fail("ValidationError not raised for PDF header")
+
+        with self.subTest("png header raises ValidationError"):
+            fw = self._make_firmware_image(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("PNG", str(e))
+            else:
+                self.fail("ValidationError not raised for PNG header")
+
+        with self.subTest("zip header raises ValidationError"):
+            fw = self._make_firmware_image(b"PK\x03\x04" + b"\x00" * 12)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("ZIP", str(e))
+            else:
+                self.fail("ValidationError not raised for ZIP header")
+
+        with self.subTest("elf header raises ValidationError"):
+            fw = self._make_firmware_image(b"\x7fELF" + b"\x00" * 12)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("ELF", str(e))
+            else:
+                self.fail("ValidationError not raised for ELF header")
+
+        with self.subTest("valid squashfs header passes"):
+            fw = self._make_firmware_image(b"sqsh" + b"\x00" * 12)
+            fw._validate_file_header()  # must not raise
+
+        with self.subTest("no file set is handled gracefully"):
+            fw = FirmwareImage()
+            fw.file = None
+            fw._validate_file_header()  # must not raise
+
+        with self.subTest("ioerror on file seek is handled gracefully"):
+            fw = FirmwareImage()
+            mock_file = mock.MagicMock()
+            mock_file.seek.side_effect = IOError("storage error")
+            fw.file = mock_file
+            fw._validate_file_header()  # must not raise
+
+        with self.subTest("clean() calls _validate_file_header"):
+            fw = self._make_firmware_image(b"\xff\xd8\xff\xe0" + b"\x00" * 12)
+            try:
+                fw.full_clean()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+            else:
+                self.fail("ValidationError not raised through full_clean()")
+
+    def test_validate_rootfs(self):
+        with self.subTest("rootfs filename raises ValidationError"):
+            fw = self._make_firmware_image(
+                b"\x00" * 16,
+                filename="openwrt-ath79-generic-device-rootfs.img",
+            )
+            try:
+                fw._validate_rootfs()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("rootfs", str(e))
+            else:
+                self.fail("ValidationError not raised for rootfs filename")
+
+        with self.subTest("sysupgrade filename passes"):
+            fw = self._make_firmware_image(
+                b"\x00" * 16,
+                filename=f"openwrt-{self.TPLINK_4300_IMAGE}",
+            )
+            fw._validate_rootfs()  # must not raise
+
+        with self.subTest("uppercase rootfs filename raises ValidationError"):
+            fw = self._make_firmware_image(
+                b"\x00" * 16,
+                filename="openwrt-ath79-generic-device-rootfs.IMG",
+            )
+            try:
+                fw._validate_rootfs()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("rootfs", str(e))
+            else:
+                self.fail("ValidationError not raised for uppercase rootfs filename")
+
+        with self.subTest("rootfs .bin filename raises ValidationError"):
+            fw = self._make_firmware_image(
+                b"\x00" * 16,
+                filename="openwrt-ath79-generic-device-rootfs.bin",
+            )
+            try:
+                fw._validate_rootfs()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("rootfs", str(e))
+            else:
+                self.fail("ValidationError not raised for rootfs .bin filename")
+
+        with self.subTest("compressed rootfs tarball raises ValidationError"):
+            fw = self._make_firmware_image(
+                b"\x00" * 16,
+                filename="openwrt-ath79-generic-device-rootfs.tar.gz",
+            )
+            try:
+                fw._validate_rootfs()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("rootfs", str(e))
+            else:
+                self.fail("ValidationError not raised for rootfs .tar.gz filename")
+
+        with self.subTest("clean() calls _validate_rootfs"):
+            fw = self._make_firmware_image(
+                b"\x00" * 16,
+                filename="openwrt-ath79-generic-device-rootfs.img",
+            )
+            try:
+                fw.full_clean()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("rootfs", str(e))
+            else:
+                self.fail("ValidationError not raised through full_clean()")

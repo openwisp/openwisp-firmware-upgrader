@@ -31,6 +31,16 @@ OPENWRT_SETTINGS = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTING
 # Path of urls that need to be refered in migrations files.
 IMAGE_URL_PATH = "firmware/"
 
+MAX_KERNEL_BYTES = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES", 256 * 1024 * 1024
+)
+MAX_DECOMPRESSED_BYTES = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES", 512 * 1024 * 1024
+)
+MAX_DECOMPRESSED_RATIO = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_RATIO", 100
+)
+
 try:
     PRIVATE_STORAGE_INSTANCE = import_string(
         getattr(

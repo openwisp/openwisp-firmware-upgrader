@@ -51,6 +51,20 @@ logger = logging.getLogger(__name__)
 PROGRESS_MIN = 0
 PROGRESS_MAX = 100
 
+_INVALID_HEADERS = [
+    (b"\xff\xd8\xff", _("JPEG image")),
+    (b"\x89PNG\r\n\x1a\n", _("PNG image")),
+    (b"%PDF", _("PDF document")),
+    (b"GIF87a", _("GIF image")),
+    (b"GIF89a", _("GIF image")),
+    (b"PK\x03\x04", _("ZIP archive")),
+    (b"MZ", _("Windows executable")),
+    (b"\x7fELF", _("ELF binary")),
+    (b"<html", _("HTML file")),
+    (b"<!DOC", _("HTML document")),
+    (b"<?xml", _("XML file")),
+]
+
 
 class UpgradeOptionsMixin(models.Model):
     upgrade_options = models.JSONField(default=dict, blank=True)
@@ -285,6 +299,8 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     def clean(self):
         self._clean_type()
+        self._validate_file_header()
+        self._validate_rootfs()
         try:
             self.boards
         except KeyError:
@@ -310,7 +326,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         # Delete the directory if empty
         try:
             dir_path = str(Path(file_path).parent)
-            if not dir or dir_path == ".":
+            if not dir_path or dir_path == ".":
                 return True
             dirs, files = storage.listdir(dir_path)
             if dirs or files:
@@ -334,6 +350,42 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         filename = self.file.name
         # removes leading prefix
         self.type = "-".join(filename.split("-")[1:])
+
+    def _validate_file_header(self):
+        if not self.file:
+            return
+        try:
+            self.file.seek(0)
+            header = self.file.read(16)
+            self.file.seek(0)
+        except (IOError, OSError):
+            return
+        for magic, file_type in _INVALID_HEADERS:
+            if header[: len(magic)] == magic:
+                raise ValidationError(
+                    {
+                        "file": _(
+                            "This file appears to be a %(type)s, not a firmware "
+                            "image. Please upload a valid firmware image."
+                        )
+                        % {"type": file_type}
+                    }
+                )
+
+    def _validate_rootfs(self):
+        if not (self.file and self.file.name):
+            return
+        filename = self.file.name.lower().rsplit("/", 1)[-1]
+        image_type = filename.rsplit("-", 1)[-1].split(".", 1)[0]
+        if image_type == "rootfs":
+            raise ValidationError(
+                {
+                    "file": _(
+                        "rootfs images are not suitable for upgrades. "
+                        "Please upload a sysupgrade image instead."
+                    )
+                }
+            )
 
     @classmethod
     def build_pre_delete_handler(cls, sender, instance, **kwargs):
