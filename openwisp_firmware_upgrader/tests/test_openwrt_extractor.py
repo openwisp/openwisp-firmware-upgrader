@@ -413,9 +413,15 @@ class TestExtractOverride(TestCase):
     def _make_extractor(self, path=None):
         return OpenWrtMetadataExtractor(path or self._PATH)
 
-    def test_fwtool_success_returns_fwtool_result(self):
+    @mock.patch.object(
+        OpenWrtMetadataExtractor,
+        "extract_from_dtb",
+        side_effect=UnsupportedImageError("no dtb"),
+    )
+    @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_image")
+    def test_fwtool_success_returns_fwtool_result(self, mock_image, _mock_dtb):
         extractor = self._make_extractor()
-        fwtool_result = {
+        mock_image.return_value = {
             "model": "x",
             "compatible": ["x"],
             "target": "x",
@@ -423,20 +429,18 @@ class TestExtractOverride(TestCase):
             "compat_version": "1.0",
             "source": "fwtool",
         }
-        with mock.patch.object(
-            extractor, "extract_from_image", return_value=fwtool_result
-        ):
-            with mock.patch.object(
-                extractor,
-                "extract_from_dtb",
-                side_effect=UnsupportedImageError("no dtb"),
-            ):
-                result = extractor.extract()
+        result = extractor.extract()
         self.assertEqual(result["source"], "fwtool")
 
-    def test_fwtool_failure_falls_back_to_dtb(self):
+    @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_dtb")
+    @mock.patch.object(
+        OpenWrtMetadataExtractor,
+        "extract_from_image",
+        side_effect=ExtractionError("fail"),
+    )
+    def test_fwtool_failure_falls_back_to_dtb(self, _mock_image, mock_dtb):
         extractor = self._make_extractor()
-        dtb_result = {
+        mock_dtb.return_value = {
             "model": "dtb-model",
             "compatible": ["dtb,compat"],
             "target": "",
@@ -444,31 +448,29 @@ class TestExtractOverride(TestCase):
             "compat_version": "1.0",
             "source": "dtb",
         }
-        with mock.patch.object(
-            extractor, "extract_from_image", side_effect=ExtractionError("fail")
-        ):
-            with mock.patch.object(
-                extractor, "extract_from_dtb", return_value=dtb_result
-            ):
-                result = extractor.extract()
+        result = extractor.extract()
         self.assertEqual(result["source"], "dtb")
 
-    def test_both_paths_fail_raises(self):
+    @mock.patch.object(
+        OpenWrtMetadataExtractor,
+        "extract_from_dtb",
+        side_effect=UnsupportedImageError("no dtb"),
+    )
+    @mock.patch.object(
+        OpenWrtMetadataExtractor,
+        "extract_from_image",
+        side_effect=ExtractionError("fail"),
+    )
+    def test_both_paths_fail_raises(self, _mock_image, _mock_dtb):
         extractor = self._make_extractor()
-        with mock.patch.object(
-            extractor, "extract_from_image", side_effect=ExtractionError("fail")
-        ):
-            with mock.patch.object(
-                extractor,
-                "extract_from_dtb",
-                side_effect=UnsupportedImageError("no dtb"),
-            ):
-                with self.assertRaises(UnsupportedImageError):
-                    extractor.extract()
+        with self.assertRaises(UnsupportedImageError):
+            extractor.extract()
 
-    def test_dtb_enriches_missing_compatible(self):
+    @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_image")
+    @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_dtb")
+    def test_dtb_enriches_missing_compatible(self, mock_dtb, mock_image):
         extractor = self._make_extractor()
-        fwtool_result = {
+        mock_image.return_value = {
             "model": "x",
             "compatible": [],
             "target": "x",
@@ -476,7 +478,7 @@ class TestExtractOverride(TestCase):
             "compat_version": "1.0",
             "source": "fwtool",
         }
-        dtb_result = {
+        mock_dtb.return_value = {
             "model": "",
             "compatible": ["enriched,compat"],
             "target": "",
@@ -484,19 +486,15 @@ class TestExtractOverride(TestCase):
             "compat_version": "1.0",
             "source": "dtb",
         }
-        with mock.patch.object(
-            extractor, "extract_from_image", return_value=fwtool_result
-        ):
-            with mock.patch.object(
-                extractor, "extract_from_dtb", return_value=dtb_result
-            ):
-                result = extractor.extract()
+        result = extractor.extract()
         self.assertIn("enriched,compat", result["compatible"])
         self.assertEqual(result["source"], "fwtool")
 
-    def test_dtb_model_overrides_fwtool_board_id(self):
+    @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_image")
+    @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_dtb")
+    def test_dtb_model_overrides_fwtool_board_id(self, mock_dtb, mock_image):
         extractor = self._make_extractor()
-        fwtool_result = {
+        mock_image.return_value = {
             "model": "tplink_archer-c6-v3",
             "compatible": ["tplink,archer-c6-v3"],
             "target": "ramips/mt7621",
@@ -504,7 +502,7 @@ class TestExtractOverride(TestCase):
             "compat_version": "1.0",
             "source": "fwtool",
         }
-        dtb_result = {
+        mock_dtb.return_value = {
             "model": "TP-Link Archer C6 v3",
             "compatible": ["tplink,archer-c6-v3"],
             "target": "",
@@ -512,44 +510,43 @@ class TestExtractOverride(TestCase):
             "compat_version": "1.0",
             "source": "dtb",
         }
-        with mock.patch.object(
-            extractor, "extract_from_image", return_value=fwtool_result
-        ):
-            with mock.patch.object(
-                extractor, "extract_from_dtb", return_value=dtb_result
-            ):
-                result = extractor.extract()
+        result = extractor.extract()
         self.assertEqual(result["model"], "TP-Link Archer C6 v3")
         self.assertEqual(result["source"], "fwtool")
 
-    def test_unsupported_image_error_propagates_without_dtb_attempt(self):
+    @mock.patch.object(
+        OpenWrtMetadataExtractor,
+        "extract_from_image",
+        side_effect=UnsupportedImageError("x86 not supported"),
+    )
+    @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_dtb")
+    def test_unsupported_image_error_propagates_without_dtb_attempt(
+        self, mock_dtb, _mock_image
+    ):
         extractor = self._make_extractor("/path/to/openwrt-x86-64-generic.img")
-        with mock.patch.object(
-            extractor,
-            "extract_from_image",
-            side_effect=UnsupportedImageError("x86 not supported"),
-        ):
-            with mock.patch.object(extractor, "extract_from_dtb") as mock_dtb:
-                with self.assertRaises(UnsupportedImageError):
-                    extractor.extract()
+        with self.assertRaises(UnsupportedImageError):
+            extractor.extract()
         mock_dtb.assert_not_called()
 
-    def test_tar_fallback_used_when_raw_bytes_have_no_dtb(self):
+    @mock.patch.object(
+        OpenWrtMetadataExtractor, "_metadata_from_dtb", return_value={"source": "dtb"}
+    )
+    @mock.patch.object(
+        OpenWrtMetadataExtractor, "_locate_dtb", side_effect=[None, b"fake_dtb"]
+    )
+    @mock.patch.object(
+        OpenWrtMetadataExtractor,
+        "_read_kernel_from_tar",
+        return_value=b"fake_kernel_data",
+    )
+    @mock.patch.object(
+        OpenWrtMetadataExtractor, "_read_kernel_bytes", return_value=b"\x00" * 64
+    )
+    def test_tar_fallback_used_when_raw_bytes_have_no_dtb(
+        self, _mock_read, _mock_tar, _mock_locate, _mock_metadata
+    ):
         extractor = self._make_extractor()
-        tar_kernel = b"fake_kernel_data"
-        with mock.patch.object(
-            extractor, "_read_kernel_bytes", return_value=b"\x00" * 64
-        ):
-            with mock.patch.object(
-                extractor, "_read_kernel_from_tar", return_value=tar_kernel
-            ):
-                with mock.patch.object(
-                    extractor, "_locate_dtb", side_effect=[None, b"fake_dtb"]
-                ):
-                    with mock.patch.object(
-                        extractor, "_metadata_from_dtb", return_value={"source": "dtb"}
-                    ):
-                        result = extractor.extract_from_dtb()
+        result = extractor.extract_from_dtb()
         self.assertEqual(result["source"], "dtb")
 
 

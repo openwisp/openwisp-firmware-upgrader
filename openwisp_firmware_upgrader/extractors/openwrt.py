@@ -133,6 +133,8 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         except DecompressionLimitExceeded:
             raise
         except Exception:
+            # Some OpenWrt .img.gz files append fwtool metadata after the gzip stream.
+            # Keep any valid decompressed bytes collected before gzip reports trailing data.
             pass
         return bytes(buf) or None
 
@@ -156,6 +158,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         except DecompressionLimitExceeded:
             raise
         except Exception:
+            # Decompressors are used as probes; invalid formats are expected misses.
             return None
         return bytes(buf) or None
 
@@ -204,6 +207,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 except DecompressionLimitExceeded:
                     raise
                 except Exception:
+                    # Deep scan probes arbitrary offsets, so failed candidates are normal.
                     pass
                 offset = pos + 1
         for dict_sig in (b"\x00\x00\x80\x00", b"\x00\x00\x40\x00", b"\x00\x00\x00\x01"):
@@ -227,6 +231,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 except DecompressionLimitExceeded:
                     raise
                 except Exception:
+                    # Deep scan probes arbitrary offsets, so failed candidates are normal.
                     pass
                 offset = pos + 1
         return None
@@ -250,6 +255,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                         if any(p.name in ("model", "compatible") for p in root.props):
                             return candidate
                     except Exception:
+                        # DTB magic may appear in invalid candidate data.
                         pass
             offset = pos + 1
         return None
@@ -279,8 +285,10 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                                 if dt.get_node("/images") is not None:
                                     fit_candidate = candidate
                             except Exception:
+                                # Not every valid DTB candidate is a FIT image.
                                 pass
                     except Exception:
+                        # DTB magic may appear in invalid candidate data.
                         pass
             offset = pos + 1
         if fit_candidate is not None:
