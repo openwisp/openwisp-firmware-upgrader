@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
 
 from openwisp_firmware_upgrader import private_storage
+from openwisp_firmware_upgrader.constants import DEACTIVATED_DEVICE_FIRMWARE_ERROR
 from openwisp_users.api.mixins import FilterByOrganizationManaged, IsOrganizationManager
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 from openwisp_users.api.permissions import DjangoModelPermissions
@@ -59,6 +60,30 @@ class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
             # when uuid is not valid
             qs = []
         return qs
+
+
+class RelatedDeviceAPIMixin(ProtectedAPIMixin):
+    """
+    Resolve and cache the device used by nested device firmware API views.
+    """
+
+    def get_device(self):
+        device = getattr(self, "_device", None)
+        if device is not None:
+            return device
+        parent_queryset = self.get_parent_queryset()
+        if not self.request.user.is_superuser:
+            parent_queryset = parent_queryset.filter(
+                organization__in=self.request.user.organizations_managed
+            )
+        device = parent_queryset.first()
+        self._device = device
+        return device
+
+    def assert_parent_exists(self):
+        device = self.get_device()
+        if not device:
+            raise NotFound(detail=_("device not found"))
 
 
 class BuildListView(ProtectedAPIMixin, generics.ListCreateAPIView):
@@ -272,7 +297,7 @@ class DeviceUpgradeOperationListView(DeviceUpgradeOperationMixin, generics.ListA
 
 
 class DeviceFirmwareDetailView(
-    ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIView
+    RelatedDeviceAPIMixin, generics.RetrieveUpdateDestroyAPIView
 ):
     serializer_class = DeviceFirmwareSerializer
     queryset = DeviceFirmware.objects.select_related("device", "image")
@@ -280,36 +305,32 @@ class DeviceFirmwareDetailView(
     lookup_url_kwarg = "pk"
     organization_field = "device__organization"
 
-    def get_object(self):
-        obj = super().get_object()
-        if self.request.method not in ("GET", "HEAD") and obj.device.is_deactivated():
-            raise PermissionDenied
-        return obj
-
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context.update({"device_id": self.kwargs["pk"]})
+        context.update({"device": getattr(self, "_device", None)})
         return context
+
+    def get_parent_queryset(self):
+        return Device.objects.filter(pk=self.kwargs["pk"])
 
     def get_serializer(self, *args, **kwargs):
         serializer = super().get_serializer(*args, **kwargs)
-        if kwargs.get("instance"):
+        instance = kwargs.get("instance") or (args[0] if args else None)
+        if instance:
+            serializer.context["device"] = instance.device
             image_qs = self._get_image_queryset(
-                kwargs.get("instance"), kwargs.get("instance").device
+                instance,
+                instance.device,
             )
             serializer.fields["image"].queryset = image_qs
         else:
-            device = self._get_device_object(serializer.context.get("device_id"))
+            device = serializer.context.get("device")
+            if device is None:
+                device = self.get_device()
+                serializer.context["device"] = device
             image_qs = self._get_image_queryset(device=device)
             serializer.fields["image"].queryset = image_qs
         return serializer
-
-    def _get_device_object(self, device_id):
-        try:
-            device = Device.objects.get(id=device_id)
-            return device
-        except Device.DoesNotExist:
-            return None
 
     def _get_image_queryset(self, device_firmware=None, device=None):
         if not device_firmware and not device:
@@ -324,13 +345,13 @@ class DeviceFirmwareDetailView(
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
-        instance = self.get_object_or_none()
+        instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
         if instance is None:
             self.perform_create(serializer)
-            instance = self.get_object_or_none()
+            instance = self.get_object()
             uo = instance.device.upgradeoperation_set.latest("created")
             data = self._get_response_data(serializer, uo)
             image_qs = self._get_image_queryset(uo, instance.device)
@@ -350,20 +371,27 @@ class DeviceFirmwareDetailView(
     def perform_update(self, serializer):
         serializer.save()
 
-    def get_object_or_none(self):
+    def get_object(self):
         try:
-            return self.get_object()
+            obj = super().get_object()
         except Http404:
             if self.request.method == "PUT":
                 # For PUT-as-create operation, we need to ensure that we have
                 # relevant permissions, as if this was a POST request. This
                 # will either raise a PermissionDenied exception, or simply
                 # return None.
+                self.assert_parent_exists()
+                if self._device.is_deactivated():
+                    raise PermissionDenied(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
                 self.check_permissions(clone_request(self.request, "POST"))
+                return None
             else:
                 # PATCH requests where the object does not exist should still
                 # return a 404 response.
                 raise
+        if self.request.method not in ("GET", "HEAD") and obj.device.is_deactivated():
+            raise PermissionDenied(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
+        return obj
 
 
 class UpgradeOperationCancelPermission(DjangoModelPermissions):

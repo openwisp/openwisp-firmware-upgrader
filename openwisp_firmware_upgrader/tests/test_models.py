@@ -194,6 +194,12 @@ class TestModels(TestUpgraderMixin, TestCase):
             device_fw.full_clean()
         self.assertIn("related connection", str(ctx.exception))
 
+    def test_device_firmware_missing_required_fields(self):
+        with self.assertRaises(ValidationError) as cm:
+            DeviceFirmware().full_clean()
+        self.assertIn("device", cm.exception.message_dict)
+        self.assertIn("image", cm.exception.message_dict)
+
     def test_invalid_board(self):
         image = FIRMWARE_IMAGE_MAP[self.TPLINK_4300_IMAGE]
         boards = image["boards"]
@@ -335,6 +341,19 @@ class TestModels(TestUpgraderMixin, TestCase):
         with self.subTest("Float value gets converted to int"):
             uo.update_progress(75.7)
             self.assertEqual(uo.progress, 75)
+
+    def test_upgrade_operation_aborts_when_device_deactivated_before_worker_runs(self):
+        device_fw = self._create_device_firmware()
+        operation = UpgradeOperation(device=device_fw.device, image=device_fw.image)
+        operation.full_clean()
+        operation.save()
+        device_fw.device.deactivate()
+        with mock.patch.object(DeviceConnection, "get_working_connection") as mocked:
+            operation.upgrade()
+        mocked.assert_not_called()
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "aborted")
+        self.assertIn("deactivated", operation.log)
 
     def test_concurrent_cancellation_race_condition(self):
         """Test that concurrent cancellation attempts don't cause errors."""
@@ -1057,3 +1076,85 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(len(upgrade_ops), 1)
             batch.refresh_from_db()
             self.assertEqual(batch.status, "success")
+
+    @mock.patch(
+        "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
+    )
+    @mock.patch("openwisp_firmware_upgrader.websockets._run_coroutine_safely")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    def test_batch_upgrade_excludes_deactivated_devices(self, *args):
+        env = self._create_upgrade_env()
+        # Test firmwareless=False case (devices with existing DeviceFirmware)
+        env["d1"].deactivate()
+        batch = env["build2"].batch_upgrade(firmwareless=False)
+        ops = UpgradeOperation.objects.filter(batch=batch)
+        # Should only have operations for non-deactivated devices
+        device_ids = [op.device.pk for op in ops]
+        self.assertNotIn(env["d1"].pk, device_ids)  # deactivated device excluded
+        self.assertIn(env["d2"].pk, device_ids)  # active device included
+
+        # Clean up for next test
+        UpgradeOperation.objects.all().delete()
+        BatchUpgradeOperation.objects.all().delete()
+
+        # Test firmwareless=True case (devices without existing DeviceFirmware)
+        # Create a new device without DeviceFirmware and deactivate it
+        firmwareless_device = self._create_device(
+            name="FirmwarelessDevice",
+            organization=env["d1"].organization,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:44:55",
+        )
+        self._create_config(device=firmwareless_device)
+        self._create_device_connection(
+            device=firmwareless_device,
+            credentials=env["d1"].deviceconnection_set.first().credentials,
+        )
+        firmwareless_device.deactivate()
+
+        active_firmwareless_device = self._create_device(
+            name="ActiveFirmwarelessDevice",
+            organization=env["d1"].organization,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:44:56",
+        )
+        self._create_config(device=active_firmwareless_device)
+        self._create_device_connection(
+            device=active_firmwareless_device,
+            credentials=env["d1"].deviceconnection_set.first().credentials,
+        )
+
+        batch = env["build2"].batch_upgrade(firmwareless=True)
+        ops = UpgradeOperation.objects.filter(batch=batch)
+        # Deactivated firmwareless device should be excluded
+        device_ids = [op.device.pk for op in ops]
+        self.assertNotIn(
+            firmwareless_device.pk, device_ids
+        )  # deactivated firmwareless device excluded
+        self.assertIn(
+            active_firmwareless_device.pk, device_ids
+        )  # active firmwareless device included
+
+    @mock.patch(
+        "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
+    )
+    def test_deactivated_device_validation(self, *_args):
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        # Test DeviceFirmware validation
+        device.deactivate()
+        with self.assertRaises(ValidationError) as cm:
+            new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
+            new_device_fw.full_clean()
+        self.assertIn(
+            "Firmware upgrades are not allowed for deactivated devices.",
+            str(cm.exception),
+        )
+        # Test UpgradeOperation validation
+        with self.assertRaises(ValidationError) as cm:
+            operation = UpgradeOperation(device=device, image=device_fw.image)
+            operation.full_clean()
+        self.assertIn(
+            "Upgrade operations are not allowed for deactivated devices.",
+            str(cm.exception),
+        )

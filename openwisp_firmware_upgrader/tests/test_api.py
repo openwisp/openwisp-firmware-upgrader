@@ -354,6 +354,32 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.data, {"device_firmwares": device_fw_list, "devices": []})
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
+    def test_build_upgradeable_excludes_deactivated_devices(self):
+        env = self._create_upgrade_env()
+        env["d1"].deactivate()
+        firmwareless_device = self._create_device(
+            name="deactivated-firmwareless",
+            organization=env["d1"].organization,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:44:57",
+        )
+        self._create_config(device=firmwareless_device)
+        firmwareless_device.deactivate()
+        active_firmwareless_device = self._create_device(
+            name="active-firmwareless",
+            organization=env["d1"].organization,
+            model=env["image2a"].boards[0],
+            mac_address="00:11:22:33:44:58",
+        )
+        self._create_config(device=active_firmwareless_device)
+        url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(str(env["device_fw1"].pk), r.data["device_firmwares"])
+        self.assertIn(str(env["device_fw2"].pk), r.data["device_firmwares"])
+        self.assertNotIn(str(firmwareless_device.pk), r.data["devices"])
+        self.assertIn(str(active_firmwareless_device.pk), r.data["devices"])
+
     def test_api_shared_build_batch_upgrade(self):
         shared_image = self._create_firmware_image(organization=None)
         org1_device = self._create_device_with_connection(
@@ -1309,7 +1335,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         with self.subTest("Test device and image model validation"):
             url = reverse("upgrader:api_devicefirmware_detail", args=[device1.pk])
-            with self.assertNumQueries(15):
+            with self.assertNumQueries(13):
                 # Try to make a request when the
                 # device model does not match the image model
                 data = {"image": image1a.pk}
@@ -1343,10 +1369,35 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
                 content_type="application/json",
             )
             self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "Firmware upgrades are not allowed for deactivated devices.",
+            )
 
         with self.subTest("Test deleting DeviceFirmwareImage"):
             response = self.client.delete(url)
             self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "Firmware upgrades are not allowed for deactivated devices.",
+            )
+
+    def test_deactivated_device_put_as_create(self):
+        env = self._create_upgrade_env(device_firmware=False)
+        url = reverse("upgrader:api_devicefirmware_detail", args=[env["d1"].pk])
+        env["d1"].deactivate()
+        response = self.client.put(
+            url,
+            data={"image": env["image1a"].pk},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.data["detail"],
+            "Firmware upgrades are not allowed for deactivated devices.",
+        )
+        self.assertEqual(DeviceFirmware.objects.count(), 0)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
 
     def test_device_firmware_detail_delete(self):
         device_fw = self._create_device_firmware()
@@ -1374,7 +1425,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             url = reverse(
                 "upgrader:api_devicefirmware_detail", args=[device_fw1.device.pk]
             )
-            with self.assertNumQueries(9):
+            with self.assertNumQueries(8):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw1)
@@ -1392,7 +1443,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest("Test when device firmware does not exist"):
             DeviceFirmware.objects.all().delete()
             url = reverse("upgrader:api_devicefirmware_detail", args=[device1.pk])
-            with self.assertNumQueries(8):
+            with self.assertNumQueries(6):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 404)
             repsonse = r.content.decode()
@@ -1422,7 +1473,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 0)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(26):
+        with self.assertNumQueries(25):
             data = {"image": image1a.pk}
             # This API view allows the creation
             # of new devicefirmware objects with
@@ -1460,7 +1511,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
         self.client.force_login(self.administrator)
-        with self.assertNumQueries(25):
+        with self.assertNumQueries(24):
             data = {"image": shared_image.pk}
             r = self.client.put(
                 f"{path}?format=api", data, content_type="application/json"
@@ -1490,7 +1541,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(24):
+        with self.assertNumQueries(22):
             data = {"image": image2a.pk}
             r = self.client.put(
                 f"{url}?format=api", data, content_type="application/json"
@@ -1529,7 +1580,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(24):
+        with self.assertNumQueries(22):
             data = {"image": image2a.pk}
             r = self.client.patch(
                 f"{url}?format=api", data, content_type="application/json"
@@ -1597,7 +1648,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest("Test device firmware detail org admin"):
             self._login("org_admin", "tester")
             url = reverse("upgrader:api_devicefirmware_detail", args=[d1.pk])
-            with self.assertNumQueries(6):
+            with self.assertNumQueries(5):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw1)
@@ -1605,13 +1656,28 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertContains(r, f"{image1}</option>")
             self.assertNotContains(r, f"{image2}</option>")
             url = reverse("upgrader:api_devicefirmware_detail", args=[d2.pk])
-            with self.assertNumQueries(6):
+            with self.assertNumQueries(5):
                 r = self.client.get(url, {"format": "api"})
             self.assertEqual(r.status_code, 200)
             serializer_detail = self._serialize_device_firmware(device_fw2)
             self.assertEqual(r.data, serializer_detail)
             self.assertContains(r, f"{image2}</option>")
             self.assertNotContains(r, f"{image1}</option>")
+
+    def test_serializer_validation_deactivated_device(self):
+        device_fw = self._create_device_firmware()
+        device_fw.device.deactivate()
+        serializer = DeviceFirmwareSerializer(
+            instance=device_fw,
+            data={"image": device_fw.image.pk},
+            context={"device": device_fw.device},
+            partial=True,
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn(
+            "Firmware upgrades are not allowed for deactivated devices.",
+            str(serializer.errors),
+        )
 
 
 class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
