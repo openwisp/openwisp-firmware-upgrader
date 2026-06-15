@@ -12,6 +12,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import transaction
 from django.forms.formsets import DELETION_FIELD_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -268,9 +269,10 @@ class FirmwareImageAdmin(BaseAdmin):
             obj.compatible = []
             obj.target = ""
             obj.fw_version = ""
+            obj.compat_version = ""
             obj.source = ""
             super().save_model(request, obj, form, change)
-            extract_firmware_metadata.delay(obj.pk)
+            transaction.on_commit(lambda: extract_firmware_metadata.delay(obj.pk))
             return
         if change:
             if obj.extraction_status == FirmwareImage.STATUS_FAILED:
@@ -281,6 +283,9 @@ class FirmwareImageAdmin(BaseAdmin):
             elif (
                 obj.extraction_status == FirmwareImage.STATUS_SUCCESS
                 and obj.source == "dtb"
+                and any(
+                    field in form.changed_data for field in ["target", "fw_version"]
+                )
             ):
                 obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
         super().save_model(request, obj, form, change)

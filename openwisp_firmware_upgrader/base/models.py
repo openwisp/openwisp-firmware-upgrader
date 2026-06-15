@@ -12,6 +12,7 @@ from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from openwisp_notifications.signals import notify
 from private_storage.fields import PrivateFileField
@@ -335,8 +336,9 @@ class AbstractBuild(TimeStampedEditableModel):
         )
         status_display = dict(self.BUILD_STATUS_CHOICES)[new_status]
         try:
+            opts = self.__class__._meta
             admin_url = reverse(
-                "admin:firmware_upgrader_build_change",
+                f"admin:{opts.app_label}_{opts.model_name}_change",
                 args=[str(self.pk)],
             )
             notify.send(
@@ -345,10 +347,14 @@ class AbstractBuild(TimeStampedEditableModel):
                 level=level,
                 url=admin_url,
                 target=self,
-                message=(
-                    f"Metadata extraction for build "
-                    f'"<a href="{admin_url}">{self}</a>" '
-                    f"completed with status: {status_display}."
+                message=format_html(
+                    _(
+                        'Metadata extraction for build <a href="{url}">{build}</a> '
+                        "completed with status: {status}."
+                    ),
+                    url=admin_url,
+                    build=self,
+                    status=status_display,
                 ),
             )
         except Exception:
@@ -416,19 +422,20 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         default=STATUS_UNCONFIRMED,
         db_index=True,
     )
-    extraction_log = models.TextField(blank=True)
+    extraction_log = models.TextField(_("extraction log"), blank=True)
     failure_reason = models.CharField(
+        _("failure reason"),
         max_length=20,
         choices=FAILURE_REASON_CHOICES,
         blank=True,
         default="",
     )
-    board = models.CharField(max_length=200, blank=True)
-    compatible = models.JSONField(default=list, blank=True)
-    target = models.CharField(max_length=100, blank=True)
+    board = models.CharField(_("board"), max_length=200, blank=True)
+    compatible = models.JSONField(_("compatible"), default=list, blank=True)
+    target = models.CharField(_("target"), max_length=100, blank=True)
     fw_version = models.CharField(_("firmware version"), max_length=50, blank=True)
-    compat_version = models.CharField(max_length=10, blank=True)
-    source = models.CharField(max_length=20, blank=True)
+    compat_version = models.CharField(_("compat version"), max_length=10, blank=True)
+    source = models.CharField(_("source"), max_length=20, blank=True)
 
     class Meta:
         abstract = True
@@ -508,6 +515,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         original = (
             self.__class__.objects.filter(pk=self.pk)
             .values(
+                "extraction_status",
                 "board",
                 "compatible",
                 "target",
@@ -518,6 +526,11 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
             .first()
         )
         if not original:
+            return
+        if (
+            original["extraction_status"] not in self.LOCKED_STATUSES
+            and self.extraction_status not in self.LOCKED_STATUSES
+        ):
             return
         for field in (
             "board",
@@ -760,10 +773,13 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def auto_create_device_firmwares(cls, instance, created, **kwargs):
         if created:
             return
-        if instance.extraction_status not in (
+        confirmed_statuses = (
             instance.STATUS_SUCCESS,
             instance.STATUS_MANUALLY_CONFIRMED,
-        ):
+        )
+        if instance.extraction_status not in confirmed_statuses:
+            return
+        if getattr(instance, "_original_extraction_status", None) in confirmed_statuses:
             return
         transaction.on_commit(
             partial(create_all_device_firmwares.delay, str(instance.pk))
