@@ -29,6 +29,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         self.connect_device_signals()
         self.connect_upgrade_signals()
         self.connect_delete_signals()
+        self.connect_metadata_signals()
 
     def register_menu_groups(self):
         register_menu_group(
@@ -53,6 +54,12 @@ class FirmwareUpdaterConfig(ApiAppConfig):
                         "model": get_model_name(self.label, "BatchUpgradeOperation"),
                         "name": "changelist",
                         "icon": "ow-mass-upgrade",
+                    },
+                    4: {
+                        "label": _("Firmware Images"),
+                        "model": get_model_name(self.label, "FirmwareImage"),
+                        "name": "changelist",
+                        "icon": "ow-firmware",
                     },
                 },
                 "icon": "ow-firmware",
@@ -114,6 +121,15 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             FirmwareImage.organization_pre_delete_handler,
             sender=Organization,
             dispatch_uid="organization.pre_delete.firmware_files",
+        )
+
+    def connect_metadata_signals(self):
+        FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
+
+        post_save.connect(
+            FirmwareImage.trigger_metadata_extraction,
+            sender=FirmwareImage,
+            dispatch_uid="firmware_image.trigger_metadata_extraction",
         )
 
 

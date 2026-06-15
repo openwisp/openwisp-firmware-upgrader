@@ -77,6 +77,8 @@ class TestUpgraderMixin(CreateConnectionsMixin):
     def _create_firmware_image(self, **kwargs):
         opts = dict(type=self.TPLINK_4300_IMAGE)
         opts.update(kwargs)
+        if "extraction_status" not in opts:
+            opts["extraction_status"] = FirmwareImage.STATUS_SUCCESS
         category_opts = {}
         if "organization" in opts:
             category_opts["organization"] = opts.pop("organization")
