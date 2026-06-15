@@ -326,7 +326,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
         with self.subTest("Existing build"):
             url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
-            with self.assertNumQueries(10):
+            with self.assertNumQueries(11):
                 r = self.client.post(url)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
             batch = BatchUpgradeOperation.objects.first()
@@ -416,7 +416,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest(
             "Test superuser can mass upgrade shared build with upgrade_all"
         ):
-            with self.assertNumQueries(8):
+            with self.assertNumQueries(9):
                 response = self.client.post(path, {"upgrade_all": True})
             self.assertEqual(response.status_code, 201)
             batch = BatchUpgradeOperation.objects.first()
@@ -1159,7 +1159,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
             "type": self.TPLINK_4300_IMAGE,
         }
-        with self.assertNumQueries(9):
+        with self.assertNumQueries(10):
             r = self.client.post(url, data)
         self.assertEqual(r.status_code, 201)
         self.assertEqual(FirmwareImage.objects.count(), 1)

@@ -14,7 +14,6 @@ from django.utils import timezone
 from openwisp_utils.tests import capture_any_output
 
 from .. import settings as app_settings
-from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..tasks import upgrade_firmware
 from .base import TestUpgraderMixin
@@ -36,7 +35,7 @@ DeviceLocation = swapper.load_model("geo", "DeviceLocation")
 class TestModels(TestUpgraderMixin, TestCase):
     app_label = "openwisp_firmware_upgrader"
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
-    image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
+    image_type = "ar71xx-generic-xd3200-squashfs-sysupgrade.bin"
 
     def test_category_str(self):
         c = Category(name="WiFi Hotspot")
@@ -194,22 +193,6 @@ class TestModels(TestUpgraderMixin, TestCase):
         with self.assertRaises(ValidationError) as ctx:
             device_fw.full_clean()
         self.assertIn("related connection", str(ctx.exception))
-
-    def test_invalid_board(self):
-        image = FIRMWARE_IMAGE_MAP[self.TPLINK_4300_IMAGE]
-        boards = image["boards"]
-        del image["boards"]
-        err = None
-        try:
-            self._create_firmware_image()
-        except ValidationError as e:
-            err = e
-        image["boards"] = boards
-        if err:
-            self.assertIn("type", err.message_dict)
-            self.assertIn("not find boards", str(err))
-        else:
-            self.fail("ValidationError not raised")
 
     def test_custom_image_type_present(self):
         t = FirmwareImage._meta.get_field("type")
@@ -583,6 +566,168 @@ class TestModels(TestUpgraderMixin, TestCase):
         uo = UpgradeOperation.objects.first()
         expected = f"{uo.device} ({timezone.localtime(uo.created).strftime('%Y-%m-%d %H:%M:%S')})"
         self.assertEqual(str(uo), expected)
+
+    def test_firmware_image_rejects_invalid_file_headers(self):
+        build = self._get_build()
+        invalid_headers = [
+            (b"\xff\xd8\xff" + b"\x00" * 20, "JPEG"),
+            (b"%PDF" + b"\x00" * 20, "PDF"),
+            (b"\x89PNG\r\n\x1a\n" + b"\x00" * 20, "PNG"),
+            (b"PK\x03\x04" + b"\x00" * 20, "ZIP"),
+            (b"\x7fELF" + b"\x00" * 20, "ELF"),
+        ]
+        for content, label in invalid_headers:
+            with self.subTest(file_type=label):
+                fw = FirmwareImage(
+                    build=build,
+                    type=self.TPLINK_4300_IMAGE,
+                    file=SimpleUploadedFile(
+                        name=f"openwrt-{self.TPLINK_4300_IMAGE}",
+                        content=content,
+                        content_type="application/octet-stream",
+                    ),
+                )
+                try:
+                    fw.full_clean()
+                except ValidationError as e:
+                    self.assertIn("file", e.message_dict)
+                else:
+                    self.fail(f"ValidationError not raised for {label} file")
+
+    def test_firmware_image_rejects_rootfs_image(self):
+        build = self._get_build()
+        fw = FirmwareImage(
+            build=build,
+            type=self.TPLINK_4300_IMAGE,
+            file=SimpleUploadedFile(
+                name="ath79-generic-tplink_tl-wdr4300-v1-squashfs-rootfs.img",
+                content=b"\x00" * 100,
+                content_type="application/octet-stream",
+            ),
+        )
+        try:
+            fw.full_clean()
+        except ValidationError as e:
+            self.assertIn("file", e.message_dict)
+        else:
+            self.fail("ValidationError not raised for rootfs image")
+
+    def test_batch_upgrade_blocked_with_unconfirmed_images(self):
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        FirmwareImage.objects.filter(build=build).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            build.batch_upgrade(firmwareless=False)
+        self.assertIn("confirmed metadata", str(ctx.exception))
+
+    def test_batch_upgrade_allowed_when_all_images_confirmed(self):
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        build.firmwareimage_set.update(extraction_status=FirmwareImage.STATUS_SUCCESS)
+        batch = build.batch_upgrade(firmwareless=False)
+        self.assertIsNotNone(batch)
+
+    def test_update_extraction_status_all_success(self):
+        build = self._create_build()
+        build.status = Build.BUILD_STATUS_ANALYZING
+        build.save()
+        image = self._create_firmware_image(build=build)
+        image.extraction_status = FirmwareImage.STATUS_SUCCESS
+        image.save()
+        build._update_extraction_status()
+        build.refresh_from_db()
+        self.assertEqual(build.status, Build.BUILD_STATUS_SUCCESS)
+
+    def test_update_extraction_status_with_failed(self):
+        build = self._create_build()
+        build.status = Build.BUILD_STATUS_ANALYZING
+        build.save()
+        image = self._create_firmware_image(build=build)
+        image.extraction_status = FirmwareImage.STATUS_FAILED
+        image.save()
+        build._update_extraction_status()
+        build.refresh_from_db()
+        self.assertEqual(build.status, Build.BUILD_STATUS_FAILED)
+
+    def test_update_extraction_status_analyzing_takes_priority(self):
+        build = self._create_build()
+        build.status = Build.BUILD_STATUS_ANALYZING
+        build.save()
+        image1 = self._create_firmware_image(build=build)
+        image1.extraction_status = FirmwareImage.STATUS_FAILED
+        image1.save()
+        image2 = self._create_firmware_image(
+            build=build, type=self.TPLINK_4300_IL_IMAGE
+        )
+        image2.extraction_status = FirmwareImage.STATUS_IN_PROGRESS
+        image2.save()
+        build._update_extraction_status()
+        build.refresh_from_db()
+        self.assertEqual(build.status, Build.BUILD_STATUS_ANALYZING)
+
+    def test_visible_locked_blocks_field_change_on_success(self):
+        image = self._create_firmware_image()
+        image.extraction_status = FirmwareImage.STATUS_SUCCESS
+        image.board = "TP-Link WDR4300"
+        image.target = "ath79/generic"
+        image.source = "fwtool"
+        image.save()
+        image.board = "Changed Board"
+        with self.assertRaises(ValidationError) as ctx:
+            image._validate_locked()
+        self.assertIn("read-only", str(ctx.exception))
+
+    def test_validate_locked_allows_change_when_failed(self):
+        image = self._create_firmware_image()
+        image.extraction_status = FirmwareImage.STATUS_FAILED
+        image.board = ""
+        image.save()
+        image.board = "Manually entered"
+        image._validate_locked()
+
+    def test_validate_locked_allows_filling_empty_dtb_fields(self):
+        image = self._create_firmware_image()
+        image.extraction_status = FirmwareImage.STATUS_SUCCESS
+        image.board = "Orange Pi Zero"
+        image.target = ""
+        image.source = "dtb"
+        image.save()
+        image.target = "sunxi/cortexa7"
+        image._validate_locked()
+
+    @capture_any_output()
+    def test_device_firmware_clean_blocks_unconfirmed_image(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        image.refresh_from_db()
+        device = self._create_device(organization=image.build.category.organization)
+        self._create_config(device=device)
+        device_fw = DeviceFirmware()
+        device_fw.image = image
+        device_fw.device = device
+        with self.assertRaises(ValidationError) as ctx:
+            device_fw.clean()
+        self.assertIn("image", ctx.exception.message_dict)
+
+    def test_auto_create_device_firmwares_skip_unconfirmed(self):
+        image = self._create_firmware_image()
+        image.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
+        image.save()
+        with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
+            DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
+            mock_on_commit.assert_not_called()
+
+    def test_auto_create_device_firmwares_triggers_on_confirmed(self):
+        image = self._create_firmware_image()
+        image.extraction_status = FirmwareImage.STATUS_SUCCESS
+        image.save()
+        with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
+            DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
+            mock_on_commit.assert_called_once()
 
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):

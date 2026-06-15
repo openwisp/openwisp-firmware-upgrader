@@ -14,7 +14,7 @@ from openwisp_controller.connection.api.views import (
     DeviceConnectionDetailView as BaseDeviceConnectionDetailView,
 )
 from openwisp_controller.connection.api.views import (
-    DeviceConnectionListCreateView as BaseDeviceConnectionListCreateView,
+    DeviceConnenctionListCreateView as BaseDeviceConnectionListCreateView,
 )
 
 
