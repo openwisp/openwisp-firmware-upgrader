@@ -213,8 +213,10 @@ def extract_firmware_metadata(self, image_pk):
             image = FirmwareImage.objects.select_related(
                 "build", "build__category"
             ).get(pk=image_pk)
+            build_opts = image.build._meta
             admin_url = reverse(
-                "admin:firmware_upgrader_build_change", args=[str(image.build_id)]
+                f"admin:{build_opts.app_label}_{build_opts.model_name}_change",
+                args=[str(image.build_id)],
             )
             notify.send(
                 sender=image,
@@ -222,10 +224,13 @@ def extract_firmware_metadata(self, image_pk):
                 level="error",
                 url=admin_url,
                 target=image.build,
-                message=(
-                    f'Metadata extraction failed for <a href="{admin_url}">{image}</a>: '
-                    f'{update.get("failure_reason", "unknown error")}. '
-                    f"You can manually enter metadata or re-upload the image."
+                message=_(
+                    'Metadata extraction failed for <a href="{admin_url}">{image}</a>: '
+                    "{reason}. You can manually enter metadata or re-upload the image."
+                ).format(
+                    url=admin_url,
+                    image=image,
+                    reason=update.get("failure_reason", "unknown error"),
                 ),
             )
         except Exception:
