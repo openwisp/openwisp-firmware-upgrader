@@ -214,6 +214,43 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertIs(inline.has_change_permission(request), True)
         self.assertIs(inline.has_change_permission(request, obj=env["image1a"]), False)
 
+    def test_firmware_image_save_model_clears_compat_version_on_file_change(self):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            board="TP-Link WDR4300",
+            compat_version="21.09",
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+        )
+        fw.refresh_from_db()
+        request = MockRequest()
+        request.user = User.objects.first()
+        form = mock.MagicMock()
+        form.changed_data = ["file"]
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        with mock.patch("django.db.transaction.on_commit"):
+            fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.board, "")
+        self.assertEqual(fw.compat_version, "")
+
+    def test_firmware_image_save_model_dtb_no_flip_without_changed_fields(self):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            source="dtb",
+            board="Orange Pi Zero",
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+        )
+        fw.refresh_from_db()
+        request = MockRequest()
+        request.user = User.objects.first()
+        form = mock.MagicMock()
+        form.changed_data = ["board"]
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        with mock.patch("django.db.transaction.on_commit"):
+            fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
+
     def test_device_firmware_inline_has_add_permission(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device
@@ -1157,7 +1194,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
         form = mock.MagicMock()
         form.changed_data = ["file"]
-        fw_admin.save_model(request, fw, form, change=True)
+        with self.captureOnCommitCallbacks(execute=True):
+            fw_admin.save_model(request, fw, form, change=True)
         fw.refresh_from_db()
         self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
         self.assertEqual(fw.board, "")

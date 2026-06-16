@@ -437,6 +437,10 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     compat_version = models.CharField(_("compat version"), max_length=10, blank=True)
     source = models.CharField(_("source"), max_length=20, blank=True)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._original_extraction_status = self.extraction_status
+
     class Meta:
         abstract = True
         verbose_name = _("Firmware Image")
@@ -510,7 +514,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         transaction.on_commit(lambda: extract_firmware_metadata.delay(str(instance.pk)))
 
     def _validate_locked(self):
-        if not self.pk or self.extraction_status not in self.LOCKED_STATUSES:
+        if self._state.adding or not self.pk:
             return
         original = (
             self.__class__.objects.filter(pk=self.pk)
@@ -773,13 +777,13 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def auto_create_device_firmwares(cls, instance, created, **kwargs):
         if created:
             return
-        confirmed_statuses = (
+        confirmed = (
             instance.STATUS_SUCCESS,
             instance.STATUS_MANUALLY_CONFIRMED,
         )
-        if instance.extraction_status not in confirmed_statuses:
+        if instance.extraction_status not in confirmed:
             return
-        if getattr(instance, "_original_extraction_status", None) in confirmed_statuses:
+        if instance._original_extraction_status in confirmed:
             return
         transaction.on_commit(
             partial(create_all_device_firmwares.delay, str(instance.pk))

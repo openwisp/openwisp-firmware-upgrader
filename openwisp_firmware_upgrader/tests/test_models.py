@@ -697,6 +697,19 @@ class TestModels(TestUpgraderMixin, TestCase):
         image.target = "sunxi/cortexa7"
         image._validate_locked()
 
+    def test_validate_locked_blocks_bypass_via_status_change(self):
+        image = self._create_firmware_image()
+        image.extraction_status = FirmwareImage.STATUS_SUCCESS
+        image.board = "TP-Link WDR4300"
+        image.target = "ath79/generic"
+        image.source = "fwtool"
+        image.save()
+        image.extraction_status = FirmwareImage.STATUS_FAILED
+        image.board = "Tampered board"
+        with self.assertRaises(ValidationError) as ctx:
+            image._validate_locked()
+        self.assertIn("read-only", str(ctx.exception))
+
     @capture_any_output()
     def test_device_firmware_clean_blocks_unconfirmed_image(self):
         image = self._create_firmware_image()
@@ -722,12 +735,24 @@ class TestModels(TestUpgraderMixin, TestCase):
             mock_on_commit.assert_not_called()
 
     def test_auto_create_device_firmwares_triggers_on_confirmed(self):
-        image = self._create_firmware_image()
+        image = self._create_firmware_image(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
         image.extraction_status = FirmwareImage.STATUS_SUCCESS
         image.save()
         with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
             DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
             mock_on_commit.assert_called_once()
+
+    def test_auto_create_device_firmwares_skips_already_confirmed_resave(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        image = FirmwareImage.objects.get(pk=image.pk)
+        with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
+            DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
+            mock_on_commit.assert_not_called()
 
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
