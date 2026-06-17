@@ -739,7 +739,6 @@ class TestModels(TestUpgraderMixin, TestCase):
             extraction_status=FirmwareImage.STATUS_UNCONFIRMED
         )
         image.extraction_status = FirmwareImage.STATUS_SUCCESS
-        image.save()
         with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
             DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
             mock_on_commit.assert_called_once()

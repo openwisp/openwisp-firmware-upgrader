@@ -5,6 +5,7 @@ from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
 from django.urls import reverse
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from openwisp_notifications.signals import notify
 
@@ -224,10 +225,11 @@ def extract_firmware_metadata(self, image_pk):
                 level="error",
                 url=admin_url,
                 target=image.build,
-                message=_(
-                    'Metadata extraction failed for <a href="{admin_url}">{image}</a>: '
-                    "{reason}. You can manually enter metadata or re-upload the image."
-                ).format(
+                message=format_html(
+                    _(
+                        'Metadata extraction failed for <a href="{url}">{image}</a>: '
+                        "{reason}. You can manually enter metadata or re-upload the image."
+                    ),
                     url=admin_url,
                     image=image,
                     reason=update.get("failure_reason", "unknown error"),

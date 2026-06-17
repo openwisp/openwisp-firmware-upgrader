@@ -297,6 +297,7 @@ class AbstractBuild(TimeStampedEditableModel):
         return qs.order_by("-created")
 
     def _update_extraction_status(self):
+        Build = load_model("Build")
         FirmwareImage = load_model("FirmwareImage")
         statuses = set(
             FirmwareImage.objects.filter(build_id=self.pk).values_list(
@@ -316,13 +317,18 @@ class AbstractBuild(TimeStampedEditableModel):
             new_status = self.BUILD_STATUS_MANUALLY_CONFIRMED
         else:
             new_status = self.BUILD_STATUS_SUCCESS
-        if new_status == self.status:
+        rows_updated = Build.objects.filter(
+            pk=self.pk, status=self.BUILD_STATUS_ANALYZING
+        ).update(status=new_status)
+        if rows_updated:
+            self.status = new_status
+            if new_status != self.BUILD_STATUS_ANALYZING:
+                self._notify_extraction_complete(new_status)
             return
-        old_status = self.status
-        load_model("Build").objects.filter(pk=self.pk).update(status=new_status)
+        Build.objects.filter(pk=self.pk).exclude(status=new_status).update(
+            status=new_status
+        )
         self.status = new_status
-        if old_status == self.BUILD_STATUS_ANALYZING:
-            self._notify_extraction_complete(new_status)
 
     def _notify_extraction_complete(self, new_status):
         level = (
@@ -439,6 +445,10 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._original_extraction_status = self.extraction_status
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
         self._original_extraction_status = self.extraction_status
 
     class Meta:
