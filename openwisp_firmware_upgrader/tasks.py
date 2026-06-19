@@ -4,12 +4,17 @@ import swapper
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
+from django.urls import reverse
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
+from openwisp_notifications.signals import notify
 
 from openwisp_utils.tasks import OpenwispCeleryTask
 
 from . import settings as app_settings
 from .exceptions import RecoverableFailure
+from .extractors.exceptions import DecompressionLimitExceeded, UnsupportedImageError
+from .extractors.openwrt import OpenWrtMetadataExtractor
 from .swapper import load_model
 
 logger = logging.getLogger(__name__)
@@ -97,3 +102,157 @@ def delete_firmware_files(files_to_delete):
     FirmwareImage = load_model("FirmwareImage")
     for file_path in files_to_delete:
         FirmwareImage._remove_file(file_path)
+
+
+def _compat_blocks_pairing(compat_version):
+    try:
+        major, minor = (int(x) for x in str(compat_version).split("."))
+        return (major, minor) > (1, 0)
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+@shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
+def extract_firmware_metadata(self, image_pk):
+    FirmwareImage = load_model("FirmwareImage")
+
+    try:
+        image = FirmwareImage.objects.get(pk=image_pk)
+    except FirmwareImage.DoesNotExist:
+        logger.warning(
+            "extract_firmware_metadata: FirmwareImage pk=%s not found, skipping",
+            image_pk,
+        )
+        return
+
+    updated = FirmwareImage.objects.filter(
+        pk=image_pk,
+        extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
+    ).update(extraction_status=FirmwareImage.STATUS_IN_PROGRESS)
+    if not updated:
+        return
+    log_lines = [f"[+] Analyzing: {image.file.name}"]
+    update = {}
+
+    try:
+        extractor_class = getattr(
+            image.build.category.__class__,
+            "metadata_extractor_class",
+            OpenWrtMetadataExtractor,
+        )
+        meta = extractor_class(image.file.path).extract()
+        log_lines.append("[+] extraction: success")
+        update = {
+            "extraction_status": FirmwareImage.STATUS_SUCCESS,
+            "extraction_log": "\n".join(log_lines),
+            "board": meta.get("model", ""),
+            "compatible": meta.get("compatible", []),
+            "target": meta.get("target", ""),
+            "fw_version": meta.get("version", ""),
+            "compat_version": meta.get("compat_version", ""),
+            "source": meta.get("source", "fwtool"),
+        }
+
+    except SoftTimeLimitExceeded:
+        log_lines.append(f"[!] Task timed out after {app_settings.TASK_TIMEOUT}s.")
+        update = {
+            "extraction_status": FirmwareImage.STATUS_FAILED,
+            "failure_reason": FirmwareImage.FAILURE_TIMEOUT,
+            "extraction_log": "\n".join(log_lines),
+        }
+        logger.warning(
+            "extract_firmware_metadata: soft time limit exceeded for pk=%s",
+            image_pk,
+        )
+
+    except DecompressionLimitExceeded as exc:
+        log_lines.append(f"[!] {exc}")
+        update = {
+            "extraction_status": FirmwareImage.STATUS_FAILED,
+            "failure_reason": FirmwareImage.FAILURE_OOM,
+            "extraction_log": "\n".join(log_lines),
+        }
+        logger.warning(
+            "extract_firmware_metadata: decompression limit exceeded for pk=%s - %s",
+            image_pk,
+            exc,
+        )
+
+    except UnsupportedImageError as exc:
+        log_lines.append(f"[-] fwtool: {exc}")
+        log_lines.append("[!] Extraction failed. Manual input required.")
+        update = {
+            "extraction_status": FirmwareImage.STATUS_FAILED,
+            "failure_reason": FirmwareImage.FAILURE_UNSUPPORTED,
+            "extraction_log": "\n".join(log_lines),
+        }
+        logger.warning(
+            "extract_firmware_metadata: unsupported image pk=%s - %s",
+            image_pk,
+            exc,
+        )
+
+    except Exception:
+        log_lines.append("[!] Unexpected error during extraction.")
+        update = {
+            "extraction_status": FirmwareImage.STATUS_INVALID,
+            "failure_reason": FirmwareImage.FAILURE_INVALID,
+            "extraction_log": "\n".join(log_lines),
+        }
+        logger.exception(
+            "extract_firmware_metadata: unhandled exception for pk=%s",
+            image_pk,
+        )
+
+    FirmwareImage.objects.filter(pk=image_pk).update(**update)
+
+    if update.get("extraction_status") not in (
+        FirmwareImage.STATUS_SUCCESS,
+        FirmwareImage.STATUS_IN_PROGRESS,
+    ):
+        try:
+            image = FirmwareImage.objects.select_related(
+                "build", "build__category"
+            ).get(pk=image_pk)
+            build_opts = image.build._meta
+            admin_url = reverse(
+                f"admin:{build_opts.app_label}_{build_opts.model_name}_change",
+                args=[str(image.build_id)],
+            )
+            notify.send(
+                sender=image,
+                type="generic_message",
+                level="error",
+                url=admin_url,
+                target=image.build,
+                message=format_html(
+                    _(
+                        'Metadata extraction failed for <a href="{url}">{image}</a>: '
+                        "{reason}. You can manually enter metadata or re-upload the image."
+                    ),
+                    url=admin_url,
+                    image=image,
+                    reason=update.get("failure_reason", "unknown error"),
+                ),
+            )
+        except Exception:
+            logger.exception("Failed to send extraction failure notification")
+
+    try:
+        fresh = FirmwareImage.objects.select_related("build").get(pk=image_pk)
+        fresh.build._update_extraction_status()
+    except Exception:
+        logger.exception(
+            "Failed to update build extraction status for image %s", image_pk
+        )
+
+    if update.get("extraction_status") == FirmwareImage.STATUS_SUCCESS:
+        compat = update.get("compat_version", "")
+        if _compat_blocks_pairing(compat):
+            logger.info(
+                "Auto-pairing skipped for image %s: compat_version %s > 1.0",
+                image_pk,
+                compat,
+            )
+        else:
+            create_all_device_firmwares.delay(str(image_pk))

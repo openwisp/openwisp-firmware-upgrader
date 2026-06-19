@@ -8,6 +8,8 @@ from ..extractors.exceptions import (
     ExtractionError,
     UnsupportedImageError,
 )
+from ..extractors.openwrt import OpenWrtMetadataExtractor
+from ..upgraders.openwrt import OpenWrt
 
 
 class ConcreteSuccessExtractor(BaseMetadataExtractor):
@@ -85,3 +87,6 @@ class TestBaseMetadataExtractor(TestCase):
         extractor = ConcreteSuccessExtractor(Path("/fake/path.bin"))
         self.assertIsInstance(extractor.image_path, str)
         self.assertEqual(extractor.image_path, "/fake/path.bin")
+
+    def test_metadata_extractor_class_is_openwrt_extractor(self):
+        self.assertIs(OpenWrt.metadata_extractor_class, OpenWrtMetadataExtractor)
