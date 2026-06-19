@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import timedelta
+from functools import partial
 
 import reversion
 import swapper
@@ -167,6 +168,7 @@ class FirmwareImageAdmin(BaseAdmin):
     list_filter = ["extraction_status", "build__category"]
     search_fields = ["board", "target", "type"]
     ordering = ["-created"]
+    actions = ["re_extract_metadata"]
     readonly_fields = [
         "created",
         "modified",
@@ -289,6 +291,36 @@ class FirmwareImageAdmin(BaseAdmin):
             ):
                 obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
         super().save_model(request, obj, form, change)
+
+    @admin.action(
+        description=_("Re-extract metadata from selected images"),
+        permissions=["change"],
+    )
+    def re_extract_metadata(self, request, queryset):
+        image_pks = list(queryset.values_list("pk", flat=True))
+        build_ids = set(queryset.values_list("build_id", flat=True))
+        queryset.update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
+            extraction_log="",
+            failure_reason="",
+            board="",
+            compatible=[],
+            target="",
+            fw_version="",
+            compat_version="",
+            source="",
+        )
+        Build.objects.filter(pk__in=build_ids).update(
+            status=Build.BUILD_STATUS_ANALYZING
+        )
+        for pk in image_pks:
+            transaction.on_commit(partial(extract_firmware_metadata.delay, pk))
+        self.message_user(
+            request,
+            _("Metadata re-extraction scheduled for %(count)d image(s).")
+            % {"count": len(image_pks)},
+            messages.SUCCESS,
+        )
 
 
 class BatchUpgradeConfirmationForm(forms.ModelForm):

@@ -251,6 +251,83 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
 
+    def test_re_extract_metadata_action(self):
+        self._login()
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            failure_reason=FirmwareImage.FAILURE_UNSUPPORTED,
+            extraction_log="log output",
+            board="TP-Link WDR4300",
+            compatible=["tplink,tl-wdr4300-v1"],
+            target="ath79/generic",
+            fw_version="23.05.5",
+            compat_version="1.0",
+            source="fwtool",
+        )
+        Build.objects.filter(pk=image.build_id).update(status=Build.BUILD_STATUS_FAILED)
+        url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+        ) as mocked_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                r = self.client.post(
+                    url,
+                    {
+                        "action": "re_extract_metadata",
+                        ACTION_CHECKBOX_NAME: (str(image.pk),),
+                    },
+                    follow=True,
+                )
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertEqual(image.extraction_log, "")
+        self.assertEqual(image.failure_reason, "")
+        self.assertEqual(image.board, "")
+        self.assertEqual(image.compatible, [])
+        self.assertEqual(image.target, "")
+        self.assertEqual(image.fw_version, "")
+        self.assertEqual(image.compat_version, "")
+        self.assertEqual(image.source, "")
+        image.build.refresh_from_db()
+        self.assertEqual(image.build.status, Build.BUILD_STATUS_ANALYZING)
+        mocked_delay.assert_called_once_with(image.pk)
+
+    def test_re_extract_metadata_action_multiple(self):
+        self._login()
+        build = self._create_build()
+        image1 = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
+        image2 = self._create_firmware_image(
+            build=build, type=self.TPLINK_4300_IL_IMAGE
+        )
+        FirmwareImage.objects.filter(pk__in=[image1.pk, image2.pk]).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+        )
+        Build.objects.filter(pk=build.pk).update(status=Build.BUILD_STATUS_FAILED)
+        url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+        ) as mocked_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(
+                    url,
+                    {
+                        "action": "re_extract_metadata",
+                        ACTION_CHECKBOX_NAME: (str(image1.pk), str(image2.pk)),
+                    },
+                    follow=True,
+                )
+        self.assertEqual(mocked_delay.call_count, 2)
+        called_pks = {call.args[0] for call in mocked_delay.call_args_list}
+        self.assertEqual(called_pks, {image1.pk, image2.pk})
+        image1.refresh_from_db()
+        image2.refresh_from_db()
+        self.assertEqual(image1.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertEqual(image2.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        build.refresh_from_db()
+        self.assertEqual(build.status, Build.BUILD_STATUS_ANALYZING)
+
     def test_device_firmware_inline_has_add_permission(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device
