@@ -19,6 +19,10 @@ from openwisp_users.mixins import ShareableOrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
+from ..constants import (
+    DEACTIVATED_DEVICE_FIRMWARE_ERROR,
+    DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR,
+)
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
     ReconnectionFailed,
@@ -212,6 +216,7 @@ class AbstractBuild(TimeStampedEditableModel):
             .select_related(*related)
             .filter(image__build__category_id=self.category_id)
             .exclude(image__build=self, installed=True)
+            .exclude(device___is_deactivated=True)
             .order_by("-created")
         )
         if group:
@@ -233,7 +238,7 @@ class AbstractBuild(TimeStampedEditableModel):
         qs = Device.objects.filter(
             devicefirmware__isnull=True,
             model__in=boards,
-        )
+        ).exclude(_is_deactivated=True)
         if self.category.organization_id:
             qs = qs.filter(organization_id=self.category.organization_id)
         if group:
@@ -397,6 +402,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def clean(self):
         if not hasattr(self, "image") or not hasattr(self, "device"):
             return
+        if self.device.is_deactivated():
+            raise ValidationError(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
         if (
             self.image.build.category.organization is not None
             and self.image.build.category.organization != self.device.organization
@@ -811,7 +818,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
-    _CANCELLABLE_STATUS = "in-progress"
+    CANCELLABLE_STATUS = "in-progress"
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
@@ -847,6 +854,11 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     class Meta:
         abstract = True
+
+    def clean(self):
+        super().clean()
+        if hasattr(self, "device") and self.device and self.device.is_deactivated():
+            raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
 
     def log_line(self, line, save=True):
         if self.log:
@@ -885,13 +897,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             # By using an UPDATE query, we avoid such situation.
             updated = self._meta.model.objects.filter(
                 pk=self.pk,
-                status=self._CANCELLABLE_STATUS,
+                status=self.CANCELLABLE_STATUS,
                 progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
             ).update(status="cancelled")
             if not updated:
                 # The cancellation did not succeed, check why
                 self.refresh_from_db(fields=["status", "progress"])
-                if self.status != self._CANCELLABLE_STATUS:
+                if self.status != self.CANCELLABLE_STATUS:
                     raise ValueError(
                         _("Cannot cancel operation with status: %(status)s")
                         % {"status": self.status}
@@ -923,6 +935,14 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     def upgrade(self, recoverable=True):
         # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
         if self.status != "in-progress":
+            return
+        if self.device.is_deactivated():
+            self.status = "aborted"
+            self.log_line(
+                _("Upgrade aborted because the device has been deactivated."),
+                save=False,
+            )
+            self.save()
             return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:
