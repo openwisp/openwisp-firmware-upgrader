@@ -192,10 +192,10 @@ def mocked_exec_upgrade_success_false_positives(
         filename = command.split()[-1].split("/")[-1]
         raise CommandFailedException(
             "Command failed: ubus call system sysupgrade "
-            '{ "prefix": "\/tmp\/root", '
-            f'"path": "\/tmp\/{filename}", '
-            '"backup": "\/tmp\/sysupgrade.tgz", '
-            '"command": "\/lib\/upgrade\/do_stage2", '
+            '{ "prefix": "/tmp/root", '
+            f'"path": "/tmp/{filename}", '
+            '"backup": "/tmp/sysupgrade.tgz", '
+            '"command": "/lib/upgrade/do_stage2", '
             '"options": { "save_partitions": 1 } } '
             "(Connection failed)"
         )
