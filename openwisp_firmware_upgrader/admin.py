@@ -385,7 +385,7 @@ class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
     def has_delete_permission(self, request, obj=None):
         # allow deleting except if in-progress, in which case operation must
         # be cancelled first or wait until resolved (success/failed).
-        if not super().has_delete_permission(request, obj):
+        if not super(ReadOnlyAdmin, self).has_delete_permission(request, obj):
             return False
         if obj and obj.status == IN_PROGRESS_STATUS:
             return False
