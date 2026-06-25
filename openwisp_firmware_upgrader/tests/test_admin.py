@@ -2164,7 +2164,9 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
         device = self._create_device_with_connection(organization=org)
         device.deactivate()
         device.config.set_status_deactivated()
-        operation = UpgradeOperation.objects.create(device=device, batch=batch)
+        operation = UpgradeOperation.objects.create(
+            device=device, batch=batch, status="success"
+        )
         delete_url = reverse(
             f"admin:{Organization._meta.app_label}"
             f"_{Organization._meta.model_name}_delete",
