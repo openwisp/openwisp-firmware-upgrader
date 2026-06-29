@@ -456,13 +456,25 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def image_has_changed(self):
         return self._state.adding or self.image_id != self._old_image.id
 
-    def save(self, batch=None, upgrade=True, upgrade_options=None, *args, **kwargs):
+    def save(
+        self,
+        batch=None,
+        upgrade=True,
+        upgrade_options=None,
+        is_persistent=False,
+        *args,
+        **kwargs,
+    ):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
         if upgrade and (self.image_has_changed or not self.installed):
             self.installed = False
             super().save(*args, **kwargs)
-            self.create_upgrade_operation(batch, upgrade_options=upgrade_options or {})
+            self.create_upgrade_operation(
+                batch,
+                upgrade_options=upgrade_options or {},
+                is_persistent=is_persistent,
+            )
         else:
             super().save(*args, **kwargs)
         self._update_old_image()
@@ -471,10 +483,15 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if hasattr(self, "image"):
             self._old_image = self.image
 
-    def create_upgrade_operation(self, batch, upgrade_options=None):
+    def create_upgrade_operation(
+        self, batch, upgrade_options=None, is_persistent=False
+    ):
         uo_model = load_model("UpgradeOperation")
         operation = uo_model(
-            device=self.device, image=self.image, upgrade_options=upgrade_options
+            device=self.device,
+            image=self.image,
+            upgrade_options=upgrade_options,
+            is_persistent=is_persistent,
         )
         if batch:
             operation.batch = batch
@@ -600,6 +617,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     last_reminder_at = models.DateTimeField(
         null=True,
         blank=True,
+        db_index=True,
         verbose_name=_("last reminder at"),
         help_text=_(
             "timestamp of the last pending-upgrade reminder fired for "
@@ -1158,7 +1176,16 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             conn = DeviceConnection.get_working_connection(self.device)
         except NoWorkingDeviceConnectionError as error:
             if error.connection is None:
-                self.log_line("No device connection available")
+                # don't let a persistent op hang in-progress with no connection
+                if self.is_persistent:
+                    self.log_line("No device connection available", save=False)
+                    self._recoverable_failure_handler(
+                        recoverable,
+                        RecoverableFailure("No device connection available"),
+                    )
+                    self.save()
+                else:
+                    self.log_line("No device connection available")
                 return
 
             log_template = (

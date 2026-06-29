@@ -61,6 +61,17 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
                 f"The UpgradeOperation object with id {upgrade_op_id} has been deleted"
             )
 
+    @mock.patch(
+        "openwisp_firmware_upgrader.base.models.AbstractUpgradeOperation.upgrade"
+    )
+    def test_upgrade_firmware_skips_when_not_in_progress(self, mocked_upgrade):
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, status="cancelled"
+        )
+        tasks.upgrade_firmware.run(op.pk)
+        mocked_upgrade.assert_not_called()
+
     @mock.patch(_mock_upgrade, return_value=True)
     @mock.patch("logging.Logger.warning")
     def test_batch_upgrade_operation_resilience(self, mocked_logger, *args):
@@ -113,6 +124,17 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             countdown, app_settings.PERSISTENT_RETRY_OPTIONS["dispatch_jitter"]
         )
 
+    @mock.patch("openwisp_firmware_upgrader.tasks.retry_pending_upgrade.apply_async")
+    def test_check_pending_upgrades_advances_next_retry_at(self, mocked_dispatch):
+        op = self._create_pending_op(
+            next_retry_at=timezone.now() - timedelta(minutes=5)
+        )
+        tasks.check_pending_upgrades.run()
+        op.refresh_from_db()
+        self.assertGreater(op.next_retry_at, timezone.now())
+        tasks.check_pending_upgrades.run()
+        self.assertEqual(mocked_dispatch.call_count, 1)
+
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
     def test_retry_pending_upgrade_happy_path(self, mocked_upgrade):
         op = self._create_pending_op(retry_count=2)
@@ -146,6 +168,44 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         op.refresh_from_db()
         self.assertEqual(op.status, "failed")
         self.assertIn("Device has been deactivated", op.log)
+        mocked_upgrade.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    def test_retry_pending_upgrade_deactivated_does_not_clobber_cancel(
+        self, mocked_upgrade
+    ):
+        op = self._create_pending_op()
+
+        def cancel_then_deactivated(*args):
+            UpgradeOperation.objects.filter(pk=op.pk).update(status="cancelled")
+            return True
+
+        with mock.patch(
+            "openwisp_controller.config.base.device.AbstractDevice.is_deactivated",
+            side_effect=cancel_then_deactivated,
+        ):
+            tasks.retry_pending_upgrade.run(op.pk)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "cancelled")
+        mocked_upgrade.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    def test_retry_pending_upgrade_cancel_between_claim_and_dispatch(
+        self, mocked_upgrade
+    ):
+        op = self._create_pending_op()
+
+        def cancel_then_active(*args):
+            UpgradeOperation.objects.filter(pk=op.pk).update(status="cancelled")
+            return False
+
+        with mock.patch(
+            "openwisp_controller.config.base.device.AbstractDevice.is_deactivated",
+            side_effect=cancel_then_active,
+        ):
+            tasks.retry_pending_upgrade.run(op.pk)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "cancelled")
         mocked_upgrade.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")

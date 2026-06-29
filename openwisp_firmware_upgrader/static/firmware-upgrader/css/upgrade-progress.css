@@ -50,7 +50,7 @@
 }
 
 .upgrade-progress-fill.pending {
-  background-color: #f5a623;
+  background-color: var(--ow-color-warning);
 }
 
 .upgrade-progress-text {

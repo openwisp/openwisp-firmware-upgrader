@@ -32,18 +32,26 @@ def upgrade_firmware(self, operation_id):
     Calls the ``upgrade()`` method of an
     ``UpgradeOperation`` instance in the background
     """
+    UpgradeOperation = load_model("UpgradeOperation")
     try:
-        operation = load_model("UpgradeOperation").objects.get(pk=operation_id)
-        recoverable = self.request.retries < self.max_retries
-        operation.upgrade(recoverable=recoverable)
-    except SoftTimeLimitExceeded:
-        operation.status = "failed"
-        operation.log_line(_("Operation timed out."))
-        logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
+        operation = UpgradeOperation.objects.get(pk=operation_id)
     except ObjectDoesNotExist:
         logger.warning(
             f"The UpgradeOperation object with id {operation_id} has been deleted"
         )
+        return
+    if not UpgradeOperation.objects.filter(
+        pk=operation_id, status="in-progress"
+    ).exists():
+        return
+    try:
+        recoverable = self.request.retries < self.max_retries
+        operation.upgrade(recoverable=recoverable)
+    except SoftTimeLimitExceeded:
+        operation.status = "failed"
+        operation.log_line(_("Operation timed out."), save=False)
+        operation.save(update_fields=["status", "log"])
+        logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
 
 
 @shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
@@ -122,33 +130,48 @@ def retry_pending_upgrade(operation_id):
             f"The UpgradeOperation object with id {operation_id} has been deleted"
         )
         return
+    if operation.device.is_deactivated():
+        aborted = UpgradeOperation.objects.filter(
+            pk=operation_id, status="in-progress"
+        ).update(status="failed")
+        if aborted:
+            operation.status = "failed"
+            operation.log_line(
+                _("Device has been deactivated; persistent retry aborted."),
+                save=False,
+            )
+            operation.save(update_fields=["status", "log"])
+        return
+    if not UpgradeOperation.objects.filter(
+        pk=operation_id, status="in-progress"
+    ).exists():
+        return
     operation.log_line(
         _("Persistent retry #%(count)s starting.") % {"count": operation.retry_count},
         save=False,
     )
-    if operation.device.is_deactivated():
-        operation.status = "failed"
-        operation.log_line(
-            _("Device has been deactivated; persistent retry aborted."),
-            save=False,
-        )
-        operation.save()
-        return
-    operation.save()
+    operation.save(update_fields=["log"])
     upgrade_firmware.delay(operation.pk)
 
 
 @shared_task(base=OpenwispCeleryTask)
 def check_pending_upgrades():
     UpgradeOperation = load_model("UpgradeOperation")
-    due_ids = UpgradeOperation.objects.filter(
-        status="pending", next_retry_at__lte=timezone.now()
-    ).values_list("pk", flat=True)
     jitter = app_settings.PERSISTENT_RETRY_OPTIONS["dispatch_jitter"]
+    now = timezone.now()
+    due_ids = list(
+        UpgradeOperation.objects.filter(
+            status="pending", next_retry_at__lte=now
+        ).values_list("pk", flat=True)
+    )
     for op_id in due_ids:
-        retry_pending_upgrade.apply_async(
-            args=[op_id], countdown=random.uniform(0, jitter)
+        claimed = UpgradeOperation.objects.filter(pk=op_id, status="pending").update(
+            next_retry_at=now + timedelta(seconds=jitter)
         )
+        if claimed:
+            retry_pending_upgrade.apply_async(
+                args=[op_id], countdown=random.uniform(0, jitter)
+            )
 
 
 @shared_task(base=OpenwispCeleryTask)

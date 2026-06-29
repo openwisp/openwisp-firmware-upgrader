@@ -249,10 +249,10 @@ function updateStatusWithProgressBar(statusField, operation) {
       ${FW_UPGRADE_DISPLAY_STATUS[statusKey]}
     </span>
   `;
-  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
+  if (FW_STATUS_GROUPS.CANCELLABLE.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill in-progress"
+        <div class="upgrade-progress-fill ${escapeHtml(progressClass)}"
              style="width: ${escapeHtml(progressPercentage)}%">
         </div>
       </div>
@@ -291,17 +291,6 @@ function updateStatusWithProgressBar(statusField, operation) {
              style="width: 100%">
         </div>
       </div>
-    `;
-  } else {
-    statusHtml += `
-      <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill"
-             style="width: ${progressPercentage}%">
-        </div>
-      </div>
-      <span class="upgrade-progress-text">
-        ${progressPercentage}%
-      </span>
     `;
   }
   if (!statusField.find(".upgrade-status-container").length) {
