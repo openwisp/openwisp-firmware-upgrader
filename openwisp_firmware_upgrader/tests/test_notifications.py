@@ -65,6 +65,23 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         self.assertIsNotNone(batch.last_reminder_at)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_multiple_qualifying_batches_each_fire(self, mocked_notify):
+        env = self._create_upgrade_env()
+        stale = timezone.now() - timedelta(
+            seconds=app_settings.PERSISTENT_REMINDER_PERIOD + 1
+        )
+        batches = []
+        for device_fw in (env["device_fw1"], env["device_fw2"]):
+            batch = self._create_persistent_batch(build=env["build1"])
+            self._create_pending_op_for_batch(batch, device_fw=device_fw)
+            BatchUpgradeOperation.objects.filter(pk=batch.pk).update(created=stale)
+            batches.append(batch)
+        tasks.send_pending_upgrade_reminders.run()
+        self.assertEqual(mocked_notify.call_count, 2)
+        notified = {call.kwargs["target"] for call in mocked_notify.call_args_list}
+        self.assertEqual(notified, set(batches))
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
     def test_cadence_guard_within_window(self, mocked_notify):
         batch = self._create_persistent_batch()
         self._create_pending_op_for_batch(batch)

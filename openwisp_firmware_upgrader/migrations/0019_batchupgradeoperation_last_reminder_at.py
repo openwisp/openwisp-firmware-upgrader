@@ -15,6 +15,7 @@ class Migration(migrations.Migration):
             name="last_reminder_at",
             field=models.DateTimeField(
                 blank=True,
+                db_index=True,
                 help_text="timestamp of the last pending-upgrade reminder fired for this batch, null if no reminder has been sent yet",
                 null=True,
                 verbose_name="last reminder at",

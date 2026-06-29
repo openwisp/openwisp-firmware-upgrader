@@ -60,6 +60,13 @@ const FW_STATUS_GROUPS = {
     FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS,
   ]),
 
+  CANCELLABLE: new Set([
+    FW_UPGRADE_STATUS.IN_PROGRESS,
+    FW_UPGRADE_STATUS.PENDING,
+    FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS,
+    FW_UPGRADE_DISPLAY_STATUS.PENDING,
+  ]),
+
   SUCCESS: new Set([
     FW_UPGRADE_STATUS.SUCCESS,
     FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY,
@@ -76,6 +83,7 @@ const FW_STATUS_HELPERS = {
   isValid: (status) => ALL_VALID_FW_STATUSES.has(status),
   isCompleted: (status) => FW_STATUS_GROUPS.COMPLETED.has(status),
   isInProgress: (status) => FW_STATUS_GROUPS.IN_PROGRESS.has(status),
+  isCancellable: (status) => FW_STATUS_GROUPS.CANCELLABLE.has(status),
   isSuccess: (status) => FW_STATUS_GROUPS.SUCCESS.has(status),
   isFailure: (status) => FW_STATUS_GROUPS.FAILURE.has(status),
   includesProgress: (status) => status && status.includes("progress"),
@@ -91,13 +99,13 @@ const STATUS_TO_CSS_CLASS = {
   [FW_UPGRADE_STATUS.PENDING]: FW_UPGRADE_CSS_CLASSES.PENDING,
 };
 
-// Statuses that should show 100% progress
+// Statuses rendered at 100% progress (pending is excluded: it is an active
+// waiting state, so it keeps its stored progress and the pending CSS class)
 const STATUSES_WITH_FULL_PROGRESS = new Set([
   FW_UPGRADE_STATUS.SUCCESS,
   FW_UPGRADE_STATUS.FAILED,
   FW_UPGRADE_STATUS.ABORTED,
   FW_UPGRADE_STATUS.CANCELLED,
-  FW_UPGRADE_STATUS.PENDING,
 ]);
 
 // returns the object key of statusMap corresponding to value

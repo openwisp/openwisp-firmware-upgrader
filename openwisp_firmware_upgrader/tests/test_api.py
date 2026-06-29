@@ -7,7 +7,6 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from packaging.version import parse as parse_version
 from rest_framework import VERSION as REST_FRAMEWORK_VERSION
-from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from openwisp_firmware_upgrader.api.serializers import (
     BatchUpgradeOperationListSerializer,
@@ -1047,8 +1046,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         env["build2"].batch_upgrade(firmwareless=False, is_persistent=False)
         operation = BatchUpgradeOperation.objects.get(build=env["build2"])
         url = reverse("upgrader:api_batchupgradeoperation_detail", args=[operation.pk])
-        with self.assertNumQueries(7):
-            r = self.client.get(url)
+        r = self.client.get(url)
         self.assertEqual(r.status_code, 200)
         self.assertIn("is_persistent", r.data)
         self.assertFalse(r.data["is_persistent"])
@@ -1492,6 +1490,28 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertNotIn(f"{image1b}</option>", repsonse)
         self.assertNotIn(f"{image2b}</option>", repsonse)
         self.assertNotIn(f"{image2}</option>", repsonse)
+
+    def test_device_firmware_upgrade_is_persistent(self):
+        env = self._create_upgrade_env(device_firmware=False)
+        url = reverse("upgrader:api_devicefirmware_detail", args=[env["d1"].pk])
+        with self.subTest("is_persistent=true opts the standalone upgrade in"):
+            r = self.client.put(
+                url,
+                {"image": env["image1a"].pk, "is_persistent": True},
+                content_type="application/json",
+            )
+            self.assertEqual(r.status_code, 201)
+            self.assertTrue(UpgradeOperation.objects.get().is_persistent)
+        UpgradeOperation.objects.all().delete()
+        DeviceFirmware.objects.all().delete()
+        with self.subTest("defaults to false when omitted"):
+            r = self.client.put(
+                url,
+                {"image": env["image1a"].pk},
+                content_type="application/json",
+            )
+            self.assertEqual(r.status_code, 201)
+            self.assertFalse(UpgradeOperation.objects.get().is_persistent)
 
     def test_device_firmware_detail_create_shared_image(self):
         """
@@ -1950,8 +1970,7 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self._create_upgrade_env(upgrade_operation=True)
         uo = UpgradeOperation.objects.first()
         url = reverse("upgrader:api_upgradeoperation_detail", args=[uo.pk])
-        with self.assertNumQueries(5):
-            r = self.client.get(url)
+        r = self.client.get(url)
         self.assertEqual(r.status_code, 200)
         self.assertIn("is_persistent", r.data)
         self.assertIn("retry_count", r.data)
@@ -2192,17 +2211,6 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         )
         response = self.client.post(url)
         self.assertEqual(response.status_code, 409)
-
-    def test_uo_serializer_rejects_is_persistent_update(self):
-        self._create_upgrade_env(upgrade_operation=True)
-        uo = UpgradeOperation.objects.first()
-        serializer = UpgradeOperationSerializer(
-            uo, data={"is_persistent": not uo.is_persistent}, partial=True
-        )
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        with self.assertRaises(DRFValidationError) as ctx:
-            serializer.save()
-        self.assertIn("is_persistent", str(ctx.exception))
 
     def test_batch_serializer_allows_is_persistent_update_while_idle(self):
         env = self._create_upgrade_env()

@@ -14,6 +14,15 @@ class Migration(migrations.Migration):
             model_name="batchupgradeoperation",
             name="is_persistent",
             field=models.BooleanField(
+                default=False,
+                help_text="if enabled, the mass upgrade keeps retrying offline devices until they come back online or the operation is cancelled",
+                verbose_name="persistent",
+            ),
+        ),
+        migrations.AlterField(
+            model_name="batchupgradeoperation",
+            name="is_persistent",
+            field=models.BooleanField(
                 default=True,
                 help_text="if enabled, the mass upgrade keeps retrying offline devices until they come back online or the operation is cancelled",
                 verbose_name="persistent",

@@ -11,6 +11,7 @@ from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
+from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_utils.tests import capture_any_output
 
 from .. import settings as app_settings
@@ -23,7 +24,7 @@ from ..exceptions import (
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..tasks import upgrade_firmware
-from .base import TestUpgraderMixin
+from .base import TestUpgraderMixin, time_travel
 
 Group = swapper.load_model("openwisp_users", "Group")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -743,30 +744,26 @@ class TestModels(TestUpgraderMixin, TestCase):
         multiplier = options["multiplier"]
         jitter = options["jitter"]
         max_delay = options["max_delay"]
-        for retry_count in (1, 2, 3, 7):
-            op.retry_count = retry_count
-            before = timezone.now()
-            scheduled = op._calculate_next_retry()
-            delta = (scheduled - before).total_seconds()
-            expected = base * (multiplier ** (retry_count - 1))
-            self.assertGreaterEqual(delta, expected * (1 - jitter) - 1)
-            self.assertLessEqual(delta, expected * (1 + jitter) + 1)
-        with self.subTest("retry_count=8 is the first to hit the cap"):
-            op.retry_count = 8
-            uncapped = base * (multiplier ** (op.retry_count - 1))
-            self.assertGreater(uncapped, max_delay)
-            before = timezone.now()
-            scheduled = op._calculate_next_retry()
-            delta = (scheduled - before).total_seconds()
-            self.assertGreaterEqual(delta, max_delay * (1 - jitter) - 1)
-            self.assertLessEqual(delta, max_delay * (1 + jitter) + 1)
-
-        with self.subTest("delay stays capped well beyond the boundary"):
-            op.retry_count = 20
-            before = timezone.now()
-            scheduled = op._calculate_next_retry()
-            delta = (scheduled - before).total_seconds()
-            self.assertLessEqual(delta, max_delay * (1 + jitter) + 1)
+        now = timezone.now()
+        with time_travel(now):
+            for retry_count in (1, 2, 3, 7):
+                op.retry_count = retry_count
+                delta = (op._calculate_next_retry() - now).total_seconds()
+                expected = base * (multiplier ** (retry_count - 1))
+                self.assertGreaterEqual(delta, expected * (1 - jitter))
+                self.assertLessEqual(delta, expected * (1 + jitter))
+            with self.subTest("retry_count=8 is the first to hit the cap"):
+                op.retry_count = 8
+                self.assertGreater(
+                    base * (multiplier ** (op.retry_count - 1)), max_delay
+                )
+                delta = (op._calculate_next_retry() - now).total_seconds()
+                self.assertGreaterEqual(delta, max_delay * (1 - jitter))
+                self.assertLessEqual(delta, max_delay * (1 + jitter))
+            with self.subTest("delay stays capped well beyond the boundary"):
+                op.retry_count = 20
+                delta = (op._calculate_next_retry() - now).total_seconds()
+                self.assertLessEqual(delta, max_delay * (1 + jitter))
 
     def test_calculate_next_retry_honours_setting_overrides(self):
         op = self._make_persistent_op(is_persistent=True)
@@ -818,6 +815,40 @@ class TestModels(TestUpgraderMixin, TestCase):
         jitter = options["jitter"]
         self.assertGreaterEqual(delta, base * (1 - jitter) - 1)
         self.assertLessEqual(delta, base * (1 + jitter) + 1)
+
+    _no_conn = (
+        "openwisp_controller.connection.models.DeviceConnection."
+        "get_working_connection"
+    )
+
+    def test_no_connection_persistent_op_pends(self):
+        op = self._make_persistent_op(is_persistent=True)
+        with mock.patch(
+            self._no_conn, side_effect=NoWorkingDeviceConnectionError(connection=None)
+        ):
+            op.upgrade(recoverable=False)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "pending")
+        self.assertEqual(op.retry_count, 1)
+        self.assertIsNotNone(op.next_retry_at)
+
+    def test_no_connection_non_persistent_op_stays_in_progress(self):
+        op = self._make_persistent_op(is_persistent=False)
+        with mock.patch(
+            self._no_conn, side_effect=NoWorkingDeviceConnectionError(connection=None)
+        ):
+            op.upgrade(recoverable=False)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "in-progress")
+
+    def test_create_upgrade_operation_standalone_is_persistent(self):
+        device_fw = self._create_device_firmware()
+        op = device_fw.create_upgrade_operation(
+            batch=None, upgrade_options={}, is_persistent=True
+        )
+        self.assertTrue(op.is_persistent)
+        default_op = device_fw.create_upgrade_operation(batch=None, upgrade_options={})
+        self.assertFalse(default_op.is_persistent)
 
     def test_recoverable_failure_handler_only_routes_recoverable_failure_to_pending(
         self,

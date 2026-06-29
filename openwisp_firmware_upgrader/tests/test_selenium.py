@@ -375,6 +375,40 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                     BatchUpgradeOperation.objects.filter(upgrade_options={}).count(), 1
                 )
 
+    def test_pending_operation_cancel_button(self):
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="pending",
+            is_persistent=True,
+            progress=0,
+        )
+        self.login()
+        self.open(
+            "{}#upgradeoperation_set-group".format(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
+            )
+        )
+        self.hide_loading_overlay()
+        self.wait_for_presence(By.ID, "upgradeoperation_set-group")
+        # the pending operation renders the dedicated pending progress fill
+        WebDriverWait(self.web_driver, 5).until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".upgrade-status-container .upgrade-progress-fill.pending",
+                )
+            )
+        )
+        # and exposes the cancel button (pending is cancellable)
+        cancel_button = WebDriverWait(self.web_driver, 5).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
+        )
+        self.assertTrue(cancel_button.is_displayed())
+
     def test_upgrade_cancel_modal(self):
         """Test upgrade cancel modal functionality"""
         org, category, build1, build2, image1, image2, device = self._set_up_env()
@@ -461,6 +495,46 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         WebDriverWait(self.web_driver, 10).until(
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
+
+    def test_pending_operation_cancel_transition(self):
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+        operation = UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="pending",
+            is_persistent=True,
+            progress=0,
+        )
+        self.login()
+        self.open(
+            "{}#upgradeoperation_set-group".format(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
+            )
+        )
+        self.hide_loading_overlay()
+        self.wait_for_presence(By.ID, "upgradeoperation_set-group")
+        cancel_button = WebDriverWait(self.web_driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
+        )
+        self.web_driver.execute_script("arguments[0].click();", cancel_button)
+        yes_button = WebDriverWait(self.web_driver, 10).until(
+            EC.element_to_be_clickable(
+                (
+                    By.CSS_SELECTOR,
+                    "#ow-cancel-confirmation-modal .ow-cancel-btn-confirm",
+                )
+            )
+        )
+        self.web_driver.execute_script("arguments[0].click();", yes_button)
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: UpgradeOperation.objects.filter(
+                pk=operation.pk, status="cancelled"
+            ).exists()
+        )
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "cancelled")
 
     def test_mass_upgrade_confirmation_page_widgets(self):
         """Test mass upgrade confirmation page loads without JS errors and Select2 widgets are initialized"""

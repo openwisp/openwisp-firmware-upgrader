@@ -154,7 +154,7 @@ class BatchUpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     serializer_class = BatchUpgradeOperationListSerializer
     organization_field = "build__category__organization"
     filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
-    filterset_fields = ["build", "status", "created"]
+    filterset_fields = ["build", "status", "is_persistent", "created"]
     ordering_fields = ["created", "modified"]
     ordering = ["-created"]
 
