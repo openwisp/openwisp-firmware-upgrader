@@ -36,14 +36,14 @@ documentation regarding automatic retries for known errors
 ``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT``
 -------------------------------------------
 
-============ =======
+============ ========
 **type**:    ``int``
-**default**: ``600``
-============ =======
+**default**: ``1500``
+============ ========
 
 Timeout for the background tasks which perform firmware upgrades.
 
-If for some unexpected reason an upgrade remains stuck for more than 10
+If for some unexpected reason an upgrade remains stuck for more than 25
 minutes, the upgrade operation will be flagged as failed and the task will
 be killed.
 
