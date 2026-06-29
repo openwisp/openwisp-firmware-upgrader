@@ -42,6 +42,7 @@ from .utils import get_upgrader_schema_for_device
 from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
 
 logger = logging.getLogger(__name__)
+MAX_CREDENTIALLESS_DISPLAY = 5
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
@@ -269,6 +270,45 @@ class BuildAdmin(BaseAdmin):
         )
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
+        # Identify devices that lack valid SSH credentials so admins are informed.
+        valid_device_ids = DeviceConnection.objects.filter(
+            update_strategy__icontains="ssh",
+            enabled=True,
+        ).values("device_id")
+        credentialless_fw = related_device_fw.exclude(device_id__in=valid_device_ids)
+        credentialless_firmwareless = firmwareless_devices.exclude(
+            pk__in=valid_device_ids
+        )
+        total_credentialless = (
+            credentialless_fw.count() + credentialless_firmwareless.count()
+        )
+        device_app_label = Device._meta.app_label
+        credentialless_devices = []
+        for df in credentialless_fw.select_related("device")[
+            :MAX_CREDENTIALLESS_DISPLAY
+        ]:
+            credentialless_devices.append(
+                {
+                    "name": df.device.name,
+                    "url": reverse(
+                        f"admin:{device_app_label}_device_change",
+                        args=[df.device_id],
+                    ),
+                }
+            )
+        remaining = MAX_CREDENTIALLESS_DISPLAY - len(credentialless_devices)
+        if remaining > 0:
+            for device in credentialless_firmwareless[:remaining]:
+                credentialless_devices.append(
+                    {
+                        "name": device.name,
+                        "url": reverse(
+                            f"admin:{device_app_label}_device_change",
+                            args=[device.pk],
+                        ),
+                    }
+                )
+        credentialless_more = max(0, total_credentialless - MAX_CREDENTIALLESS_DISPLAY)
         title = _("Confirm mass upgrade operation")
         context = self.admin_site.each_context(request)
         upgrader_schema = BatchUpgradeOperation(build=build)._get_upgrader_schema(
@@ -282,6 +322,9 @@ class BuildAdmin(BaseAdmin):
                 "related_count": len(related_device_fw),
                 "firmwareless_devices": firmwareless_devices,
                 "firmwareless_count": len(firmwareless_devices),
+                "credentialless_devices": credentialless_devices,
+                "credentialless_count": total_credentialless,
+                "credentialless_more": credentialless_more,
                 "form": form,
                 "firmware_upgrader_schema": json.dumps(
                     upgrader_schema, cls=DjangoJSONEncoder

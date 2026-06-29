@@ -163,7 +163,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(15):
+        with self.assertNumQueries(21):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -177,7 +177,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(14):
+        with self.assertNumQueries(18):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -191,6 +191,116 @@ class TestAdmin(BaseTestAdmin, TestCase):
             'name="upgrade_related"',
         )
         self.assertContains(r, 'name="upgrade_all"')
+
+    def test_upgrade_intermediate_page_credentialless_related(self):
+        self._login()
+        env = self._create_upgrade_env()
+        # Remove SSH credentials from one device
+        env["d1"].deviceconnection_set.all().delete()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "no SSH credentials assigned")
+        device_url = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[env["d1"].pk]
+        )
+        self.assertContains(r, f'href="{device_url}"')
+        self.assertContains(r, env["d1"].name)
+
+    def test_upgrade_intermediate_page_credentialless_firmwareless(self):
+        self._login()
+        env = self._create_upgrade_env(device_firmware=False)
+        # Remove SSH credentials from one device
+        env["d1"].deviceconnection_set.all().delete()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "no SSH credentials assigned")
+        device_url = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[env["d1"].pk]
+        )
+        self.assertContains(r, f'href="{device_url}"')
+        self.assertContains(r, env["d1"].name)
+
+    def test_upgrade_intermediate_page_all_credentialless(self):
+        # If ALL devices lack credentials the page must not 500
+        self._login()
+        env = self._create_upgrade_env()
+        env["d1"].deviceconnection_set.all().delete()
+        env["d2"].deviceconnection_set.all().delete()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "no SSH credentials assigned")
+
+    def test_upgrade_intermediate_page_credentialless_more_than_max(self):
+        from openwisp_firmware_upgrader.admin import MAX_CREDENTIALLESS_DISPLAY
+
+        self._login()
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build1 = self._create_build(category=category, version="0.1")
+        build2 = self._create_build(category=category, version="0.2")
+        image1 = self._create_firmware_image(build=build1, type=self.TPLINK_4300_IMAGE)
+        self._create_firmware_image(build=build2, type=self.TPLINK_4300_IMAGE)
+        # Create more devices than the display limit
+        # Each device gets a connection first (required for full_clean),
+        # then the connection is removed to simulate credentialless state.
+        ssh_credentials = self._get_credentials(organization=None)
+        devices = []
+        for i in range(MAX_CREDENTIALLESS_DISPLAY + 2):
+            mac = f"00:11:22:33:44:{i:02x}"
+            d = self._create_device(
+                name=f"nocreds-device-{i}",
+                organization=org,
+                mac_address=mac,
+                model=image1.boards[0],
+            )
+            self._create_config(device=d)
+            self._create_device_connection(device=d, credentials=ssh_credentials)
+            self._create_device_firmware(
+                device=d, image=image1, device_connection=False
+            )
+            d.deviceconnection_set.all().delete()
+            devices.append(d)
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (build2.pk,),
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "no SSH credentials assigned")
+        self.assertContains(r, "more device")
+        self.assertContains(r, "without credentials")
+        total_credentialless = MAX_CREDENTIALLESS_DISPLAY + 2
+        self.assertEqual(
+            len(r.context["credentialless_devices"]), MAX_CREDENTIALLESS_DISPLAY
+        )
+        self.assertEqual(
+            r.context["credentialless_more"],
+            total_credentialless - MAX_CREDENTIALLESS_DISPLAY,
+        )
 
     def test_view_device_administrator(self):
         device_fw = self._create_device_firmware()
