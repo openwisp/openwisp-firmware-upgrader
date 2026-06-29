@@ -136,14 +136,15 @@ before completion. This is a deliberate action taken through the admin
 interface or REST API.
 
 Users can cancel upgrades through the admin interface using the "Cancel"
-button that appears next to in-progress operations.
+button that appears next to in-progress and pending operations.
 
 **When cancellation is possible:**
 
 - During the early stages of upgrade (typically before 65% progress)
 - Before the new firmware image is written to the flash memory of the
   network device
-- While the operation status is still "in-progress"
+- While the operation status is still ``in-progress`` or ``pending`` (a
+  pending operation can be cancelled to stop its persistent retries)
 
 **What happens when the upgrade operation is cancelled:**
 
@@ -183,6 +184,23 @@ An upgrade may also end prematurely or unsuccessfully:
 - ``failed``: the firmware flashing process completes, but the device does
   not become reachable afterward, it usually indicates a post-flash
   failure.
+
+Persistent Retry Flow
+~~~~~~~~~~~~~~~~~~~~~
+
+For a persistent mass upgrade, an unreachable device does not end as
+``failed``; the operation loops between two states until it succeeds or is
+cancelled:
+
+1. ``in-progress``: a retry is attempted;
+2. ``pending``: the device was unreachable, so a future ``next_retry_at``
+   is scheduled and the operation waits;
+3. back to ``in-progress`` when a Celery Beat scan (or, with
+   openwisp-monitoring, the device coming back online) re-dispatches it.
+
+The loop exits to ``success`` once the device is upgraded, to
+``cancelled`` if an admin stops it, or to ``failed`` if the device is
+deactivated while pending. See :doc:`persistent-mass-upgrades`.
 
 Terminal States
 ~~~~~~~~~~~~~~~

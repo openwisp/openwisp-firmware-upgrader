@@ -219,6 +219,8 @@ the request body:
   specific group
 - ``location`` (Location ID): limit the upgrade to devices at a specific
   geographic location
+- ``is_persistent`` (boolean, default ``true``): keep retrying offline
+  devices until they come back online or the operation is cancelled
 
 Example with filters:
 
@@ -318,7 +320,8 @@ The list of upgrade operations provides the following filters:
 - ``device__organization_slug`` (Organization slug of the device)
 - ``device`` (Device ID)
 - ``image`` (Firmware image ID)
-- ``status`` (One of: in-progress, success, failed, aborted, cancelled)
+- ``status`` (One of: in-progress, pending, success, failed, aborted,
+  cancelled)
 
 Here's a few examples:
 
@@ -359,7 +362,7 @@ List Device Upgrade Operations
 **Available filters**
 
 The list of device upgrade operations can be filtered by ``status`` (one
-of: in-progress, success, failed, aborted, cancelled).
+of: in-progress, pending, success, failed, aborted, cancelled).
 
 .. code-block:: text
 
@@ -374,6 +377,10 @@ firmware if it does not already exist.
 .. code-block:: text
 
     PUT /api/v1/firmware-upgrader/device/{device_id}/firmware/
+
+The request body accepts an optional ``is_persistent`` (boolean, default
+``false``) flag; when enabled, the resulting upgrade keeps retrying the
+device until it comes back online or the operation is cancelled.
 
 Get Device Firmware Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
