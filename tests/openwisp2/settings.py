@@ -199,8 +199,8 @@ LOGGING = {
     },
     "loggers": {
         "py.warnings": {"handlers": ["console"]},
-        "celery": {"handlers": ["console"], "level": "DEBUG"},
-        "celery.task": {"handlers": ["console"], "level": "DEBUG"},
+        "celery": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "celery.task": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "openwisp_firmware_upgrader.websockets": {
             "handlers": ["console"],
             "level": "DEBUG",
