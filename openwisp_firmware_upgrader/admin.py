@@ -26,7 +26,11 @@ from reversion.admin import VersionAdmin
 
 from openwisp_controller.config.admin import DeactivatedDeviceReadOnlyMixin, DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
-from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
+from openwisp_utils.admin import (
+    BlockDeleteAllowCascadeMixin,
+    ReadOnlyAdmin,
+    TimeReadonlyAdminMixin,
+)
 
 from .filters import (
     BuildCategoryFilter,
@@ -325,7 +329,7 @@ class UpgradeOperationForm(forms.ModelForm):
         labels = {"modified": _("last updated")}
 
 
-class UpgradeOperationInline(admin.StackedInline):
+class UpgradeOperationInline(BlockDeleteAllowCascadeMixin, admin.StackedInline):
     model = UpgradeOperation
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
