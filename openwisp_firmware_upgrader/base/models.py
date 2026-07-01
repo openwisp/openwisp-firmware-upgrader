@@ -178,8 +178,12 @@ class AbstractBuild(TimeStampedEditableModel):
         group=None,
         location=None,
         is_persistent=True,
+        scheduled_at=None,
     ):
         upgrade_options = upgrade_options or {}
+        # callers (e.g. the admin action) may pass a truthy request value
+        # rather than a bool; normalize before it reaches the model field
+        firmwareless = bool(firmwareless)
         # Check if there are any devices to upgrade with the given filters
         dry_run_result = load_model("BatchUpgradeOperation").dry_run(
             build=self, group=group, location=location
@@ -201,9 +205,15 @@ class AbstractBuild(TimeStampedEditableModel):
             group=group,
             location=location,
             is_persistent=is_persistent,
+            firmwareless=firmwareless,
+            scheduled_at=scheduled_at,
         )
         batch.full_clean()
         batch.save()
+        if scheduled_at:
+            batch.status = "scheduled"
+            batch.save(update_fields=["status"])
+            return batch
         transaction.on_commit(
             partial(batch_upgrade_operation.delay, batch.pk, firmwareless)
         )
@@ -590,6 +600,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     )
     STATUS_CHOICES = (
         ("idle", _("idle")),
+        ("scheduled", _("scheduled")),
         ("in-progress", _("in progress")),
         ("success", _("completed successfully")),
         ("failed", _("completed with some failures")),
@@ -617,11 +628,31 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             "this batch, null if no reminder has been sent yet"
         ),
     )
+    scheduled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("scheduled at"),
+        help_text=_(
+            "future date and time (UTC) at which this mass upgrade is "
+            "launched, null for an immediate upgrade"
+        ),
+    )
+    firmwareless = models.BooleanField(
+        default=False,
+        verbose_name=_("firmwareless"),
+        help_text=_(
+            "whether to include devices that have no existing firmware "
+            "record when this mass upgrade launches"
+        ),
+    )
 
     class Meta:
         abstract = True
         verbose_name = _("Mass upgrade operation")
         verbose_name_plural = _("Mass upgrade operations")
+        indexes = [
+            models.Index(fields=["status", "scheduled_at"]),
+        ]
 
     def __str__(self):
         return f"{self.build} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
@@ -654,13 +685,53 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                     )
                 }
             )
+        self._validate_schedule()
         self._validate_is_persistent_immutable()
+        self._validate_scheduled_editability()
+
+    def _validate_schedule(self):
+        if self.scheduled_at is None:
+            return
+        if not self._state.adding:
+            stored = (
+                load_model("BatchUpgradeOperation")
+                .objects.values_list("scheduled_at", flat=True)
+                .get(pk=self.pk)
+            )
+            # an unchanged (and possibly now-due) stored value must not be
+            # re-validated: the bounds only apply when scheduling/rescheduling
+            if self.scheduled_at == stored:
+                return
+        now = timezone.now()
+        min_delay = app_settings.SCHEDULE_MIN_DELAY
+        max_horizon = app_settings.SCHEDULE_MAX_HORIZON
+        if self.scheduled_at < now + timedelta(seconds=min_delay):
+            raise ValidationError(
+                {
+                    "scheduled_at": _(
+                        "The scheduled time must be at least %(minutes)d "
+                        "minutes in the future."
+                    )
+                    % {"minutes": min_delay // 60}
+                }
+            )
+        if self.scheduled_at > now + timedelta(seconds=max_horizon):
+            raise ValidationError(
+                {
+                    "scheduled_at": _(
+                        "The scheduled time cannot be more than %(days)d "
+                        "days in the future."
+                    )
+                    % {"days": max_horizon // 86400}
+                }
+            )
 
     def _validate_is_persistent_immutable(self):
         """
-        Reject changes to ``is_persistent`` once the batch has left ``idle``.
-        Idle batches haven't dispatched anything yet, so the flag can still
-        flip; after that the retry pipeline relies on it staying stable.
+        Reject changes to ``is_persistent`` once the batch has left the
+        pre-launch states. ``idle`` and ``scheduled`` batches haven't
+        dispatched anything yet, so the flag can still flip; after that
+        the retry pipeline relies on it staying stable.
         """
         if self._state.adding:
             return
@@ -669,7 +740,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             .objects.values_list("status", "is_persistent")
             .get(pk=self.pk)
         )
-        if stored_status == "idle":
+        if stored_status in ("idle", "scheduled"):
             return
         if self.is_persistent != stored_is_persistent:
             raise ValidationError(
@@ -681,7 +752,65 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                 }
             )
 
-    def upgrade(self, firmwareless):
+    def _validate_scheduled_editability(self):
+        """
+        The build is frozen once a batch leaves ``idle`` and the schedule once
+        it leaves ``scheduled``: re-targeting the firmware or the time after the
+        device set was computed would invalidate the run.
+        """
+        if self._state.adding:
+            return
+        stored_status, build_id, upgrade_options, scheduled_at, firmwareless = (
+            load_model("BatchUpgradeOperation")
+            .objects.values_list(
+                "status", "build_id", "upgrade_options", "scheduled_at", "firmwareless"
+            )
+            .get(pk=self.pk)
+        )
+        if stored_status == "idle":
+            return
+        if self.build_id != build_id:
+            raise ValidationError(
+                {
+                    "build": _(
+                        "The build cannot be changed once the mass upgrade "
+                        "has been scheduled or started"
+                    )
+                }
+            )
+        if self.upgrade_options != upgrade_options:
+            raise ValidationError(
+                {
+                    "upgrade_options": _(
+                        "The upgrade options cannot be changed once the mass "
+                        "upgrade has been scheduled or started"
+                    )
+                }
+            )
+        if stored_status == "scheduled" and self.status == "scheduled":
+            return
+        if self.scheduled_at != scheduled_at:
+            raise ValidationError(
+                {
+                    "scheduled_at": _(
+                        "The scheduled time cannot be changed after the mass "
+                        "upgrade has started"
+                    )
+                }
+            )
+        if self.firmwareless != firmwareless:
+            raise ValidationError(
+                {
+                    "firmwareless": _(
+                        "The firmwareless option cannot be changed after the "
+                        "mass upgrade has started"
+                    )
+                }
+            )
+
+    def upgrade(self, firmwareless=None):
+        if firmwareless is None:
+            firmwareless = self.firmwareless
         self.status = "in-progress"
         self.save()
         self.upgrade_related_devices()
