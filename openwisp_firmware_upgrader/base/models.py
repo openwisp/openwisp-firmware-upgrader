@@ -192,8 +192,11 @@ class AbstractBuild(TimeStampedEditableModel):
         group=None,
         location=None,
         is_persistent=True,
+        scheduled_at=None,
     ):
         upgrade_options = upgrade_options or {}
+        # the admin action passes a truthy request value rather than a bool
+        firmwareless = bool(firmwareless)
         # Check if there are any devices to upgrade with the given filters
         dry_run_result = load_model("BatchUpgradeOperation").dry_run(
             build=self, group=group, location=location
@@ -215,9 +218,15 @@ class AbstractBuild(TimeStampedEditableModel):
             group=group,
             location=location,
             is_persistent=is_persistent,
+            firmwareless=firmwareless,
+            scheduled_at=scheduled_at,
         )
         batch.full_clean()
         batch.save()
+        if scheduled_at:
+            batch.status = "scheduled"
+            batch.save(update_fields=["status"])
+            return batch
         transaction.on_commit(
             partial(batch_upgrade_operation.delay, batch.pk, firmwareless)
         )
@@ -700,8 +709,58 @@ class AbstractBatchUpgradeOperation(
                     )
                 }
             )
+        self._validate_schedule()
         self._validate_is_persistent_immutable()
         self._validate_scheduled_editability()
+
+    def _validate_schedule(self):
+        """
+        Enforce the min-delay/max-horizon bounds only when the schedule is set
+        or changed; an unchanged stored time is left alone so a now-due batch
+        is not rejected at launch.
+        """
+        if self.scheduled_at is None:
+            if self.status == "scheduled":
+                raise ValidationError(
+                    {
+                        "scheduled_at": _(
+                            "A scheduled mass upgrade must have a scheduled time; "
+                            "cancel it instead of clearing the time."
+                        )
+                    }
+                )
+            return
+        if not self._state.adding:
+            stored = (
+                load_model("BatchUpgradeOperation")
+                .objects.values_list("scheduled_at", flat=True)
+                .get(pk=self.pk)
+            )
+            if self.scheduled_at == stored:
+                return
+        now = timezone.now()
+        min_delay = app_settings.SCHEDULE_MIN_DELAY
+        max_horizon = app_settings.SCHEDULE_MAX_HORIZON
+        if self.scheduled_at < now + timedelta(seconds=min_delay):
+            raise ValidationError(
+                {
+                    "scheduled_at": _(
+                        "The scheduled time must be at least %(minutes)d "
+                        "minutes in the future."
+                    )
+                    % {"minutes": min_delay // 60}
+                }
+            )
+        if self.scheduled_at > now + timedelta(seconds=max_horizon):
+            raise ValidationError(
+                {
+                    "scheduled_at": _(
+                        "The scheduled time cannot be more than %(days)d "
+                        "days in the future."
+                    )
+                    % {"days": max_horizon // 86400}
+                }
+            )
 
     def _validate_is_persistent_immutable(self):
         """
@@ -785,7 +844,9 @@ class AbstractBatchUpgradeOperation(
                 }
             )
 
-    def upgrade(self, firmwareless):
+    def upgrade(self, firmwareless=None):
+        if firmwareless is None:
+            firmwareless = self.firmwareless
         self.status = "in-progress"
         self.save()
         with transaction.atomic():
