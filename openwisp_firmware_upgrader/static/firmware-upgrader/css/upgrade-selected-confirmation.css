@@ -28,7 +28,6 @@ fieldset.aligned label.is-persistent-checkbox {
   gap: 8px;
   padding: 10px 12px;
   margin: 0;
-  border-top: 1px solid var(--ow-color-fg-light);
   font-weight: normal;
   color: inherit;
   cursor: pointer;

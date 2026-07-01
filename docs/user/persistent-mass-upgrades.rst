@@ -26,8 +26,8 @@ re-dispatches pending operations once their retry time has elapsed, and
 the batch stays ``in-progress`` until every device has either upgraded or
 been cancelled.
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-mass-upgrade-batch.png
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-mass-upgrade-batch.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade.png
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade.png
 
 The mass-upgrade page above stays ``in progress`` while one device is
 still ``pending``, reporting ``2 complete, 1 pending`` and keeping the
@@ -44,8 +44,8 @@ action) the **persistent** checkbox is shown pre-checked. Leave it checked
 to keep retrying offline devices, or uncheck it to fall back to the
 behaviour where unreachable devices end as ``failed``.
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-mass-upgrade-confirm.png
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-mass-upgrade-confirm.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade-confirm.png
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade-confirm.png
 
 The flag is locked in once the mass upgrade leaves the ``idle`` state, so
 it cannot be changed midway through a running batch.
@@ -66,15 +66,15 @@ isolated with the ``status`` filter set to ``pending``. The list shows the
 ``persistent`` flag and the ``retry_count`` column, the latter being how
 many times an operation has been retried so far.
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrade-pending-changelist.png
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrade-pending-changelist.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/pending-operations-list.png
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/pending-operations-list.png
 
 An operation's detail page adds ``next_retry_at`` (when the next attempt
 is scheduled) and a log that records each attempt, ending with the
 backoff-scheduled ``persistent retry`` line for the next run.
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrade-operation-pending.png
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrade-operation-pending.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/pending-operation.png
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/pending-operation.png
 
 Cancelling a pending operation
 ------------------------------
@@ -99,8 +99,8 @@ upgrades:
 
 Both are delivered to the organization's administrators (and superusers).
 
-.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrade-notifications.png
-    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrade-notifications.png
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/notifications.png
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/notifications.png
 
 The cadence and related settings are documented in :doc:`settings`.
 
