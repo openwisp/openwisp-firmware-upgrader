@@ -400,11 +400,12 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         with patch.object(
             publisher.channel_layer, "group_send", new_callable=AsyncMock
         ) as mock_group_send:
-            publisher.publish_batch_status("success", 5, 10)
+            publisher.publish_batch_status("in-progress", 5, 10, 2)
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[1]["data"]["type"], "batch_status")
-            self.assertEqual(call_args[1]["data"]["status"], "success")
+            self.assertEqual(call_args[1]["data"]["status"], "in-progress")
             self.assertEqual(call_args[1]["data"]["completed"], 5)
+            self.assertEqual(call_args[1]["data"]["pending"], 2)
             self.assertEqual(call_args[1]["data"]["total"], 10)
 
     async def test_websocket_connection_errors(self):
@@ -699,4 +700,88 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             pass
         # Assert that we received exactly ONE log message (not duplicates)
         self.assertEqual(len(messages), 1)
+        await communicator.disconnect()
+
+    async def test_batch_consumer_snapshot_counts_pending_separately(self):
+        build = await sync_to_async(self._get_build)()
+        device_fw = await sync_to_async(self._create_device_firmware)()
+        batch = await sync_to_async(BatchUpgradeOperation.objects.create)(
+            build=build, is_persistent=True, status="in-progress"
+        )
+        await sync_to_async(UpgradeOperation.objects.create)(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+        await sync_to_async(UpgradeOperation.objects.create)(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="pending",
+            is_persistent=True,
+        )
+        communicator = await self._get_batch_upgrade_progress_communicator(
+            str(batch.pk)
+        )
+        await communicator.send_json_to({"type": "request_current_state"})
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "batch_state")
+        self.assertEqual(response["batch_status"]["completed"], 1)
+        self.assertEqual(response["batch_status"]["pending"], 1)
+        self.assertEqual(response["batch_status"]["total"], 2)
+        await communicator.disconnect()
+
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_device_consumer_snapshot_includes_pending(self, *args):
+        _, device_id = await self._create_test_device_with_upgrade()
+        op = await sync_to_async(
+            lambda: UpgradeOperation.objects.filter(device_id=device_id).first()
+        )()
+        op.status = "pending"
+        op.is_persistent = True
+        await sync_to_async(op.save)()
+        communicator = await self._get_device_upgrade_progress_communicator(device_id)
+        await communicator.send_json_to({"type": "request_current_state"})
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "operation_update")
+        self.assertEqual(response["operation"]["status"], "pending")
+        await communicator.disconnect()
+
+    @patch(_mock_upgrade, return_value=True)
+    @patch(_mock_connect, return_value=True)
+    async def test_pending_transition_publishes_batch_status_with_pending_count(
+        self, *args
+    ):
+        build = await sync_to_async(self._get_build)()
+        device_fw = await sync_to_async(self._create_device_firmware)()
+        batch = await sync_to_async(BatchUpgradeOperation.objects.create)(
+            build=build, is_persistent=True, status="in-progress"
+        )
+        op = await sync_to_async(UpgradeOperation.objects.create)(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="in-progress",
+            is_persistent=True,
+        )
+        communicator = await self._get_batch_upgrade_progress_communicator(
+            str(batch.pk)
+        )
+        op.status = "pending"
+        await sync_to_async(op.save)()
+        batch_status = None
+        for _ in range(10):
+            response = await asyncio.wait_for(
+                communicator.receive_json_from(), timeout=1
+            )
+            if response.get("type") == "batch_status":
+                batch_status = response
+                break
+        self.assertIsNotNone(batch_status)
+        self.assertEqual(batch_status["status"], "in-progress")
+        self.assertEqual(batch_status["pending"], 1)
+        self.assertEqual(batch_status["completed"], 0)
+        self.assertEqual(batch_status["total"], 1)
         await communicator.disconnect()

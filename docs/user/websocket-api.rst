@@ -136,6 +136,7 @@ exactly one message:
         "batch_status": {
             "status": "<string>",           // Overall batch status
             "completed": <integer>,         // Number of completed operations
+            "pending": <integer>,           // Number of operations awaiting a persistent retry
             "total": <integer>              // Total operations in the batch
         },
         "operations": [
@@ -180,6 +181,7 @@ The endpoint may push:
         "type": "batch_status",             // Message type identifier
         "status": "<string>",               // Overall batch status
         "completed": <integer>,             // Number of completed operations
+        "pending": <integer>,               // Number of operations awaiting a persistent retry
         "total": <integer>                  // Total operations in the batch
     }
 

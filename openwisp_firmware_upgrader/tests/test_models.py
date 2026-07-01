@@ -7,16 +7,24 @@ from unittest.mock import MagicMock, patch
 import swapper
 from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
+from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_utils.tests import capture_any_output
 
 from .. import settings as app_settings
+from ..exceptions import (
+    ReconnectionFailed,
+    RecoverableFailure,
+    UpgradeAborted,
+    UpgradeCancelled,
+)
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..tasks import upgrade_firmware
-from .base import TestUpgraderMixin
+from .base import TestUpgraderMixin, time_travel
 
 Group = swapper.load_model("openwisp_users", "Group")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -583,6 +591,432 @@ class TestModels(TestUpgraderMixin, TestCase):
         expected = f"{uo.device} ({timezone.localtime(uo.created).strftime('%Y-%m-%d %H:%M:%S')})"
         self.assertEqual(str(uo), expected)
 
+    def test_is_persistent_field_defaults(self):
+        build = self._create_build()
+        batch = BatchUpgradeOperation(build=build)
+        self.assertTrue(batch.is_persistent)
+
+        device_fw = self._create_device_firmware()
+        uo = UpgradeOperation(device=device_fw.device, image=device_fw.image)
+        self.assertFalse(uo.is_persistent)
+        self.assertEqual(uo.retry_count, 0)
+        self.assertIsNone(uo.next_retry_at)
+
+    def test_next_retry_at_has_db_index(self):
+        field = UpgradeOperation._meta.get_field("next_retry_at")
+        self.assertTrue(field.db_index)
+        self.assertTrue(field.null)
+        self.assertTrue(field.blank)
+        indexes = connection.introspection.get_constraints(
+            connection.cursor(), UpgradeOperation._meta.db_table
+        )
+        self.assertTrue(
+            any(
+                info["columns"] == ["next_retry_at"] and info["index"]
+                for info in indexes.values()
+            )
+        )
+
+    def test_is_persistent_propagation_from_batch(self):
+        device_fw = self._create_device_firmware()
+        build = device_fw.image.build
+        with mock.patch.object(UpgradeOperation, "upgrade", return_value=None):
+            with self.subTest("is_persistent=True batch propagates True to child"):
+                batch = BatchUpgradeOperation.objects.create(
+                    build=build, is_persistent=True
+                )
+                op = device_fw.create_upgrade_operation(batch, upgrade_options={})
+                self.assertTrue(op.is_persistent)
+                self.assertEqual(op.batch, batch)
+
+            with self.subTest("is_persistent=False batch propagates False to child"):
+                batch = BatchUpgradeOperation.objects.create(
+                    build=build, is_persistent=False
+                )
+                op = device_fw.create_upgrade_operation(batch, upgrade_options={})
+                self.assertFalse(op.is_persistent)
+
+            with self.subTest("no batch keeps the per-operation default False"):
+                op = device_fw.create_upgrade_operation(batch=None, upgrade_options={})
+                self.assertFalse(op.is_persistent)
+                self.assertIsNone(op.batch)
+
+    def test_is_persistent_immutable_on_upgrade_operation(self):
+        device_fw = self._create_device_firmware()
+        with mock.patch.object(UpgradeOperation, "upgrade", return_value=None):
+            op = device_fw.create_upgrade_operation(batch=None, upgrade_options={})
+        op.is_persistent = True
+        with self.assertRaises(ValidationError) as ctx:
+            op.full_clean()
+        self.assertIn("is_persistent", ctx.exception.message_dict)
+        self.assertIn(
+            "after the upgrade operation has been saved",
+            str(ctx.exception.message_dict["is_persistent"][0]),
+        )
+
+    def test_is_persistent_immutable_on_batch_upgrade_operation(self):
+        build = self._create_build()
+        batch = BatchUpgradeOperation.objects.create(build=build, is_persistent=True)
+
+        with self.subTest("changing is_persistent while batch is idle is allowed"):
+            batch.is_persistent = False
+            batch.full_clean()
+
+        with self.subTest("changing is_persistent after launch raises"):
+            batch.refresh_from_db()
+            batch.status = "in-progress"
+            batch.save()
+            batch.is_persistent = False
+            with self.assertRaises(ValidationError) as ctx:
+                batch.full_clean()
+            self.assertIn("is_persistent", ctx.exception.message_dict)
+            self.assertIn(
+                "after the mass upgrade has started",
+                str(ctx.exception.message_dict["is_persistent"][0]),
+            )
+
+    def test_full_clean_on_unsaved_instances(self):
+        """Regression: full_clean() on a brand-new UUID-pk instance must not query for a stored value."""
+        device_fw = self._create_device_firmware()
+        with self.subTest("brand-new UpgradeOperation"):
+            op = UpgradeOperation(device=device_fw.device, image=device_fw.image)
+            self.assertTrue(op._state.adding)
+            op.full_clean()
+
+        with self.subTest("brand-new BatchUpgradeOperation"):
+            batch = BatchUpgradeOperation(build=device_fw.image.build)
+            self.assertTrue(batch._state.adding)
+            batch.full_clean()
+
+    def _make_persistent_op(self, is_persistent):
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            is_persistent=is_persistent,
+        )
+        return op
+
+    def test_recoverable_failure_handler_recoverable_branch_unchanged(self):
+        op = self._make_persistent_op(is_persistent=True)
+        with self.assertRaises(RecoverableFailure):
+            op._recoverable_failure_handler(
+                recoverable=True, error=RecoverableFailure("transient")
+            )
+        self.assertEqual(op.status, "in-progress")
+        self.assertEqual(op.retry_count, 0)
+        self.assertIsNone(op.next_retry_at)
+
+    def test_recoverable_failure_handler_persistent_schedules_retry(self):
+        op = self._make_persistent_op(is_persistent=True)
+        before = timezone.now()
+        op._recoverable_failure_handler(
+            recoverable=False, error=RecoverableFailure("device offline")
+        )
+        self.assertEqual(op.status, "pending")
+        self.assertEqual(op.retry_count, 1)
+        self.assertIsNotNone(op.next_retry_at)
+        self.assertGreater(op.next_retry_at, before)
+        self.assertIn("Scheduled persistent retry", op.log)
+
+    def test_recoverable_failure_handler_persistent_non_recoverable_error(self):
+        op = self._make_persistent_op(is_persistent=True)
+        op._recoverable_failure_handler(
+            recoverable=False, error=ValueError("unrecognised failure")
+        )
+        self.assertEqual(op.status, "failed")
+        self.assertEqual(op.retry_count, 0)
+        self.assertIsNone(op.next_retry_at)
+
+    def test_recoverable_failure_handler_non_persistent(self):
+        op = self._make_persistent_op(is_persistent=False)
+        op._recoverable_failure_handler(
+            recoverable=False, error=RecoverableFailure("device offline")
+        )
+        self.assertEqual(op.status, "failed")
+        self.assertEqual(op.retry_count, 0)
+        self.assertIsNone(op.next_retry_at)
+
+    def test_calculate_next_retry_backoff(self):
+        op = self._make_persistent_op(is_persistent=True)
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        base = options["base_delay"]
+        multiplier = options["multiplier"]
+        jitter = options["jitter"]
+        max_delay = options["max_delay"]
+        now = timezone.now()
+        with time_travel(now):
+            for retry_count in (1, 2, 3, 7):
+                op.retry_count = retry_count
+                delta = (op._calculate_next_retry() - now).total_seconds()
+                expected = base * (multiplier ** (retry_count - 1))
+                self.assertGreaterEqual(delta, expected * (1 - jitter))
+                self.assertLessEqual(delta, expected * (1 + jitter))
+            with self.subTest("retry_count=8 is the first to hit the cap"):
+                op.retry_count = 8
+                self.assertGreater(
+                    base * (multiplier ** (op.retry_count - 1)), max_delay
+                )
+                delta = (op._calculate_next_retry() - now).total_seconds()
+                self.assertGreaterEqual(delta, max_delay * (1 - jitter))
+                self.assertLessEqual(delta, max_delay * (1 + jitter))
+            with self.subTest("delay stays capped well beyond the boundary"):
+                op.retry_count = 20
+                delta = (op._calculate_next_retry() - now).total_seconds()
+                self.assertLessEqual(delta, max_delay * (1 + jitter))
+
+    def test_calculate_next_retry_honours_setting_overrides(self):
+        op = self._make_persistent_op(is_persistent=True)
+        op.retry_count = 1
+        with mock.patch.object(
+            app_settings,
+            "PERSISTENT_RETRY_OPTIONS",
+            dict(
+                base_delay=120,
+                multiplier=3,
+                jitter=0,
+                max_delay=999999,
+                dispatch_jitter=0,
+            ),
+        ):
+            before = timezone.now()
+            scheduled = op._calculate_next_retry()
+            self.assertAlmostEqual((scheduled - before).total_seconds(), 120, delta=1)
+            op.retry_count = 3
+            before = timezone.now()
+            scheduled = op._calculate_next_retry()
+            self.assertAlmostEqual(
+                (scheduled - before).total_seconds(), 120 * 9, delta=1
+            )
+        with mock.patch.object(
+            app_settings,
+            "PERSISTENT_RETRY_OPTIONS",
+            dict(
+                base_delay=600,
+                multiplier=2,
+                jitter=0,
+                max_delay=60,
+                dispatch_jitter=0,
+            ),
+        ):
+            op.retry_count = 10
+            before = timezone.now()
+            scheduled = op._calculate_next_retry()
+            self.assertAlmostEqual((scheduled - before).total_seconds(), 60, delta=1)
+
+    def test_calculate_next_retry_safe_when_retry_count_zero(self):
+        op = self._make_persistent_op(is_persistent=True)
+        op.retry_count = 0
+        before = timezone.now()
+        scheduled = op._calculate_next_retry()
+        delta = (scheduled - before).total_seconds()
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        base = options["base_delay"]
+        jitter = options["jitter"]
+        self.assertGreaterEqual(delta, base * (1 - jitter) - 1)
+        self.assertLessEqual(delta, base * (1 + jitter) + 1)
+
+    _no_conn = (
+        "openwisp_controller.connection.models.DeviceConnection."
+        "get_working_connection"
+    )
+
+    def test_no_connection_persistent_op_pends(self):
+        op = self._make_persistent_op(is_persistent=True)
+        with mock.patch(
+            self._no_conn, side_effect=NoWorkingDeviceConnectionError(connection=None)
+        ):
+            op.upgrade(recoverable=False)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "pending")
+        self.assertEqual(op.retry_count, 1)
+        self.assertIsNotNone(op.next_retry_at)
+
+    def test_no_connection_non_persistent_op_stays_in_progress(self):
+        op = self._make_persistent_op(is_persistent=False)
+        with mock.patch(
+            self._no_conn, side_effect=NoWorkingDeviceConnectionError(connection=None)
+        ):
+            op.upgrade(recoverable=False)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "in-progress")
+
+    def test_create_upgrade_operation_standalone_is_persistent(self):
+        device_fw = self._create_device_firmware()
+        op = device_fw.create_upgrade_operation(
+            batch=None, upgrade_options={}, is_persistent=True
+        )
+        self.assertTrue(op.is_persistent)
+        default_op = device_fw.create_upgrade_operation(batch=None, upgrade_options={})
+        self.assertFalse(default_op.is_persistent)
+
+    def test_recoverable_failure_handler_only_routes_recoverable_failure_to_pending(
+        self,
+    ):
+        op = self._make_persistent_op(is_persistent=True)
+        for error_type in (
+            UpgradeAborted,
+            UpgradeCancelled,
+            ReconnectionFailed,
+            Exception,
+        ):
+            with self.subTest(error=error_type.__name__):
+                op.status = "in-progress"
+                op.retry_count = 0
+                op.next_retry_at = None
+                op._recoverable_failure_handler(
+                    recoverable=False, error=error_type("simulated")
+                )
+                self.assertEqual(op.status, "failed")
+                self.assertEqual(op.retry_count, 0)
+                self.assertIsNone(op.next_retry_at)
+
+    def test_batch_with_mixed_success_and_pending_children(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(
+            build=device_fw.image.build, is_persistent=True, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+        pending_op = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="pending",
+            is_persistent=True,
+        )
+
+        with self.subTest("progress_report shows pending separately"):
+            self.assertEqual(str(batch.progress_report), "1 complete, 1 pending")
+            self.assertEqual(batch.pending_count, 1)
+
+        with self.subTest("calculate_and_update_status keeps the batch active"):
+            new_status, stats = batch.calculate_and_update_status()
+            self.assertEqual(new_status, "in-progress")
+            self.assertEqual(stats["in_progress"], 0)
+            self.assertEqual(stats["pending"], 1)
+            self.assertEqual(stats["successful"], 1)
+            self.assertEqual(stats["completed"], 1)
+
+        with self.subTest("pending operation is cancellable"):
+            pending_op.cancel()
+            pending_op.refresh_from_db()
+            self.assertEqual(pending_op.status, "cancelled")
+
+        with self.subTest("another upgrade for same device is blocked while pending"):
+            still_pending = UpgradeOperation.objects.create(
+                device=device_fw.device,
+                image=device_fw.image,
+                batch=batch,
+                status="pending",
+                is_persistent=True,
+            )
+            new_op = UpgradeOperation.objects.create(
+                device=device_fw.device,
+                image=device_fw.image,
+                batch=batch,
+                status="in-progress",
+            )
+            with mock.patch(
+                "openwisp_controller.connection.models.DeviceConnection."
+                "get_working_connection",
+                return_value=mock.MagicMock(),
+            ):
+                new_op.upgrade()
+            new_op.refresh_from_db()
+            self.assertEqual(new_op.status, "aborted")
+            self.assertIn("Another upgrade operation is in progress", new_op.log)
+            still_pending.refresh_from_db()
+            self.assertEqual(still_pending.status, "pending")
+
+    def test_progress_report_format_depends_on_pending(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(
+            build=device_fw.image.build, is_persistent=True, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+
+        with self.subTest("no pending children: legacy X out of Y wording"):
+            self.assertEqual(str(batch.progress_report), "2 out of 2")
+
+        with self.subTest("at least one pending child: X complete, Y pending"):
+            UpgradeOperation.objects.create(
+                device=device_fw.device,
+                image=device_fw.image,
+                batch=batch,
+                status="pending",
+                is_persistent=True,
+            )
+            self.assertEqual(str(batch.progress_report), "2 complete, 1 pending")
+
+    def test_pending_count_property(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(
+            build=device_fw.image.build, is_persistent=True, status="in-progress"
+        )
+        self.assertEqual(batch.pending_count, 0)
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="success",
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="pending",
+            is_persistent=True,
+        )
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="pending",
+            is_persistent=True,
+        )
+        self.assertEqual(batch.pending_count, 2)
+
+    def test_cancel_in_progress_below_threshold_succeeds(self):
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            status="in-progress",
+            progress=0,
+        )
+        op.cancel()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "cancelled")
+
+    def test_cancel_on_terminal_status_raises(self):
+        device_fw = self._create_device_firmware()
+        for terminal_status in ("success", "failed", "aborted", "cancelled"):
+            with self.subTest(status=terminal_status):
+                op = UpgradeOperation.objects.create(
+                    device=device_fw.device,
+                    image=device_fw.image,
+                    status=terminal_status,
+                )
+                with self.assertRaises(ValueError) as ctx:
+                    op.cancel()
+                self.assertIn(terminal_status, str(ctx.exception))
+
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     _mock_updrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
@@ -661,8 +1095,16 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         with redirect_stdout(io.StringIO()):
             env["build2"].batch_upgrade(firmwareless=False)
         batch = BatchUpgradeOperation.objects.first()
-        self.assertEqual(batch.status, "failed")
+        # Default is_persistent=True propagates to children, so a failed
+        # connection sends each child to "pending" via the failure handler
+        # instead of "failed"; the batch stays at in-progress until the
+        # periodic retry pipeline either upgrades or cancels them.
         self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
+        self.assertEqual(batch.status, "in-progress")
+        for op in batch.upgradeoperation_set.all():
+            self.assertEqual(op.status, "pending")
+            self.assertGreater(op.retry_count, 0)
+            self.assertIsNotNone(op.next_retry_at)
 
     @mock.patch(_mock_updrade, return_value=True)
     def test_upgrade_related_devices_existing_fw(self, *args):

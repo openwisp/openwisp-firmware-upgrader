@@ -1,5 +1,6 @@
 from django.db.models.signals import post_save, pre_delete
 from django.utils.translation import gettext_lazy as _
+from openwisp_notifications.types import register_notification_type
 from swapper import get_model_name, load_model
 
 from openwisp_utils.admin_theme.menu import register_menu_group
@@ -26,9 +27,11 @@ class FirmwareUpdaterConfig(ApiAppConfig):
     def ready(self, *args, **kwargs):
         super().ready(*args, **kwargs)
         self.register_menu_groups()
+        self.register_notification_types()
         self.connect_device_signals()
         self.connect_upgrade_signals()
         self.connect_delete_signals()
+        self.connect_monitoring_signals()
 
     def register_menu_groups(self):
         register_menu_group(
@@ -57,6 +60,39 @@ class FirmwareUpdaterConfig(ApiAppConfig):
                 },
                 "icon": "ow-firmware",
             },
+        )
+
+    def register_notification_types(self):
+        BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+        Device = load_model("config", "Device")
+        register_notification_type(
+            "pending_upgrade_reminder",
+            {
+                "verbose_name": _("Pending Firmware Upgrade Reminder"),
+                "verb": _("still pending"),
+                "level": "info",
+                "email_subject": _(
+                    "[{site.name}] Pending firmware upgrades in mass upgrade "
+                    "{notification.target}"
+                ),
+                "message": "{notification.description}",
+            },
+            models=[BatchUpgradeOperation],
+        )
+        register_notification_type(
+            "persistent_upgrade_failed",
+            {
+                "verbose_name": _("Persistent Firmware Upgrade Failed"),
+                "verb": _("failed"),
+                "level": "error",
+                "email_subject": _(
+                    "[{site.name}] Persistent firmware upgrade FAILED for device "
+                    "{notification.target}"
+                ),
+                "message": "{notification.description}",
+            },
+            models=[UpgradeOperation, Device],
         )
 
     def connect_device_signals(self):
@@ -89,6 +125,11 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             sender=BatchUpgradeOperation,
             dispatch_uid="batch_upgrade_operation.websocket_publish",
         )
+        post_save.connect(
+            UpgradeOperation.notify_on_failed_persistent_upgrade,
+            sender=UpgradeOperation,
+            dispatch_uid="upgrade_operation.notify_on_failure",
+        )
 
     def connect_delete_signals(self):
         """
@@ -114,6 +155,27 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             FirmwareImage.organization_pre_delete_handler,
             sender=Organization,
             dispatch_uid="organization.pre_delete.firmware_files",
+        )
+
+    def connect_monitoring_signals(self):
+        """
+        Connect the openwisp-monitoring health_status_changed signal so
+        pending upgrades wake up when a device recovers.
+        """
+        try:
+            from openwisp_monitoring.device.signals import health_status_changed
+        except ModuleNotFoundError as error:
+            if error.name not in (
+                "openwisp_monitoring",
+                "openwisp_monitoring.device",
+                "openwisp_monitoring.device.signals",
+            ):
+                raise
+            return
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+        health_status_changed.connect(
+            UpgradeOperation.handle_health_status_changed,
+            dispatch_uid="firmware_upgrader.health_status_changed",
         )
 
 

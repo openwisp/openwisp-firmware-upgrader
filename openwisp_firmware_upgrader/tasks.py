@@ -1,10 +1,16 @@
 import logging
+import random
+from datetime import timedelta
 
 import swapper
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Q
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
+from openwisp_notifications.signals import notify
 
 from openwisp_utils.tasks import OpenwispCeleryTask
 
@@ -26,18 +32,26 @@ def upgrade_firmware(self, operation_id):
     Calls the ``upgrade()`` method of an
     ``UpgradeOperation`` instance in the background
     """
+    UpgradeOperation = load_model("UpgradeOperation")
     try:
-        operation = load_model("UpgradeOperation").objects.get(pk=operation_id)
-        recoverable = self.request.retries < self.max_retries
-        operation.upgrade(recoverable=recoverable)
-    except SoftTimeLimitExceeded:
-        operation.status = "failed"
-        operation.log_line(_("Operation timed out."))
-        logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
+        operation = UpgradeOperation.objects.get(pk=operation_id)
     except ObjectDoesNotExist:
         logger.warning(
             f"The UpgradeOperation object with id {operation_id} has been deleted"
         )
+        return
+    if not UpgradeOperation.objects.filter(
+        pk=operation_id, status="in-progress"
+    ).exists():
+        return
+    try:
+        recoverable = self.request.retries < self.max_retries
+        operation.upgrade(recoverable=recoverable)
+    except SoftTimeLimitExceeded:
+        operation.status = "failed"
+        operation.log_line(_("Operation timed out."), save=False)
+        operation.save(update_fields=["status", "log"])
+        logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
 
 
 @shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
@@ -97,3 +111,103 @@ def delete_firmware_files(files_to_delete):
     FirmwareImage = load_model("FirmwareImage")
     for file_path in files_to_delete:
         FirmwareImage._remove_file(file_path)
+
+
+@shared_task(base=OpenwispCeleryTask)
+def retry_pending_upgrade(operation_id):
+    UpgradeOperation = load_model("UpgradeOperation")
+    updated = UpgradeOperation.objects.filter(pk=operation_id, status="pending").update(
+        status="in-progress"
+    )
+    if not updated:
+        return
+    try:
+        operation = UpgradeOperation.objects.select_related("device").get(
+            pk=operation_id
+        )
+    except ObjectDoesNotExist:
+        logger.warning(
+            f"The UpgradeOperation object with id {operation_id} has been deleted"
+        )
+        return
+    if operation.device.is_deactivated():
+        aborted = UpgradeOperation.objects.filter(
+            pk=operation_id, status="in-progress"
+        ).update(status="failed")
+        if aborted:
+            operation.status = "failed"
+            operation.log_line(
+                _("Device has been deactivated; persistent retry aborted."),
+                save=False,
+            )
+            operation.save(update_fields=["status", "log"])
+        return
+    if not UpgradeOperation.objects.filter(
+        pk=operation_id, status="in-progress"
+    ).exists():
+        return
+    operation.log_line(
+        _("Persistent retry #%(count)s starting.") % {"count": operation.retry_count},
+        save=False,
+    )
+    operation.save(update_fields=["log"])
+    upgrade_firmware.delay(operation.pk)
+
+
+@shared_task(base=OpenwispCeleryTask)
+def check_pending_upgrades():
+    UpgradeOperation = load_model("UpgradeOperation")
+    jitter = app_settings.PERSISTENT_RETRY_OPTIONS["dispatch_jitter"]
+    now = timezone.now()
+    due_ids = list(
+        UpgradeOperation.objects.filter(
+            status="pending", next_retry_at__lte=now
+        ).values_list("pk", flat=True)
+    )
+    for op_id in due_ids:
+        claimed = UpgradeOperation.objects.filter(pk=op_id, status="pending").update(
+            next_retry_at=now + timedelta(seconds=jitter)
+        )
+        if claimed:
+            retry_pending_upgrade.apply_async(
+                args=[op_id], countdown=random.uniform(0, jitter)
+            )
+
+
+@shared_task(base=OpenwispCeleryTask)
+def send_pending_upgrade_reminders():
+    BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+    period = app_settings.PERSISTENT_REMINDER_PERIOD
+    threshold = timezone.now() - timedelta(seconds=period)
+    due_condition = Q(last_reminder_at__lte=threshold) | Q(
+        last_reminder_at__isnull=True, created__lte=threshold
+    )
+    qs = (
+        BatchUpgradeOperation.objects.filter(
+            status="in-progress", upgradeoperation__status="pending"
+        )
+        .filter(due_condition)
+        .distinct()
+    )
+    for batch in qs:
+        pending_count = batch.upgradeoperation_set.filter(status="pending").count()
+        if not pending_count:
+            continue
+        claimed = (
+            BatchUpgradeOperation.objects.filter(pk=batch.pk)
+            .filter(due_condition, upgradeoperation__status="pending")
+            .update(last_reminder_at=timezone.now())
+        )
+        if not claimed:
+            continue
+        notify.send(
+            sender=batch,
+            type="pending_upgrade_reminder",
+            target=batch,
+            description=ngettext(
+                "%(count)d device is still pending in mass upgrade %(batch)s.",
+                "%(count)d devices are still pending in mass upgrade %(batch)s.",
+                pending_count,
+            )
+            % {"count": pending_count, "batch": batch},
+        )

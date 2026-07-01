@@ -85,9 +85,10 @@ class BuildSerializer(BaseSerializer):
 
 class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
     upgrade_all = serializers.BooleanField(required=False, default=False)
+    is_persistent = serializers.BooleanField(required=False, default=True)
 
     class Meta:
-        fields = ("upgrade_all", "group", "location")
+        fields = ("upgrade_all", "is_persistent", "group", "location")
         model = BatchUpgradeOperation
         extra_kwargs = {
             "group": {"required": False, "allow_null": True},
@@ -102,18 +103,34 @@ class UpgradeOperationSerializer(serializers.ModelSerializer):
             "id",
             "device",
             "image",
+            "is_persistent",
+            "retry_count",
+            "next_retry_at",
             "status",
             "log",
             "progress",
             "modified",
             "created",
         )
+        read_only_fields = ("is_persistent", "retry_count", "next_retry_at")
 
 
 class DeviceUpgradeOperationSerializer(serializers.ModelSerializer):
     class Meta:
         model = UpgradeOperation
-        fields = ("id", "device", "image", "status", "log", "progress", "modified")
+        fields = (
+            "id",
+            "device",
+            "image",
+            "is_persistent",
+            "retry_count",
+            "next_retry_at",
+            "status",
+            "log",
+            "progress",
+            "modified",
+        )
+        read_only_fields = ("is_persistent", "retry_count", "next_retry_at")
 
 
 class BatchUpgradeOperationListSerializer(BaseSerializer):
@@ -140,10 +157,27 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
 
 
 class DeviceFirmwareSerializer(ValidatedModelSerializer):
+    is_persistent = serializers.BooleanField(
+        required=False, default=False, write_only=True
+    )
+
     class Meta:
         model = DeviceFirmware
-        fields = ("id", "image", "installed", "modified")
+        fields = ("id", "image", "installed", "is_persistent", "modified")
         read_only_fields = ("installed", "modified")
+
+    def create(self, validated_data):
+        is_persistent = validated_data.pop("is_persistent", False)
+        instance = DeviceFirmware(**validated_data)
+        instance.save(is_persistent=is_persistent)
+        return instance
+
+    def update(self, instance, validated_data):
+        is_persistent = validated_data.pop("is_persistent", False)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save(is_persistent=is_persistent)
+        return instance
 
     def validate(self, data):
         if not data.get("device"):

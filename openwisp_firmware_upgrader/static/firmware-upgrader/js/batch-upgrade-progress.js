@@ -200,7 +200,20 @@ function updateBatchProgress(data) {
   if (data.total !== undefined && data.completed !== undefined) {
     let completedInfo = $(".field-completed .readonly");
     if (completedInfo.length > 0) {
-      completedInfo.text(`${data.completed} out of ${data.total}`);
+      let pending = data.pending !== undefined ? data.pending : 0;
+      if (pending > 0) {
+        completedInfo.text(
+          gettext("%(completed)s complete, %(pending)s pending")
+            .replace("%(completed)s", data.completed)
+            .replace("%(pending)s", pending),
+        );
+      } else {
+        completedInfo.text(
+          gettext("%(completed)s out of %(total)s")
+            .replace("%(completed)s", data.completed)
+            .replace("%(total)s", data.total),
+        );
+      }
     }
   }
 
