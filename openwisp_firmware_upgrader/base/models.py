@@ -178,8 +178,12 @@ class AbstractBuild(TimeStampedEditableModel):
         group=None,
         location=None,
         is_persistent=True,
+        scheduled_at=None,
     ):
         upgrade_options = upgrade_options or {}
+        # callers (e.g. the admin action) may pass a truthy request value
+        # rather than a bool; normalize before it reaches the model field
+        firmwareless = bool(firmwareless)
         # Check if there are any devices to upgrade with the given filters
         dry_run_result = load_model("BatchUpgradeOperation").dry_run(
             build=self, group=group, location=location
@@ -201,9 +205,15 @@ class AbstractBuild(TimeStampedEditableModel):
             group=group,
             location=location,
             is_persistent=is_persistent,
+            firmwareless=firmwareless,
+            scheduled_at=scheduled_at,
         )
         batch.full_clean()
         batch.save()
+        if scheduled_at:
+            batch.status = "scheduled"
+            batch.save(update_fields=["status"])
+            return batch
         transaction.on_commit(
             partial(batch_upgrade_operation.delay, batch.pk, firmwareless)
         )
@@ -675,8 +685,46 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                     )
                 }
             )
+        self._validate_schedule()
         self._validate_is_persistent_immutable()
         self._validate_scheduled_editability()
+
+    def _validate_schedule(self):
+        if self.scheduled_at is None:
+            return
+        if not self._state.adding:
+            stored = (
+                load_model("BatchUpgradeOperation")
+                .objects.values_list("scheduled_at", flat=True)
+                .get(pk=self.pk)
+            )
+            # an unchanged (and possibly now-due) stored value must not be
+            # re-validated: the bounds only apply when scheduling/rescheduling
+            if self.scheduled_at == stored:
+                return
+        now = timezone.now()
+        min_delay = app_settings.SCHEDULE_MIN_DELAY
+        max_horizon = app_settings.SCHEDULE_MAX_HORIZON
+        if self.scheduled_at < now + timedelta(seconds=min_delay):
+            raise ValidationError(
+                {
+                    "scheduled_at": _(
+                        "The scheduled time must be at least %(minutes)d "
+                        "minutes in the future."
+                    )
+                    % {"minutes": min_delay // 60}
+                }
+            )
+        if self.scheduled_at > now + timedelta(seconds=max_horizon):
+            raise ValidationError(
+                {
+                    "scheduled_at": _(
+                        "The scheduled time cannot be more than %(days)d "
+                        "days in the future."
+                    )
+                    % {"days": max_horizon // 86400}
+                }
+            )
 
     def _validate_is_persistent_immutable(self):
         """
@@ -760,7 +808,9 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                 }
             )
 
-    def upgrade(self, firmwareless):
+    def upgrade(self, firmwareless=None):
+        if firmwareless is None:
+            firmwareless = self.firmwareless
         self.status = "in-progress"
         self.save()
         self.upgrade_related_devices()
