@@ -1,6 +1,7 @@
 import io
 import uuid
 from contextlib import redirect_stdout
+from datetime import timedelta
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -687,6 +688,111 @@ class TestModels(TestUpgraderMixin, TestCase):
             batch = BatchUpgradeOperation(build=device_fw.image.build)
             self.assertTrue(batch._state.adding)
             batch.full_clean()
+
+    def test_scheduled_at_and_firmwareless_defaults(self):
+        batch = BatchUpgradeOperation(build=self._create_build())
+        self.assertIsNone(batch.scheduled_at)
+        self.assertFalse(batch.firmwareless)
+
+    def test_scheduled_status_choice(self):
+        self.assertIn("scheduled", dict(BatchUpgradeOperation.STATUS_CHOICES))
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(), status="scheduled"
+        )
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "scheduled")
+
+    def test_scheduled_at_composite_index(self):
+        indexes = connection.introspection.get_constraints(
+            connection.cursor(), BatchUpgradeOperation._meta.db_table
+        )
+        self.assertTrue(
+            any(
+                info["columns"] == ["status", "scheduled_at"] and info["index"]
+                for info in indexes.values()
+            )
+        )
+
+    def test_scheduled_editability_guard(self):
+        build = self._create_build()
+        other_build = self._create_build(version="0.2", os="OpenWrt 21.03")
+        batch = BatchUpgradeOperation.objects.create(
+            build=build, status="scheduled", scheduled_at=timezone.now()
+        )
+        with self.subTest("schedule and targeting editable while scheduled"):
+            batch.scheduled_at = timezone.now() + timedelta(hours=1)
+            batch.firmwareless = True
+            batch.full_clean()
+
+        with self.subTest("build frozen while scheduled"):
+            batch.refresh_from_db()
+            batch.build = other_build
+            with self.assertRaises(ValidationError) as ctx:
+                batch.full_clean()
+            self.assertIn("build", ctx.exception.message_dict)
+
+        with self.subTest("upgrade_options frozen while scheduled"):
+            batch.refresh_from_db()
+            batch.upgrade_options = {"reboot": True}
+            # called directly: super().clean() would schema-validate a non-empty
+            # upgrade_options against an upgrader class the bare build lacks
+            with self.assertRaises(ValidationError) as ctx:
+                batch._validate_scheduled_editability()
+            self.assertIn("upgrade_options", ctx.exception.message_dict)
+
+        with self.subTest("schedule frozen when launching in the same edit"):
+            batch.refresh_from_db()
+            batch.status = "in-progress"
+            batch.scheduled_at = timezone.now() + timedelta(days=2)
+            with self.assertRaises(ValidationError) as ctx:
+                batch.full_clean()
+            self.assertIn("scheduled_at", ctx.exception.message_dict)
+
+        with self.subTest("all guarded fields frozen once in-progress"):
+            batch.refresh_from_db()
+            batch.status = "in-progress"
+            batch.save(update_fields=["status"])
+            batch.scheduled_at = timezone.now() + timedelta(days=1)
+            with self.assertRaises(ValidationError) as ctx:
+                batch.full_clean()
+            self.assertIn("scheduled_at", ctx.exception.message_dict)
+            batch.refresh_from_db()
+            batch.firmwareless = True
+            with self.assertRaises(ValidationError) as ctx:
+                batch.full_clean()
+            self.assertIn("firmwareless", ctx.exception.message_dict)
+            batch.refresh_from_db()
+            batch.build = other_build
+            with self.assertRaises(ValidationError) as ctx:
+                batch.full_clean()
+            self.assertIn("build", ctx.exception.message_dict)
+
+    def test_is_persistent_editable_while_scheduled(self):
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(), status="scheduled", is_persistent=True
+        )
+        with self.subTest("editable while scheduled"):
+            batch.is_persistent = False
+            batch.full_clean()
+        with self.subTest("frozen once in-progress"):
+            batch.refresh_from_db()
+            batch.status = "in-progress"
+            batch.save(update_fields=["status"])
+            batch.is_persistent = False
+            with self.assertRaises(ValidationError) as ctx:
+                batch.full_clean()
+            self.assertIn("is_persistent", ctx.exception.message_dict)
+
+    def test_calculate_and_update_status_preserves_scheduled(self):
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(), status="scheduled"
+        )
+        new_status, stats = batch.calculate_and_update_status()
+        self.assertEqual(new_status, "scheduled")
+        for key in ("completed", "total_operations", "pending"):
+            self.assertIn(key, stats)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "scheduled")
 
     def _make_persistent_op(self, is_persistent):
         device_fw = self._create_device_firmware()
