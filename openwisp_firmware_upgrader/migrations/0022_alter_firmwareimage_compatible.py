@@ -5,10 +5,13 @@ from django.db import migrations, models
 
 def convert_compatible_to_text(apps, schema_editor):
     FirmwareImage = apps.get_model("firmware_upgrader", "FirmwareImage")
-    for image in FirmwareImage.objects.exclude(compatible=[]).iterator():
-        if isinstance(image.compatible, list):
-            FirmwareImage.objects.filter(pk=image.pk).update(
-                compatible="\n".join(image.compatible)
+    table = FirmwareImage._meta.db_table
+    for image in FirmwareImage.objects.iterator():
+        if isinstance(image.compatible, list) and image.compatible:
+            text_value = "\n".join(image.compatible)
+            schema_editor.execute(
+                f"UPDATE {table} SET compatible = %s WHERE id = %s",
+                [text_value, str(image.pk)],
             )
 
 
