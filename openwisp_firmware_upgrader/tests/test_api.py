@@ -1341,8 +1341,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
                 data = {"image": image1a.pk}
                 r = self.client.put(url, data, content_type="application/json")
             self.assertEqual(r.status_code, 400)
-            err = "Device model and image model do not match"
-            self.assertIn(err, r.json()["__all__"][0])
+            self.assertIn("Invalid pk", r.json()["image"][0])
 
         with self.subTest("Test image pk validation"):
             url = reverse("upgrader:api_devicefirmware_detail", args=[device2.pk])

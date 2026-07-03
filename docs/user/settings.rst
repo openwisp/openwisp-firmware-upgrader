@@ -54,41 +54,6 @@ the available slots in a background queue and prevent other tasks from
 being executed, which will end up affecting negatively the rest of the
 application.
 
-.. _openwisp_custom_openwrt_images:
-
-``OPENWISP_CUSTOM_OPENWRT_IMAGES``
-----------------------------------
-
-============ =========
-**type**:    ``tuple``
-**default**: ``None``
-============ =========
-
-This setting can be used to extend the list of firmware image types
-included in *OpenWISP Firmware Upgrader*. This setting is suited to add
-support for custom OpenWrt images.
-
-.. code-block:: python
-
-    OPENWISP_CUSTOM_OPENWRT_IMAGES = (
-        (
-            # Firmware image file name.
-            "customimage-squashfs-sysupgrade.bin",
-            {
-                # Human readable name of the model which is displayed on
-                # the UI
-                "label": "Custom WAP-1200",
-                # Tuple of board names with which the different versions of
-                # the hardware are identified on OpenWrt
-                "boards": ("CWAP1200",),
-            },
-        ),
-    )
-
-Kindly read :doc:`automatic-device-firmware-detection` section of this
-documentation to know how *OpenWISP Firmware Upgrader* uses this setting
-in upgrades.
-
 ``OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE``
 --------------------------------------------
 

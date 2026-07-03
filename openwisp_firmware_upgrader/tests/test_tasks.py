@@ -16,6 +16,7 @@ FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 
 _MOCK_EXTRACTOR = "openwisp_firmware_upgrader.tasks.OpenWrtMetadataExtractor"
+_MOCK_NOTIFY = "openwisp_notifications.signals.notify.send"
 
 
 class TestTasks(TestUpgraderMixin, TransactionTestCase):
@@ -100,9 +101,10 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(image.target, "ath79/generic")
         self.assertEqual(image.source, "fwtool")
         self.assertIn("success", image.extraction_log)
+        self.assertIn("[+] fwtool: metadata trailer found", image.extraction_log)
         self.assertEqual(image.fw_version, "23.05.5")
         self.assertEqual(image.compat_version, "1.0")
-        self.assertEqual(image.compatible, ["tplink,tl-wdr4300-v1"])
+        self.assertEqual(image.compatible, "tplink,tl-wdr4300-v1")
 
     @mock.patch(_MOCK_EXTRACTOR)
     @capture_any_output()
@@ -126,8 +128,16 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(image.source, "dtb")
         self.assertEqual(image.board, "Xunlong Orange Pi Zero")
         self.assertEqual(image.target, "")
-        self.assertEqual(image.compatible, ["xunlong,orangepi-zero"])
+        self.assertEqual(image.compatible, "xunlong,orangepi-zero")
         self.assertEqual(image.compat_version, "1.0")
+        self.assertIn(
+            "[-] fwtool: no metadata trailer found, fell back to DTB scan",
+            image.extraction_log,
+        )
+        self.assertIn(
+            "[+] DTB scan: board and compatible extracted", image.extraction_log
+        )
+        self.assertIn("Manual input is required", image.extraction_log)
 
     @mock.patch(_MOCK_EXTRACTOR)
     @capture_any_output()
@@ -207,6 +217,83 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         MockExtractor.assert_not_called()
         image.refresh_from_db()
         self.assertEqual(image.extraction_status, FirmwareImage.STATUS_IN_PROGRESS)
+
+    @mock.patch(_MOCK_NOTIFY)
+    @mock.patch(_MOCK_EXTRACTOR)
+    @capture_any_output()
+    def test_extract_firmware_metadata_failure_sends_notification(self, *args):
+        MockExtractor, mock_notify = args[0], args[1]
+        MockExtractor.return_value.extract.side_effect = UnsupportedImageError(
+            "x86 image type not supported"
+        )
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        tasks.extract_firmware_metadata.run(str(image.pk))
+        self.assertEqual(mock_notify.call_count, 2)
+        call_kwargs = mock_notify.call_args_list[0].kwargs
+        self.assertEqual(call_kwargs["level"], "error")
+        self.assertIn("#device-metadata", call_kwargs["url"])
+
+    @mock.patch(_MOCK_NOTIFY)
+    @mock.patch(_MOCK_EXTRACTOR)
+    @capture_any_output()
+    def test_extract_firmware_metadata_invalid_does_not_send_notification(self, *args):
+        MockExtractor, mock_notify = args[0], args[1]
+        MockExtractor.return_value.extract.side_effect = RuntimeError("unexpected")
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        tasks.extract_firmware_metadata.run(str(image.pk))
+        mock_notify.assert_not_called()
+
+    @mock.patch(_MOCK_NOTIFY)
+    @mock.patch(_MOCK_EXTRACTOR)
+    @capture_any_output()
+    def test_extract_firmware_metadata_dtb_sends_notification(self, *args):
+        MockExtractor, mock_notify = args[0], args[1]
+        MockExtractor.return_value.extract.return_value = {
+            "model": "Xunlong Orange Pi Zero",
+            "compatible": ["xunlong,orangepi-zero"],
+            "target": "",
+            "version": "",
+            "compat_version": "1.0",
+            "source": "dtb",
+        }
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        tasks.extract_firmware_metadata.run(str(image.pk))
+        self.assertEqual(mock_notify.call_count, 2)
+        call_kwargs = mock_notify.call_args_list[0].kwargs
+        self.assertEqual(call_kwargs["level"], "warning")
+        self.assertIn("#device-metadata", call_kwargs["url"])
+
+    @mock.patch(_MOCK_NOTIFY)
+    @mock.patch(_MOCK_EXTRACTOR)
+    @capture_any_output()
+    def test_extract_firmware_metadata_fwtool_success_no_dtb_notification(self, *args):
+        MockExtractor, mock_notify = args[0], args[1]
+        MockExtractor.return_value.extract.return_value = {
+            "model": "TP-Link WDR4300",
+            "compatible": ["tplink,tl-wdr4300-v1"],
+            "target": "ath79/generic",
+            "version": "23.05.5",
+            "compat_version": "1.0",
+            "source": "fwtool",
+        }
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        tasks.extract_firmware_metadata.run(str(image.pk))
+        mock_notify.assert_called_once()
+        call_kwargs = mock_notify.call_args.kwargs
+        self.assertEqual(call_kwargs["level"], "info")
+        self.assertNotIn("#device-metadata", call_kwargs["url"])
 
     def test_compat_blocks_pairing_above_1_0(self):
         self.assertTrue(tasks._compat_blocks_pairing("1.1"))

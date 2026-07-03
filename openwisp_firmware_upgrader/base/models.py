@@ -34,11 +34,6 @@ from ..exceptions import (
     UpgradeCancelled,
     UpgradeNotNeeded,
 )
-from ..hardware import (
-    FIRMWARE_IMAGE_MAP,
-    FIRMWARE_IMAGE_TYPE_CHOICES,
-    REVERSE_FIRMWARE_IMAGE_MAP,
-)
 from ..signals import firmware_upgrader_log_updated
 from ..swapper import get_model_name, load_model
 from ..tasks import (
@@ -336,6 +331,8 @@ class AbstractBuild(TimeStampedEditableModel):
         self.status = new_status
 
     def _notify_extraction_complete(self, new_status):
+        if new_status == self.BUILD_STATUS_INVALID:
+            return
         level = (
             "info"
             if new_status
@@ -352,21 +349,22 @@ class AbstractBuild(TimeStampedEditableModel):
                 f"admin:{opts.app_label}_{opts.model_name}_change",
                 args=[str(self.pk)],
             )
+            message = format_html(
+                _(
+                    'Metadata extraction for build <a href="{url}">{build}</a> '
+                    "completed with status: {status}."
+                ),
+                url=admin_url,
+                build=self,
+                status=status_display,
+            )
             notify.send(
                 sender=self,
                 type="generic_message",
                 level=level,
                 url=admin_url,
                 target=self,
-                message=format_html(
-                    _(
-                        'Metadata extraction for build <a href="{url}">{build}</a> '
-                        "completed with status: {status}."
-                    ),
-                    url=admin_url,
-                    build=self,
-                    status=status_display,
-                ),
+                message=message,
             )
         except Exception:
             logger.exception("Failed to send build extraction completion notification")
@@ -389,7 +387,6 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     type = models.CharField(
         blank=True,
         max_length=128,
-        choices=FIRMWARE_IMAGE_TYPE_CHOICES,
         help_text=_(
             "firmware image type: model or "
             "architecture. Leave blank to attempt "
@@ -442,7 +439,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         default="",
     )
     board = models.CharField(_("board"), max_length=200, blank=True)
-    compatible = models.JSONField(_("compatible"), default=list, blank=True)
+    compatible = models.TextField(_("compatible"), default="", blank=True)
     target = models.CharField(_("target"), max_length=100, blank=True)
     fw_version = models.CharField(_("firmware version"), max_length=50, blank=True)
     compat_version = models.CharField(_("compat version"), max_length=10, blank=True)
@@ -464,12 +461,12 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     def __str__(self):
         if hasattr(self, "build") and self.type:
-            return f"{self.build}: {self.get_type_display()}"
+            return f"{self.build}: {self.type}"
         return super().__str__()
 
     @property
     def boards(self):
-        return FIRMWARE_IMAGE_MAP[self.type]["boards"]
+        return [self.board] if self.board else []
 
     def clean(self):
         self._clean_type()
@@ -707,8 +704,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     'please add one in the section named "Credentials"'
                 )
             )
-        if self.device.model not in self.image.boards:
-            raise ValidationError(_("Device model and image model do not match"))
+        if self.image.board and self.device.model != self.image.board:
+            raise ValidationError(_("Device model and image do not match"))
 
     @property
     def image_has_changed(self):
@@ -754,19 +751,17 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         """
         DeviceFirmware = load_model("DeviceFirmware")
         FirmwareImage = load_model("FirmwareImage")
-        image_type = REVERSE_FIRMWARE_IMAGE_MAP.get(device.model)
-
-        if not image_type:
-            return
 
         if not firmware_image:
-            try:
-                firmware_image = FirmwareImage.objects.get(
-                    build__category__organization_id=device.organization_id,
-                    build__os=device.os,
-                    type=image_type,
-                )
-            except FirmwareImage.DoesNotExist:
+            if not device.model:
+                return
+            firmware_image = FirmwareImage.objects.filter(
+                build__category__organization_id=device.organization_id,
+                build__os=device.os,
+                board=device.model,
+                extraction_status__in=FirmwareImage.LOCKED_STATUSES,
+            ).first()
+            if not firmware_image:
                 return
 
         device_fw = DeviceFirmware(device=device, image=firmware_image, installed=True)
@@ -785,9 +780,6 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             return
         if not instance.device.os or not instance.device.model:
             return
-        if instance.device.model not in REVERSE_FIRMWARE_IMAGE_MAP:
-            return
-
         transaction.on_commit(partial(create_device_firmware.delay, instance.device.pk))
 
     @classmethod
@@ -819,8 +811,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         )
         # if device model is defined
         # restrict the images to the ones compatible with it
-        if device.model and device.model in REVERSE_FIRMWARE_IMAGE_MAP:
-            qs = qs.filter(type=REVERSE_FIRMWARE_IMAGE_MAP[device.model])
+        if device.model:
+            qs = qs.filter(board=device.model)
         # if DeviceFirmware instance already exists
         # restrict images to the ones of the same category
         if device_firmware and hasattr(device_firmware, "image"):

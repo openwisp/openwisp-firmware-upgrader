@@ -16,7 +16,6 @@ from django.db import migrations, models
 
 import openwisp_firmware_upgrader.base.models
 import openwisp_users.mixins
-from openwisp_firmware_upgrader.hardware import FIRMWARE_IMAGE_TYPE_CHOICES
 from openwisp_firmware_upgrader.settings import FIRMWARE_API_BASEURL, IMAGE_URL_PATH
 
 
@@ -200,7 +199,7 @@ class Migration(migrations.Migration):
                     "type",
                     models.CharField(
                         blank=True,
-                        choices=FIRMWARE_IMAGE_TYPE_CHOICES,
+                        choices=[],
                         help_text="firmware image type: model or architecture. Leave blank to attempt determining automatically",
                         max_length=128,
                     ),

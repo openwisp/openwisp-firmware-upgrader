@@ -1,0 +1,10 @@
+{% extends "admin/change_form.html" %}
+{% block content %}
+{{ block.super }}
+<script>
+    (function() {
+        var el = document.querySelector('.module.device-metadata');
+        if (el) { el.id = 'device-metadata'; }
+    }());
+</script>
+{% endblock %}

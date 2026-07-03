@@ -29,7 +29,6 @@ from openwisp_users.tests.utils import TestMultitenantAdminMixin
 from openwisp_utils.tests import AdminActionPermTestMixin, capture_stderr
 
 from .. import settings as app_settings
-from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..upgraders.openwisp import OpenWisp1
 from .base import TestUpgraderMixin
@@ -287,7 +286,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(image.extraction_log, "")
         self.assertEqual(image.failure_reason, "")
         self.assertEqual(image.board, "")
-        self.assertEqual(image.compatible, [])
+        self.assertEqual(image.compatible, "")
         self.assertEqual(image.target, "")
         self.assertEqual(image.fw_version, "")
         self.assertEqual(image.compat_version, "")
@@ -368,7 +367,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         img_org2 = self._create_firmware_image(build=build_org2)
         yuncore = self._create_firmware_image(
             build=device_fw.image.build,
-            type=REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"],
+            type="ar71xx-generic-xd3200-squashfs.sysupgrade.bin",
         )
         mesh_category = self._create_category(
             name="mesh", organization=device.organization
@@ -662,7 +661,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         # is displayed as readonly in the admin interface.
         self.assertContains(
             response,
-            "Test Category v0.1: TP-Link WDR4300 v1 (OpenWrt 19.07 and later)",
+            f"Test Category v0.1: {self.TPLINK_4300_IMAGE}",
         )
         self.assertNotContains(
             response,
@@ -1215,7 +1214,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         request.user = User.objects.first()
         fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
         readonly = fw_admin.get_readonly_fields(request, obj=fw)
-        for field in ["board", "compatible", "target", "fw_version", "compat_version"]:
+        for field in ["board", "compatible", "target", "fw_version"]:
             with self.subTest(field=field):
                 self.assertIn(field, readonly)
 
@@ -1228,7 +1227,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         request.user = User.objects.first()
         fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
         readonly = fw_admin.get_readonly_fields(request, obj=fw)
-        for field in ["board", "compatible", "target", "fw_version", "compat_version"]:
+        for field in ["board", "compatible", "target", "fw_version"]:
             with self.subTest(field=field):
                 self.assertIn(field, readonly)
 
@@ -1241,7 +1240,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         request.user = User.objects.first()
         fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
         readonly = fw_admin.get_readonly_fields(request, obj=fw)
-        for field in ["board", "compatible", "compat_version"]:
+        for field in ["board", "compatible"]:
             with self.subTest(field=field):
                 self.assertIn(field, readonly)
         for field in ["target", "fw_version"]:
@@ -1256,7 +1255,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         request.user = User.objects.first()
         fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
         readonly = fw_admin.get_readonly_fields(request, obj=fw)
-        for field in ["board", "compatible", "target", "fw_version", "compat_version"]:
+        for field in ["board", "compatible", "target", "fw_version"]:
             with self.subTest(field=field):
                 self.assertNotIn(field, readonly)
 
@@ -1268,7 +1267,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         request.user = User.objects.first()
         fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
         readonly = fw_admin.get_readonly_fields(request, obj=fw)
-        for field in ["board", "compatible", "target", "fw_version", "compat_version"]:
+        for field in ["board", "compatible", "target", "fw_version"]:
             with self.subTest(field=field):
                 self.assertIn(field, readonly)
 
@@ -1280,9 +1279,31 @@ class TestAdmin(BaseTestAdmin, TestCase):
         request.user = User.objects.first()
         fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
         readonly = fw_admin.get_readonly_fields(request, obj=fw)
-        for field in ["board", "compatible", "target", "fw_version", "compat_version"]:
+        for field in ["board", "compatible", "target", "fw_version"]:
             with self.subTest(field=field):
                 self.assertIn(field, readonly)
+
+    def test_firmware_image_fieldsets_hides_failure_reason_when_not_failed(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_SUCCESS
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertNotIn("failure_reason_display", all_fields)
+
+    def test_firmware_image_fieldsets_shows_failure_reason_when_failed(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertIn("failure_reason_display", all_fields)
 
     @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
     def test_firmware_image_save_model_file_change_triggers_extraction(self, mock_task):

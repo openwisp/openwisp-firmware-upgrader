@@ -13,7 +13,6 @@ from django.utils import timezone
 
 from openwisp_utils.tests import capture_any_output
 
-from .. import settings as app_settings
 from ..swapper import load_model
 from ..tasks import upgrade_firmware
 from .base import TestUpgraderMixin
@@ -200,27 +199,6 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIn("device", cm.exception.message_dict)
         self.assertIn("image", cm.exception.message_dict)
 
-    def test_invalid_board(self):
-        image = FIRMWARE_IMAGE_MAP[self.TPLINK_4300_IMAGE]
-        boards = image["boards"]
-        del image["boards"]
-        err = None
-        try:
-            self._create_firmware_image()
-        except ValidationError as e:
-            err = e
-        image["boards"] = boards
-        if err:
-            self.assertIn("type", err.message_dict)
-            self.assertIn("not find boards", str(err))
-        else:
-            self.fail("ValidationError not raised")
-
-    def test_custom_image_type_present(self):
-        t = FirmwareImage._meta.get_field("type")
-        custom_images = app_settings.CUSTOM_OPENWRT_IMAGES
-        self.assertEqual(t.choices[0][0], custom_images[0][0])
-
     def test_device_firmware_image_invalid_model(self):
         device_fw = self._create_device_firmware()
         different_img = self._create_firmware_image(
@@ -230,7 +208,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             device_fw.image = different_img
             device_fw.full_clean()
         except ValidationError as e:
-            self.assertIn("model do not match", str(e))
+            self.assertIn("Device model and image do not match", str(e))
         else:
             self.fail("ValidationError not raised")
 
@@ -408,6 +386,54 @@ class TestModels(TestUpgraderMixin, TestCase):
         device_fw.image.build.save()
         result = DeviceFirmware.create_for_device(device_fw.device)
         self.assertIsNone(result)
+
+    def test_create_for_device_matches_board_and_os(self):
+        image = self._create_firmware_image(
+            extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        build = image.build
+        build.os = "OpenWrt 21.03"
+        build.save()
+        device = self._create_device(
+            organization=build.category.organization,
+            os=build.os,
+            model=image.board,
+        )
+        self._create_config(device=device)
+        self._create_device_connection(device=device)
+        device_fw = DeviceFirmware.create_for_device(device)
+        self.assertIsNotNone(device_fw)
+        self.assertEqual(device_fw.image, image)
+
+    def test_create_for_device_board_mismatch_returns_none(self):
+        image = self._create_firmware_image(
+            extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        build = image.build
+        build.os = "OpenWrt 21.03"
+        build.save()
+        device = self._create_device(
+            organization=build.category.organization,
+            os=build.os,
+            model="some-other-board",
+        )
+        self._create_config(device=device)
+        self.assertIsNone(DeviceFirmware.create_for_device(device))
+
+    def test_create_for_device_os_mismatch_returns_none(self):
+        image = self._create_firmware_image(
+            extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        build = image.build
+        build.os = "OpenWrt 21.03"
+        build.save()
+        device = self._create_device(
+            organization=build.category.organization,
+            os="OpenWrt 19.07",
+            model=image.board,
+        )
+        self._create_config(device=device)
+        self.assertIsNone(DeviceFirmware.create_for_device(device))
 
     def test_upgrade_operation_retention_on_image_delete(self):
         device_fw = self._create_device_firmware()

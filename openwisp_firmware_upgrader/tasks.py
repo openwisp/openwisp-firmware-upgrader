@@ -1,4 +1,5 @@
 import logging
+import os
 
 import swapper
 from celery import shared_task
@@ -112,6 +113,17 @@ def _compat_blocks_pairing(compat_version):
         return False
 
 
+def _get_image_admin_url(image):
+    opts = image._meta
+    return (
+        reverse(
+            f"admin:{opts.app_label}_{opts.model_name}_change",
+            args=[str(image.pk)],
+        )
+        + "#device-metadata"
+    )
+
+
 @shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
 def extract_firmware_metadata(self, image_pk):
     FirmwareImage = load_model("FirmwareImage")
@@ -131,7 +143,7 @@ def extract_firmware_metadata(self, image_pk):
     ).update(extraction_status=FirmwareImage.STATUS_IN_PROGRESS)
     if not updated:
         return
-    log_lines = [f"[+] Analyzing: {image.file.name}"]
+    log_lines = [f"[+] Analyzing: {os.path.basename(image.file.name)}"]
     update = {}
 
     try:
@@ -141,12 +153,23 @@ def extract_firmware_metadata(self, image_pk):
             OpenWrtMetadataExtractor,
         )
         meta = extractor_class(image.file.path).extract()
+        if meta.get("source") == "dtb":
+            log_lines.append(
+                "[-] fwtool: no metadata trailer found, fell back to DTB scan"
+            )
+            log_lines.append("[+] DTB scan: board and compatible extracted")
+            log_lines.append(
+                "[!] Target and firmware version unavailable from DTB. "
+                "Manual input is required."
+            )
+        else:
+            log_lines.append("[+] fwtool: metadata trailer found")
         log_lines.append("[+] extraction: success")
         update = {
             "extraction_status": FirmwareImage.STATUS_SUCCESS,
             "extraction_log": "\n".join(log_lines),
             "board": meta.get("model", ""),
-            "compatible": meta.get("compatible", []),
+            "compatible": "\n".join(meta.get("compatible", [])),
             "target": meta.get("target", ""),
             "fw_version": meta.get("version", ""),
             "compat_version": meta.get("compat_version", ""),
@@ -206,40 +229,68 @@ def extract_firmware_metadata(self, image_pk):
 
     FirmwareImage.objects.filter(pk=image_pk).update(**update)
 
-    if update.get("extraction_status") not in (
-        FirmwareImage.STATUS_SUCCESS,
-        FirmwareImage.STATUS_IN_PROGRESS,
-    ):
+    try:
+        fresh = FirmwareImage.objects.select_related("build", "build__category").get(
+            pk=image_pk
+        )
+    except Exception:
+        logger.exception(
+            "Failed to re-fetch image %s for post-extraction steps", image_pk
+        )
+        return
+
+    if update.get("extraction_status") == FirmwareImage.STATUS_FAILED:
         try:
-            image = FirmwareImage.objects.select_related(
-                "build", "build__category"
-            ).get(pk=image_pk)
-            build_opts = image.build._meta
-            admin_url = reverse(
-                f"admin:{build_opts.app_label}_{build_opts.model_name}_change",
-                args=[str(image.build_id)],
+            admin_url = _get_image_admin_url(fresh)
+            failure_reason_choices = dict(FirmwareImage.FAILURE_REASON_CHOICES)
+            reason_display = failure_reason_choices.get(
+                update.get("failure_reason", ""),
+                _("unknown error"),
             )
             notify.send(
-                sender=image,
+                sender=fresh,
                 type="generic_message",
                 level="error",
                 url=admin_url,
-                target=image.build,
+                target=fresh,
                 message=format_html(
                     _(
                         'Metadata extraction failed for <a href="{url}">{image}</a>: '
-                        "{reason}. You can manually enter metadata or re-upload the image."
+                        "{reason}. Enter the metadata manually or re-upload the image."
                     ),
                     url=admin_url,
-                    image=image,
-                    reason=update.get("failure_reason", "unknown error"),
+                    image=fresh,
+                    reason=reason_display,
                 ),
             )
         except Exception:
             logger.exception("Failed to send extraction failure notification")
 
+    if (
+        update.get("extraction_status") == FirmwareImage.STATUS_SUCCESS
+        and update.get("source") == "dtb"
+    ):
+        try:
+            admin_url = _get_image_admin_url(fresh)
+            notify.send(
+                sender=fresh,
+                type="generic_message",
+                level="warning",
+                url=admin_url,
+                target=fresh,
+                message=format_html(
+                    _(
+                        'Partial metadata extracted via DTB scan for <a href="{url}">{image}</a>. '
+                        "Manual input required."
+                    ),
+                    url=admin_url,
+                    image=fresh,
+                ),
+            )
+        except Exception:
+            logger.exception("Failed to send DTB extraction notification")
+
     try:
-        fresh = FirmwareImage.objects.select_related("build").get(pk=image_pk)
         fresh.build._update_extraction_status()
     except Exception:
         logger.exception(

@@ -29,6 +29,9 @@ class TestUpgraderMixin(CreateConnectionsMixin):
     TPLINK_4300_IL_IMAGE = (
         "ath79-generic-tplink_tl-wdr4300-v1-il-squashfs-sysupgrade.bin"
     )
+    _DEFAULT_BOARDS = {
+        "ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin": "TP-Link TL-WDR4300 v1",
+    }
 
     def tearDown(self):
         super().tearDown()
@@ -77,6 +80,8 @@ class TestUpgraderMixin(CreateConnectionsMixin):
     def _create_firmware_image(self, **kwargs):
         opts = dict(type=self.TPLINK_4300_IMAGE)
         opts.update(kwargs)
+        if "board" not in opts:
+            opts["board"] = self._DEFAULT_BOARDS.get(opts["type"], opts["type"])
         if "extraction_status" not in opts:
             opts["extraction_status"] = FirmwareImage.STATUS_SUCCESS
         category_opts = {}

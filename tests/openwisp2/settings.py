@@ -218,12 +218,6 @@ LOGGING = {
     },
 }
 
-OPENWISP_CUSTOM_OPENWRT_IMAGES = (
-    (
-        "customimage-squashfs-sysupgrade.bin",
-        {"label": "Custom WAP-1200", "boards": ("CWAP1200",)},
-    ),
-)
 OPENWISP_USERS_AUTH_API = True
 # for testing purposes
 OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS = {

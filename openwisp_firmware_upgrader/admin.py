@@ -108,6 +108,14 @@ def _extraction_status_badge(status):
     )
 
 
+def _compatible_display_html(obj):
+    if not obj.compatible:
+        return "-"
+    return mark_safe(
+        "<br>".join(format_html("{}", item) for item in obj.compatible.splitlines())
+    )
+
+
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     save_on_top = True
 
@@ -126,14 +134,37 @@ class CategoryAdmin(BaseVersionAdmin):
     ordering = ["-name", "-created"]
 
 
-class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
+class FirmwareImageInline(admin.StackedInline):
     model = FirmwareImage
     extra = 0
-    readonly_fields = ["created", "modified", "extraction_status_display"]
+    show_change_link = True
+    fields = [
+        "file",
+        "extraction_status_display",
+        "extraction_log",
+        "board",
+        "compatible_display",
+        "source",
+        "target",
+        "fw_version",
+    ]
+    readonly_fields = [
+        "board",
+        "compatible_display",
+        "target",
+        "fw_version",
+        "source",
+        "extraction_status_display",
+        "extraction_log",
+    ]
 
     @admin.display(description=_("Extraction Status"))
     def extraction_status_display(self, obj):
         return _extraction_status_badge(obj.extraction_status)
+
+    @admin.display(description=_("Compatible"))
+    def compatible_display(self, obj):
+        return _compatible_display_html(obj)
 
     class Media:
         extra = "" if getattr(settings, "DEBUG", False) else ".min"
@@ -151,7 +182,10 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
         )
 
         css = {
-            "screen": ("admin/css/vendor/select2/select2%s.css" % extra,),
+            "screen": (
+                "admin/css/vendor/select2/select2%s.css" % extra,
+                "firmware-upgrader/css/extraction-status.css",
+            ),
         }
 
     def has_change_permission(self, request, obj=None):
@@ -162,16 +196,16 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
 
 @admin.register(FirmwareImage)
 class FirmwareImageAdmin(BaseAdmin):
+    change_form_template = "admin/firmware_upgrader/firmwareimage_change_form.html"
     list_display = [
         "__str__",
         "build",
-        "type",
         "extraction_status_display",
         "created",
         "modified",
     ]
     list_filter = ["extraction_status", "build__category"]
-    search_fields = ["board", "target", "type"]
+    search_fields = ["board", "target"]
     ordering = ["-created"]
     actions = ["re_extract_metadata"]
     readonly_fields = [
@@ -180,13 +214,14 @@ class FirmwareImageAdmin(BaseAdmin):
         "extraction_status_display",
         "failure_reason_display",
         "extraction_log_display",
+        "compatible_display",
         "source",
     ]
     fieldsets = [
         (
             None,
             {
-                "fields": ["build", "file", "type", "created", "modified"],
+                "fields": ["build", "file", "created", "modified"],
             },
         ),
         (
@@ -207,17 +242,20 @@ class FirmwareImageAdmin(BaseAdmin):
         (
             _("Device Metadata"),
             {
+                "classes": ["device-metadata"],
                 "fields": [
                     "board",
-                    "compatible",
+                    "compatible_display",
+                    "source",
                     "target",
                     "fw_version",
-                    "compat_version",
-                    "source",
                 ],
             },
         ),
     ]
+
+    class Media:
+        css = {"all": ["firmware-upgrader/css/extraction-status.css"]}
 
     def get_readonly_fields(self, request, obj=None):
         readonly = list(self.readonly_fields)
@@ -233,24 +271,41 @@ class FirmwareImageAdmin(BaseAdmin):
                     "compatible",
                     "target",
                     "fw_version",
-                    "compat_version",
                 ]
             elif status == FirmwareImage.STATUS_SUCCESS:
                 if obj.source == "dtb":
-                    readonly += ["board", "compatible", "compat_version"]
+                    readonly += ["board", "compatible"]
                 else:
                     readonly += [
                         "board",
                         "compatible",
                         "target",
                         "fw_version",
-                        "compat_version",
                     ]
         return readonly
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = list(super().get_fieldsets(request, obj))
+        is_failed = obj and obj.extraction_status == FirmwareImage.STATUS_FAILED
+        result = []
+        for title, opts in fieldsets:
+            fields = list(opts["fields"])
+            if not is_failed:
+                fields = [f for f in fields if f != "failure_reason_display"]
+            if is_failed:
+                fields = [
+                    "compatible" if f == "compatible_display" else f for f in fields
+                ]
+            result.append((title, {**opts, "fields": fields}))
+        return result
 
     @admin.display(description=_("Extraction Status"))
     def extraction_status_display(self, obj):
         return _extraction_status_badge(obj.extraction_status)
+
+    @admin.display(description=_("Compatible"))
+    def compatible_display(self, obj):
+        return _compatible_display_html(obj)
 
     @admin.display(description=_("Failure Reason"))
     def failure_reason_display(self, obj):
@@ -273,7 +328,7 @@ class FirmwareImageAdmin(BaseAdmin):
             obj.extraction_log = ""
             obj.failure_reason = ""
             obj.board = ""
-            obj.compatible = []
+            obj.compatible = ""
             obj.target = ""
             obj.fw_version = ""
             obj.compat_version = ""
@@ -309,7 +364,7 @@ class FirmwareImageAdmin(BaseAdmin):
             extraction_log="",
             failure_reason="",
             board="",
-            compatible=[],
+            compatible="",
             target="",
             fw_version="",
             compat_version="",
@@ -408,6 +463,23 @@ class BuildAdmin(BaseAdmin):
     actions = ["upgrade_selected"]
     multitenant_parent = "category"
     autocomplete_fields = ["category"]
+    readonly_fields = ["build_status_display", "created", "modified"]
+    fieldsets = [
+        (
+            None,
+            {
+                "fields": [
+                    "category",
+                    "version",
+                    "os",
+                    "changelog",
+                    "build_status_display",
+                    "created",
+                    "modified",
+                ],
+            },
+        ),
+    ]
 
     # Allows apps that extend this modules to use this template with less hacks
     change_form_template = "admin/firmware_upgrader/change_form.html"

@@ -3,9 +3,12 @@ from openwisp_firmware_upgrader.admin import (  # noqa
     BuildAdmin,
     CategoryAdmin,
     DeviceUpgradeOperationInline,
+    FirmwareImageInline,
     UpgradeOperationForm,
 )
 
 BatchUpgradeOperationAdmin.fields.append("details")
 UpgradeOperationForm.Meta.fields.append("details")
 DeviceUpgradeOperationInline.fields.append("details")
+BuildAdmin.fieldsets[0][1]["fields"].append("details")
+FirmwareImageInline.fields.append("details")

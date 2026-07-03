@@ -17,7 +17,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
-from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.tests.base import SeleniumTestMixin, TestUpgraderMixin
 from openwisp_firmware_upgrader.websockets import (
     BatchUpgradeProgressPublisher,
@@ -42,7 +41,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     config_app_label = Device._meta.app_label
     firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
-    image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
+    image_type = "ar71xx-generic-xd3200-squashfs-sysupgrade.bin"
     _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
@@ -480,7 +479,7 @@ class TestRealTimeProgress(
     config_app_label = Device._meta.app_label
     firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
-    image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
+    image_type = "ar71xx-generic-xd3200-squashfs.sysupgrade.bin"
     maxDiff = None
 
     def setUp(self):

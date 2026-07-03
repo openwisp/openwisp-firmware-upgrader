@@ -89,11 +89,11 @@ this step.
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-firmwareimage.gif
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/quickstart-firmwareimage.gif
 
-If you use a hardware model which is not listed in the image types, if the
-hardware model is officially supported by OpenWrt, you can send us a
-pull-request to add it, otherwise you can use :ref:`the setting
-OPENWISP_CUSTOM_OPENWRT_IMAGES <openwisp_custom_openwrt_images>` to add
-it.
+After uploading, the system will automatically extract metadata (board,
+compatible strings, target, firmware version) from the image. For image
+types where automatic extraction is not supported (e.g. x86), the metadata
+can be entered manually from the firmware image's detail page once the
+extraction status is shown as *Failed*.
 
 4. Perform a Firmware Upgrade to a Specific Device
 --------------------------------------------------
