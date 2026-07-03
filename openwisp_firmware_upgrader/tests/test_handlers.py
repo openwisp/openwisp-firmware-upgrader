@@ -1,6 +1,7 @@
 from unittest import mock
 
 from django.apps import apps
+from django.dispatch import Signal
 from django.test import TransactionTestCase
 
 from .. import settings as app_settings
@@ -154,9 +155,32 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
         tasks.retry_pending_upgrade.run(op.pk)
         self.assertEqual(mocked_upgrade.call_count, 1)
 
-    def test_connect_monitoring_signals_skips_when_module_missing(self):
+    def test_connect_monitoring_signals_skips_when_not_installed(self):
         config = apps.get_app_config("firmware_upgrader")
-        with mock.patch.dict(
-            "sys.modules", {"openwisp_monitoring.device.signals": None}
+        with mock.patch(
+            "openwisp_firmware_upgrader.apps.load_model", return_value=None
+        ) as mocked_load:
+            config.connect_monitoring_signals()
+        mocked_load.assert_called_once_with(
+            "device_monitoring", "DeviceMonitoring", required=False
+        )
+
+    def test_connect_monitoring_signals_connects_when_installed(self):
+        config = apps.get_app_config("firmware_upgrader")
+        signal = Signal()
+        fake_signals = mock.Mock(health_status_changed=signal)
+        with mock.patch(
+            "openwisp_firmware_upgrader.apps.load_model",
+            side_effect=lambda app, model, **kw: (
+                mock.Mock()
+                if (app, model) == ("device_monitoring", "DeviceMonitoring")
+                else UpgradeOperation
+            ),
+        ), mock.patch.dict(
+            "sys.modules", {"openwisp_monitoring.device.signals": fake_signals}
         ):
             config.connect_monitoring_signals()
+        self.assertEqual(len(signal.receivers), 1)
+        self.assertEqual(
+            signal.receivers[0][0][0], "firmware_upgrader.health_status_changed"
+        )
