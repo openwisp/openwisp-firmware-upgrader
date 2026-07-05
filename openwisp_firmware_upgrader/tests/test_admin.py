@@ -5,11 +5,13 @@ from unittest import mock
 
 import django
 import swapper
+from django.conf import settings
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.timezone import localtime
 
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
@@ -219,6 +221,90 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         self.assertContains(r, 'name="is_persistent"')
         self.assertTrue(r.context["form"].fields["is_persistent"].initial)
+
+    def test_confirmation_page_renders_scheduled_at_input(self):
+        self._login()
+        env = self._create_upgrade_env()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(r, 'name="scheduled_at"')
+        self.assertContains(r, 'id="schedule-timezone"')
+
+    def test_scheduled_upgrade_creates_scheduled_batch(self):
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.now() + timedelta(days=1)).replace(second=0, microsecond=0)
+        posted = due.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at": posted,
+            },
+            follow=True,
+        )
+        self.assertContains(r, "This mass upgrade has been scheduled")
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.status, "scheduled")
+        self.assertTrue(batch.firmwareless)
+        self.assertEqual(batch.scheduled_at, due)
+
+    def test_scheduled_upgrade_related_persists_firmwareless_false(self):
+        self._login()
+        env = self._create_upgrade_env()
+        due = timezone.now() + timedelta(days=1)
+        posted = due.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_related": "on",
+                "scheduled_at": posted,
+            },
+            follow=True,
+        )
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.status, "scheduled")
+        self.assertFalse(batch.firmwareless)
+
+    def test_batch_admin_list_shows_schedule_and_filters(self):
+        self._login()
+        env = self._create_upgrade_env()
+        due = timezone.now() + timedelta(days=1)
+        scheduled = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="scheduled", scheduled_at=due
+        )
+        idle = BatchUpgradeOperation.objects.create(build=env["build2"])
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        r = self.client.get(url)
+        self.assertContains(r, f"({settings.TIME_ZONE})")
+        self.assertContains(r, "field-firmwareless")
+        self.assertContains(r, "field-scheduled_at_display")
+        r = self.client.get(url, {"status__exact": "scheduled"})
+        self.assertContains(r, str(scheduled.pk))
+        self.assertNotContains(r, str(idle.pk))
+
+    def test_batch_admin_detail_shows_schedule_readonly(self):
+        self._login()
+        build = self._create_build()
+        due = timezone.now() + timedelta(days=1)
+        batch = BatchUpgradeOperation.objects.create(
+            build=build, status="scheduled", scheduled_at=due, firmwareless=True
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, localtime(due).strftime("%Y-%m-%d %H:%M"))
 
     def test_upgrade_operation_filter_by_persistence(self):
         self._login()
