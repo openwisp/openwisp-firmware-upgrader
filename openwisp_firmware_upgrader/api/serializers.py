@@ -81,9 +81,16 @@ class BuildSerializer(BaseSerializer):
 class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
     upgrade_all = serializers.BooleanField(required=False, default=False)
     is_persistent = serializers.BooleanField(required=False, default=True)
+    scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
 
     class Meta:
-        fields = ("upgrade_all", "is_persistent", "group", "location")
+        fields = (
+            "upgrade_all",
+            "is_persistent",
+            "group",
+            "location",
+            "scheduled_at",
+        )
         model = BatchUpgradeOperation
         extra_kwargs = {
             "group": {"required": False, "allow_null": True},

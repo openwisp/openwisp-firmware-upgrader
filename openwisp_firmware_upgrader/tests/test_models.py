@@ -763,8 +763,6 @@ class TestModels(TestUpgraderMixin, TestCase):
         with self.subTest("upgrade_options frozen while scheduled"):
             batch.refresh_from_db()
             batch.upgrade_options = {"reboot": True}
-            # called directly: super().clean() would schema-validate a non-empty
-            # upgrade_options against an upgrader class the bare build lacks
             with self.assertRaises(ValidationError) as ctx:
                 batch._validate_scheduled_editability()
             self.assertIn("upgrade_options", ctx.exception.message_dict)

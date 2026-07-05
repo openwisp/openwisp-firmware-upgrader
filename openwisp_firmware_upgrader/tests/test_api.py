@@ -1,10 +1,13 @@
 import uuid
+from datetime import timedelta
 from unittest import mock
 
 import swapper
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from packaging.version import parse as parse_version
 from rest_framework import VERSION as REST_FRAMEWORK_VERSION
 
@@ -346,6 +349,32 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         r = self.client.post(url)
         self.assertEqual(r.status_code, 400)
         self.assertIn("conflicting mass upgrade", r.data["error"])
+
+    def test_api_create_scheduled_batch(self):
+        env = self._create_upgrade_env()
+        due = (timezone.now() + timedelta(days=1)).replace(microsecond=0)
+        url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
+        r = self.client.post(
+            url, {"upgrade_all": True, "scheduled_at": due.isoformat()}
+        )
+        self.assertEqual(r.status_code, 201)
+        batch = BatchUpgradeOperation.objects.get(pk=r.data["batch"])
+        self.assertEqual(batch.status, "scheduled")
+        self.assertTrue(batch.firmwareless)
+        self.assertEqual(batch.scheduled_at, due)
+        detail = reverse("upgrader:api_batchupgradeoperation_detail", args=[batch.pk])
+        rd = self.client.get(detail)
+        self.assertEqual(parse_datetime(rd.data["scheduled_at"]), due)
+
+    def test_api_scheduled_at_past_returns_400(self):
+        env = self._create_upgrade_env()
+        past = timezone.now() - timedelta(hours=1)
+        url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
+        r = self.client.post(
+            url, {"upgrade_all": True, "scheduled_at": past.isoformat()}
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("at least", str(r.data))
 
     def test_build_upgradeable(self):
         env = self._create_upgrade_env()
@@ -968,6 +997,157 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
+
+    def _create_scheduled_batch(self, build, **kwargs):
+        opts = dict(
+            build=build,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        opts.update(kwargs)
+        return BatchUpgradeOperation.objects.create(**opts)
+
+    def test_reschedule_scheduled_batch(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        new_due = (timezone.now() + timedelta(days=2)).replace(microsecond=0)
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {"scheduled_at": new_due.isoformat()})
+        self.assertEqual(r.status_code, 200)
+        batch.refresh_from_db()
+        self.assertEqual(batch.scheduled_at, new_due)
+
+    def test_reschedule_updates_editable_fields(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"], is_persistent=True)
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {"is_persistent": False, "upgrade_all": True})
+        self.assertEqual(r.status_code, 200)
+        batch.refresh_from_db()
+        self.assertFalse(batch.is_persistent)
+        self.assertTrue(batch.firmwareless)
+
+    def test_reschedule_past_returns_400(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        past = (timezone.now() - timedelta(hours=1)).isoformat()
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {"scheduled_at": past})
+        self.assertEqual(r.status_code, 400)
+
+    def test_reschedule_null_scheduled_at_returns_400(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(
+            url, data='{"scheduled_at": null}', content_type="application/json"
+        )
+        self.assertEqual(r.status_code, 400)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "scheduled")
+        self.assertIsNotNone(batch.scheduled_at)
+
+    def test_reschedule_after_launch_returns_409(self):
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build2"], status="in-progress"
+        )
+        due = (timezone.now() + timedelta(days=1)).isoformat()
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {"scheduled_at": due})
+        self.assertEqual(r.status_code, 409)
+
+    def test_cancel_scheduled_batch(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        url = reverse("upgrader:api_batchupgradeoperation_cancel", args=[batch.pk])
+        r = self.client.post(url)
+        self.assertEqual(r.status_code, 200)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "cancelled")
+
+    def test_cancel_terminal_returns_409(self):
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build2"], status="success"
+        )
+        url = reverse("upgrader:api_batchupgradeoperation_cancel", args=[batch.pk])
+        r = self.client.post(url)
+        self.assertEqual(r.status_code, 409)
+
+    def test_cancel_in_progress_cancels_children(self):
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build2"], status="in-progress"
+        )
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="pending",
+            batch=batch,
+            progress=0,
+        )
+        url = reverse("upgrader:api_batchupgradeoperation_cancel", args=[batch.pk])
+        r = self.client.post(url)
+        self.assertEqual(r.status_code, 200)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "cancelled")
+
+    def test_cancel_in_progress_leaves_reflashing_child(self):
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build2"], status="in-progress"
+        )
+        reflashing = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="in-progress",
+            batch=batch,
+            progress=70,
+        )
+        url = reverse("upgrader:api_batchupgradeoperation_cancel", args=[batch.pk])
+        r = self.client.post(url)
+        self.assertEqual(r.status_code, 200)
+        reflashing.refresh_from_db()
+        self.assertEqual(reflashing.status, "in-progress")
+
+    def test_list_scheduled_filter_and_ordering(self):
+        env = self._create_upgrade_env()
+        soon = self._create_scheduled_batch(env["build2"])
+        later = self._create_scheduled_batch(
+            env["build1"], scheduled_at=timezone.now() + timedelta(days=5)
+        )
+        idle = BatchUpgradeOperation.objects.create(build=env["build1"])
+        url = reverse("upgrader:api_batchupgradeoperation_list")
+        r = self.client.get(url, {"status": "scheduled"})
+        ids = [b["id"] for b in r.data["results"]]
+        self.assertIn(str(soon.pk), ids)
+        self.assertIn(str(later.pk), ids)
+        self.assertNotIn(str(idle.pk), ids)
+        r = self.client.get(url, {"status": "scheduled", "ordering": "scheduled_at"})
+        ordered = [b["id"] for b in r.data["results"]]
+        self.assertEqual(ordered, [str(soon.pk), str(later.pk)])
+
+    def test_reschedule_other_org_returns_404(self):
+        org2 = self._create_org(name="org2-resched", slug="org2-resched")
+        build = self._create_build(
+            category=self._create_category(name="cat2", organization=org2)
+        )
+        batch = self._create_scheduled_batch(build)
+        due = (timezone.now() + timedelta(days=2)).isoformat()
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {"scheduled_at": due})
+        self.assertEqual(r.status_code, 404)
+
+    def test_cancel_other_org_returns_404(self):
+        org2 = self._create_org(name="org2-cancel", slug="org2-cancel")
+        build = self._create_build(
+            category=self._create_category(name="cat3", organization=org2)
+        )
+        batch = self._create_scheduled_batch(build)
+        url = reverse("upgrader:api_batchupgradeoperation_cancel", args=[batch.pk])
+        r = self.client.post(url)
+        self.assertEqual(r.status_code, 404)
 
     def test_batchupgradeoperation_list_django_filters(self):
         env = self._create_upgrade_env(organization=self.org)

@@ -195,7 +195,6 @@ class AbstractBuild(TimeStampedEditableModel):
         scheduled_at=None,
     ):
         upgrade_options = upgrade_options or {}
-        # the admin action passes a truthy request value rather than a bool
         firmwareless = bool(firmwareless)
         # Check if there are any devices to upgrade with the given filters
         dry_run_result = load_model("BatchUpgradeOperation").dry_run(
@@ -1225,6 +1224,38 @@ class AbstractBatchUpgradeOperation(
             )
         )
         instance._previous_status = instance.status
+
+    def cancel(self):
+        if self.status == "scheduled":
+            updated = self._meta.model.objects.filter(
+                pk=self.pk, status="scheduled"
+            ).update(status="cancelled")
+            if not updated:
+                self.refresh_from_db(fields=["status"])
+                raise ValueError(
+                    _("Cannot cancel mass upgrade with status: %(status)s")
+                    % {"status": self.status}
+                )
+            self.status = "cancelled"
+            self.save(update_fields=["status"])
+            return
+        if self.status == "in-progress":
+            UpgradeOperation = load_model("UpgradeOperation")
+            operations = self.upgradeoperation_set.filter(
+                status__in=UpgradeOperation.CANCELLABLE_STATUS,
+                progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
+            )
+            for operation in operations:
+                try:
+                    operation.cancel()
+                except ValueError:
+                    continue
+            self.refresh_from_db()
+            return
+        raise ValueError(
+            _("Cannot cancel mass upgrade with status: %(status)s")
+            % {"status": self.status}
+        )
 
 
 class AbstractUpgradeOperation(
