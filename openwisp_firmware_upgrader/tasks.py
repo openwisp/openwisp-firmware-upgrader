@@ -126,5 +126,39 @@ def check_pending_upgrades():
 
 
 @shared_task(base=OpenwispCeleryTask)
+def execute_scheduled_upgrades():
+    BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+    now = timezone.now()
+    due_ids = list(
+        BatchUpgradeOperation.objects.filter(
+            status="scheduled", scheduled_at__lte=now
+        ).values_list("pk", flat=True)
+    )
+    for batch_id in due_ids:
+        claimed = BatchUpgradeOperation.objects.filter(
+            pk=batch_id, status="scheduled"
+        ).update(status="in-progress")
+        if not claimed:
+            continue
+        try:
+            batch = BatchUpgradeOperation.objects.select_related("build").get(
+                pk=batch_id
+            )
+        except ObjectDoesNotExist:
+            continue
+        result = BatchUpgradeOperation.dry_run(
+            build=batch.build, group=batch.group, location=batch.location
+        )
+        eligible = result["device_firmwares"].exists() or (
+            batch.firmwareless and result["devices"].exists()
+        )
+        if not eligible:
+            batch.status = "failed"
+            batch.save(update_fields=["status"])
+            continue
+        batch_upgrade_operation.delay(batch_id, batch.firmwareless)
+
+
+@shared_task(base=OpenwispCeleryTask)
 def send_pending_upgrade_reminders():
     load_model("BatchUpgradeOperation").send_pending_reminders()
