@@ -326,7 +326,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
         with self.subTest("Existing build"):
             url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
-            with self.assertNumQueries(10):
+            with self.assertNumQueries(12):
                 r = self.client.post(url)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
             batch = BatchUpgradeOperation.objects.first()
@@ -338,6 +338,14 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             with self.assertNumQueries(4):
                 r = self.client.post(url)
             self.assertEqual(r.status_code, 404)
+
+    def test_api_batch_upgrade_conflict(self):
+        env = self._create_upgrade_env()
+        url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
+        self.assertEqual(self.client.post(url).status_code, 201)
+        r = self.client.post(url)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("conflicting mass upgrade", r.data["error"])
 
     def test_build_upgradeable(self):
         env = self._create_upgrade_env()
@@ -442,7 +450,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest(
             "Test superuser can mass upgrade shared build with upgrade_all"
         ):
-            with self.assertNumQueries(8):
+            with self.assertNumQueries(10):
                 response = self.client.post(path, {"upgrade_all": True})
             self.assertEqual(response.status_code, 201)
             batch = BatchUpgradeOperation.objects.first()
@@ -964,6 +972,9 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
     def test_batchupgradeoperation_list_django_filters(self):
         env = self._create_upgrade_env(organization=self.org)
         env["build1"].batch_upgrade(firmwareless=False)
+        BatchUpgradeOperation.objects.filter(build=env["build1"]).update(
+            status="cancelled"
+        )
         env["build2"].batch_upgrade(firmwareless=False)
         url = reverse("upgrader:api_batchupgradeoperation_list")
         serialized_list = [
