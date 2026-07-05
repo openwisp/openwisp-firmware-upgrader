@@ -712,6 +712,7 @@ class AbstractBatchUpgradeOperation(
         self._validate_schedule()
         self._validate_is_persistent_immutable()
         self._validate_scheduled_editability()
+        self._validate_no_conflict()
 
     def _validate_schedule(self):
         """
@@ -842,6 +843,70 @@ class AbstractBatchUpgradeOperation(
                         "mass upgrade has started"
                     )
                 }
+            )
+
+    def _filters_overlap_with(self, other):
+        if self.build.category_id != other.build.category_id:
+            return False
+        group_overlaps = (
+            self.group_id is None
+            or other.group_id is None
+            or self.group_id == other.group_id
+        )
+        location_overlaps = (
+            self.location_id is None
+            or other.location_id is None
+            or self.location_id == other.location_id
+        )
+        return group_overlaps and location_overlaps
+
+    def _validate_no_conflict(self):
+        """
+        Reject creation when an active batch or an active per-device operation
+        already covers this batch's device population: launching a second
+        upgrade over the same devices would flash them twice and make progress
+        reporting meaningless.
+        """
+        Batch = load_model("BatchUpgradeOperation")
+        active = (
+            Batch.objects.filter(
+                status__in=("idle", "scheduled", "in-progress"),
+                build__category_id=self.build.category_id,
+            )
+            .exclude(pk=self.pk)
+            .select_related("build")
+        )
+        for existing in active:
+            if self._filters_overlap_with(existing):
+                raise ValidationError(
+                    _(
+                        "A conflicting mass upgrade already exists: operation "
+                        "%(pk)s (status: %(status)s, scheduled for %(when)s)."
+                    )
+                    % {
+                        "pk": existing.pk,
+                        "status": existing.get_status_display(),
+                        "when": existing.scheduled_at or _("immediate execution"),
+                    }
+                )
+        UpgradeOperation = load_model("UpgradeOperation")
+        device_ids = self.build._find_related_device_firmwares(
+            group=self.group, location=self.location
+        ).values_list("device_id", flat=True)
+        clashing = UpgradeOperation.objects.filter(
+            status__in=UpgradeOperation.CANCELLABLE_STATUS,
+            device_id__in=device_ids,
+        )
+        if self.pk is not None:
+            clashing = clashing.exclude(batch_id=self.pk)
+        clash = clashing.first()
+        if clash:
+            raise ValidationError(
+                _(
+                    "A device in this upgrade already has an active operation "
+                    "(device %(device)s, status: %(status)s)."
+                )
+                % {"device": clash.device_id, "status": clash.get_status_display()}
             )
 
     def upgrade(self, firmwareless=None):

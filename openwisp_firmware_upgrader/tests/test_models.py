@@ -858,18 +858,29 @@ class TestModels(TestUpgraderMixin, TestCase):
             batch._validate_schedule()
 
     def test_batch_upgrade_schedule_fork(self):
-        device_fw = self._create_device_firmware()
-        build = device_fw.image.build
+        scheduled_build = self._create_device_firmware().image.build
+        immediate_image = self._create_firmware_image(
+            build=self._create_build(
+                category=self._create_category(
+                    name="Immediate Category",
+                    organization=self._create_org(name="immediate-org"),
+                )
+            )
+        )
+        self._create_device_firmware(image=immediate_image)
+        immediate_build = immediate_image.build
         future = timezone.now() + timedelta(hours=2)
         with mock.patch("django.db.transaction.on_commit") as on_commit:
             with self.subTest("scheduled batch is saved as scheduled, not dispatched"):
-                batch = build.batch_upgrade(firmwareless=True, scheduled_at=future)
+                batch = scheduled_build.batch_upgrade(
+                    firmwareless=True, scheduled_at=future
+                )
                 self.assertEqual(batch.status, "scheduled")
                 self.assertTrue(batch.firmwareless)
                 self.assertEqual(batch.scheduled_at, future)
                 on_commit.assert_not_called()
             with self.subTest("immediate batch is dispatched on commit"):
-                batch = build.batch_upgrade(firmwareless=False)
+                batch = immediate_build.batch_upgrade(firmwareless=False)
                 self.assertEqual(batch.status, "idle")
                 self.assertFalse(batch.firmwareless)
                 on_commit.assert_called_once()
@@ -891,6 +902,124 @@ class TestModels(TestUpgraderMixin, TestCase):
                 fwless.reset_mock()
                 batch.upgrade(firmwareless=False)
                 fwless.assert_not_called()
+
+    def test_filters_overlap_truth_table(self):
+        build = self._create_device_firmware().image.build
+        org = build.category.organization
+        other_build = self._create_build(
+            category=self._create_category(name="Other Category")
+        )
+        g1 = self._create_device_group(name="g1", organization=org)
+        g2 = self._create_device_group(name="g2", organization=org)
+        loc1, loc2 = uuid.uuid4(), uuid.uuid4()
+
+        def batch(group=None, location=None, target=build):
+            return BatchUpgradeOperation(
+                build=target, group=group, location_id=location
+            )
+
+        cases = [
+            ("same category, no filters", batch(), batch(), True),
+            ("superset vs group", batch(), batch(group=g1), True),
+            ("different group", batch(group=g1), batch(group=g2), False),
+            ("different location", batch(location=loc1), batch(location=loc2), False),
+            ("group vs location", batch(group=g1), batch(location=loc1), True),
+            ("different category", batch(), batch(target=other_build), False),
+        ]
+        for label, first, second, expected in cases:
+            with self.subTest(label):
+                self.assertEqual(first._filters_overlap_with(second), expected)
+
+    def test_conflict_with_active_batch(self):
+        build = self._create_device_firmware().image.build
+        existing = BatchUpgradeOperation.objects.create(build=build, status="scheduled")
+        with self.assertRaises(ValidationError) as ctx:
+            BatchUpgradeOperation(build=build).full_clean()
+        message = str(ctx.exception)
+        self.assertIn(str(existing.pk), message)
+        self.assertIn(existing.get_status_display(), message)
+        self.assertIn("immediate execution", message)
+
+    def test_conflict_message_reports_scheduled_time(self):
+        build = self._create_device_firmware().image.build
+        future = timezone.now() + timedelta(hours=2)
+        BatchUpgradeOperation.objects.create(
+            build=build, status="scheduled", scheduled_at=future
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            BatchUpgradeOperation(build=build).full_clean()
+        self.assertNotIn("immediate execution", str(ctx.exception))
+
+    def test_no_conflict_excludes_self(self):
+        build = self._create_device_firmware().image.build
+        future = timezone.now() + timedelta(hours=2)
+        batch = BatchUpgradeOperation.objects.create(
+            build=build, status="scheduled", scheduled_at=future
+        )
+        batch.full_clean()
+
+    def test_no_conflict_across_categories(self):
+        first = self._create_device_firmware().image.build
+        second = self._create_build(
+            category=self._create_category(name="Second Category")
+        )
+        BatchUpgradeOperation.objects.create(build=first, status="scheduled")
+        BatchUpgradeOperation(build=second).full_clean()
+
+    def test_conflict_with_active_device_operation(self):
+        device_fw = self._create_device_firmware()
+        for status in ("pending", "in-progress"):
+            with self.subTest(status):
+                op = UpgradeOperation.objects.create(
+                    device=device_fw.device, image=device_fw.image, status=status
+                )
+                with self.assertRaises(ValidationError) as ctx:
+                    BatchUpgradeOperation(build=device_fw.image.build).full_clean()
+                message = str(ctx.exception)
+                self.assertIn(str(op.device_id), message)
+                self.assertIn(op.get_status_display(), message)
+                op.delete()
+
+    def test_no_conflict_with_terminal_device_operation(self):
+        device_fw = self._create_device_firmware()
+        UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, status="success"
+        )
+        BatchUpgradeOperation(build=device_fw.image.build).full_clean()
+
+    def test_no_conflict_when_device_already_installed(self):
+        device_fw = self._create_device_firmware()
+        device_fw.installed = True
+        device_fw.save()
+        UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, status="pending"
+        )
+        BatchUpgradeOperation(build=device_fw.image.build).full_clean()
+
+    def test_conflict_excludes_own_children(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(build=device_fw.image.build)
+        UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            status="pending",
+            batch=batch,
+        )
+        batch.full_clean()
+        UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, status="pending"
+        )
+        with self.assertRaises(ValidationError):
+            batch.full_clean()
+
+    def test_active_batch_blocks_later_scheduled(self):
+        build = self._create_device_firmware().image.build
+        future = timezone.now() + timedelta(hours=2)
+        BatchUpgradeOperation.objects.create(build=build, status="in-progress")
+        with self.assertRaises(ValidationError):
+            BatchUpgradeOperation(
+                build=build, status="scheduled", scheduled_at=future
+            ).full_clean()
 
     def test_schedule_not_revalidated_when_unchanged(self):
         batch = BatchUpgradeOperation.objects.create(
