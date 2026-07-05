@@ -12,6 +12,108 @@
 {% block content %}
 {{ block.super }}
 
+{% if show_batch_actions %}
+<section class="batch-actions module aligned" aria-labelledby="batch-actions-title">
+  <h2 id="batch-actions-title">{% trans "Schedule and actions" %}</h2>
+
+  <div class="batch-actions-buttons">
+    {% if batch.status == "scheduled" %}
+    <button type="button" id="batch-reschedule-btn" class="button"
+            aria-expanded="false" aria-controls="batch-reschedule-form">
+      {% trans "Edit schedule" %}
+    </button>
+    {% endif %}
+    <button type="button" id="batch-cancel-btn" class="button danger-btn">
+      {% trans "Cancel mass upgrade" %}
+    </button>
+  </div>
+
+  {% if batch.status == "scheduled" %}
+  <div id="batch-reschedule-form" class="batch-reschedule-form ow-hide"
+       data-scheduled-at="{{ batch.scheduled_at|date:'c' }}"
+       data-min-delay="{{ schedule_min_delay }}"
+       data-max-horizon="{{ schedule_max_horizon }}"
+       role="region" aria-label="{% trans 'Edit schedule' %}">
+
+    <div class="form-row">
+      <div>
+        <div class="flex-container">
+          <label class="required" for="batch-reschedule-input">{% trans "Scheduled time" %}:</label>
+          <input type="datetime-local" id="batch-reschedule-input"
+                 aria-describedby="batch-reschedule-input_helptext batch-reschedule-feedback">
+          <span id="batch-reschedule-timezone" class="help batch-reschedule-tz"></span>
+        </div>
+        <div class="help" id="batch-reschedule-input_helptext">
+          {% trans "The time is entered in your local timezone and stored in UTC." %}
+        </div>
+        <div class="help batch-reschedule-feedback ow-hide" id="batch-reschedule-feedback"
+             role="alert" aria-live="assertive"></div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div>
+        <div class="flex-container">
+          <label for="batch-reschedule-group">{% trans "Device group" %}:</label>
+          <select id="batch-reschedule-group">
+            <option value="">{% trans "All groups" %}</option>
+            {% for group in reschedule_groups %}
+            <option value="{{ group.pk }}" {% if group.pk == batch.group_id %}selected{% endif %}>{{ group }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="help">{% trans "Limit the upgrade to devices in this group." %}</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div>
+        <div class="flex-container">
+          <label for="batch-reschedule-location">{% trans "Location" %}:</label>
+          <select id="batch-reschedule-location">
+            <option value="">{% trans "All locations" %}</option>
+            {% for location in reschedule_locations %}
+            <option value="{{ location.pk }}" {% if location.pk == batch.location_id %}selected{% endif %}>{{ location }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="help">{% trans "Limit the upgrade to devices at this location." %}</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div>
+        <div class="flex-container batch-reschedule-checkbox">
+          <label class="vCheckboxLabel" for="batch-reschedule-persistent">
+            <input type="checkbox" id="batch-reschedule-persistent" {% if batch.is_persistent %}checked{% endif %}>
+            {% trans "Persistent" %}
+          </label>
+        </div>
+        <div class="help">{% trans "Keep retrying failed device upgrades until they succeed." %}</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div>
+        <div class="flex-container batch-reschedule-checkbox">
+          <label class="vCheckboxLabel" for="batch-reschedule-firmwareless">
+            <input type="checkbox" id="batch-reschedule-firmwareless" {% if batch.firmwareless %}checked{% endif %}>
+            {% trans "Include firmwareless devices" %}
+          </label>
+        </div>
+        <div class="help">{% trans "Also upgrade devices with no known firmware image, inferring the image from the hardware model." %}</div>
+      </div>
+    </div>
+
+    <div class="batch-reschedule-footer">
+      <button type="button" id="batch-reschedule-save" class="button default">{% trans "Save schedule" %}</button>
+      <button type="button" id="batch-reschedule-cancel" class="button">{% trans "Discard" %}</button>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 <!-- Upgrade Operations Section -->
 <h1 class="upgrade-operations-title">{% trans "Upgrade Operations" %}</h1>
 
@@ -201,6 +303,13 @@
   var owDeviceUpgradeOperationUrl = "{{ upgrade_operation_path }}";
   window.djangoLocale = "{{ django_locale|default:"en-us" }}";
 </script>
+{% if batch_cancel_url %}
+<script>
+  var owBatchRescheduleUrl = "{{ batch_reschedule_url }}";
+  var owBatchCancelUrl = "{{ batch_cancel_url }}";
+</script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-actions.js' %}"></script>
+{% endif %}
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-utils.js' %}"></script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-upgrade-progress.js' %}"></script>
 <script>
