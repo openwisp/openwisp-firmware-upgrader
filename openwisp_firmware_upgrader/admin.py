@@ -761,8 +761,39 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                     "upgrade_operation_app_label": upgrade_operation_app_label,
                     "is_persistent": obj.is_persistent,
                     "show_next_retry": show_next_retry,
+                    "batch": obj,
                 }
             )
+            if app_settings.FIRMWARE_UPGRADER_API:
+                extra_context["show_batch_actions"] = obj.status in (
+                    "scheduled",
+                    "in-progress",
+                )
+                extra_context["batch_reschedule_url"] = reverse(
+                    "upgrader:api_batchupgradeoperation_reschedule", args=[object_id]
+                )
+                extra_context["batch_cancel_url"] = reverse(
+                    "upgrader:api_batchupgradeoperation_cancel", args=[object_id]
+                )
+                if obj.status == "scheduled":
+                    org_id = obj.build.category.organization_id
+                    groups = DeviceGroup.objects.all()
+                    locations = Location.objects.all()
+                    if org_id:
+                        groups = groups.filter(organization_id=org_id)
+                        locations = locations.filter(organization_id=org_id)
+                    if not request.user.is_superuser:
+                        managed = request.user.organizations_managed
+                        groups = groups.filter(organization_id__in=managed)
+                        locations = locations.filter(organization_id__in=managed)
+                    extra_context["reschedule_groups"] = groups
+                    extra_context["reschedule_locations"] = locations
+                    extra_context["schedule_min_delay"] = (
+                        app_settings.SCHEDULE_MIN_DELAY
+                    )
+                    extra_context["schedule_max_horizon"] = (
+                        app_settings.SCHEDULE_MAX_HORIZON
+                    )
         return super().change_view(request, object_id, extra_context=extra_context)
 
     def get_readonly_fields(self, request, obj=None):

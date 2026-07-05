@@ -306,6 +306,64 @@ class TestAdmin(BaseTestAdmin, TestCase):
         r = self.client.get(url)
         self.assertContains(r, localtime(due).strftime("%Y-%m-%d %H:%M"))
 
+    def test_batch_admin_action_buttons(self):
+        self._login()
+        build = self._create_build()
+        due = timezone.now() + timedelta(days=1)
+
+        def get_change(batch):
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
+            return self.client.get(url)
+
+        with self.subTest("scheduled shows edit and cancel"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build, status="scheduled", scheduled_at=due
+            )
+            r = get_change(batch)
+            self.assertContains(r, 'id="batch-reschedule-btn"')
+            self.assertContains(r, 'id="batch-cancel-btn"')
+            self.assertContains(r, f"batch-upgrade-operation/{batch.pk}/reschedule/")
+            self.assertContains(r, 'id="batch-reschedule-group"')
+            self.assertContains(r, 'id="batch-reschedule-location"')
+            self.assertContains(r, 'id="batch-reschedule-persistent"')
+            self.assertContains(r, 'id="batch-reschedule-firmwareless"')
+            batch.delete()
+
+        with self.subTest("in-progress shows cancel only"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build, status="in-progress"
+            )
+            r = get_change(batch)
+            self.assertNotContains(r, 'id="batch-reschedule-btn"')
+            self.assertContains(r, 'id="batch-cancel-btn"')
+            batch.delete()
+
+        with self.subTest("terminal shows neither"):
+            batch = BatchUpgradeOperation.objects.create(build=build, status="success")
+            r = get_change(batch)
+            self.assertNotContains(r, 'id="batch-cancel-btn"')
+
+    def test_batch_change_page_renders_without_api(self):
+        self._login()
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(),
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        with mock.patch(
+            "openwisp_firmware_upgrader.admin.app_settings.FIRMWARE_UPGRADER_API",
+            False,
+        ):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'id="batch-cancel-btn"')
+        self.assertNotContains(r, "batch-actions.js")
+
     def test_upgrade_operation_filter_by_persistence(self):
         self._login()
         env = self._create_upgrade_env()
