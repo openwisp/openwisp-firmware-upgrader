@@ -42,6 +42,7 @@ within the OpenWISP architecture.
     ./user/quickstart.rst
     ./user/upgrade-status.rst
     ./user/persistent-mass-upgrades.rst
+    ./user/scheduled-mass-upgrades.rst
     ./user/automatic-device-firmware-detection.rst
     ./user/custom-firmware-upgrader.rst
     ./user/rest-api.rst
