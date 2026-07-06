@@ -1208,6 +1208,8 @@ class AbstractBatchUpgradeOperation(
         """
         if created or instance.status not in ("success", "failed"):
             return
+        if not instance.upgradeoperation_set.exists():
+            return
         if getattr(instance, "_previous_status", None) == instance.status:
             return
         description = _("Mass upgrade %(batch)s %(status)s.") % {
@@ -1255,6 +1257,27 @@ class AbstractBatchUpgradeOperation(
         raise ValueError(
             _("Cannot cancel mass upgrade with status: %(status)s")
             % {"status": self.status}
+        )
+
+    def _scheduled_started(self):
+        notify.send(
+            sender=self,
+            type="generic_message",
+            target=self,
+            message=_("Scheduled mass upgrade %(batch)s has started.")
+            % {"batch": self},
+        )
+
+    def _scheduled_validation_failed(self):
+        notify.send(
+            sender=self,
+            type="generic_message",
+            target=self,
+            message=_(
+                "Scheduled mass upgrade %(batch)s was not started: no eligible "
+                "devices remained at the scheduled time."
+            )
+            % {"batch": self},
         )
 
 

@@ -135,16 +135,13 @@ def execute_scheduled_upgrades():
         ).values_list("pk", flat=True)
     )
     for batch_id in due_ids:
-        claimed = BatchUpgradeOperation.objects.filter(
-            pk=batch_id, status="scheduled"
-        ).update(status="in-progress")
-        if not claimed:
-            continue
         try:
             batch = BatchUpgradeOperation.objects.select_related("build").get(
                 pk=batch_id
             )
         except ObjectDoesNotExist:
+            continue
+        if batch.status != "scheduled":
             continue
         result = BatchUpgradeOperation.dry_run(
             build=batch.build, group=batch.group, location=batch.location
@@ -153,10 +150,19 @@ def execute_scheduled_upgrades():
             batch.firmwareless and result["devices"].exists()
         )
         if not eligible:
-            batch.status = "failed"
-            batch.save(update_fields=["status"])
+            failed = BatchUpgradeOperation.objects.filter(
+                pk=batch_id, status="scheduled"
+            ).update(status="failed")
+            if failed:
+                batch._scheduled_validation_failed()
+            continue
+        claimed = BatchUpgradeOperation.objects.filter(
+            pk=batch_id, status="scheduled"
+        ).update(status="in-progress")
+        if not claimed:
             continue
         batch_upgrade_operation.delay(batch_id, batch.firmwareless)
+        batch._scheduled_started()
 
 
 @shared_task(base=OpenwispCeleryTask)
