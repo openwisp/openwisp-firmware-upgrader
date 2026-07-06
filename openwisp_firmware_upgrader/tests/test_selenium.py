@@ -561,6 +561,50 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         )
 
     @patch(_mock_upgrade, return_value=True)
+    def test_mass_upgrade_schedule_widget(self, *args):
+        with patch(self._mock_connect, return_value=True):
+            _, _, _, build2, _, _, _ = self._set_up_env()
+            self.login()
+            self.open(
+                reverse(
+                    f"admin:{self.firmware_app_label}_build_change", args=[build2.id]
+                )
+            )
+            self.find_element(
+                by=By.CSS_SELECTOR,
+                value='.title-wrapper .object-tools form button[type="submit"]',
+            ).click()
+            widget = self.wait_for_presence(By.NAME, "scheduled_at")
+            self.assertEqual(widget.get_attribute("type"), "datetime-local")
+            self.assertEqual(widget.get_attribute("value"), "")
+            self.wait_for_presence(By.ID, "schedule-timezone")
+            WebDriverWait(self.web_driver, 5).until(
+                lambda driver: "Your timezone:"
+                in driver.find_element(By.ID, "schedule-timezone").get_attribute(
+                    "textContent"
+                )
+            )
+            self._assert_no_js_errors(ignore_websockets=True)
+            self.web_driver.execute_script(
+                "var i=arguments[0];"
+                "var d=new Date(Date.now()+24*60*60*1000);"
+                "var p=function(n){return String(n).padStart(2,'0')};"
+                "i.value=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())"
+                "+'T'+p(d.getHours())+':'+p(d.getMinutes());"
+                "i.dispatchEvent(new Event('input',{bubbles:true}));",
+                widget,
+            )
+            self.find_element(
+                by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
+            ).click()
+            WebDriverWait(self.web_driver, 5).until(
+                EC.url_contains("batchupgradeoperation")
+            )
+            batch = BatchUpgradeOperation.objects.get(build=build2)
+            self.assertEqual(batch.status, "scheduled")
+            self.assertIsNotNone(batch.scheduled_at)
+
+    @patch(_mock_upgrade, return_value=True)
     def test_upgrade_operation_admin_no_submit_row(self, *args):
         """Test that UpgradeOperation admin change page does not display submit-row"""
         with patch(self._mock_connect, return_value=True):
