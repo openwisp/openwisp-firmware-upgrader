@@ -7,6 +7,7 @@ from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
@@ -201,14 +202,20 @@ def send_pending_upgrade_reminders():
         )
         if not claimed:
             continue
+        description = ngettext(
+            "%(count)d device is still pending in mass upgrade %(batch)s.",
+            "%(count)d devices are still pending in mass upgrade %(batch)s.",
+            pending_count,
+        ) % {"count": pending_count, "batch": batch}
+        change_url = reverse(
+            "admin:{}_{}_change".format(batch._meta.app_label, batch._meta.model_name),
+            args=[batch.pk],
+        )
         notify.send(
             sender=batch,
-            type="pending_upgrade_reminder",
+            type="generic_message",
             target=batch,
-            description=ngettext(
-                "%(count)d device is still pending in mass upgrade %(batch)s.",
-                "%(count)d devices are still pending in mass upgrade %(batch)s.",
-                pending_count,
-            )
-            % {"count": pending_count, "batch": batch},
+            message=description,
+            description=description,
+            url=f"{change_url}?status=pending",
         )

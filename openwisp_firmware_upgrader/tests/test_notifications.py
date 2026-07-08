@@ -59,8 +59,10 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(mocked_notify.call_count, 1)
         kwargs = mocked_notify.call_args.kwargs
         self.assertEqual(kwargs["target"], batch)
-        self.assertEqual(kwargs["type"], "pending_upgrade_reminder")
+        self.assertEqual(kwargs["type"], "generic_message")
         self.assertIn("pending", str(kwargs["description"]).lower())
+        self.assertEqual(kwargs["message"], kwargs["description"])
+        self.assertIn("status=pending", kwargs["url"])
         batch.refresh_from_db()
         self.assertIsNotNone(batch.last_reminder_at)
 
@@ -143,7 +145,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         self.assertEqual(mocked_notify.call_count, 1)
         kwargs = mocked_notify.call_args.kwargs
         self.assertEqual(kwargs["target"], op.device)
-        self.assertEqual(kwargs["type"], "persistent_upgrade_failed")
+        self.assertEqual(kwargs["type"], "generic_message")
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     def test_pending_to_failed_fires_notification(self, mocked_notify):
@@ -203,23 +205,3 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         op.save()
         self.assertEqual(op.status, "failed")
         self.assertEqual(mocked_notify.call_count, 1)
-
-
-class TestNotificationTypeRegistration(TransactionTestCase):
-    def test_pending_upgrade_reminder_registered(self):
-        from openwisp_notifications.types import NOTIFICATION_TYPES
-
-        self.assertIn("pending_upgrade_reminder", NOTIFICATION_TYPES)
-        config = NOTIFICATION_TYPES["pending_upgrade_reminder"]
-        self.assertEqual(config["level"], "info")
-        self.assertEqual(config["verb"], "still pending")
-        self.assertEqual(config["message"], "{notification.description}")
-
-    def test_persistent_upgrade_failed_registered(self):
-        from openwisp_notifications.types import NOTIFICATION_TYPES
-
-        self.assertIn("persistent_upgrade_failed", NOTIFICATION_TYPES)
-        config = NOTIFICATION_TYPES["persistent_upgrade_failed"]
-        self.assertEqual(config["level"], "error")
-        self.assertEqual(config["verb"], "failed")
-        self.assertEqual(config["message"], "{notification.description}")

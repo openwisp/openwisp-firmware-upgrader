@@ -1130,12 +1130,15 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             return
         if getattr(instance, "_previous_status", None) == "failed":
             return
+        description = _("Persistent upgrade for device %(device)s failed.") % {
+            "device": instance.device
+        }
         notify.send(
             sender=instance,
-            type="persistent_upgrade_failed",
+            type="generic_message",
             target=instance.device,
-            description=_("Persistent upgrade for device %(device)s failed.")
-            % {"device": instance.device},
+            message=description,
+            description=description,
         )
         instance._previous_status = instance.status
 
