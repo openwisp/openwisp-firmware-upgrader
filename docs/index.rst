@@ -10,7 +10,9 @@ A firmware upgrade solution designed specifically for OpenWrt devices,
 with the potential to support other embedded operating systems in the
 future. It offers a robust and automated upgrade process, featuring
 functionalities such as automatic device detection, retry mechanisms for
-network failures, mass upgrades, and a REST API for integration.
+network failures, mass upgrades, :doc:`persistent mass upgrades
+<user/persistent-mass-upgrades>` that keep retrying offline devices, and a
+REST API for integration.
 
 For a comprehensive overview of features, please refer to the
 :doc:`user/intro` page.

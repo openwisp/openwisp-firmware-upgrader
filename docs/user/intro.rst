@@ -11,9 +11,8 @@ Firmware Upgrader: Features
 - Single device upgrade
 - Mass upgrades with possibility of filtering by device group and/or
   geographic location
-- Persistent mass upgrades that keep retrying offline devices in the
-  background until they come online (see :doc:`upgrade-status` and
-  :doc:`settings`)
+- :doc:`Persistent mass upgrades <persistent-mass-upgrades>` that keep
+  retrying offline devices in the background until they come online
 - Possibility to divide firmware images in categories
 - :doc:`REST API <rest-api>`
 - :doc:`Possibility of writing custom upgraders

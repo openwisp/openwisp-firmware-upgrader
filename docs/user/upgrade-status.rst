@@ -189,18 +189,10 @@ Persistent Retry Flow
 ~~~~~~~~~~~~~~~~~~~~~
 
 For a persistent mass upgrade, an unreachable device does not end as
-``failed``; the operation loops between two states until it succeeds or is
-cancelled:
-
-1. ``in-progress``: a retry is attempted;
-2. ``pending``: the device was unreachable, so a future ``next_retry_at``
-   is scheduled and the operation waits;
-3. back to ``in-progress`` when a Celery Beat scan (or, with
-   openwisp-monitoring, the device coming back online) re-dispatches it.
-
-The loop exits to ``success`` once the device is upgraded, to
-``cancelled`` if an admin stops it, or to ``failed`` if the device is
-deactivated while pending. See :doc:`persistent-mass-upgrades`.
+``failed``: the operation alternates between ``in-progress`` and
+``pending`` until it succeeds or is cancelled. The full retry loop,
+backoff schedule and monitoring integration are described in
+:doc:`persistent-mass-upgrades`.
 
 Terminal States
 ~~~~~~~~~~~~~~~
