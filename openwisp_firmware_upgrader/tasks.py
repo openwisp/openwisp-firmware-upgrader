@@ -1,5 +1,7 @@
 import logging
 import os
+import shutil
+import tempfile
 
 import swapper
 from celery import shared_task
@@ -15,7 +17,6 @@ from openwisp_utils.tasks import OpenwispCeleryTask
 from . import settings as app_settings
 from .exceptions import RecoverableFailure
 from .extractors.exceptions import DecompressionLimitExceeded, UnsupportedImageError
-from .extractors.openwrt import OpenWrtMetadataExtractor
 from .swapper import load_model
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,14 @@ def create_all_device_firmwares(self, firmware_image_id):
 
     fw_image = FirmwareImage.objects.select_related("build").get(pk=firmware_image_id)
 
+    if _compat_blocks_pairing(fw_image.compat_version):
+        logger.info(
+            "Auto-pairing skipped for image %s: compat_version %s > 1.0",
+            firmware_image_id,
+            fw_image.compat_version,
+        )
+        return
+
     queryset = Device.objects.filter(os=fw_image.build.os)
     for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)
@@ -147,12 +156,14 @@ def extract_firmware_metadata(self, image_pk):
     update = {}
 
     try:
-        extractor_class = getattr(
-            image.build.category.__class__,
-            "metadata_extractor_class",
-            OpenWrtMetadataExtractor,
-        )
-        meta = extractor_class(image.file.path).extract()
+        extractor_class = image.build.category.metadata_extractor_class
+        with tempfile.NamedTemporaryFile(
+            suffix=f"-{os.path.basename(image.file.name)}"
+        ) as tmp:
+            with image.file.open("rb") as file_obj:
+                shutil.copyfileobj(file_obj, tmp)
+            tmp.flush()
+            meta = extractor_class(tmp.name).extract()
         if meta.get("source") == "dtb":
             log_lines.append(
                 "[-] fwtool: no metadata trailer found, fell back to DTB scan"
@@ -298,12 +309,4 @@ def extract_firmware_metadata(self, image_pk):
         )
 
     if update.get("extraction_status") == FirmwareImage.STATUS_SUCCESS:
-        compat = update.get("compat_version", "")
-        if _compat_blocks_pairing(compat):
-            logger.info(
-                "Auto-pairing skipped for image %s: compat_version %s > 1.0",
-                image_pk,
-                compat,
-            )
-        else:
-            create_all_device_firmwares.delay(str(image_pk))
+        create_all_device_firmwares.delay(str(image_pk))

@@ -34,6 +34,7 @@ from ..exceptions import (
     UpgradeCancelled,
     UpgradeNotNeeded,
 )
+from ..extractors.openwrt import OpenWrtMetadataExtractor
 from ..signals import firmware_upgrader_log_updated
 from ..swapper import get_model_name, load_model
 from ..tasks import (
@@ -101,6 +102,7 @@ class UpgradeOptionsMixin(models.Model):
 
 
 class AbstractCategory(ShareableOrgMixin, TimeStampedEditableModel):
+    metadata_extractor_class = OpenWrtMetadataExtractor
     name = models.CharField(max_length=64, db_index=True)
     description = models.TextField(blank=True)
 
@@ -510,9 +512,13 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         return True
 
     def _clean_type(self):
+        """
+        auto determine type if missing
+        """
         if self.type:
             return
         filename = self.file.name
+        # removes leading prefix
         self.type = "-".join(filename.split("-")[1:])
 
     @classmethod

@@ -15,7 +15,9 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 
-_MOCK_EXTRACTOR = "openwisp_firmware_upgrader.tasks.OpenWrtMetadataExtractor"
+_MOCK_EXTRACTOR = (
+    "openwisp_firmware_upgrader.base.models.AbstractCategory.metadata_extractor_class"
+)
 _MOCK_NOTIFY = "openwisp_notifications.signals.notify.send"
 
 
@@ -308,26 +310,23 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertFalse(tasks._compat_blocks_pairing(None))
         self.assertFalse(tasks._compat_blocks_pairing("bad"))
 
-    @mock.patch(_MOCK_EXTRACTOR)
-    @mock.patch("openwisp_firmware_upgrader.tasks.create_all_device_firmwares")
+    @mock.patch(
+        "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_for_device"
+    )
     @capture_any_output()
-    def test_extract_firmware_metadata_skips_pairing_for_high_compat(
-        self, mock_create_firmwares, MockExtractor
+    def test_create_all_device_firmwares_skips_pairing_for_high_compat(
+        self, mock_create_for_device
     ):
-        MockExtractor.return_value.extract.return_value = {
-            "model": "Test Device",
-            "compatible": ["test,device"],
-            "target": "test/target",
-            "version": "23.05.5",
-            "compat_version": "2.0",
-            "source": "fwtool",
-        }
+        Build = load_model("Build")
         image = self._create_firmware_image()
-        FirmwareImage.objects.filter(pk=image.pk).update(
-            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        Build.objects.filter(pk=image.build.pk).update(os="OpenWrt 23.05.5")
+        self._create_device(
+            os="OpenWrt 23.05.5",
+            organization=image.build.category.organization,
         )
-        tasks.extract_firmware_metadata.run(str(image.pk))
-        mock_create_firmwares.delay.assert_not_called()
+        FirmwareImage.objects.filter(pk=image.pk).update(compat_version="2.0")
+        tasks.create_all_device_firmwares.run(str(image.pk))
+        mock_create_for_device.assert_not_called()
 
     @mock.patch(_MOCK_EXTRACTOR)
     @mock.patch("openwisp_firmware_upgrader.tasks.create_all_device_firmwares")
