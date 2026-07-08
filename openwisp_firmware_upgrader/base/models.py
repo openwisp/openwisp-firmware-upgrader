@@ -617,7 +617,6 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     last_reminder_at = models.DateTimeField(
         null=True,
         blank=True,
-        db_index=True,
         verbose_name=_("last reminder at"),
         help_text=_(
             "timestamp of the last pending-upgrade reminder fired for "
