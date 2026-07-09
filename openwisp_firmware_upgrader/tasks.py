@@ -169,6 +169,7 @@ def check_pending_upgrades():
             next_retry_at=now + timedelta(seconds=jitter)
         )
         if claimed:
+            # Spread retries to avoid starting all pending operations at once.
             retry_pending_upgrade.apply_async(
                 args=[op_id], countdown=random.uniform(0, jitter)
             )
