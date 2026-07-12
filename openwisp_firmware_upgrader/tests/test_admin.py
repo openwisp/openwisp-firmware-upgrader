@@ -1343,6 +1343,25 @@ class TestAdmin(BaseTestAdmin, TestCase):
         mock_task.delay.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    def test_firmware_image_save_model_failed_compatible_only_to_manually_confirmed(
+        self, mock_task
+    ):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.compatible = "tplink,tl-wdr4300-v1"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["compatible"]
+        fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
+        self.assertEqual(fw.source, "manual")
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
     def test_firmware_image_save_model_dtb_success_to_manually_confirmed(
         self, mock_task
     ):

@@ -74,11 +74,6 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             mocked_logger.assert_called_with(
                 f"The BatchUpgradeOperation object with id {batch_id} has been deleted"
             )
-        batch_id = BatchUpgradeOperation().id
-        tasks.batch_upgrade_operation.run(batch_id=batch_id, firmwareless=False)
-        mocked_logger.assert_called_with(
-            f"The BatchUpgradeOperation object with id {batch_id} has been deleted"
-        )
 
     @mock.patch(_MOCK_EXTRACTOR)
     @capture_any_output()

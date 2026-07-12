@@ -435,6 +435,23 @@ class TestModels(TestUpgraderMixin, TestCase):
         self._create_config(device=device)
         self.assertIsNone(DeviceFirmware.create_for_device(device))
 
+    def test_create_for_device_skips_incompatible_compat_version(self):
+        image = self._create_firmware_image(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+        )
+        image.compat_version = "1.1"
+        image.save()
+        build = image.build
+        build.os = "OpenWrt 21.03"
+        build.save()
+        device = self._create_device(
+            organization=build.category.organization,
+            os=build.os,
+            model=image.board,
+        )
+        self._create_config(device=device)
+        self.assertIsNone(DeviceFirmware.create_for_device(device))
+
     def test_upgrade_operation_retention_on_image_delete(self):
         device_fw = self._create_device_firmware()
         uo = UpgradeOperation.objects.create(

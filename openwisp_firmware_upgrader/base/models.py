@@ -38,6 +38,7 @@ from ..extractors.openwrt import OpenWrtMetadataExtractor
 from ..signals import firmware_upgrader_log_updated
 from ..swapper import get_model_name, load_model
 from ..tasks import (
+    _compat_blocks_pairing,
     batch_upgrade_operation,
     create_all_device_firmwares,
     create_device_firmware,
@@ -767,7 +768,9 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                 board=device.model,
                 extraction_status__in=FirmwareImage.LOCKED_STATUSES,
             ).first()
-            if not firmware_image:
+            if not firmware_image or _compat_blocks_pairing(
+                firmware_image.compat_version
+            ):
                 return
 
         device_fw = DeviceFirmware(device=device, image=firmware_image, installed=True)

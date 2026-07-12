@@ -81,11 +81,14 @@ _STATUS_CONFIG = {
 }
 
 _BUILD_STATUS_CONFIG = {
-    "analyzing": ("warning", _("Analyzing")),
-    "success": ("success", _("Success")),
-    "failed": ("error", _("Failed")),
-    "invalid": ("error", _("Invalid")),
-    "manually_confirmed": ("success", _("Manually Confirmed")),
+    "analyzing": {"label": _("Analyzing"), "class": "ow-status-warning"},
+    "success": {"label": _("Success"), "class": "ow-status-success"},
+    "failed": {"label": _("Failed"), "class": "ow-status-error"},
+    "invalid": {"label": _("Invalid"), "class": "ow-status-error"},
+    "manually_confirmed": {
+        "label": _("Manually Confirmed"),
+        "class": "ow-status-success",
+    },
 }
 
 _FAILURE_REASON_TEXT = {
@@ -338,7 +341,7 @@ class FirmwareImageAdmin(BaseAdmin):
             return
         if change:
             if obj.extraction_status == FirmwareImage.STATUS_FAILED:
-                metadata_fields = ["board", "target", "fw_version"]
+                metadata_fields = ["board", "compatible", "target", "fw_version"]
                 if any(f in form.changed_data for f in metadata_fields):
                     obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
                     obj.source = "manual"
@@ -491,11 +494,13 @@ class BuildAdmin(BaseAdmin):
 
     @admin.display(description=_("Extraction status"))
     def build_status_display(self, obj):
-        css, label = _BUILD_STATUS_CONFIG.get(obj.status, ("grey", obj.status))
+        cfg = _BUILD_STATUS_CONFIG.get(
+            obj.status, {"label": obj.status, "class": "ow-status-grey"}
+        )
         return format_html(
-            '<span class="ow-status-badge ow-status-{}">{}</span>',
-            css,
-            label,
+            '<span class="ow-status-badge {}">{}</span>',
+            cfg["class"],
+            cfg["label"],
         )
 
     @admin.action(
