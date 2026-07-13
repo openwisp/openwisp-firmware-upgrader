@@ -215,10 +215,7 @@ class AbstractBuild(TimeStampedEditableModel):
         upgrade_options = upgrade_options or {}
         FirmwareImage = load_model("FirmwareImage")
         unconfirmed = self.firmwareimage_set.exclude(
-            extraction_status__in=[
-                FirmwareImage.STATUS_SUCCESS,
-                FirmwareImage.STATUS_MANUALLY_CONFIRMED,
-            ]
+            extraction_status__in=FirmwareImage.LOCKED_STATUSES
         )
         if unconfirmed.exists():
             raise ValidationError(
@@ -711,7 +708,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     'please add one in the section named "Credentials"'
                 )
             )
-        if self.image.board and self.device.model != self.image.board:
+        if not self.image.board or self.device.model != self.image.board:
             raise ValidationError(_("Device model and image do not match"))
 
     @property
@@ -762,12 +759,16 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if not firmware_image:
             if not device.model:
                 return
-            firmware_image = FirmwareImage.objects.filter(
-                build__category__organization_id=device.organization_id,
-                build__os=device.os,
-                board=device.model,
-                extraction_status__in=FirmwareImage.LOCKED_STATUSES,
-            ).first()
+            firmware_image = (
+                FirmwareImage.objects.filter(
+                    build__category__organization_id=device.organization_id,
+                    build__os=device.os,
+                    board=device.model,
+                    extraction_status__in=FirmwareImage.LOCKED_STATUSES,
+                )
+                .order_by("-build__created")
+                .first()
+            )
             if not firmware_image or _compat_blocks_pairing(
                 firmware_image.compat_version
             ):
@@ -795,13 +796,9 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def auto_create_device_firmwares(cls, instance, created, **kwargs):
         if created:
             return
-        confirmed = (
-            instance.STATUS_SUCCESS,
-            instance.STATUS_MANUALLY_CONFIRMED,
-        )
-        if instance.extraction_status not in confirmed:
+        if instance.extraction_status not in instance.LOCKED_STATUSES:
             return
-        if instance._original_extraction_status in confirmed:
+        if instance._original_extraction_status in instance.LOCKED_STATUSES:
             return
         transaction.on_commit(
             partial(create_all_device_firmwares.delay, str(instance.pk))

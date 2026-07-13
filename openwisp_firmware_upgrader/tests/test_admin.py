@@ -260,7 +260,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             failure_reason=FirmwareImage.FAILURE_UNSUPPORTED,
             extraction_log="log output",
             board="TP-Link WDR4300",
-            compatible=["tplink,tl-wdr4300-v1"],
+            compatible="tplink,tl-wdr4300-v1",
             target="ath79/generic",
             fw_version="23.05.5",
             compat_version="1.0",

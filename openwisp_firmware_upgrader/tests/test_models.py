@@ -804,6 +804,23 @@ class TestModels(TestUpgraderMixin, TestCase):
             device_fw.clean()
         self.assertIn("image", ctx.exception.message_dict)
 
+    def test_device_firmware_clean_blocks_locked_image_without_board(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+            board="",
+        )
+        image.refresh_from_db()
+        device = self._create_device(organization=image.build.category.organization)
+        self._create_config(device=device)
+        self._create_device_connection(device=device)
+        device_fw = DeviceFirmware()
+        device_fw.image = image
+        device_fw.device = device
+        with self.assertRaises(ValidationError) as ctx:
+            device_fw.clean()
+        self.assertIn("Device model and image do not match", str(ctx.exception))
+
     def test_auto_create_device_firmwares_skip_unconfirmed(self):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
