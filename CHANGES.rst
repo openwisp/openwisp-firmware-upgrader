@@ -1,15 +1,6 @@
 Changelog
 =========
 
-Version 1.3.0 [unreleased]
---------------------------
-
-Features
-~~~~~~~~
-
-- Added persistent mass upgrades `#379
-  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/379>`_.
-
 Version 1.2.1 [2025-12-30]
 --------------------------
 

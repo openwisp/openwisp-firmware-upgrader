@@ -124,9 +124,9 @@ class FirmwareUpdaterConfig(ApiAppConfig):
 
     def connect_monitoring_signals(self):
         """
-        Connect the openwisp-monitoring health_status_changed signal so pending
-        upgrades wake up when a device recovers. openwisp-monitoring is an
-        optional, swappable dependency.
+        Connect the openwisp-monitoring health_status_changed signal so
+        persistent upgrades wake up when a device recovers. openwisp-monitoring
+        is an optional, swappable dependency.
         """
         if load_model("device_monitoring", "DeviceMonitoring", required=False) is None:
             return

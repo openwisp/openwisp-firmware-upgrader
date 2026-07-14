@@ -148,7 +148,8 @@ def retry_pending_upgrade(operation_id):
     ).exists():
         return
     operation.log_line(
-        _("Persistent retry #%(count)s starting.") % {"count": operation.retry_count},
+        _("Persistent retry #%(count)s starting.") % {"count": operation.retry_count}
+        + "\n",
         save=False,
     )
     operation.save(update_fields=["log"])

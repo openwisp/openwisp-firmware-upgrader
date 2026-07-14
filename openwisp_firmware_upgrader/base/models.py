@@ -1151,10 +1151,12 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.status = "pending"
             self.retry_count += 1
             self.next_retry_at = self._calculate_next_retry()
+            self.log_line(f"All immediate retries exhausted: {cause}.\n", save=False)
+            retry_time = timezone.localtime(self.next_retry_at).strftime(
+                "%Y-%m-%d %H:%M:%S %Z"
+            )
             self.log_line(
-                f"All immediate retries exhausted: {cause}. "
-                f"Scheduled persistent retry #{self.retry_count} "
-                f"at {self.next_retry_at}.",
+                f"Scheduled persistent retry #{self.retry_count} at {retry_time}.\n",
                 save=False,
             )
             return

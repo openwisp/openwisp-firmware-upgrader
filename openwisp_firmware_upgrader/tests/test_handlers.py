@@ -4,8 +4,11 @@ from django.apps import apps
 from django.dispatch import Signal
 from django.test import TransactionTestCase
 
+from openwisp_utils.tests import catch_signal
+
 from .. import settings as app_settings
 from .. import tasks
+from ..signals import firmware_upgrader_log_updated
 from ..swapper import load_model
 from .base import TestUpgraderMixin
 
@@ -165,7 +168,10 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
             "device_monitoring", "DeviceMonitoring", required=False
         )
 
-    def test_connect_monitoring_signals_connects_when_installed(self):
+    @mock.patch(
+        "openwisp_firmware_upgrader.base.models.retry_pending_upgrade.apply_async"
+    )
+    def test_connect_monitoring_signals_connects_when_installed(self, mocked_dispatch):
         config = apps.get_app_config("firmware_upgrader")
         signal = Signal()
         fake_signals = mock.Mock(health_status_changed=signal)
@@ -180,7 +186,25 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
             "sys.modules", {"openwisp_monitoring.device.signals": fake_signals}
         ):
             config.connect_monitoring_signals()
-        self.assertEqual(len(signal.receivers), 1)
-        self.assertEqual(
-            signal.receivers[0][0][0], "firmware_upgrader.health_status_changed"
+        op = self._create_pending_op()
+        signal.send(
+            sender=mock.Mock(),
+            instance=self._monitoring_instance(op.device),
+            status="ok",
         )
+        mocked_dispatch.assert_called_once()
+        self.assertEqual(mocked_dispatch.call_args.kwargs["args"], [op.pk])
+
+
+class TestLogSignal(TestUpgraderMixin, TransactionTestCase):
+    def test_log_line_emits_firmware_upgrader_log_updated(self):
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, status="in-progress"
+        )
+        with catch_signal(firmware_upgrader_log_updated) as handler:
+            op.log_line("flashing image", save=True)
+        handler.assert_called_once()
+        kwargs = handler.call_args.kwargs
+        self.assertEqual(kwargs["instance"], op)
+        self.assertEqual(kwargs["line"], "flashing image")

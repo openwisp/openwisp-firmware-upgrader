@@ -26,7 +26,7 @@ fieldset.aligned label.is-persistent-checkbox {
   max-width: none;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 0 12px;
   margin: 0;
   font-weight: normal;
   color: inherit;
@@ -35,8 +35,4 @@ fieldset.aligned label.is-persistent-checkbox {
 fieldset.aligned label.is-persistent-checkbox input[type="checkbox"] {
   flex-shrink: 0;
   margin: 0;
-}
-fieldset.aligned label.is-persistent-checkbox {
-  padding-top: 0;
-  padding-bottom: 0;
 }

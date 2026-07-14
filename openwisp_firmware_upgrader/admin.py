@@ -458,10 +458,10 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
         "device",
         "image",
         "status",
-        "log",
         "is_persistent",
         "retry_count",
         "next_retry_at",
+        "log",
         "readonly_upgrade_options",
         "modified",
     ]
