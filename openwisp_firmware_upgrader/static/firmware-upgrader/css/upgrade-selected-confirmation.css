@@ -1,6 +1,11 @@
 #content form .help {
   margin-top: 3px;
 }
+#schedule-timezone {
+  margin-left: 10px;
+  font-style: italic;
+  color: var(--body-quiet-color);
+}
 #content p.intro {
   margin-bottom: 20px;
 }
