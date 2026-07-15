@@ -346,10 +346,6 @@
   display: none;
 }
 
-.batch-actions .batch-reschedule-checkbox {
-  padding-left: 130px;
-}
-
 .batch-actions .vCheckboxLabel {
   display: inline-flex;
   align-items: center;
@@ -380,9 +376,6 @@
   }
   .batch-actions .flex-container > label {
     min-width: 0;
-  }
-  .batch-actions .batch-reschedule-checkbox {
-    padding-left: 0;
   }
   .batch-actions input[type="datetime-local"],
   .batch-actions select {
