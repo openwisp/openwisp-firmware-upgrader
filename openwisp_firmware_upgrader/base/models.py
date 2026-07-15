@@ -1260,24 +1260,26 @@ class AbstractBatchUpgradeOperation(
         )
 
     def _scheduled_started(self):
+        description = _("Scheduled mass upgrade %(batch)s has started.") % {
+            "batch": self
+        }
         notify.send(
             sender=self,
             type="generic_message",
             target=self,
-            message=_("Scheduled mass upgrade %(batch)s has started.")
-            % {"batch": self},
+            message=description,
         )
 
     def _scheduled_validation_failed(self):
+        description = _(
+            "Scheduled mass upgrade %(batch)s was not started: no eligible "
+            "devices remained at the scheduled time."
+        ) % {"batch": self}
         notify.send(
             sender=self,
             type="generic_message",
             target=self,
-            message=_(
-                "Scheduled mass upgrade %(batch)s was not started: no eligible "
-                "devices remained at the scheduled time."
-            )
-            % {"batch": self},
+            message=description,
         )
 
 
