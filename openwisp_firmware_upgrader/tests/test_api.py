@@ -1193,6 +1193,35 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         serialized = self._serialize_image(image)
         self.assertEqual(r.data, serialized)
 
+    def test_firmware_create_extraction_fields_are_ignored(self):
+        build = self._create_build()
+        url = reverse("upgrader:api_firmware_list", args=[build.pk])
+        data = {
+            "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+            "type": self.TPLINK_4300_IMAGE,
+            "extraction_status": FirmwareImage.STATUS_SUCCESS,
+            "failure_reason": FirmwareImage.FAILURE_UNSUPPORTED,
+            "extraction_log": "some log",
+            "board": "tplink,tl-wdr4300-v1",
+            "target": "ath79/generic",
+            "fw_version": "23.05.5",
+            "compat_version": "1.0",
+            "source": "fwtool",
+            "compatible": "tplink, tl-wdr4300-v1",
+        }
+        r = self.client.post(url, data)
+        self.assertEqual(r.status_code, 201)
+        image = FirmwareImage.objects.first()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertEqual(image.failure_reason, "")
+        self.assertEqual(image.extraction_log, "")
+        self.assertEqual(image.board, "")
+        self.assertEqual(image.target, "")
+        self.assertEqual(image.fw_version, "")
+        self.assertEqual(image.compat_version, "")
+        self.assertEqual(image.source, "")
+        self.assertEqual(image.compatible, "")
+
     def test_firmware_create_404(self):
         pk = uuid.uuid4()
         url = reverse("upgrader:api_firmware_list", args=[pk])

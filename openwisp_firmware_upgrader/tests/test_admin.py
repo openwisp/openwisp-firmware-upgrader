@@ -1362,6 +1362,30 @@ class TestAdmin(BaseTestAdmin, TestCase):
         mock_task.delay.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    def test_firmware_image_save_model_build_status_updated_after_manual_confirmation(
+        self, mock_task
+    ):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            board="Generic x86",
+            target="x86/64",
+        )
+        Build.objects.filter(pk=fw.build_id).update(status=Build.BUILD_STATUS_FAILED)
+        fw.refresh_from_db()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["board"]
+        fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
+        fw.build.refresh_from_db()
+        self.assertEqual(fw.build.status, Build.BUILD_STATUS_MANUALLY_CONFIRMED)
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
     def test_firmware_image_save_model_dtb_success_to_manually_confirmed(
         self, mock_task
     ):

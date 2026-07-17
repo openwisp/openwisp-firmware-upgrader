@@ -323,6 +323,53 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         tasks.create_all_device_firmwares.run(str(image.pk))
         mock_create_for_device.assert_not_called()
 
+    @mock.patch(
+        "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_for_device"
+    )
+    @capture_any_output()
+    def test_create_all_device_firmwares_filters_by_organization(
+        self, mock_create_for_device
+    ):
+        Build = load_model("Build")
+        image = self._create_firmware_image()
+        Build.objects.filter(pk=image.build.pk).update(os="OpenWrt 23.05.5")
+        same_org_device = self._create_device(
+            os="OpenWrt 23.05.5",
+            organization=image.build.category.organization,
+        )
+        other_org = self._create_org(name="other-org", slug="other-org")
+        other_org_device = self._create_device(
+            os="OpenWrt 23.05.5",
+            organization=other_org,
+        )
+        tasks.create_all_device_firmwares.run(str(image.pk))
+        called_devices = [
+            call.args[0] for call in mock_create_for_device.call_args_list
+        ]
+        self.assertIn(same_org_device, called_devices)
+        self.assertNotIn(other_org_device, called_devices)
+
+    @mock.patch(
+        "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_for_device"
+    )
+    @capture_any_output()
+    def test_create_all_device_firmwares_shared_image_pairs_all_orgs(
+        self, mock_create_for_device
+    ):
+        Build = load_model("Build")
+        image = self._create_firmware_image(organization=None)
+        Build.objects.filter(pk=image.build.pk).update(os="OpenWrt 23.05.5")
+        org1 = self._get_org()
+        org1_device = self._create_device(os="OpenWrt 23.05.5", organization=org1)
+        org2 = self._create_org(name="org2", slug="org2")
+        org2_device = self._create_device(os="OpenWrt 23.05.5", organization=org2)
+        tasks.create_all_device_firmwares.run(str(image.pk))
+        called_devices = [
+            call.args[0] for call in mock_create_for_device.call_args_list
+        ]
+        self.assertIn(org1_device, called_devices)
+        self.assertIn(org2_device, called_devices)
+
     @mock.patch(_MOCK_EXTRACTOR)
     @mock.patch("openwisp_firmware_upgrader.tasks.create_all_device_firmwares")
     @capture_any_output()

@@ -339,12 +339,14 @@ class FirmwareImageAdmin(BaseAdmin):
             super().save_model(request, obj, form, change)
             transaction.on_commit(lambda: extract_firmware_metadata.delay(obj.pk))
             return
+        update_build_status = False
         if change:
             if obj.extraction_status == FirmwareImage.STATUS_FAILED:
                 metadata_fields = ["board", "compatible", "target", "fw_version"]
                 if any(f in form.changed_data for f in metadata_fields):
                     obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
                     obj.source = "manual"
+                    update_build_status = True
             elif (
                 obj.extraction_status == FirmwareImage.STATUS_SUCCESS
                 and obj.source == "dtb"
@@ -354,6 +356,8 @@ class FirmwareImageAdmin(BaseAdmin):
             ):
                 obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
         super().save_model(request, obj, form, change)
+        if update_build_status:
+            obj.build._update_extraction_status()
 
     @admin.action(
         description=_("Re-extract metadata from selected images"),

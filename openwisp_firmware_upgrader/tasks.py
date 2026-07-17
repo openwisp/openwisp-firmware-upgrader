@@ -85,7 +85,9 @@ def create_all_device_firmwares(self, firmware_image_id):
     FirmwareImage = load_model("FirmwareImage")
     Device = swapper.load_model("config", "Device")
 
-    fw_image = FirmwareImage.objects.select_related("build").get(pk=firmware_image_id)
+    fw_image = FirmwareImage.objects.select_related("build__category").get(
+        pk=firmware_image_id
+    )
 
     if _compat_blocks_pairing(fw_image.compat_version):
         logger.info(
@@ -98,6 +100,9 @@ def create_all_device_firmwares(self, firmware_image_id):
     queryset = Device.objects.filter(os=fw_image.build.os)
     if fw_image.board:
         queryset = queryset.filter(model=fw_image.board)
+    org_id = fw_image.build.category.organization_id
+    if org_id:
+        queryset = queryset.filter(organization_id=org_id)
     for device in queryset.iterator():
         DeviceFirmware.create_for_device(device, fw_image)
 
