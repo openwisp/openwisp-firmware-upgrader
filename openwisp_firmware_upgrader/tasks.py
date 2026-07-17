@@ -41,13 +41,13 @@ def upgrade_firmware(self, operation_id):
             f"The UpgradeOperation object with id {operation_id} has been deleted"
         )
         return
-    if not UpgradeOperation.objects.filter(
-        pk=operation_id, status="in-progress"
-    ).exists():
-        return
     try:
         recoverable = self.request.retries < self.max_retries
+        # re-read so a cancellation issued after dispatch is seen by upgrade()
+        operation.refresh_from_db()
         operation.upgrade(recoverable=recoverable)
+    except ObjectDoesNotExist:
+        return
     except SoftTimeLimitExceeded:
         operation.status = "failed"
         operation.log_line(_("Operation timed out."), save=False)

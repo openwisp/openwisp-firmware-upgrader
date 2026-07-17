@@ -61,15 +61,60 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
                 f"The UpgradeOperation object with id {upgrade_op_id} has been deleted"
             )
 
-    @mock.patch(
-        "openwisp_firmware_upgrader.base.models.AbstractUpgradeOperation.upgrade"
-    )
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_firmware_skips_when_not_in_progress(self, mocked_upgrade):
         device_fw = self._create_device_firmware()
         op = UpgradeOperation.objects.create(
             device=device_fw.device, image=device_fw.image, status="cancelled"
         )
-        tasks.upgrade_firmware.run(op.pk)
+        with mock.patch(self._mock_connect, return_value=True):
+            tasks.upgrade_firmware.run(op.pk)
+        mocked_upgrade.assert_not_called()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "cancelled")
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_upgrade_firmware_cancel_during_dispatch_window(self, mocked_upgrade):
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, status="in-progress"
+        )
+        real_refresh = UpgradeOperation.refresh_from_db
+
+        def cancel_then_refresh(self, *args, **kwargs):
+            type(self).objects.filter(pk=self.pk).update(status="cancelled")
+            return real_refresh(self, *args, **kwargs)
+
+        with mock.patch(self._mock_connect, return_value=True), mock.patch.object(
+            UpgradeOperation,
+            "refresh_from_db",
+            autospec=True,
+            side_effect=cancel_then_refresh,
+        ):
+            tasks.upgrade_firmware.run(op.pk)
+        mocked_upgrade.assert_not_called()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "cancelled")
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_upgrade_firmware_deleted_during_dispatch_window(self, mocked_upgrade):
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, status="in-progress"
+        )
+        real_refresh = UpgradeOperation.refresh_from_db
+
+        def delete_then_refresh(self, *args, **kwargs):
+            type(self).objects.filter(pk=self.pk).delete()
+            return real_refresh(self, *args, **kwargs)
+
+        with mock.patch(self._mock_connect, return_value=True), mock.patch.object(
+            UpgradeOperation,
+            "refresh_from_db",
+            autospec=True,
+            side_effect=delete_then_refresh,
+        ):
+            tasks.upgrade_firmware.run(op.pk)
         mocked_upgrade.assert_not_called()
 
     @mock.patch(_mock_upgrade, return_value=True)
