@@ -1180,7 +1180,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             conn = DeviceConnection.get_working_connection(self.device)
         except NoWorkingDeviceConnectionError as error:
             if error.connection is None:
-                # don't let a persistent op hang in-progress with no connection
+                # a device with no usable connection can never be upgraded here
                 if self.is_persistent:
                     self.log_line(_("No device connection available"), save=False)
                     self._recoverable_failure_handler(
@@ -1189,7 +1189,9 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                     )
                     self.save()
                 else:
-                    self.log_line(_("No device connection available"))
+                    self.log_line(_("No device connection available"), save=False)
+                    self.status = "aborted"
+                    self.save()
                 return
 
             log_template = (

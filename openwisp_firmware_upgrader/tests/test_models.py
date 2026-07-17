@@ -851,14 +851,14 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(op.retry_count, 1)
         self.assertIsNotNone(op.next_retry_at)
 
-    def test_no_connection_non_persistent_op_stays_in_progress(self):
+    def test_no_connection_non_persistent_op_aborts(self):
         op = self._make_persistent_op(is_persistent=False)
         with mock.patch(
             self._no_conn, side_effect=NoWorkingDeviceConnectionError(connection=None)
         ):
             op.upgrade(recoverable=False)
         op.refresh_from_db()
-        self.assertEqual(op.status, "in-progress")
+        self.assertEqual(op.status, "aborted")
 
     def test_create_upgrade_operation_standalone_is_persistent(self):
         device_fw = self._create_device_firmware()
