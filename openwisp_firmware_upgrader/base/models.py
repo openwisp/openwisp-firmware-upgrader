@@ -609,9 +609,8 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         default=True,
         verbose_name=_("persistent"),
         help_text=_(
-            "if enabled, the mass upgrade keeps retrying "
-            "offline devices until they come back online "
-            "or the operation is cancelled"
+            "if enabled, the system will keep retrying upgrades "
+            "for offline devices until they succeed or are cancelled"
         ),
     )
     last_reminder_at = models.DateTimeField(
@@ -957,26 +956,21 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         default=False,
         verbose_name=_("persistent"),
         help_text=_(
-            "if enabled, the operation stays pending and retries "
-            "when the device comes back online"
+            "if enabled, the system will keep retrying this upgrade "
+            "until it succeeds or is cancelled"
         ),
     )
     retry_count = models.PositiveIntegerField(
         default=0,
         verbose_name=_("retry count"),
-        help_text=_(
-            "number of times the operation has gone from in-progress to pending"
-        ),
+        help_text=_("number of retry attempts made for this upgrade"),
     )
     next_retry_at = models.DateTimeField(
         null=True,
         blank=True,
         db_index=True,
         verbose_name=_("next retry at"),
-        help_text=_(
-            "when the periodic scanner should next retry this "
-            "pending operation, null if no retry is queued"
-        ),
+        help_text=_("date and time of the next retry attempt"),
     )
 
     def clean(self):

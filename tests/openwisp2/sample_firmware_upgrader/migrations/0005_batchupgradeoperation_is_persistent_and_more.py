@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
             name="is_persistent",
             field=models.BooleanField(
                 default=False,
-                help_text="if enabled, the mass upgrade keeps retrying offline devices until they come back online or the operation is cancelled",
+                help_text="if enabled, the system will keep retrying upgrades for offline devices until they succeed or are cancelled",
                 verbose_name="persistent",
             ),
         ),
@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
             name="is_persistent",
             field=models.BooleanField(
                 default=True,
-                help_text="if enabled, the mass upgrade keeps retrying offline devices until they come back online or the operation is cancelled",
+                help_text="if enabled, the system will keep retrying upgrades for offline devices until they succeed or are cancelled",
                 verbose_name="persistent",
             ),
         ),
@@ -40,7 +40,7 @@ class Migration(migrations.Migration):
             name="is_persistent",
             field=models.BooleanField(
                 default=False,
-                help_text="if enabled, the operation stays pending and retries when the device comes back online",
+                help_text="if enabled, the system will keep retrying this upgrade until it succeeds or is cancelled",
                 verbose_name="persistent",
             ),
         ),
@@ -50,7 +50,7 @@ class Migration(migrations.Migration):
             field=models.DateTimeField(
                 blank=True,
                 db_index=True,
-                help_text="when the periodic scanner should next retry this pending operation, null if no retry is queued",
+                help_text="date and time of the next retry attempt",
                 null=True,
                 verbose_name="next retry at",
             ),
@@ -60,7 +60,7 @@ class Migration(migrations.Migration):
             name="retry_count",
             field=models.PositiveIntegerField(
                 default=0,
-                help_text="number of times the operation has gone from in-progress to pending",
+                help_text="number of retry attempts made for this upgrade",
                 verbose_name="retry count",
             ),
         ),
