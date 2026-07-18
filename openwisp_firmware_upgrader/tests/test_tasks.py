@@ -186,6 +186,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         tasks.retry_pending_upgrade.run(op.pk)
         op.refresh_from_db()
         self.assertEqual(op.status, "in-progress")
+        self.assertIsNone(op.next_retry_at)
         self.assertIn("Persistent retry #2 starting", op.log)
         mocked_upgrade.assert_called_once_with(op.pk)
 
