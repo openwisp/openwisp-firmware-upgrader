@@ -62,7 +62,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(kwargs["type"], "generic_message")
         self.assertIn("pending", str(kwargs["description"]).lower())
         self.assertEqual(kwargs["message"], kwargs["description"])
-        self.assertIn("status=pending", kwargs["url"])
+        self.assertEqual(kwargs["target_url_suffix"], "?status=pending")
         batch.refresh_from_db()
         self.assertIsNotNone(batch.last_reminder_at)
 
@@ -186,14 +186,14 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         "openwisp_controller.config.base.device.AbstractDevice.is_deactivated",
         return_value=True,
     )
-    def test_deactivated_path_fires_notification(
+    def test_deactivated_path_does_not_fire_notification(
         self, _is_deactivated, _mocked_upgrade, mocked_notify
     ):
         op = self._create_persistent_op(status="pending")
         tasks.retry_pending_upgrade.run(op.pk)
         op.refresh_from_db()
-        self.assertEqual(op.status, "failed")
-        self.assertEqual(mocked_notify.call_count, 1)
+        self.assertEqual(op.status, "aborted")
+        self.assertEqual(mocked_notify.call_count, 0)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     def test_non_recoverable_failure_fires_notification(self, mocked_notify):

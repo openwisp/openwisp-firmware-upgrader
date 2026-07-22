@@ -276,6 +276,44 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, "field-retry_count")
         self.assertContains(r, "field-next_retry_at")
 
+    def test_upgrade_operation_admin_detail_hides_empty_next_retry_at(self):
+        self._login()
+        env = self._create_upgrade_env()
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="in-progress",
+            is_persistent=True,
+            retry_count=1,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
+        r = self.client.get(url)
+        self.assertContains(r, "field-retry_count")
+        self.assertNotContains(r, "field-next_retry_at")
+
+    def test_upgrade_operation_admin_detail_hides_retry_fields_when_not_persistent(
+        self,
+    ):
+        self._login()
+        env = self._create_upgrade_env()
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="failed",
+            is_persistent=False,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
+        r = self.client.get(url)
+        self.assertNotContains(r, "field-retry_count")
+        self.assertNotContains(r, "field-next_retry_at")
+
+    def test_upgrade_operation_admin_list_retry_count_only_when_persistent(self):
+        model_admin = admin.site._registry[UpgradeOperation]
+        persistent = UpgradeOperation(is_persistent=True, retry_count=7)
+        non_persistent = UpgradeOperation(is_persistent=False, retry_count=0)
+        self.assertEqual(model_admin.retry_count_display(persistent), 7)
+        self.assertEqual(model_admin.retry_count_display(non_persistent), "")
+
     def test_batch_upgrade_operation_admin_list_shows_is_persistent(self):
         self._login()
         env = self._create_upgrade_env()

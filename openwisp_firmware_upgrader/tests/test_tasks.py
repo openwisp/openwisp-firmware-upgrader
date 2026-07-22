@@ -212,7 +212,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         op = self._create_pending_op()
         tasks.retry_pending_upgrade.run(op.pk)
         op.refresh_from_db()
-        self.assertEqual(op.status, "failed")
+        self.assertEqual(op.status, "aborted")
         self.assertIn("Device has been deactivated", op.log)
         mocked_upgrade.assert_not_called()
 

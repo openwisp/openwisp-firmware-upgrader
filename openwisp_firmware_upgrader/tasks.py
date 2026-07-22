@@ -7,7 +7,6 @@ from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
-from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
@@ -118,7 +117,7 @@ def delete_firmware_files(files_to_delete):
 def retry_pending_upgrade(operation_id):
     UpgradeOperation = load_model("UpgradeOperation")
     updated = UpgradeOperation.objects.filter(pk=operation_id, status="pending").update(
-        status="in-progress"
+        status="in-progress", next_retry_at=None
     )
     if not updated:
         return
@@ -134,9 +133,9 @@ def retry_pending_upgrade(operation_id):
     if operation.device.is_deactivated():
         aborted = UpgradeOperation.objects.filter(
             pk=operation_id, status="in-progress"
-        ).update(status="failed")
+        ).update(status="aborted")
         if aborted:
-            operation.status = "failed"
+            operation.status = "aborted"
             operation.log_line(
                 _("Device has been deactivated; persistent retry aborted."),
                 save=False,
@@ -208,15 +207,11 @@ def send_pending_upgrade_reminders():
             "%(count)d devices are still pending in mass upgrade %(batch)s.",
             pending_count,
         ) % {"count": pending_count, "batch": batch}
-        change_url = reverse(
-            "admin:{}_{}_change".format(batch._meta.app_label, batch._meta.model_name),
-            args=[batch.pk],
-        )
         notify.send(
             sender=batch,
             type="generic_message",
             target=batch,
             message=description,
             description=description,
-            url=f"{change_url}?status=pending",
+            target_url_suffix="?status=pending",
         )

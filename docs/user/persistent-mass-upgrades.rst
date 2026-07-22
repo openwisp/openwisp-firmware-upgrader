@@ -94,8 +94,8 @@ upgrades:
 - a **reminder** fires when a persistent batch still has pending children
   after the configured cadence has elapsed, and
 - a **failure** notification fires when a persistent operation finally
-  ends as ``failed`` (for example, the device was deactivated while
-  pending).
+  ends as ``failed`` (for example, the firmware image fails its checksum
+  check, or the device cannot be reached after reflashing).
 
 Both are delivered to the organization's administrators (and superusers).
 

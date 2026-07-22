@@ -438,7 +438,7 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
         "status",
         "image",
         "is_persistent",
-        "retry_count",
+        "retry_count_display",
         "modified",
     ]
     list_filter = ["status", "is_persistent"]
@@ -533,7 +533,17 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
         fields = super().get_fields(request, obj).copy()
         if self._should_display_batch(obj, fields):
             fields.insert(1, "batch")
-        return fields
+        if obj and not obj.is_persistent:
+            hidden = ("retry_count", "next_retry_at")
+        elif obj and obj.next_retry_at is None:
+            hidden = ("next_retry_at",)
+        else:
+            hidden = ()
+        return [field for field in fields if field not in hidden]
+
+    @admin.display(description=_("retry count"), ordering="retry_count")
+    def retry_count_display(self, obj):
+        return obj.retry_count if obj.is_persistent else ""
 
     def has_add_permission(self, request):
         return False

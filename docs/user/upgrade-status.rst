@@ -50,7 +50,7 @@ upgrades use while a device is offline.
   ±25% jitter)
 - A periodic Beat task scans for pending operations whose
   ``next_retry_at`` has elapsed and re-dispatches them
-- A device deactivated while pending is set to ``failed`` and not retried
+- A device deactivated while pending is set to ``aborted`` and not retried
 
 **User Actions**: Pending operations can be cancelled the same way as
 in-progress ones, both from the admin and the REST API. Starting another
