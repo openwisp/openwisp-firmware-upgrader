@@ -1078,6 +1078,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
             response = self.client.get(change_url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context.get("upgrade_operation_cancel_url"), "")
+        self.assertContains(response, 'var owUpgradeOperationCancelUrl = "";')
+        self.assertNotContains(response, "api_upgradeoperation_cancel")
 
     def test_device_change_page_api_disabled(self):
         self._login()
@@ -1089,6 +1091,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
         with mock.patch.object(app_settings, "FIRMWARE_UPGRADER_API", False):
             response = self.client.get(change_url)
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'var owUpgradeOperationCancelUrl = "";')
+        self.assertNotContains(response, "api_upgradeoperation_cancel")
 
 
 class TestAdminTransaction(
