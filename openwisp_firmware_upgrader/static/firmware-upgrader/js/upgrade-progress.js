@@ -260,7 +260,7 @@ function updateStatusWithProgressBar(statusField, operation) {
         ${escapeHtml(progressPercentage)}%
       </span>
     `;
-    const canCancel = progressPercentage < 65;
+    const canCancel = progressPercentage < 65 && Boolean(owUpgradeOperationCancelUrl);
     const cancelButtonClass = canCancel
       ? "upgrade-cancel-btn"
       : "upgrade-cancel-btn disabled";
