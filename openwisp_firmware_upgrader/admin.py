@@ -355,6 +355,7 @@ class FirmwareImageAdmin(BaseAdmin):
                 )
             ):
                 obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
+                update_build_status = True
         super().save_model(request, obj, form, change)
         if update_build_status:
             obj.build._update_extraction_status()

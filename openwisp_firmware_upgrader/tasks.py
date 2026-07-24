@@ -153,12 +153,15 @@ def extract_firmware_metadata(self, image_pk):
         )
         return
 
+    file_name = image.file.name
     updated = FirmwareImage.objects.filter(
         pk=image_pk,
+        file=file_name,
         extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
     ).update(extraction_status=FirmwareImage.STATUS_IN_PROGRESS)
     if not updated:
         return
+    image = FirmwareImage.objects.get(pk=image_pk, file=file_name)
     log_lines = [f"[+] Analyzing: {os.path.basename(image.file.name)}"]
     update = {}
 
@@ -245,7 +248,13 @@ def extract_firmware_metadata(self, image_pk):
             image_pk,
         )
 
-    FirmwareImage.objects.filter(pk=image_pk).update(**update)
+    completed = FirmwareImage.objects.filter(
+        pk=image_pk,
+        file=file_name,
+        extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+    ).update(**update)
+    if not completed:
+        return
 
     try:
         fresh = FirmwareImage.objects.select_related("build", "build__category").get(
