@@ -4,8 +4,7 @@
 # index on the upgrade-operation table. On PostgreSQL the non-concurrent
 # CREATE INDEX takes a SHARE lock that blocks writes (reads keep working) for
 # the duration of the build, so if the table has grown large, run this
-# migration in a maintenance window or create the index ahead of time with
-# CREATE INDEX CONCURRENTLY and let Django adopt it.
+# migration in a maintenance window.
 
 from django.db import migrations, models
 

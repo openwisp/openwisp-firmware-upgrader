@@ -80,7 +80,7 @@ Cancelling a pending operation
 ------------------------------
 
 A pending operation is still active, so it can be cancelled the same way
-as an in-progress one — from the admin cancel button or the REST cancel
+as an in-progress one, from the admin cancel button or the REST cancel
 endpoint. Cancelling stops the retry loop and moves the operation to
 ``cancelled``. A pending operation cannot be *deleted* until it reaches a
 terminal state (see :ref:`deleting_upgrade_operations`).
@@ -88,7 +88,7 @@ terminal state (see :ref:`deleting_upgrade_operations`).
 Notifications
 -------------
 
-Two notifications keep operators informed about long-running persistent
+Three notifications keep operators informed about long-running persistent
 upgrades:
 
 - a **reminder** fires when a persistent batch still has pending children
@@ -96,8 +96,11 @@ upgrades:
 - a **failure** notification fires when a persistent operation finally
   ends as ``failed`` (for example, the firmware image fails its checksum
   check, or the device cannot be reached after reflashing).
+- a **completion** notification fires when a mass upgrade succeeds or
+  fails (a user-initiated cancellation is not notified), whether or not
+  it is persistent.
 
-Both are delivered to the organization's administrators (and superusers).
+These are delivered to the organization's administrators (and superusers).
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/notifications.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/notifications.png
@@ -109,7 +112,7 @@ Behaviour with and without openwisp-monitoring
 
 Persistent upgrades work with Celery Beat alone: the periodic scan retries
 due pending operations on a fixed cadence. Installing
-``openwisp-monitoring`` adds a faster wake-up path — a device returning to
+``openwisp-monitoring`` adds a faster wake-up path: a device returning to
 a healthy state triggers its pending retries immediately, without waiting
 for the next scan. When ``openwisp-monitoring`` is not installed, the Beat
 scan remains the only retry trigger.

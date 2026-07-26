@@ -690,6 +690,9 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
         obj = self.get_object(request, object_id)
         if obj:
             upgrades_qs = self.get_upgrade_operations(request, obj)
+            show_next_retry = (
+                obj.is_persistent and upgrades_qs.filter(status="pending").exists()
+            )
             search_query = request.GET.get("q", "")
             if search_query:
                 upgrades_qs = upgrades_qs.filter(device__name__icontains=search_query)
@@ -719,6 +722,8 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                         request.GET.get(param) for param in ["status", "organization"]
                     ),
                     "upgrade_operation_app_label": upgrade_operation_app_label,
+                    "is_persistent": obj.is_persistent,
+                    "show_next_retry": show_next_retry,
                 }
             )
         return super().change_view(request, object_id, extra_context=extra_context)

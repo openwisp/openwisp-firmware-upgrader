@@ -324,6 +324,87 @@ class TestAdmin(BaseTestAdmin, TestCase):
         r = self.client.get(url)
         self.assertContains(r, "column-is_persistent")
 
+    def test_batch_change_page_shows_retry_columns_when_persistent(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, "Retry Count")
+        self.assertContains(r, "Next Retry")
+
+    def test_batch_change_page_hides_next_retry_without_pending(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="success"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, "Retry Count")
+        self.assertNotContains(r, "Next Retry")
+
+    def test_batch_change_page_hides_retry_columns_when_not_persistent(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=False
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertNotContains(r, "Retry Count")
+        self.assertNotContains(r, "Next Retry")
+
+    def test_batch_change_page_next_retry_scoped_to_managed_orgs(self):
+        env = self._create_upgrade_env()
+        org1 = env["d1"].organization
+        org2 = self._create_org(name="org2", slug="org2")
+        org2_device = self._create_device(
+            name="org2dev",
+            organization=org2,
+            mac_address="00:22:bb:33:cc:99",
+            model=env["image1a"].boards[0],
+        )
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="success"
+        )
+        UpgradeOperation.objects.create(
+            device=org2_device, image=env["image1a"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        with self.subTest("Org admin does not see pending op from another org"):
+            org1_admin = self._create_administrator(organizations=[org1])
+            self.client.force_login(org1_admin)
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            self.assertNotContains(r, "Next Retry")
+        with self.subTest("Superuser sees the pending op"):
+            self._login()
+            r = self.client.get(url)
+            self.assertContains(r, "Next Retry")
+
     def test_firmware_image_has_change_permission(self):
         request = MockRequest()
         request.user = User.objects.first()

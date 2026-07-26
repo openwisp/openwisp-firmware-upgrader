@@ -261,10 +261,6 @@ function updateBatchOperationProgress(data) {
         progress: data.progress,
       };
       renderOperationProgressBarInCell(statusCell, operation);
-      if (data.modified) {
-        let modifiedCell = row.find("td:nth-child(4)");
-        modifiedCell.text(getFormattedDateTimeString(data.modified));
-      }
     }
   });
   if (!found) {
@@ -305,7 +301,13 @@ function addNewOperationRow(data) {
   $statusTd.append($statusContent);
   let $imageTd = $("<td>").text(imageDisplay);
   let $modifiedTd = $("<td>").text(modifiedTime);
-  $row.append($deviceTd, $statusTd, $imageTd, $modifiedTd);
+  $row.append($deviceTd, $statusTd, $imageTd);
+  // add empty cells for the retry columns present in the header, if any
+  let extraColumns = $("#result_list thead th").length - 4;
+  for (let i = 0; i < extraColumns; i++) {
+    $row.append($("<td>"));
+  }
+  $row.append($modifiedTd);
   tbody.append($row);
 
   let operation = {

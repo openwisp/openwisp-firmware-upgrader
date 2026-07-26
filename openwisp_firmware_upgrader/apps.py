@@ -95,6 +95,11 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             sender=UpgradeOperation,
             dispatch_uid="upgrade_operation.notify_on_failure",
         )
+        post_save.connect(
+            BatchUpgradeOperation.notify_on_completion,
+            sender=BatchUpgradeOperation,
+            dispatch_uid="batch_upgrade_operation.notify_on_completion",
+        )
 
     def connect_delete_signals(self):
         """

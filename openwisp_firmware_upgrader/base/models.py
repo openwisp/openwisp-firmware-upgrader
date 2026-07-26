@@ -91,6 +91,15 @@ class UpgradeOptionsMixin(models.Model):
         self.validate_upgrade_options()
 
 
+class StatusTrackingMixin:
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        if "status" in field_names:
+            instance._previous_status = instance.status
+        return instance
+
+
 class AbstractCategory(ShareableOrgMixin, TimeStampedEditableModel):
     name = models.CharField(max_length=64, db_index=True)
     description = models.TextField(blank=True)
@@ -579,7 +588,9 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         return qs
 
 
-class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
+class AbstractBatchUpgradeOperation(
+    StatusTrackingMixin, UpgradeOptionsMixin, TimeStampedEditableModel
+):
     build = models.ForeignKey(get_model_name("Build"), on_delete=models.CASCADE)
     group = models.ForeignKey(
         swapper.get_model_name("config", "DeviceGroup"),
@@ -912,14 +923,42 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             new_status = "success"
         else:
             new_status = self.status
-        # Update status only if it has changed
         if self.status != new_status:
-            self.status = new_status
-            self.save(update_fields=["status"])
-        return new_status, stats
+            claimed = self._meta.model.objects.filter(
+                pk=self.pk, status=self.status
+            ).update(status=new_status)
+            if claimed:
+                self.status = new_status
+                self.save(update_fields=["status"])
+            else:
+                self.refresh_from_db(fields=["status"])
+        return self.status, stats
+
+    @classmethod
+    def notify_on_completion(cls, sender, instance, created, **kwargs):
+        """
+        Fires a notification when a mass upgrade reaches a terminal state.
+        """
+        if created or instance.status not in ("success", "failed"):
+            return
+        if getattr(instance, "_previous_status", None) == instance.status:
+            return
+        description = _("Mass upgrade %(batch)s %(status)s.") % {
+            "batch": instance,
+            "status": instance.get_status_display(),
+        }
+        notify.send(
+            sender=instance,
+            type="generic_message",
+            target=instance,
+            message=description,
+        )
+        instance._previous_status = instance.status
 
 
-class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
+class AbstractUpgradeOperation(
+    StatusTrackingMixin, UpgradeOptionsMixin, TimeStampedEditableModel
+):
 
     CANCELLABLE_STATUS = ("in-progress", "pending")
     STATUS_CHOICES = (
@@ -1050,7 +1089,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 pk=self.pk,
                 status__in=self.CANCELLABLE_STATUS,
                 progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
-            ).update(status="cancelled")
+            ).update(status="cancelled", next_retry_at=None)
             if not updated:
                 # The cancellation did not succeed, check why
                 self.refresh_from_db(fields=["status", "progress"])
@@ -1106,13 +1145,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             )
 
     @classmethod
-    def from_db(cls, db, field_names, values):
-        instance = super().from_db(db, field_names, values)
-        if "status" in field_names:
-            instance._previous_status = instance.status
-        return instance
-
-    @classmethod
     def notify_on_failed_persistent_upgrade(cls, sender, instance, created, **kwargs):
         """
         Fires a notification when a persistent upgrade transitions to failed.
@@ -1131,7 +1163,6 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             type="generic_message",
             target=instance.device,
             message=description,
-            description=description,
         )
         instance._previous_status = instance.status
 

@@ -212,6 +212,5 @@ def send_pending_upgrade_reminders():
             type="generic_message",
             target=batch,
             message=description,
-            description=description,
             target_url_suffix="?status=pending",
         )

@@ -44,6 +44,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
             status="success",
             is_persistent=True,
         )
+        mocked_notify.reset_mock()
         tasks.send_pending_upgrade_reminders.run()
         mocked_notify.assert_not_called()
 
@@ -60,8 +61,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         kwargs = mocked_notify.call_args.kwargs
         self.assertEqual(kwargs["target"], batch)
         self.assertEqual(kwargs["type"], "generic_message")
-        self.assertIn("pending", str(kwargs["description"]).lower())
-        self.assertEqual(kwargs["message"], kwargs["description"])
+        self.assertIn("pending", str(kwargs["message"]).lower())
         self.assertEqual(kwargs["target_url_suffix"], "?status=pending")
         batch.refresh_from_db()
         self.assertIsNotNone(batch.last_reminder_at)
@@ -205,3 +205,52 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         op.save()
         self.assertEqual(op.status, "failed")
         self.assertEqual(mocked_notify.call_count, 1)
+
+
+class TestBatchCompletionNotification(TestUpgraderMixin, TransactionTestCase):
+    def _complete_batch(self, index, is_persistent, op_status):
+        build = self._create_build(version=f"1.{index}")
+        image = self._create_firmware_image(build=build)
+        device = self._create_device(
+            name=f"device{index}", mac_address=f"00:11:22:33:44:{index:02d}"
+        )
+        self._create_config(device=device)
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image,
+            batch=BatchUpgradeOperation.objects.create(
+                build=build, status="in-progress", is_persistent=is_persistent
+            ),
+            status=op_status,
+            is_persistent=is_persistent,
+        )
+        return BatchUpgradeOperation.objects.get(build=build)
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_completion_notifies_except_on_cancel(self, mocked_notify):
+        cases = [
+            (True, "success", "success", 1),
+            (True, "aborted", "failed", 1),
+            (True, "cancelled", "cancelled", 0),
+            (False, "success", "success", 1),
+        ]
+        for index, (is_persistent, op_status, batch_status, calls) in enumerate(cases):
+            with self.subTest(op_status=op_status, is_persistent=is_persistent):
+                mocked_notify.reset_mock()
+                batch = self._complete_batch(index, is_persistent, op_status)
+                batch.refresh_from_db()
+                self.assertEqual(batch.status, batch_status)
+                self.assertEqual(mocked_notify.call_count, calls)
+                if calls:
+                    kwargs = mocked_notify.call_args.kwargs
+                    self.assertEqual(kwargs["target"], batch)
+                    self.assertEqual(kwargs["type"], "generic_message")
+                    self.assertIn(batch.get_status_display(), str(kwargs["message"]))
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_completion_does_not_duplicate(self, mocked_notify):
+        batch = self._complete_batch(0, is_persistent=False, op_status="success")
+        self.assertEqual(mocked_notify.call_count, 1)
+        mocked_notify.reset_mock()
+        batch.save()
+        mocked_notify.assert_not_called()

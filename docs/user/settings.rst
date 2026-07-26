@@ -85,7 +85,7 @@ this dict:
 - ``base_delay`` (seconds): delay before the first persistent retry.
 - ``multiplier``: exponential factor applied per retry. With the defaults
   the delays grow 10m → 20m → 40m → ...
-- ``jitter`` (0–1): random fraction added or subtracted from each delay,
+- ``jitter`` (0-1): random fraction added or subtracted from each delay,
   so retries for many devices don't all fire at the same instant.
 - ``max_delay`` (seconds): upper bound for any single retry delay.
 - ``dispatch_jitter`` (seconds): when the Beat scanner fans out a batch of
