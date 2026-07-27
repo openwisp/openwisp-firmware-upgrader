@@ -773,6 +773,44 @@ class TestAdmin(BaseTestAdmin, TestCase):
             administrator=True,
         )
 
+    def test_firmware_image_admin_multitenancy(self):
+        org1 = self._get_org()
+        org2 = self._create_org(name="Org 2", slug="org2")
+        image1 = self._create_firmware_image(organization=org1)
+        image2 = self._create_firmware_image(organization=org2)
+        administrator = self._create_administrator(organizations=[org1])
+        image1_url = reverse(
+            f"admin:{self.app_label}_firmwareimage_change", args=[image1.pk]
+        )
+        image2_url = reverse(
+            f"admin:{self.app_label}_firmwareimage_change", args=[image2.pk]
+        )
+        self.client.force_login(administrator)
+
+        with self.subTest("changelist only shows managed organization images"):
+            response = self.client.get(
+                reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            )
+            self.assertContains(
+                response,
+                image1_url,
+                msg_prefix="Firmware image multi-tenancy test failed",
+            )
+            self.assertNotContains(
+                response,
+                image2_url,
+                msg_prefix="Firmware image multi-tenancy test failed",
+            )
+
+        with self.subTest("change view denies another organization image"):
+            response = self.client.get(image2_url, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.request["PATH_INFO"],
+                reverse("admin:index"),
+                "Firmware image multi-tenancy test failed",
+            )
+
     def test_empty_device_firmware_image(self):
         self._login()
         device = self._create_device_with_connection()
