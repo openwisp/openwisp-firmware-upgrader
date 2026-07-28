@@ -189,7 +189,7 @@ def extract_firmware_metadata(self, image_pk):
         update = {
             "extraction_status": FirmwareImage.STATUS_SUCCESS,
             "extraction_log": "\n".join(log_lines),
-            "board": meta.get("model", ""),
+            "board": meta.get("model") or "",
             "compatible": "\n".join(meta.get("compatible", [])),
             "target": meta.get("target", ""),
             "fw_version": meta.get("version", ""),
@@ -248,11 +248,33 @@ def extract_firmware_metadata(self, image_pk):
             image_pk,
         )
 
-    completed = FirmwareImage.objects.filter(
-        pk=image_pk,
-        file=file_name,
-        extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
-    ).update(**update)
+    try:
+        completed = FirmwareImage.objects.filter(
+            pk=image_pk,
+            file=file_name,
+            extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+        ).update(**update)
+    except Exception:
+        logger.exception(
+            "extract_firmware_metadata: failed to persist result for pk=%s",
+            image_pk,
+        )
+        FirmwareImage.objects.filter(
+            pk=image_pk,
+            extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+        ).update(
+            extraction_status=FirmwareImage.STATUS_INVALID,
+            failure_reason=FirmwareImage.FAILURE_INVALID,
+        )
+        try:
+            fresh = FirmwareImage.objects.select_related("build").get(pk=image_pk)
+            fresh.build._update_extraction_status()
+        except Exception:
+            logger.exception(
+                "extract_firmware_metadata:failed to update build status after fallback for pk=%s",
+                image_pk,
+            )
+        return
     if not completed:
         return
 

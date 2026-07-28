@@ -95,6 +95,28 @@ class TestModels(TestUpgraderMixin, TestCase):
         fw = self._create_firmware_image(type="")
         self.assertEqual(fw.type, self.TPLINK_4300_IMAGE)
 
+    def test_fw_auto_type_strips_version_from_filename(self):
+        with open(self.FAKE_IMAGE_PATH, "rb") as f:
+            content = f.read()
+        file_v23 = SimpleUploadedFile(
+            name=f"openwrt-23.05.5-{self.TPLINK_4300_IMAGE}",
+            content=content,
+            content_type="application/octet-stream",
+        )
+        file_v24 = SimpleUploadedFile(
+            name=f"openwrt-24.10.0-{self.TPLINK_4300_IMAGE}",
+            content=content,
+            content_type="application/octet-stream",
+        )
+        fw23 = self._create_firmware_image(
+            type="", file=file_v23, build=self._get_build(version="23.05.5")
+        )
+        fw24 = self._create_firmware_image(
+            type="", file=file_v24, build=self._get_build(version="24.10.0")
+        )
+        self.assertEqual(fw23.type, fw24.type)
+        self.assertEqual(fw23.type, self.TPLINK_4300_IMAGE)
+
     def test_device_firmware_multitenancy(self):
         device_fw = self._create_device_firmware()
         org2 = self._create_org(name="org2")
@@ -744,6 +766,18 @@ class TestModels(TestUpgraderMixin, TestCase):
         build._update_extraction_status()
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_ANALYZING)
+
+    def test_update_extraction_status_does_not_overwrite_final_with_analyzing(self):
+        env = self._create_upgrade_env()
+        build = env["build2"]
+        Build.objects.filter(pk=build.pk).update(status=Build.BUILD_STATUS_SUCCESS)
+        FirmwareImage.objects.filter(pk=env["image2a"].pk).update(
+            extraction_status=FirmwareImage.STATUS_IN_PROGRESS
+        )
+        build.refresh_from_db()
+        build._update_extraction_status()
+        build.refresh_from_db()
+        self.assertEqual(build.status, Build.BUILD_STATUS_SUCCESS)
 
     def test_visible_locked_blocks_field_change_on_success(self):
         image = self._create_firmware_image()

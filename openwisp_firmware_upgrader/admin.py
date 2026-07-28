@@ -210,6 +210,7 @@ class FirmwareImageAdmin(BaseAdmin):
     list_filter = ["extraction_status", "build__category"]
     search_fields = ["board", "target"]
     ordering = ["-created"]
+    multitenant_parent = "build__category"
     actions = ["re_extract_metadata"]
     readonly_fields = [
         "created",
@@ -327,6 +328,16 @@ class FirmwareImageAdmin(BaseAdmin):
 
     def save_model(self, request, obj, form, change):
         if change and "file" in form.changed_data:
+            if UpgradeOperation.objects.filter(image=obj, status="success").exists():
+                self.message_user(
+                    request,
+                    _(
+                        "The file cannot be replaced because this image has already "
+                        "been flashed to one or more devices successfully."
+                    ),
+                    messages.ERROR,
+                )
+                return
             obj.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
             obj.extraction_log = ""
             obj.failure_reason = ""

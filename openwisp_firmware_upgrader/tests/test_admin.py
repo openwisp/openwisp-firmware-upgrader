@@ -1447,6 +1447,32 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(fw.source, "dtb")
         mock_task.delay.assert_not_called()
 
+    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    def test_firmware_image_file_replacement_blocked_after_successful_upgrade(
+        self, mock_task
+    ):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="TP-Link WDR4300",
+            source="fwtool",
+        )
+        fw.refresh_from_db()
+        device = self._create_config(organization=fw.build.category.organization).device
+        UpgradeOperation.objects.create(device=device, image=fw, status="success")
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["file"]
+        with mock.patch.object(fw_admin, "message_user") as mock_message:
+            fw_admin.save_model(request, fw, form, change=True)
+        mock_message.assert_called_once()
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertEqual(fw.board, "TP-Link WDR4300")
+        mock_task.delay.assert_not_called()
+
 
 class TestAdminTransaction(
     BaseTestAdmin, AdminActionPermTestMixin, TransactionTestCase

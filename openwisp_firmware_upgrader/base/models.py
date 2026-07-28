@@ -325,6 +325,8 @@ class AbstractBuild(TimeStampedEditableModel):
             if new_status != self.BUILD_STATUS_ANALYZING:
                 self._notify_extraction_complete(new_status)
             return
+        if new_status == self.BUILD_STATUS_ANALYZING:
+            return
         Build.objects.filter(pk=self.pk).exclude(status=new_status).update(
             status=new_status
         )
@@ -516,8 +518,11 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         if self.type:
             return
         filename = self.file.name
-        # removes leading prefix
-        self.type = "-".join(filename.split("-")[1:])
+        parts = filename.split("-")
+        parts = parts[1:]
+        if parts and parts[0][:1].isdigit():
+            parts = parts[1:]
+        self.type = "-".join(parts)
 
     @classmethod
     def trigger_metadata_extraction(cls, instance, created, **kwargs):
