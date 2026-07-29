@@ -316,7 +316,7 @@ def extract_firmware_metadata(self, image_pk):
                 _("unknown error"),
             )
             notify.send(
-                sender=fresh.build.category.organization,
+                sender=fresh.build.category.organization or fresh,
                 type="generic_message",
                 level="error",
                 url=admin_url,
