@@ -1,4 +1,6 @@
 {% extends "admin/change_form.html" %}
+{% load i18n admin_urls static %}
+
 {% block content %}
 {{ block.super }}
 <script>
@@ -8,3 +10,16 @@
     }());
 </script>
 {% endblock %}
+
+{% block footer %}
+{{ block.super }}
+<script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
+<script>
+  var owFirmwareUpgraderApiHost = {
+    host: "{{ request.get_host|escapejs }}"
+  };
+  var owFirmwareImageId = "{{ original.pk }}";
+  var owFirmwareExtractionStatus = "{{ original.extraction_status }}";
+</script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/extraction-progress.js' %}"></script>
+{% endblock footer %}

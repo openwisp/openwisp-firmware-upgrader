@@ -355,9 +355,16 @@ class FirmwareImageAdmin(BaseAdmin):
             if obj.extraction_status == FirmwareImage.STATUS_FAILED:
                 metadata_fields = ["board", "compatible", "target", "fw_version"]
                 if any(f in form.changed_data for f in metadata_fields):
-                    obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
-                    obj.source = "manual"
-                    update_build_status = True
+                    if obj.board:
+                        obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
+                        obj.source = "manual"
+                        update_build_status = True
+                    else:
+                        self.message_user(
+                            request,
+                            _("Board is required to manually confirm this image."),
+                            messages.WARNING,
+                        )
             elif (
                 obj.extraction_status == FirmwareImage.STATUS_SUCCESS
                 and obj.source == "dtb"

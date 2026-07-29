@@ -236,7 +236,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
     @mock.patch(_MOCK_NOTIFY)
     @mock.patch(_MOCK_EXTRACTOR)
     @capture_any_output()
-    def test_extract_firmware_metadata_invalid_does_not_send_notification(self, *args):
+    def test_extract_firmware_metadata_invalid_sends_notifications(self, *args):
         MockExtractor, mock_notify = args[0], args[1]
         MockExtractor.return_value.extract.side_effect = RuntimeError("unexpected")
         image = self._create_firmware_image()
@@ -244,7 +244,10 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             extraction_status=FirmwareImage.STATUS_UNCONFIRMED
         )
         tasks.extract_firmware_metadata.run(str(image.pk))
-        mock_notify.assert_not_called()
+        mock_notify.assert_called()
+        call_kwargs = mock_notify.call_args_list[0].kwargs
+        self.assertEqual(call_kwargs["level"], "error")
+        self.assertIn("#device-metadata", call_kwargs["url"])
 
     @mock.patch(_MOCK_NOTIFY)
     @mock.patch(_MOCK_EXTRACTOR)

@@ -18,6 +18,7 @@ from . import settings as app_settings
 from .exceptions import RecoverableFailure
 from .extractors.exceptions import DecompressionLimitExceeded, UnsupportedImageError
 from .swapper import load_model
+from .websockets import FirmwareExtractionPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +279,21 @@ def extract_firmware_metadata(self, image_pk):
     if not completed:
         return
 
+    _terminal = {
+        FirmwareImage.STATUS_SUCCESS,
+        FirmwareImage.STATUS_FAILED,
+        FirmwareImage.STATUS_INVALID,
+    }
+    if update.get("extraction_status") in _terminal:
+        try:
+            FirmwareExtractionPublisher(image_pk).publish_status(
+                update["extraction_status"]
+            )
+        except Exception:
+            logger.exception(
+                "Failed to publish extraction status via WebSocket for image %s",
+                image_pk,
+            )
     try:
         fresh = FirmwareImage.objects.select_related("build", "build__category").get(
             pk=image_pk
@@ -288,7 +304,10 @@ def extract_firmware_metadata(self, image_pk):
         )
         return
 
-    if update.get("extraction_status") == FirmwareImage.STATUS_FAILED:
+    if update.get("extraction_status") in (
+        FirmwareImage.STATUS_FAILED,
+        FirmwareImage.STATUS_INVALID,
+    ):
         try:
             admin_url = _get_image_admin_url(fresh)
             failure_reason_choices = dict(FirmwareImage.FAILURE_REASON_CHOICES)
@@ -297,7 +316,7 @@ def extract_firmware_metadata(self, image_pk):
                 _("unknown error"),
             )
             notify.send(
-                sender=fresh,
+                sender=fresh.build.category.organization,
                 type="generic_message",
                 level="error",
                 url=admin_url,
@@ -322,7 +341,7 @@ def extract_firmware_metadata(self, image_pk):
         try:
             admin_url = _get_image_admin_url(fresh)
             notify.send(
-                sender=fresh,
+                sender=fresh.build.category.organization,
                 type="generic_message",
                 level="warning",
                 url=admin_url,
