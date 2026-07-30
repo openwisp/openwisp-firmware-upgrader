@@ -409,6 +409,23 @@ class TestModels(TestUpgraderMixin, TestCase):
         result = DeviceFirmware.create_for_device(device_fw.device)
         self.assertIsNone(result)
 
+    def test_create_for_device_shared_image(self):
+        category = self._create_category(organization=None)
+        build = self._create_build(category=category, os="OpenWrt 21.03")
+        image = self._create_firmware_image(
+            build=build, extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        device = self._create_device(
+            organization=self._get_org(),
+            os=build.os,
+            model=image.board,
+        )
+        self._create_config(device=device)
+        self._create_device_connection(device=device)
+        device_fw = DeviceFirmware.create_for_device(device)
+        self.assertIsNotNone(device_fw)
+        self.assertEqual(device_fw.image, image)
+
     def test_create_for_device_matches_board_and_os(self):
         image = self._create_firmware_image(
             extraction_status=FirmwareImage.STATUS_SUCCESS

@@ -329,6 +329,48 @@ class TestAdmin(BaseTestAdmin, TestCase):
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_ANALYZING)
 
+    def test_re_extract_metadata_action_skips_flashed_images(self):
+        self._login()
+        build = self._create_build()
+        image_safe = self._create_firmware_image(
+            build=build, type=self.TPLINK_4300_IMAGE
+        )
+        image_flashed = self._create_firmware_image(
+            build=build, type=self.TPLINK_4300_IL_IMAGE
+        )
+        FirmwareImage.objects.filter(pk__in=[image_safe.pk, image_flashed.pk]).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        device = self._create_config(
+            organization=image_flashed.build.category.organization
+        ).device
+        UpgradeOperation.objects.create(
+            device=device, image=image_flashed, status="success"
+        )
+        url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+        ) as mocked_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                r = self.client.post(
+                    url,
+                    {
+                        "action": "re_extract_metadata",
+                        ACTION_CHECKBOX_NAME: (
+                            str(image_safe.pk),
+                            str(image_flashed.pk),
+                        ),
+                    },
+                    follow=True,
+                )
+        self.assertEqual(r.status_code, 200)
+        mocked_delay.assert_called_once_with(image_safe.pk)
+        image_safe.refresh_from_db()
+        self.assertEqual(image_safe.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        image_flashed.refresh_from_db()
+        self.assertEqual(image_flashed.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertContains(r, "1 image(s) were skipped")
+
     def test_device_firmware_inline_has_add_permission(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device
@@ -1470,10 +1512,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(fw.source, "dtb")
         mock_task.delay.assert_not_called()
 
-    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
-    def test_firmware_image_file_replacement_blocked_after_successful_upgrade(
-        self, mock_task
-    ):
+    def test_firmware_image_file_replacement_blocked_after_successful_upgrade(self):
+        self._login()
         fw = self._create_firmware_image()
         FirmwareImage.objects.filter(pk=fw.pk).update(
             extraction_status=FirmwareImage.STATUS_SUCCESS,
@@ -1483,18 +1523,46 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         device = self._create_config(organization=fw.build.category.organization).device
         UpgradeOperation.objects.create(device=device, image=fw, status="success")
-        request = MockRequest()
-        request.user = User.objects.first()
-        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
-        form = mock.MagicMock()
-        form.changed_data = ["file"]
-        with mock.patch.object(fw_admin, "message_user") as mock_message:
-            fw_admin.save_model(request, fw, form, change=True)
-        mock_message.assert_called_once()
+        url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[fw.pk])
+        data = {
+            "build": str(fw.build.pk),
+            "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+            "type": fw.type,
+            "_save": "Save",
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "The file cannot be replaced")
         fw.refresh_from_db()
         self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
         self.assertEqual(fw.board, "TP-Link WDR4300")
-        mock_task.delay.assert_not_called()
+
+    def test_firmware_image_file_replacement_other_fields_not_lost(self):
+        self._login()
+        fw = self._create_firmware_image()
+        original_build_id = fw.build_id
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="TP-Link WDR4300",
+            source="fwtool",
+        )
+        fw.refresh_from_db()
+        device = self._create_config(organization=fw.build.category.organization).device
+        UpgradeOperation.objects.create(device=device, image=fw, status="success")
+        new_build = self._create_build(category=fw.build.category, version="99.0")
+        url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[fw.pk])
+        data = {
+            "build": str(new_build.pk),
+            "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+            "type": fw.type,
+            "_save": "Save",
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "The file cannot be replaced")
+        fw.refresh_from_db()
+        self.assertEqual(fw.build_id, original_build_id)
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
 
 
 class TestAdminTransaction(

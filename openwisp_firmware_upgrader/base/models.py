@@ -473,6 +473,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     def clean(self):
         self._clean_type()
         self._validate_locked()
+        self._validate_file_replacement()
         self._validate_file_header()
         self._validate_rootfs()
 
@@ -570,6 +571,23 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                 raise ValidationError(
                     _("Metadata fields are read-only after confirmation.")
                 )
+
+    def _validate_file_replacement(self):
+        if self._state.adding or not self.pk:
+            return
+        original = self.__class__.objects.filter(pk=self.pk).values("file").first()
+        if not original or self.file.name == original["file"]:
+            return
+        UpgradeOperation = load_model("UpgradeOperation")
+        if UpgradeOperation.objects.filter(image=self.pk, status="success").exists():
+            raise ValidationError(
+                {
+                    "file": _(
+                        "The file cannot be replaced because this image has already "
+                        "been flashed to one or more devices successfully."
+                    )
+                }
+            )
 
     def _validate_file_header(self):
         if not self.file:
@@ -766,7 +784,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                 return
             firmware_image = (
                 FirmwareImage.objects.filter(
-                    build__category__organization_id=device.organization_id,
+                    Q(build__category__organization_id=device.organization_id)
+                    | Q(build__category__organization__isnull=True),
                     build__os=device.os,
                     board=device.model,
                     extraction_status__in=FirmwareImage.LOCKED_STATUSES,

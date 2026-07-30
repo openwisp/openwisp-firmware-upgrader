@@ -328,16 +328,6 @@ class FirmwareImageAdmin(BaseAdmin):
 
     def save_model(self, request, obj, form, change):
         if change and "file" in form.changed_data:
-            if UpgradeOperation.objects.filter(image=obj, status="success").exists():
-                self.message_user(
-                    request,
-                    _(
-                        "The file cannot be replaced because this image has already "
-                        "been flashed to one or more devices successfully."
-                    ),
-                    messages.ERROR,
-                )
-                return
             obj.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
             obj.extraction_log = ""
             obj.failure_reason = ""
@@ -383,6 +373,22 @@ class FirmwareImageAdmin(BaseAdmin):
         permissions=["change"],
     )
     def re_extract_metadata(self, request, queryset):
+        blocked_pks = list(
+            queryset.filter(upgradeoperation__status="success").values_list(
+                "pk", flat=True
+            )
+        )
+        if blocked_pks:
+            self.message_user(
+                request,
+                _(
+                    "%(count)d image(s) were skipped because they have already "
+                    "been flashed succeessfully."
+                )
+                % {"count": len(blocked_pks)},
+                messages.WARNING,
+            )
+            queryset = queryset.exclude(pk__in=blocked_pks)
         image_pks = list(queryset.values_list("pk", flat=True))
         build_ids = set(queryset.values_list("build_id", flat=True))
         queryset.update(

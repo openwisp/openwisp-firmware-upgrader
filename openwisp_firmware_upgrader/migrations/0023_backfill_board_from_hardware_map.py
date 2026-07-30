@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.db import migrations
 from django.db.models.signals import post_migrate
@@ -8,6 +10,8 @@ from openwisp_notifications.signals import notify
 
 from openwisp_firmware_upgrader.hardware import OPENWRT_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.swapper import load_model
+
+logger = logging.getLogger(__name__)
 
 
 def _write_multi_board_log(FirmwareImage, Build, image_type, boards):
@@ -78,7 +82,10 @@ def _send_multi_board_notifications(app_config, **kwargs):
                 ),
             )
         except Exception:
-            pass
+            logger.exception(
+                "Failed to send multi-board reconcilation notification for image %s",
+                image.pk,
+            )
 
 
 def backfill_board_from_hardware_map(apps, schema_editor):
