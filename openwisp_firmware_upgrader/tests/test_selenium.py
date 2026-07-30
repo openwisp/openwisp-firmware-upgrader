@@ -479,7 +479,7 @@ class TestRealTimeProgress(
     config_app_label = Device._meta.app_label
     firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
-    image_type = "ar71xx-generic-xd3200-squashfs.sysupgrade.bin"
+    image_type = "ar71xx-generic-xd3200-squashfs-sysupgrade.bin"
     maxDiff = None
 
     def setUp(self):

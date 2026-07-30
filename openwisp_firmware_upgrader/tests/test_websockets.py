@@ -26,7 +26,6 @@ from .base import TestUpgraderMixin
 User = get_user_model()
 UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
 BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
-FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
 Device = load_model("config", "Device")
 
 

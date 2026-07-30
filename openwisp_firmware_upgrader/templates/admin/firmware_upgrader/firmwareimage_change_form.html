@@ -4,6 +4,9 @@
 {% block content %}
 {{ block.super }}
 <script>
+  // Django fieldsets can only render CSS classes, not aan id, so the
+  // "`#device-metadata`" anchor used by extraction failure notifications
+  // is attached client-side.
     (function() {
         var el = document.querySelector('.module.device-metadata');
         if (el) { el.id = 'device-metadata'; }

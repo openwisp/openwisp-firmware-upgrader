@@ -30,7 +30,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         "ath79-generic-tplink_tl-wdr4300-v1-il-squashfs-sysupgrade.bin"
     )
     _DEFAULT_BOARDS = {
-        "ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin": "TP-Link TL-WDR4300 v1",
+        TPLINK_4300_IMAGE: "TP-Link TL-WDR4300 v1",
     }
 
     def tearDown(self):

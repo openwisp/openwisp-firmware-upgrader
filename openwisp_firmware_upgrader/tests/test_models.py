@@ -796,7 +796,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_SUCCESS)
 
-    def test_visible_locked_blocks_field_change_on_success(self):
+    def test_validate_locked_blocks_field_change_on_success(self):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_SUCCESS
         image.board = "TP-Link WDR4300"
