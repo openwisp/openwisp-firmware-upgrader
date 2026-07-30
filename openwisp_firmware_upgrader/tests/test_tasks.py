@@ -339,11 +339,13 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         same_org_device = self._create_device(
             os="OpenWrt 23.05.5",
             organization=image.build.category.organization,
+            model=image.board,
         )
         other_org = self._create_org(name="other-org", slug="other-org")
         other_org_device = self._create_device(
             os="OpenWrt 23.05.5",
             organization=other_org,
+            model=image.board,
         )
         tasks.create_all_device_firmwares.run(str(image.pk))
         called_devices = [
@@ -363,9 +365,13 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         image = self._create_firmware_image(organization=None)
         Build.objects.filter(pk=image.build.pk).update(os="OpenWrt 23.05.5")
         org1 = self._get_org()
-        org1_device = self._create_device(os="OpenWrt 23.05.5", organization=org1)
+        org1_device = self._create_device(
+            os="OpenWrt 23.05.5", organization=org1, model=image.board
+        )
         org2 = self._create_org(name="org2", slug="org2")
-        org2_device = self._create_device(os="OpenWrt 23.05.5", organization=org2)
+        org2_device = self._create_device(
+            os="OpenWrt 23.05.5", organization=org2, model=image.board
+        )
         tasks.create_all_device_firmwares.run(str(image.pk))
         called_devices = [
             call.args[0] for call in mock_create_for_device.call_args_list

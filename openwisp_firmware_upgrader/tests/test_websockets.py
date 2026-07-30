@@ -25,6 +25,7 @@ from .base import TestUpgraderMixin
 
 User = get_user_model()
 UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
 BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
 Device = load_model("config", "Device")
 
@@ -758,6 +759,18 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(response["type"], "extraction_status")
         self.assertEqual(response["extraction_status"], "failed")
         self.assertIn("timestamp", response)
+        await communicator.disconnect()
+
+    async def test_firmware_extraction_consumer_current_state(self):
+        image = await sync_to_async(self._create_firmware_image)()
+        await sync_to_async(FirmwareImage.objects.filter(pk=image.pk).update)(
+            extraction_status=FirmwareImage.STATUS_FAILED
+        )
+        communicator = await self._get_firmware_extraction_communicator(image.pk)
+        await communicator.send_json_to({"type": "request_current_state"})
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "extraction_status")
+        self.assertEqual(response["extraction_status"], FirmwareImage.STATUS_FAILED)
         await communicator.disconnect()
 
     def test_firmware_extraction_publisher(self):
