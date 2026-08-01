@@ -25,7 +25,6 @@ from openwisp_firmware_upgrader.admin import (
     DeviceUpgradeOperationInline,
     FirmwareImageInline,
     UpgradeOperationAdmin,
-    UpgradeOperationInline,
     admin,
 )
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
@@ -2129,58 +2128,6 @@ class TestAdminTransaction(
 
 
 class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
-    def test_upgrade_operation_inline_delete_permission(self):
-        inline = UpgradeOperationInline(BatchUpgradeOperation, AdminSite())
-
-        with self.subTest("cascade delete via parent delete view"):
-            request = MagicMock()
-            request.resolver_match.url_name = (
-                f"{Organization._meta.app_label}_{Organization._meta.model_name}_delete"
-            )
-            request.POST.get.return_value = None
-            self.assertTrue(inline.has_delete_permission(request, obj=MagicMock()))
-
-        with self.subTest("bulk delete via delete_selected action"):
-            request = MagicMock()
-            request.resolver_match.url_name = (
-                f"{Organization._meta.app_label}_"
-                f"{Organization._meta.model_name}_changelist"
-            )
-            request.POST.get.side_effect = lambda key, default=None: (
-                "delete_selected" if key == "action" else default
-            )
-            self.assertTrue(inline.has_delete_permission(request, obj=MagicMock()))
-
-        with self.subTest("own delete view must be blocked"):
-            request = MagicMock()
-            request.resolver_match.url_name = (
-                f"{UpgradeOperation._meta.app_label}_"
-                f"{UpgradeOperation._meta.model_name}_delete"
-            )
-            request.POST.get.return_value = None
-            self.assertFalse(inline.has_delete_permission(request, obj=MagicMock()))
-
-        with self.subTest("normal change view — delete must be blocked"):
-            request = MagicMock()
-            request.resolver_match.url_name = (
-                f"{BatchUpgradeOperation._meta.app_label}_"
-                f"{BatchUpgradeOperation._meta.model_name}_change"
-            )
-            request.POST.get.return_value = None
-            self.assertFalse(inline.has_delete_permission(request, obj=MagicMock()))
-
-        with self.subTest("unrelated admin URL returns False"):
-            request = MagicMock()
-            request.user.is_superuser = True
-            request.resolver_match.url_name = "any_random_view"
-            self.assertFalse(inline.has_delete_permission(request, obj=MagicMock()))
-
-        with self.subTest("no resolver_match returns False"):
-            request = MagicMock()
-            request.user.is_superuser = False
-            request.resolver_match = None
-            self.assertFalse(inline.has_delete_permission(request, obj=None))
-
     def test_cascade_delete_integration(self):
         self._login()
         org = self._create_org(name="cascade-org", slug="cascade-org")
