@@ -32,6 +32,7 @@ from openwisp_utils.admin import (
     TimeReadonlyAdminMixin,
 )
 
+from . import settings as app_settings
 from .filters import (
     BuildCategoryFilter,
     BuildCategoryOrganizationFilter,
@@ -438,9 +439,13 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
 
     def change_view(self, request, object_id, extra_context=None, **kwargs):
         extra_context = extra_context or {}
-        extra_context["upgrade_operation_cancel_url"] = reverse(
-            "upgrader:api_upgradeoperation_cancel",
-            args=["00000000-0000-0000-0000-000000000000"],
+        extra_context["upgrade_operation_cancel_url"] = (
+            reverse(
+                "upgrader:api_upgradeoperation_cancel",
+                args=["00000000-0000-0000-0000-000000000000"],
+            )
+            if app_settings.FIRMWARE_UPGRADER_API
+            else ""
         )
         extra_context["django_locale"] = get_language()
         obj = self.get_object(request, object_id)
@@ -812,6 +817,13 @@ class DeviceFirmwareInline(
 
     def get_formset(self, request, obj=None, **kwargs):
         formset = super().get_formset(request, obj=obj, **kwargs)
+        if app_settings.FIRMWARE_UPGRADER_API:
+            formset.upgrade_operation_cancel_url = reverse(
+                "upgrader:api_upgradeoperation_cancel",
+                args=["00000000-0000-0000-0000-000000000000"],
+            )
+        else:
+            formset.upgrade_operation_cancel_url = ""
         if obj:
             try:
                 schema = get_upgrader_schema_for_device(obj)

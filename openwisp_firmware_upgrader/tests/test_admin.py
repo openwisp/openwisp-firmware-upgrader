@@ -31,6 +31,7 @@ from openwisp_firmware_upgrader.admin import (
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
 from openwisp_utils.tests import AdminActionPermTestMixin, capture_stderr
 
+from .. import settings as app_settings
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..upgraders.openwisp import OpenWisp1
@@ -1070,6 +1071,31 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertNotIn("disabled", failed_delete_input)
         self.assertIn("disabled", in_progress_delete_input)
         self.assertLess(failed_index, in_progress_index)
+
+    def test_upgrade_operation_change_view_api_disabled(self):
+        self._login()
+        device = self._create_device_with_connection()
+        operation = UpgradeOperation.objects.create(device=device)
+        change_url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_change", args=[operation.pk]
+        )
+        with mock.patch.object(app_settings, "FIRMWARE_UPGRADER_API", False):
+            response = self.client.get(change_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context.get("upgrade_operation_cancel_url"), "")
+        self.assertContains(response, 'var owUpgradeOperationCancelUrl = "";')
+
+    def test_device_change_page_api_disabled(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        change_url = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[device.pk]
+        )
+        with mock.patch.object(app_settings, "FIRMWARE_UPGRADER_API", False):
+            response = self.client.get(change_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'var owUpgradeOperationCancelUrl = "";')
 
 
 class TestAdminTransaction(
