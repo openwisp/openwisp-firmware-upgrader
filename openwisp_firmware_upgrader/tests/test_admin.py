@@ -2160,6 +2160,7 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
         device.deactivate()
         device.config.set_status_deactivated()
         operation = UpgradeOperation.objects.create(device=device, batch=batch)
+        second_operation = UpgradeOperation.objects.create(device=device, batch=batch)
         delete_url = reverse(
             f"admin:{Organization._meta.app_label}"
             f"_{Organization._meta.model_name}_delete",
@@ -2171,11 +2172,15 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
             response,
             "This deletion is blocked because one or more upgrade operations are "
             "in progress. Cancel them or wait for them to finish before continuing.",
+            count=1,
         )
         self.assertContains(response, "your account doesn't have permission to delete")
         self.assertTrue(Organization.objects.filter(pk=org.pk).exists())
         self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
         self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+        self.assertTrue(
+            UpgradeOperation.objects.filter(pk=second_operation.pk).exists()
+        )
 
     def test_build_delete_with_in_progress_operation(self):
         self._login()
@@ -2184,6 +2189,7 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
         batch = BatchUpgradeOperation.objects.create(build=build, status="success")
         device = self._create_device_with_connection()
         operation = UpgradeOperation.objects.create(device=device, batch=batch)
+        second_operation = UpgradeOperation.objects.create(device=device, batch=batch)
         delete_url = reverse(
             f"admin:{Build._meta.app_label}_{Build._meta.model_name}_delete",
             args=[build.pk],
@@ -2194,11 +2200,15 @@ class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
             response,
             "This deletion is blocked because one or more upgrade operations are "
             "in progress. Cancel them or wait for them to finish before continuing.",
+            count=1,
         )
         self.assertContains(response, "your account doesn't have permission to delete")
         self.assertTrue(Build.objects.filter(pk=build.pk).exists())
         self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
         self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+        self.assertTrue(
+            UpgradeOperation.objects.filter(pk=second_operation.pk).exists()
+        )
 
 
 del TestConfigAdmin
