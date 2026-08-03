@@ -29,6 +29,7 @@ from openwisp_users.tests.utils import TestMultitenantAdminMixin
 from openwisp_utils.tests import AdminActionPermTestMixin, capture_stderr
 
 from .. import settings as app_settings
+from .. import tasks
 from ..swapper import load_model
 from ..upgraders.openwisp import OpenWisp1
 from .base import TestUpgraderMixin
@@ -815,6 +816,26 @@ class TestAdmin(BaseTestAdmin, TestCase):
             administrator=True,
         )
 
+    def test_firmware_image_build_readonly_for_organization_admin(self):
+        org = self._get_org()
+        image = self._create_firmware_image(organization=org)
+        original_build_id = image.build_id
+        other_build = self._create_build(category=image.build.category, version="99.0")
+        administrator = self._create_administrator(organizations=[org])
+        self.client.force_login(administrator)
+        url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[image.pk])
+
+        with self.subTest("build field is rendered read-only"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, '<select name="build"')
+
+        with self.subTest("posting a different build is ignored"):
+            data = {"build": str(other_build.pk), "_save": "Save"}
+            self.client.post(url, data)
+            image.refresh_from_db()
+            self.assertEqual(image.build_id, original_build_id)
+
     def test_firmware_image_admin_multitenancy(self):
         org1 = self._get_org()
         org2 = self._create_org(name="Org 2", slug="org2")
@@ -1403,6 +1424,51 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(fw.board, "")
         mock_task.delay.assert_called_once_with(fw.pk)
 
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    @mock.patch(
+        "openwisp_firmware_upgrader.base.models.AbstractCategory.metadata_extractor_class"
+    )
+    @mock.patch("openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay")
+    def test_firmware_image_file_replacement_build_status_through_completion(
+        self, mock_delay, MockExtractor, mock_notify
+    ):
+        MockExtractor.return_value.extract.return_value = {
+            "model": "TP-Link WDR4300",
+            "compatible": ["tplink,tl-wdr4300-v1"],
+            "target": "ath79/generic",
+            "version": "23.05.5",
+            "compat_version": "1.0",
+            "source": "fwtool",
+        }
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="Old Board",
+        )
+        Build.objects.filter(pk=fw.build_id).update(status=Build.BUILD_STATUS_SUCCESS)
+        fw.refresh_from_db()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["file"]
+        with self.captureOnCommitCallbacks(execute=True):
+            fw_admin.save_model(request, fw, form, change=True)
+        mock_delay.assert_called_once_with(fw.pk)
+
+        with self.subTest("build is set to analyzing immediately"):
+            fw.build.refresh_from_db()
+            self.assertEqual(fw.build.status, Build.BUILD_STATUS_ANALYZING)
+
+        with self.subTest("build status and notifications are correct on completion"):
+            tasks.extract_firmware_metadata.run(str(fw.pk))
+            fw.refresh_from_db()
+            self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
+            fw.build.refresh_from_db()
+            self.assertEqual(fw.build.status, Build.BUILD_STATUS_SUCCESS)
+            mock_notify.assert_called_once()
+            self.assertEqual(mock_notify.call_args.kwargs["level"], "info")
+
     @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
     def test_firmware_image_save_model_failed_to_manually_confirmed(self, mock_task):
         fw = self._create_firmware_image()
@@ -1563,6 +1629,31 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         self.assertEqual(fw.build_id, original_build_id)
         self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
+
+    def test_firmware_image_file_replacement_deletes_old_file(self):
+        self._login()
+        fw = self._create_firmware_image()
+        storage = FirmwareImage.file.field.storage
+        old_file_name = fw.file.name
+        self.assertTrue(storage.exists(old_file_name))
+        url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[fw.pk])
+        data = {
+            "build": str(fw.build.pk),
+            "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+            "type": fw.type,
+            "_save": "Save",
+        }
+        with mock.patch(
+            "openwisp_firmware_upgrader.admin.extract_firmware_metadata.delay"
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(url, data, follow=True)
+        self.assertEqual(response.status_code, 200)
+        fw.refresh_from_db()
+        new_file_name = fw.file.name
+        self.assertNotEqual(old_file_name, new_file_name)
+        self.assertFalse(storage.exists(old_file_name))
+        self.assertTrue(storage.exists(new_file_name))
 
 
 class TestAdminTransaction(

@@ -13,6 +13,7 @@ import private_storage.storage.files
 import swapper
 from django.conf import settings
 from django.db import migrations, models
+from swapper import dependency, split
 
 import openwisp_firmware_upgrader.base.models
 import openwisp_users.mixins
@@ -25,7 +26,9 @@ class Migration(migrations.Migration):
     dependencies = [
         migrations.swappable_dependency(settings.CONFIG_DEVICE_MODEL),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        migrations.swappable_dependency(settings.CONFIG_DEVICEGROUP_MODEL),
+        dependency(
+            *split(settings.CONFIG_DEVICEGROUP_MODEL), version="0036_device_group"
+        ),
         migrations.swappable_dependency(settings.GEO_LOCATION_MODEL),
     ]
 

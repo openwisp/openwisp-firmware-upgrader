@@ -264,6 +264,7 @@ class FirmwareImageAdmin(BaseAdmin):
     def get_readonly_fields(self, request, obj=None):
         readonly = list(self.readonly_fields)
         if obj:
+            readonly.append("build")
             status = obj.extraction_status
             if status in (
                 FirmwareImage.STATUS_IN_PROGRESS,
@@ -328,6 +329,11 @@ class FirmwareImageAdmin(BaseAdmin):
 
     def save_model(self, request, obj, form, change):
         if change and "file" in form.changed_data:
+            old_file_name = (
+                FirmwareImage.objects.filter(pk=obj.pk)
+                .values_list("file", flat=True)
+                .first()
+            )
             obj.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
             obj.extraction_log = ""
             obj.failure_reason = ""
@@ -338,6 +344,14 @@ class FirmwareImageAdmin(BaseAdmin):
             obj.compat_version = ""
             obj.source = ""
             super().save_model(request, obj, form, change)
+            Build.objects.filter(pk=obj.build_id).update(
+                status=Build.BUILD_STATUS_ANALYZING
+            )
+            new_file_name = obj.file.name
+            if old_file_name and old_file_name != new_file_name:
+                transaction.on_commit(
+                    partial(FirmwareImage._remove_file, old_file_name)
+                )
             transaction.on_commit(lambda: extract_firmware_metadata.delay(obj.pk))
             return
         update_build_status = False

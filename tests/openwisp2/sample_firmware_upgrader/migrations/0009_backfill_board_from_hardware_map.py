@@ -34,7 +34,7 @@ def _write_multi_board_log(FirmwareImage, image_type, boards):
 
 
 def _send_multi_board_notifications(app_config, **kwargs):
-    if app_config.name != "openwisp_firmware_upgrader":
+    if app_config.name != "openwisp2.sample_firmware_upgrader":
         return
     post_migrate.disconnect(_send_multi_board_notifications)
     FirmwareImage = load_model("FirmwareImage")
@@ -77,13 +77,13 @@ def _send_multi_board_notifications(app_config, **kwargs):
             )
         except Exception:
             logger.exception(
-                "Failed to send multi-board reconcilation notification for image %s",
+                "Failed to send multi-board reconciliation notification for image %s",
                 image.pk,
             )
 
 
 def backfill_board_from_hardware_map(apps, schema_editor):
-    FirmwareImage = apps.get_model("firmware_upgrader", "FirmwareImage")
+    FirmwareImage = apps.get_model("sample_firmware_upgrader", "FirmwareImage")
     has_multi_board_images = False
 
     for image_type, info in OPENWRT_FIRMWARE_IMAGE_MAP.items():
@@ -117,7 +117,7 @@ def backfill_board_from_hardware_map(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("firmware_upgrader", "0022_alter_firmwareimage_compatible"),
+        ("sample_firmware_upgrader", "0008_backfill_extraction_status"),
     ]
     operations = [
         migrations.RunPython(

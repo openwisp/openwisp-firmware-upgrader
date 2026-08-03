@@ -3,13 +3,16 @@
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
+from swapper import dependency, split
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
         ("firmware_upgrader", "0014_alter_upgradeoperation_status"),
-        migrations.swappable_dependency(settings.CONFIG_DEVICEGROUP_MODEL),
+        dependency(
+            *split(settings.CONFIG_DEVICEGROUP_MODEL), version="0036_device_group"
+        ),
     ]
 
     operations = [

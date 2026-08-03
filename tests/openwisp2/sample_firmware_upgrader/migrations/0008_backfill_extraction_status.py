@@ -5,7 +5,7 @@ from openwisp_firmware_upgrader.tasks import queue_unconfirmed_extractions
 
 
 def _queue_legacy_extractions(app_config, **kwargs):
-    if app_config.name != "openwisp_firmware_upgrader":
+    if app_config.name != "openwisp2.sample_firmware_upgrader":
         return
     post_migrate.disconnect(_queue_legacy_extractions)
     queue_unconfirmed_extractions.delay()
@@ -17,11 +17,11 @@ def backfill_firmware_image_status(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("firmware_upgrader", "0018_build_status_firmwareimage_board_and_more"),
+        ("sample_firmware_upgrader", "0007_alter_firmwareimage_compatible_and_more"),
     ]
     operations = [
         migrations.RunPython(
             backfill_firmware_image_status,
             reverse_code=migrations.RunPython.noop,
-        ),
+        )
     ]

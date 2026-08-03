@@ -186,6 +186,10 @@ class AbstractBuild(TimeStampedEditableModel):
         except ObjectDoesNotExist:
             return super().__str__()
 
+    @property
+    def organization_id(self):
+        return self.category.organization_id
+
     def clean(self):
         # Make sure that ('category__organization', 'os') is unique too
         try:
@@ -470,10 +474,15 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     def boards(self):
         return [self.board] if self.board else []
 
+    @property
+    def organization_id(self):
+        return self.build.category.organization_id
+
     def clean(self):
         self._clean_type()
         self._validate_locked()
         self._validate_file_replacement()
+        self._validate_build_unchanged()
         self._validate_file_header()
         self._validate_rootfs()
 
@@ -579,12 +588,28 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         if not original or self.file.name == original["file"]:
             return
         UpgradeOperation = load_model("UpgradeOperation")
-        if UpgradeOperation.objects.filter(image=self.pk, status="success").exists():
+        if UpgradeOperation.objects.filter(
+            image=self.pk, status__in=["in-progress", "success"]
+        ).exists():
             raise ValidationError(
                 {
                     "file": _(
-                        "The file cannot be replaced because this image has already "
-                        "been flashed to one or more devices successfully."
+                        "The file cannot be replaced because this image is "
+                        "currently being flashed to one or more devices, or has "
+                        "already been flashed successfully."
+                    )
+                }
+            )
+
+    def _validate_build_unchanged(self):
+        if self._state.adding or not self.pk:
+            return
+        original = self.__class__.objects.filter(pk=self.pk).values("build_id").first()
+        if original and original["build_id"] != self.build_id:
+            raise ValidationError(
+                {
+                    "build": _(
+                        "The build cannot be changed because the image has been created."
                     )
                 }
             )

@@ -175,6 +175,7 @@ def extract_firmware_metadata(self, image_pk):
                 shutil.copyfileobj(file_obj, tmp)
             tmp.flush()
             meta = extractor_class(tmp.name).extract()
+        board = meta.get("model") or ""
         if meta.get("source") == "dtb":
             log_lines.append(
                 "[-] fwtool: no metadata trailer found, fell back to DTB scan"
@@ -186,17 +187,34 @@ def extract_firmware_metadata(self, image_pk):
             )
         else:
             log_lines.append("[+] fwtool: metadata trailer found")
-        log_lines.append("[+] extraction: success")
-        update = {
-            "extraction_status": FirmwareImage.STATUS_SUCCESS,
-            "extraction_log": "\n".join(log_lines),
-            "board": meta.get("model") or "",
-            "compatible": "\n".join(meta.get("compatible", [])),
-            "target": meta.get("target", ""),
-            "fw_version": meta.get("version", ""),
-            "compat_version": meta.get("compat_version", ""),
-            "source": meta.get("source", "fwtool"),
-        }
+        if not board:
+            log_lines.append(
+                "[!] Extraction completed but no board/model could be "
+                "determined. Manual input is required. "
+            )
+            update = {
+                "extraction_status": FirmwareImage.STATUS_FAILED,
+                "failure_reason": FirmwareImage.FAILURE_UNSUPPORTED,
+                "extraction_log": "\n".join(log_lines),
+                "board": meta.get("model") or "",
+                "compatible": "\n".join(meta.get("compatible", [])),
+                "target": meta.get("target", ""),
+                "fw_version": meta.get("version", ""),
+                "compat_version": meta.get("compat_version", ""),
+                "source": meta.get("source", "fwtool"),
+            }
+        else:
+            log_lines.append("[+] extraction: success")
+            update = {
+                "extraction_status": FirmwareImage.STATUS_SUCCESS,
+                "extraction_log": "\n".join(log_lines),
+                "board": meta.get("model") or "",
+                "compatible": "\n".join(meta.get("compatible", [])),
+                "target": meta.get("target", ""),
+                "fw_version": meta.get("version", ""),
+                "compat_version": meta.get("compat_version", ""),
+                "source": meta.get("source", "fwtool"),
+            }
 
     except SoftTimeLimitExceeded:
         log_lines.append(f"[!] Task timed out after {app_settings.TASK_TIMEOUT}s.")
@@ -367,3 +385,15 @@ def extract_firmware_metadata(self, image_pk):
 
     if update.get("extraction_status") == FirmwareImage.STATUS_SUCCESS:
         create_all_device_firmwares.delay(str(image_pk))
+
+
+@shared_task(base=OpenwispCeleryTask)
+def queue_unconfirmed_extractions():
+    FirmwareImage = load_model("FirmwareImage")
+    pks = (
+        FirmwareImage.objects.filter(extraction_status=FirmwareImage.STATUS_UNCONFIRMED)
+        .values_list("pk", flat=True)
+        .iterator()
+    )
+    for pk in pks:
+        extract_firmware_metadata.delay(pk)

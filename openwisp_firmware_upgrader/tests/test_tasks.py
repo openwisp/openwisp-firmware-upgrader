@@ -3,6 +3,7 @@ from unittest import mock
 
 from celery.exceptions import SoftTimeLimitExceeded
 from django.test import TransactionTestCase
+from openwisp_notifications.swapper import load_model as load_notification_model
 
 from openwisp_utils.tests import capture_any_output
 
@@ -14,6 +15,8 @@ from .base import TestUpgraderMixin
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
+Notification = load_notification_model("Notification")
+NotificationSetting = load_notification_model("NotificationSetting")
 
 _MOCK_EXTRACTOR = (
     "openwisp_firmware_upgrader.base.models.AbstractCategory.metadata_extractor_class"
@@ -233,6 +236,39 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(call_kwargs["level"], "error")
         self.assertIn("#device-metadata", call_kwargs["url"])
 
+    @mock.patch(_MOCK_EXTRACTOR)
+    @capture_any_output()
+    def test_extract_firmware_metadata_failure_notifies_org_admin(self, *args):
+        MockExtractor = args[0]
+        MockExtractor.return_value.extract.side_effect = UnsupportedImageError(
+            "unsupported image"
+        )
+        org = self._get_org()
+        org_admin = self._create_administrator(organizations=[org])
+        superuser = self._get_admin()
+        NotificationSetting.objects.filter(
+            user=org_admin, organization=org, type="generic_message"
+        ).update(web=True, deleted=False)
+        image = self._create_firmware_image(organization=org)
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        tasks.extract_firmware_metadata.run(str(image.pk))
+
+        with self.subTest("org admin is notified"):
+            self.assertTrue(
+                Notification.objects.filter(
+                    recipient=org_admin, type="generic_message"
+                ).exists()
+            )
+
+        with self.subTest("superuser is still notified"):
+            self.assertTrue(
+                Notification.objects.filter(
+                    recipient=superuser, type="generic_message"
+                ).exists()
+            )
+
     @mock.patch(_MOCK_NOTIFY)
     @mock.patch(_MOCK_EXTRACTOR)
     @capture_any_output()
@@ -294,6 +330,53 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         call_kwargs = mock_notify.call_args.kwargs
         self.assertEqual(call_kwargs["level"], "info")
         self.assertNotIn("#device-metadata", call_kwargs["url"])
+
+    @mock.patch(_MOCK_EXTRACTOR)
+    @capture_any_output()
+    def test_extract_firmware_metadata_fwtool_success_without_model(self, *args):
+        MockExtractor = args[0]
+        MockExtractor.return_value.extract.return_value = {
+            "model": "",
+            "compatible": ["tplink,tl-wdr4300-v1"],
+            "target": "ath79/generic",
+            "version": "23.05.5",
+            "compat_version": "1.0",
+            "source": "fwtool",
+        }
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        tasks.extract_firmware_metadata.run(str(image.pk))
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_FAILED)
+        self.assertEqual(image.board, "")
+        self.assertEqual(image.target, "ath79/generic")
+        self.assertEqual(image.fw_version, "23.05.5")
+        self.assertEqual(image.source, "fwtool")
+
+    @mock.patch(_MOCK_EXTRACTOR)
+    @capture_any_output()
+    def test_extract_firmware_metadata_dtb_success_without_model(self, *args):
+        MockExtractor = args[0]
+        MockExtractor.return_value.extract.return_value = {
+            "model": None,
+            "compatible": ["xunlong,orangepi-zero"],
+            "target": "",
+            "version": "",
+            "compat_version": "1.0",
+            "source": "dtb",
+        }
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        tasks.extract_firmware_metadata.run(str(image.pk))
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_FAILED)
+        self.assertEqual(image.board, "")
+        self.assertEqual(image.compatible, "xunlong,orangepi-zero")
+        self.assertEqual(image.source, "dtb")
 
     def test_compat_blocks_pairing_above_1_0(self):
         self.assertTrue(tasks._compat_blocks_pairing("1.1"))

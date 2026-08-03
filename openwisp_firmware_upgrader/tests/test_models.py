@@ -808,6 +808,26 @@ class TestModels(TestUpgraderMixin, TestCase):
             image._validate_locked()
         self.assertIn("read-only", str(ctx.exception))
 
+    def test_validate_file_replacement_blocks_in_progress_operation(self):
+        image = self._create_firmware_image()
+        device = self._create_device(organization=image.build.category.organization)
+        self._create_config(device=device)
+        UpgradeOperation.objects.create(
+            device=device, image=image, status="in-progress"
+        )
+        image.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH)
+        with self.assertRaises(ValidationError) as ctx:
+            image._validate_file_replacement()
+        self.assertIn("file", ctx.exception.message_dict)
+
+    def test_validate_build_unchanged_blocks_persisted_change(self):
+        image = self._create_firmware_image()
+        other_build = self._create_build(category=image.build.category, version="99.0")
+        image.build = other_build
+        with self.assertRaises(ValidationError) as ctx:
+            image._validate_build_unchanged()
+        self.assertIn("build", ctx.exception.message_dict)
+
     def test_validate_locked_allows_change_when_failed(self):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_FAILED
