@@ -26,7 +26,11 @@ from reversion.admin import VersionAdmin
 
 from openwisp_controller.config.admin import DeactivatedDeviceReadOnlyMixin, DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
-from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
+from openwisp_utils.admin import (
+    BlockDeleteAllowCascadeMixin,
+    ReadOnlyAdmin,
+    TimeReadonlyAdminMixin,
+)
 
 from . import settings as app_settings
 from .filters import (
@@ -385,8 +389,26 @@ class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
         if not super(ReadOnlyAdmin, self).has_delete_permission(request, obj):
             return False
         if obj and obj.status == IN_PROGRESS_STATUS:
+            if BlockDeleteAllowCascadeMixin.is_admin_cascade_delete_request(
+                self, request
+            ):
+                self._add_in_progress_upgrade_delete_error(request)
             return False
         return True
+
+    def _add_in_progress_upgrade_delete_error(self, request):
+        if getattr(request, "_in_progress_upgrade_delete_error", False):
+            return
+        self.message_user(
+            request,
+            _(
+                "This deletion is blocked because one or more upgrade operations are "
+                "in progress. Cancel them or wait for them to finish before "
+                "continuing."
+            ),
+            messages.ERROR,
+        )
+        request._in_progress_upgrade_delete_error = True
 
     @admin.action(description=delete_selected.short_description, permissions=["delete"])
     def delete_selected(self, request, queryset):

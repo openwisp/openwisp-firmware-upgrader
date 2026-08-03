@@ -42,6 +42,7 @@ FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Device = swapper.load_model("config", "Device")
+Organization = swapper.load_model("openwisp_users", "Organization")
 Location = swapper.load_model("geo", "Location")
 DeviceLocation = swapper.load_model("geo", "DeviceLocation")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
@@ -2120,6 +2121,93 @@ class TestAdminTransaction(
             UpgradeOperation.objects.count(),
             initial_total_upgrade_op_count,
             "Total UpgradeOperation count should remain unchanged",
+        )
+
+
+class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
+    def test_cascade_delete_integration(self):
+        self._login()
+        org = self._create_org(name="cascade-org", slug="cascade-org")
+        category = self._create_category(name="Cascade Category", organization=org)
+        build = self._create_build(category=category, version="9.9")
+        batch = BatchUpgradeOperation.objects.create(build=build)
+        device = self._create_device_with_connection(organization=org)
+        device.deactivate()
+        device.config.set_status_deactivated()
+        operation = UpgradeOperation.objects.create(
+            device=device, batch=batch, status="success"
+        )
+        delete_url = reverse(
+            f"admin:{Organization._meta.app_label}"
+            f"_{Organization._meta.model_name}_delete",
+            args=[org.pk],
+        )
+        response = self.client.post(delete_url, data={"post": "yes"}, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Organization.objects.filter(pk=org.pk).exists())
+        self.assertFalse(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+        self.assertFalse(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+    def test_cascade_delete_with_in_progress_operation(self):
+        self._login()
+        org = self._create_org(
+            name="in-progress-cascade-org", slug="in-progress-cascade-org"
+        )
+        category = self._create_category(name="Cascade Category", organization=org)
+        build = self._create_build(category=category, version="9.9")
+        batch = BatchUpgradeOperation.objects.create(build=build, status="success")
+        device = self._create_device_with_connection(organization=org)
+        device.deactivate()
+        device.config.set_status_deactivated()
+        operation = UpgradeOperation.objects.create(device=device, batch=batch)
+        second_operation = UpgradeOperation.objects.create(device=device, batch=batch)
+        delete_url = reverse(
+            f"admin:{Organization._meta.app_label}"
+            f"_{Organization._meta.model_name}_delete",
+            args=[org.pk],
+        )
+        response = self.client.get(delete_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "This deletion is blocked because one or more upgrade operations are "
+            "in progress. Cancel them or wait for them to finish before continuing.",
+            count=1,
+        )
+        self.assertContains(response, "your account doesn't have permission to delete")
+        self.assertTrue(Organization.objects.filter(pk=org.pk).exists())
+        self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+        self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+        self.assertTrue(
+            UpgradeOperation.objects.filter(pk=second_operation.pk).exists()
+        )
+
+    def test_build_delete_with_in_progress_operation(self):
+        self._login()
+        category = self._create_category(name="Cascade Category")
+        build = self._create_build(category=category, version="9.9")
+        batch = BatchUpgradeOperation.objects.create(build=build, status="success")
+        device = self._create_device_with_connection()
+        operation = UpgradeOperation.objects.create(device=device, batch=batch)
+        second_operation = UpgradeOperation.objects.create(device=device, batch=batch)
+        delete_url = reverse(
+            f"admin:{Build._meta.app_label}_{Build._meta.model_name}_delete",
+            args=[build.pk],
+        )
+        response = self.client.get(delete_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "This deletion is blocked because one or more upgrade operations are "
+            "in progress. Cancel them or wait for them to finish before continuing.",
+            count=1,
+        )
+        self.assertContains(response, "your account doesn't have permission to delete")
+        self.assertTrue(Build.objects.filter(pk=build.pk).exists())
+        self.assertTrue(BatchUpgradeOperation.objects.filter(pk=batch.pk).exists())
+        self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+        self.assertTrue(
+            UpgradeOperation.objects.filter(pk=second_operation.pk).exists()
         )
 
 
