@@ -132,7 +132,7 @@
   flex-direction: column;
   gap: 4px;
   align-items: flex-start;
-  width: 200px;
+  max-width: 200px;
 }
 
 .upgrade-status-container .upgrade-progress-bar {

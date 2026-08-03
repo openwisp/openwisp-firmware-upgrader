@@ -924,14 +924,15 @@ class AbstractBatchUpgradeOperation(
         else:
             new_status = self.status
         if self.status != new_status:
-            claimed = self._meta.model.objects.filter(
-                pk=self.pk, status=self.status
-            ).update(status=new_status)
-            if claimed:
-                self.status = new_status
-                self.save(update_fields=["status"])
-            else:
-                self.refresh_from_db(fields=["status"])
+            with transaction.atomic():
+                claimed = self._meta.model.objects.filter(
+                    pk=self.pk, status=self.status
+                ).update(status=new_status)
+                if claimed:
+                    self.status = new_status
+                    self.save(update_fields=["status"])
+                else:
+                    self.refresh_from_db(fields=["status"])
         return self.status, stats
 
     @classmethod

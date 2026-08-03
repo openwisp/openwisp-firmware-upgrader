@@ -626,9 +626,10 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertTrue(field.db_index)
         self.assertTrue(field.null)
         self.assertTrue(field.blank)
-        indexes = connection.introspection.get_constraints(
-            connection.cursor(), UpgradeOperation._meta.db_table
-        )
+        with connection.cursor() as cursor:
+            indexes = connection.introspection.get_constraints(
+                cursor, UpgradeOperation._meta.db_table
+            )
         self.assertTrue(
             any(
                 info["columns"] == ["next_retry_at"] and info["index"]
@@ -700,12 +701,16 @@ class TestModels(TestUpgraderMixin, TestCase):
         with self.subTest("brand-new UpgradeOperation"):
             op = UpgradeOperation(device=device_fw.device, image=device_fw.image)
             self.assertTrue(op._state.adding)
-            op.full_clean()
+            # FK-existence and uniqueness checks only; the immutability guard
+            # must not add a stored-value lookup for an unsaved instance.
+            with self.assertNumQueries(3):
+                op.full_clean()
 
         with self.subTest("brand-new BatchUpgradeOperation"):
             batch = BatchUpgradeOperation(build=device_fw.image.build)
             self.assertTrue(batch._state.adding)
-            batch.full_clean()
+            with self.assertNumQueries(2):
+                batch.full_clean()
 
     def _make_persistent_op(self, is_persistent):
         device_fw = self._create_device_firmware()

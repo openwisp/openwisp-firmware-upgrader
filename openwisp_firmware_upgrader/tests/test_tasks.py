@@ -96,6 +96,26 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.status, "cancelled")
 
     @mock.patch(_mock_upgrade, return_value=True)
+    def test_upgrade_firmware_timeout_does_not_clobber_cancellation(
+        self, mocked_upgrade
+    ):
+        device_fw = self._create_device_firmware()
+        op = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, status="in-progress"
+        )
+
+        def cancel_then_timeout(self, *args, **kwargs):
+            type(self).objects.filter(pk=self.pk).update(status="cancelled")
+            raise SoftTimeLimitExceeded()
+
+        with mock.patch(self._mock_connect, return_value=True), mock.patch.object(
+            UpgradeOperation, "upgrade", autospec=True, side_effect=cancel_then_timeout
+        ):
+            tasks.upgrade_firmware.run(op.pk)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "cancelled")
+
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_firmware_deleted_during_dispatch_window(self, mocked_upgrade):
         device_fw = self._create_device_firmware()
         op = UpgradeOperation.objects.create(
@@ -188,6 +208,20 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertIsNone(op.next_retry_at)
         self.assertIn("Persistent retry #2 starting", op.log)
         mocked_upgrade.assert_called_once_with(op.pk)
+
+    @mock.patch(
+        "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay",
+        side_effect=RuntimeError("broker down"),
+    )
+    def test_retry_pending_upgrade_reverts_to_pending_on_dispatch_failure(
+        self, mocked_upgrade
+    ):
+        op = self._create_pending_op()
+        with self.assertRaises(RuntimeError):
+            tasks.retry_pending_upgrade.run(op.pk)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "pending")
+        self.assertIsNotNone(op.next_retry_at)
 
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
     def test_retry_pending_upgrade_raced_out(self, mocked_upgrade):

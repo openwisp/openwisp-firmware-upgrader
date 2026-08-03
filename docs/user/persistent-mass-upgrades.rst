@@ -97,8 +97,8 @@ upgrades:
   ends as ``failed`` (for example, the firmware image fails its checksum
   check, or the device cannot be reached after reflashing).
 - a **completion** notification fires when a mass upgrade succeeds or
-  fails (a user-initiated cancellation is not notified), whether or not
-  it is persistent.
+  fails (a user-initiated cancellation is not notified), whether or not it
+  is persistent.
 
 These are delivered to the organization's administrators (and superusers).
 
