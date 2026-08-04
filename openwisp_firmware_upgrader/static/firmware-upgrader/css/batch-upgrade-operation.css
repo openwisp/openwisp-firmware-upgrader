@@ -336,11 +336,9 @@
 }
 
 .batch-actions .batch-reschedule-feedback {
-  color: #fff;
-  background: var(--ow-color-danger, #ba2121);
-  border-radius: 4px;
-  padding: 8px 12px;
-  font-weight: 500;
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 4px;
 }
 .batch-actions .batch-reschedule-feedback.ow-hide {
   display: none;

@@ -116,9 +116,14 @@ django.jQuery(function ($) {
     const seconds = (new Date(value).getTime() - Date.now()) / 1000;
     let message = "";
     if (!isNaN(minDelay) && seconds < minDelay) {
+      const minutes = Math.floor(minDelay / 60);
       message = interpolate(
-        gettext("The scheduled time must be at least %s minutes in the future."),
-        [Math.floor(minDelay / 60)],
+        ngettext(
+          "The scheduled time must be at least %s minute in the future.",
+          "The scheduled time must be at least %s minutes in the future.",
+          minutes,
+        ),
+        [minutes],
       );
     } else if (!isNaN(maxHorizon) && seconds > maxHorizon) {
       message = interpolate(
@@ -142,7 +147,6 @@ django.jQuery(function ($) {
     toggle.attr("aria-expanded", String(opening));
     if (opening) {
       validate();
-      input.trigger("focus");
     }
   });
 
