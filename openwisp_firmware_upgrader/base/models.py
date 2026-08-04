@@ -742,13 +742,17 @@ class AbstractBatchUpgradeOperation(
         min_delay = app_settings.SCHEDULE_MIN_DELAY
         max_horizon = app_settings.SCHEDULE_MAX_HORIZON
         if self.scheduled_at < now + timedelta(seconds=min_delay):
+            minutes = min_delay // 60
             raise ValidationError(
                 {
-                    "scheduled_at": _(
+                    "scheduled_at": ngettext(
                         "The scheduled time must be at least %(minutes)d "
-                        "minutes in the future."
+                        "minute in the future.",
+                        "The scheduled time must be at least %(minutes)d "
+                        "minutes in the future.",
+                        minutes,
                     )
-                    % {"minutes": min_delay // 60}
+                    % {"minutes": minutes}
                 }
             )
         if self.scheduled_at > now + timedelta(seconds=max_horizon):
@@ -877,6 +881,11 @@ class AbstractBatchUpgradeOperation(
         )
         for existing in active:
             if self._filters_overlap_with(existing):
+                if existing.scheduled_at:
+                    local = timezone.localtime(existing.scheduled_at)
+                    when = "%s (%s)" % (local.strftime("%Y-%m-%d %H:%M"), local.tzinfo)
+                else:
+                    when = _("immediate execution")
                 raise ValidationError(
                     _(
                         "A conflicting mass upgrade already exists: operation "
@@ -885,7 +894,7 @@ class AbstractBatchUpgradeOperation(
                     % {
                         "pk": existing.pk,
                         "status": existing.get_status_display(),
-                        "when": existing.scheduled_at or _("immediate execution"),
+                        "when": when,
                     }
                 )
         UpgradeOperation = load_model("UpgradeOperation")

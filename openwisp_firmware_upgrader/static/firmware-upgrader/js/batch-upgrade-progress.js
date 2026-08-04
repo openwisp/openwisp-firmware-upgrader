@@ -145,6 +145,9 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
 }
 function updateBatchProgress(data) {
   let $ = django.jQuery;
+  if (data.status && data.status !== "scheduled") {
+    $("#batch-reschedule-btn, #batch-reschedule-form").remove();
+  }
   let mainProgressElement = $(".batch-main-progress");
   if (mainProgressElement.length > 0) {
     let progressPercentage =

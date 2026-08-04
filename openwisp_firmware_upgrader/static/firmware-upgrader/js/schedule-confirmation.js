@@ -37,7 +37,7 @@ django.jQuery(function ($) {
   }
 
   function validate() {
-    feedback.text("");
+    feedback.text("").addClass("ow-hide");
     submits.prop("disabled", false);
     if (!input.val()) {
       return true;
@@ -45,9 +45,14 @@ django.jQuery(function ($) {
     const seconds = (new Date(input.val()).getTime() - Date.now()) / 1000;
     let message = "";
     if (seconds < minDelay) {
+      const minutes = Math.floor(minDelay / 60);
       message = interpolate(
-        gettext("The scheduled time must be at least %s minutes in the future."),
-        [Math.floor(minDelay / 60)],
+        ngettext(
+          "The scheduled time must be at least %s minute in the future.",
+          "The scheduled time must be at least %s minutes in the future.",
+          minutes,
+        ),
+        [minutes],
       );
     } else if (seconds > maxHorizon) {
       message = interpolate(
@@ -56,7 +61,7 @@ django.jQuery(function ($) {
       );
     }
     if (message) {
-      feedback.text(message);
+      feedback.text(message).removeClass("ow-hide");
       submits.prop("disabled", true);
       return false;
     }

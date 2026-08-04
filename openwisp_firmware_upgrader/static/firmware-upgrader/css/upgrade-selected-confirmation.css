@@ -6,6 +6,20 @@
   font-style: italic;
   color: var(--body-quiet-color);
 }
+#schedule-feedback {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 4px;
+  margin-left: 160px;
+}
+#schedule-feedback.ow-hide {
+  display: none;
+}
+@media (max-width: 767px) {
+  #schedule-feedback {
+    margin-left: 0;
+  }
+}
 #content p.intro {
   margin-bottom: 20px;
 }
