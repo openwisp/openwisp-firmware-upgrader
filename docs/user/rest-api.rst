@@ -105,13 +105,13 @@ Get Mass Upgrade Operation Detail
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/
 
-The response exposes ``scheduled_at`` and the ``status`` field, so a client
-can poll a scheduled batch as it moves from ``scheduled`` to ``in-progress``
-(or to ``failed`` if the execution-time re-validation finds no eligible
-devices).
+The response exposes ``scheduled_at`` and the ``status`` field, so a
+client can poll a scheduled batch as it moves from ``scheduled`` to
+``in-progress`` (or to ``failed`` if the execution-time re-validation
+finds no eligible devices).
 
 Reschedule a Mass Upgrade
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
 
@@ -119,9 +119,9 @@ Reschedule a Mass Upgrade
 
 Edits a batch while it is in the ``scheduled`` status. The editable fields
 are ``scheduled_at``, ``group``, ``location``, ``is_persistent`` and
-``upgrade_all`` (the firmwareless option); ``build`` and ``upgrade_options``
-cannot be changed. A body with only ``scheduled_at`` just moves the launch
-time.
+``upgrade_all`` (the firmwareless option); ``build`` and
+``upgrade_options`` cannot be changed. A body with only ``scheduled_at``
+just moves the launch time.
 
 .. note::
 
@@ -129,7 +129,7 @@ time.
     the ``scheduled`` status.
 
 Cancel a Mass Upgrade
-~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
 

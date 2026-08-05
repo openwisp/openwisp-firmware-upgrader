@@ -17,8 +17,8 @@ How it works
 
 A batch created with a future ``scheduled_at`` is saved in the new
 ``scheduled`` status and is not dispatched right away. A periodic Celery
-Beat task, ``execute_scheduled_upgrades``, scans for batches whose time has
-arrived and launches each one; from there it flows through the same
+Beat task, ``execute_scheduled_upgrades``, scans for batches whose time
+has arrived and launches each one; from there it flows through the same
 operation states as an immediate upgrade (see :doc:`upgrade-status`).
 
 Just before it launches, the batch is re-checked against the devices that
@@ -27,40 +27,41 @@ already upgraded, moved, or removed in the meantime) the batch is marked
 ``failed`` without touching a single device, and the reason is sent as a
 notification.
 
-Scheduling composes with :doc:`persistent-mass-upgrades`: keep *persistent*
-enabled on a scheduled batch and any device that is offline when the
-upgrade fires still lands in ``pending`` and is retried in the background.
+Scheduling composes with :doc:`persistent-mass-upgrades`: keep
+*persistent* enabled on a scheduled batch and any device that is offline
+when the upgrade fires still lands in ``pending`` and is retried in the
+background.
 
-The task must be registered in the deployment's ``CELERY_BEAT_SCHEDULE`` on
-a short cadence (60 seconds in production); see :doc:`settings`.
+The task must be registered in the deployment's ``CELERY_BEAT_SCHEDULE``
+on a short cadence (60 seconds in production); see :doc:`settings`.
 
 Enabling from the admin
 -----------------------
 
 The mass-upgrade confirmation page, reached from a build's *Upgrade*
 action, has a **Scheduled at** field. Leave it empty to upgrade
-immediately, which is the default, or pick a date and time to run the batch
-later.
+immediately, which is the default, or pick a date and time to run the
+batch later.
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-mass-upgrade-confirm.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-mass-upgrade-confirm.png
 
 While the batch is still ``scheduled`` its detail page offers **Edit
-Schedule** and **Cancel** buttons. Rescheduling can change the launch time,
-the group and location filters, the *persistent* flag and the firmwareless
-option; the build and its upgrade options are fixed once the batch is
-created. As soon as the scheduled time passes and the batch starts, nothing
-can be changed any more.
+Schedule** and **Cancel** buttons. Rescheduling can change the launch
+time, the group and location filters, the *persistent* flag and the
+firmwareless option; the build and its upgrade options are fixed once the
+batch is created. As soon as the scheduled time passes and the batch
+starts, nothing can be changed any more.
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-mass-upgrade-detail.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-mass-upgrade-detail.png
 
 Enabling via the REST API
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The mass-upgrade endpoint accepts a ``scheduled_at`` field, and dedicated
-``reschedule`` and ``cancel`` endpoints edit or stop a scheduled batch. See
-:doc:`rest-api` for the full request and response reference.
+``reschedule`` and ``cancel`` endpoints edit or stop a scheduled batch.
+See :doc:`rest-api` for the full request and response reference.
 
 Timezone handling
 -----------------
@@ -83,9 +84,9 @@ Conflict prevention
 You cannot create a mass upgrade over devices that another active upgrade
 already covers. If a ``scheduled`` or ``in-progress`` batch already exists
 for the same firmware category with overlapping (or unset) group and
-location filters, or if any target device already has an ``in-progress`` or
-``pending`` operation, the new batch is rejected at creation time and the
-conflicting one is named in the error.
+location filters, or if any target device already has an ``in-progress``
+or ``pending`` operation, the new batch is rejected at creation time and
+the conflicting one is named in the error.
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-upgrade-conflict.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-upgrade-conflict.png
@@ -103,8 +104,9 @@ organization's administrators and superusers:
   begins,
 - a **not started** notification when a scheduled batch is skipped because
   no eligible device remained when its time arrived, and
-- a **completed** notification when a mass upgrade that has started reaches
-  a terminal state, reporting whether it succeeded, failed or was cancelled.
+- a **completed** notification when a mass upgrade that has started
+  reaches a terminal state, reporting whether it succeeded, failed or was
+  cancelled.
 
 The completion notification fires for every mass upgrade, immediate ones
 included, not only scheduled batches.

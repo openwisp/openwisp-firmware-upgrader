@@ -151,14 +151,14 @@ runs again.
 **default**: ``15552000`` (180 days)
 ============ =======================
 
-Furthest into the future, in seconds, that a mass upgrade may be scheduled.
-A time beyond it is rejected with *The scheduled time cannot be more than
-180 days in the future.*, catching dates entered by mistake.
+Furthest into the future, in seconds, that a mass upgrade may be
+scheduled. A time beyond it is rejected with *The scheduled time cannot be
+more than 180 days in the future.*, catching dates entered by mistake.
 
 The Beat task that launches due scheduled upgrades
 (``execute_scheduled_upgrades``) is registered in the deployment's own
-``CELERY_BEAT_SCHEDULE`` on a short cadence (60 seconds in production); see
-the docker-openwisp and ansible-openwisp2 recipes for the snippet.
+``CELERY_BEAT_SCHEDULE`` on a short cadence (60 seconds in production);
+see the docker-openwisp and ansible-openwisp2 recipes for the snippet.
 
 .. _openwisp_custom_openwrt_images:
 
