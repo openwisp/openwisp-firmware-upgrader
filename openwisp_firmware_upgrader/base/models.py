@@ -365,7 +365,7 @@ class AbstractBuild(TimeStampedEditableModel):
                 status=status_display,
             )
             notify.send(
-                sender=self,
+                sender=self.category.organization or self,
                 type="generic_message",
                 level=level,
                 url=admin_url,
@@ -859,7 +859,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         qs = (
             FirmwareImage.objects.filter(
                 Q(build__category__organization_id=device.organization_id)
-                | Q(build__category__organization__isnull=True)
+                | Q(build__category__organization__isnull=True),
+                extraction_status__in=FirmwareImage.LOCKED_STATUSES,
             )
             .order_by("-created")
             .select_related("build", "build__category")

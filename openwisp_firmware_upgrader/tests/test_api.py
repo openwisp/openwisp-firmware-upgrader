@@ -1364,7 +1364,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
 
         with self.subTest("Test image with mismatched board is rejected as invalid pk"):
             url = reverse("upgrader:api_devicefirmware_detail", args=[device1.pk])
-            with self.assertNumQueries(13):
+            with self.assertNumQueries(8):
                 # Try to make a request when the
                 # device model does not match the image model
                 data = {"image": image1a.pk}

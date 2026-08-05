@@ -14,6 +14,7 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
+from django.db.models import Q
 from django.forms.formsets import DELETION_FIELD_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -207,7 +208,12 @@ class FirmwareImageAdmin(BaseAdmin):
         "created",
         "modified",
     ]
-    list_filter = ["extraction_status", "build__category"]
+    list_select_related = ["build", "build__category", "build__category__organization"]
+    list_filter = [
+        BuildCategoryOrganizationFilter,
+        "extraction_status",
+        BuildCategoryFilter,
+    ]
     search_fields = ["board", "target"]
     ordering = ["-created"]
     multitenant_parent = "build__category"
@@ -288,6 +294,14 @@ class FirmwareImageAdmin(BaseAdmin):
                         "fw_version",
                     ]
         return readonly
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "build" and not request.user.is_superuser:
+            kwargs["queryset"] = Build.objects.filter(
+                Q(category__organization__in=request.user.organizations_managed)
+                | Q(category__organization__isnull=True)
+            )
+            return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = list(super().get_fieldsets(request, obj))
@@ -388,16 +402,16 @@ class FirmwareImageAdmin(BaseAdmin):
     )
     def re_extract_metadata(self, request, queryset):
         blocked_pks = list(
-            queryset.filter(upgradeoperation__status="success").values_list(
-                "pk", flat=True
-            )
+            queryset.filter(upgradeoperation__status="success")
+            .values_list("pk", flat=True)
+            .distinct()
         )
         if blocked_pks:
             self.message_user(
                 request,
                 _(
                     "%(count)d image(s) were skipped because they have already "
-                    "been flashed succeessfully."
+                    "been flashed successfully."
                 )
                 % {"count": len(blocked_pks)},
                 messages.WARNING,

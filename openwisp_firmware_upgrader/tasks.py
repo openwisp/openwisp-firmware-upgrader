@@ -359,7 +359,7 @@ def extract_firmware_metadata(self, image_pk):
         try:
             admin_url = _get_image_admin_url(fresh)
             notify.send(
-                sender=fresh.build.category.organization,
+                sender=fresh.build.category.organization or fresh,
                 type="generic_message",
                 level="warning",
                 url=admin_url,

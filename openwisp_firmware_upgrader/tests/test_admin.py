@@ -874,6 +874,22 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 "Firmware image multi-tenancy test failed",
             )
 
+        with self.subTest("add form build choices exclude other organization builds"):
+            org2_build = self._create_build(
+                category=self._create_category(
+                    name="Org2 Multitenancy Category", organization=org2
+                ),
+                version="1.0",
+            )
+            add_url = reverse(f"admin:{self.app_label}_firmwareimage_add")
+            response = self.client.get(add_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(
+                response,
+                f'<option value="{org2_build.pk}"',
+                msg_prefix="Firmware image multi-tenancy test failed",
+            )
+
     def test_empty_device_firmware_image(self):
         self._login()
         device = self._create_device_with_connection()
