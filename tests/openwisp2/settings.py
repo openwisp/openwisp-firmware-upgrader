@@ -200,15 +200,15 @@ else:
 CELERY_BEAT_SCHEDULE = {
     "check_pending_upgrades": {
         "task": "openwisp_firmware_upgrader.tasks.check_pending_upgrades",
-        "schedule": timedelta(seconds=30),  # DEMO ONLY: was 600
+        "schedule": timedelta(seconds=600),
     },
     "execute_scheduled_upgrades": {
         "task": "openwisp_firmware_upgrader.tasks.execute_scheduled_upgrades",
-        "schedule": timedelta(seconds=20),  # DEMO ONLY: was 60
+        "schedule": timedelta(seconds=60),
     },
     "send_pending_upgrade_reminders": {
         "task": "openwisp_firmware_upgrader.tasks.send_pending_upgrade_reminders",
-        "schedule": timedelta(seconds=120),  # DEMO ONLY: was 604800
+        "schedule": timedelta(seconds=604800),
     },
 }
 
