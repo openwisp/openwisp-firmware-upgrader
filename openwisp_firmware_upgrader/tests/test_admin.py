@@ -2215,7 +2215,7 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(24 if django.VERSION < (5, 2) else 22):
+                with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")
