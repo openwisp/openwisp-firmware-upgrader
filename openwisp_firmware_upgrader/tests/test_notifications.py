@@ -1,6 +1,7 @@
 from datetime import timedelta
 from unittest import mock
 
+from django.db.models.query import QuerySet
 from django.test import TransactionTestCase
 from django.utils import timezone
 
@@ -8,7 +9,7 @@ from .. import settings as app_settings
 from .. import tasks
 from ..exceptions import ReconnectionFailed
 from ..swapper import load_model
-from .base import TestUpgraderMixin
+from .base import TestUpgraderMixin, time_travel
 
 UpgradeOperation = load_model("UpgradeOperation")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -65,6 +66,54 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(kwargs["target_url_suffix"], "?status=pending")
         batch.refresh_from_db()
         self.assertIsNotNone(batch.last_reminder_at)
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_reminder_skips_batch_failed_after_selection(self, mocked_notify):
+        now = timezone.now()
+        batch = self._create_persistent_batch()
+        self._create_pending_op_for_batch(batch)
+        BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
+            created=now - timedelta(seconds=app_settings.PERSISTENT_REMINDER_PERIOD + 1)
+        )
+        count = QuerySet.count
+        status_changed = False
+
+        def fail_batch_before_claim(queryset):
+            nonlocal status_changed
+            if queryset.model is UpgradeOperation and not status_changed:
+                status_changed = True
+                BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
+                    status="failed"
+                )
+            return count(queryset)
+
+        with time_travel(now), mock.patch.object(
+            QuerySet, "count", new=fail_batch_before_claim
+        ):
+            tasks.send_pending_upgrade_reminders.run()
+        self.assertTrue(status_changed)
+        mocked_notify.assert_not_called()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+        self.assertIsNone(batch.last_reminder_at)
+
+    @mock.patch(
+        "openwisp_notifications.signals.notify.send",
+        side_effect=RuntimeError("notification backend unavailable"),
+    )
+    def test_failed_reminder_send_does_not_record_reminder(self, mocked_notify):
+        now = timezone.now()
+        batch = self._create_persistent_batch()
+        self._create_pending_op_for_batch(batch)
+        BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
+            created=now - timedelta(seconds=app_settings.PERSISTENT_REMINDER_PERIOD + 1)
+        )
+        with time_travel(now), self.assertRaisesRegex(
+            RuntimeError, "notification backend unavailable"
+        ):
+            tasks.send_pending_upgrade_reminders.run()
+        batch.refresh_from_db()
+        self.assertIsNone(batch.last_reminder_at)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     def test_multiple_qualifying_batches_each_fire(self, mocked_notify):

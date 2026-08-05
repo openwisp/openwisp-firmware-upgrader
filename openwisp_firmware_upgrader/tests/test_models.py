@@ -1112,6 +1112,33 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(batch.build, env["build2"])
             self.assertEqual(batch.status, "success")
 
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.delay")
+    def test_batch_waits_for_all_operations_before_completing(
+        self, mocked_upgrade, mocked_notify
+    ):
+        env = self._create_upgrade_env()
+        completed = False
+
+        def complete_first_operation(operation_id):
+            nonlocal completed
+            if completed:
+                return
+            completed = True
+            operation = UpgradeOperation.objects.get(pk=operation_id)
+            operation.status = "success"
+            operation.save()
+
+        mocked_upgrade.side_effect = complete_first_operation
+        env["build2"].batch_upgrade(firmwareless=False)
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        operations = batch.upgradeoperation_set
+        self.assertEqual(operations.count(), 2)
+        self.assertEqual(operations.filter(status="success").count(), 1)
+        self.assertEqual(operations.filter(status="in-progress").count(), 1)
+        self.assertEqual(batch.status, "in-progress")
+        mocked_notify.assert_not_called()
+
     @mock.patch(_mock_updrade, return_value=True)
     def test_upgrade_firmwareless_devices(self, *args):
         with mock.patch(self._mock_connect, return_value=True):

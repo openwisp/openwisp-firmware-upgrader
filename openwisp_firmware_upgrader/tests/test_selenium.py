@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 from unittest.mock import patch
 
 import swapper
@@ -7,6 +8,7 @@ from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.management import call_command
 from django.test import tag
 from django.urls import reverse
+from django.utils import timezone
 from reversion.models import Version
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -1358,6 +1360,67 @@ class TestRealTimeProgress(
             log = self.find_element(By.CSS_SELECTOR, ".field-log .readonly").text
             self.assertEqual(log, "Succeeded because you're very smart!")
             self._assert_no_js_errors()
+
+    def test_batch_operation_retry_details_update_live(self):
+        batch = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress", is_persistent=True
+        )
+        operation = UpgradeOperation.objects.create(
+            device=self.device1,
+            image=self.image2,
+            batch=batch,
+            status="in-progress",
+            is_persistent=True,
+            retry_count=0,
+        )
+        UpgradeOperation.objects.filter(pk=operation.pk).update(
+            modified=timezone.now() - timedelta(hours=1)
+        )
+        operation.refresh_from_db()
+        UpgradeOperation.objects.create(
+            device=self.device2,
+            image=self.image2,
+            batch=batch,
+            status="pending",
+            is_persistent=True,
+        )
+        self._prepare_batch(batch)
+        row_selector = f'#result_list .status-cell[data-operation-id="{operation.pk}"]'
+        original_modified = (
+            self.find_element(By.CSS_SELECTOR, row_selector)
+            .find_element(By.XPATH, "..")
+            .find_elements(By.TAG_NAME, "td")[5]
+            .text
+        )
+        next_retry_at = timezone.now() + timedelta(hours=1)
+        operation.status = "pending"
+        operation.retry_count = 2
+        operation.next_retry_at = next_retry_at
+        operation.save()
+        expected_next_retry = self.web_driver.execute_script(
+            "return getFormattedDateTimeString(arguments[0]);",
+            next_retry_at.isoformat(),
+        )
+        expected_modified = self.web_driver.execute_script(
+            "return getFormattedDateTimeString(arguments[0]);",
+            operation.modified.isoformat(),
+        )
+
+        def retry_details_are_updated(driver):
+            row = driver.find_element(By.CSS_SELECTOR, row_selector).find_element(
+                By.XPATH, ".."
+            )
+            cells = row.find_elements(By.TAG_NAME, "td")
+            retry_count, next_retry, modified = [cell.text for cell in cells][3:]
+            return (
+                retry_count == "2"
+                and next_retry == expected_next_retry
+                and modified == expected_modified
+                and modified != original_modified
+            )
+
+        WebDriverWait(self.web_driver, 10).until(retry_details_are_updated)
+        self._assert_no_js_errors()
 
     def test_batch_completion_with_mixed_results(self):
         """Test batch completion with partial success scenario"""

@@ -223,6 +223,23 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.status, "pending")
         self.assertIsNotNone(op.next_retry_at)
 
+    @mock.patch(
+        "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay",
+        side_effect=SystemExit("worker terminated"),
+    )
+    def test_retry_pending_upgrade_crash_does_not_strand_operation(
+        self, mocked_upgrade
+    ):
+        now = timezone.now()
+        with time_travel(now):
+            op = self._create_pending_op()
+            with self.assertRaises(SystemExit):
+                tasks.retry_pending_upgrade.run(op.pk)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "pending")
+        self.assertIsNotNone(op.next_retry_at)
+        self.assertLessEqual(op.next_retry_at, now)
+
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
     def test_retry_pending_upgrade_raced_out(self, mocked_upgrade):
         op = self._create_pending_op()
@@ -233,6 +250,27 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         op.refresh_from_db()
         self.assertEqual(op.status, "in-progress")
         self.assertNotIn("Persistent retry", op.log or "")
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    def test_retry_pending_upgrade_skips_stale_retry_count(self, mocked_upgrade):
+        now = timezone.now()
+        with time_travel(now):
+            op = self._create_pending_op(retry_count=1)
+            stale_retry_count = op.retry_count
+            future_retry = now + timedelta(hours=1)
+            UpgradeOperation.objects.filter(pk=op.pk).update(
+                status="pending",
+                retry_count=stale_retry_count + 1,
+                next_retry_at=future_retry,
+            )
+            tasks.retry_pending_upgrade.run(
+                op.pk, expected_retry_count=stale_retry_count
+            )
+        op.refresh_from_db()
+        self.assertEqual(op.status, "pending")
+        self.assertEqual(op.retry_count, stale_retry_count + 1)
+        self.assertEqual(op.next_retry_at, future_retry)
+        mocked_upgrade.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
     def test_retry_pending_upgrade_deactivated_device(self, mocked_upgrade):

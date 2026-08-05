@@ -356,6 +356,25 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, "Retry Count")
         self.assertNotContains(r, "Next Retry")
 
+    def test_batch_change_page_hides_next_retry_when_pending_is_filtered_out(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="success"
+        )
+        UpgradeOperation.objects.create(
+            device=env["d2"], image=env["image1b"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url, {"status": "success"})
+        self.assertContains(r, "Retry Count")
+        self.assertNotContains(r, "Next Retry")
+
     def test_batch_change_page_hides_retry_columns_when_not_persistent(self):
         self._login()
         env = self._create_upgrade_env()
