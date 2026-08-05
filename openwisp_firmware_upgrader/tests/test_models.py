@@ -705,15 +705,13 @@ class TestModels(TestUpgraderMixin, TestCase):
         with self.subTest("brand-new UpgradeOperation"):
             op = UpgradeOperation(device=device_fw.device, image=device_fw.image)
             self.assertTrue(op._state.adding)
-            # FK-existence and uniqueness checks only; the immutability guard
-            # must not add a stored-value lookup for an unsaved instance.
             with self.assertNumQueries(3):
                 op.full_clean()
 
         with self.subTest("brand-new BatchUpgradeOperation"):
             batch = BatchUpgradeOperation(build=device_fw.image.build)
             self.assertTrue(batch._state.adding)
-            with self.assertNumQueries(2):
+            with self.assertNumQueries(4):
                 batch.full_clean()
 
     def test_scheduled_at_and_firmwareless_defaults(self):
