@@ -182,15 +182,15 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
-    @mock.patch(
-        "openwisp_controller.config.base.device.AbstractDevice.is_deactivated",
-        return_value=True,
-    )
     def test_deactivated_path_does_not_fire_notification(
-        self, _is_deactivated, _mocked_upgrade, mocked_notify
+        self, _mocked_upgrade, mocked_notify
     ):
         op = self._create_persistent_op(status="pending")
-        tasks.retry_pending_upgrade.run(op.pk)
+        with mock.patch(
+            "openwisp_controller.config.base.device.AbstractDevice.is_deactivated",
+            return_value=True,
+        ):
+            tasks.retry_pending_upgrade.run(op.pk)
         op.refresh_from_db()
         self.assertEqual(op.status, "aborted")
         self.assertEqual(mocked_notify.call_count, 0)

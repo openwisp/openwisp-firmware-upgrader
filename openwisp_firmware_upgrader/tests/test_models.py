@@ -840,15 +840,12 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertGreaterEqual(delta, base * (1 - jitter) - 1)
         self.assertLessEqual(delta, base * (1 + jitter) + 1)
 
-    _no_conn = (
-        "openwisp_controller.connection.models.DeviceConnection."
-        "get_working_connection"
-    )
-
     def test_no_connection_persistent_op_pends(self):
         op = self._make_persistent_op(is_persistent=True)
-        with mock.patch(
-            self._no_conn, side_effect=NoWorkingDeviceConnectionError(connection=None)
+        with mock.patch.object(
+            DeviceConnection,
+            "get_working_connection",
+            side_effect=NoWorkingDeviceConnectionError(connection=None),
         ):
             op.upgrade(recoverable=False)
         op.refresh_from_db()
@@ -858,8 +855,10 @@ class TestModels(TestUpgraderMixin, TestCase):
 
     def test_no_connection_non_persistent_op_aborts(self):
         op = self._make_persistent_op(is_persistent=False)
-        with mock.patch(
-            self._no_conn, side_effect=NoWorkingDeviceConnectionError(connection=None)
+        with mock.patch.object(
+            DeviceConnection,
+            "get_working_connection",
+            side_effect=NoWorkingDeviceConnectionError(connection=None),
         ):
             op.upgrade(recoverable=False)
         op.refresh_from_db()
@@ -945,8 +944,8 @@ class TestModels(TestUpgraderMixin, TestCase):
                 batch=batch,
                 status="in-progress",
             )
-            with mock.patch(
-                "openwisp_controller.connection.models.DeviceConnection."
+            with mock.patch.object(
+                DeviceConnection,
                 "get_working_connection",
                 return_value=mock.MagicMock(),
             ):

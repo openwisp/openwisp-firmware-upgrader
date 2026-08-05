@@ -1015,6 +1015,8 @@ class AbstractUpgradeOperation(
 
     def clean(self):
         super().clean()
+        if hasattr(self, "device") and self.device and self.device.is_deactivated():
+            raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
         self._validate_is_persistent_immutable()
 
     def _validate_is_persistent_immutable(self):
@@ -1045,11 +1047,6 @@ class AbstractUpgradeOperation(
 
     class Meta:
         abstract = True
-
-    def clean(self):
-        super().clean()
-        if hasattr(self, "device") and self.device and self.device.is_deactivated():
-            raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
 
     def log_line(self, line, save=True):
         if self.log:

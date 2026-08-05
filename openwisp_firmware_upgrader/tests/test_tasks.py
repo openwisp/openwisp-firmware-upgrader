@@ -235,15 +235,13 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertNotIn("Persistent retry", op.log or "")
 
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
-    @mock.patch(
-        "openwisp_controller.config.base.device.AbstractDevice.is_deactivated",
-        return_value=True,
-    )
-    def test_retry_pending_upgrade_deactivated_device(
-        self, _is_deactivated, mocked_upgrade
-    ):
+    def test_retry_pending_upgrade_deactivated_device(self, mocked_upgrade):
         op = self._create_pending_op()
-        tasks.retry_pending_upgrade.run(op.pk)
+        with mock.patch(
+            "openwisp_controller.config.base.device.AbstractDevice.is_deactivated",
+            return_value=True,
+        ):
+            tasks.retry_pending_upgrade.run(op.pk)
         op.refresh_from_db()
         self.assertEqual(op.status, "aborted")
         self.assertIn("Device has been deactivated", op.log)
