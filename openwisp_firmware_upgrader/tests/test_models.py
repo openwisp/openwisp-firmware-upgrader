@@ -853,6 +853,29 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(op.retry_count, 1)
         self.assertIsNotNone(op.next_retry_at)
 
+    def test_no_connection_persistent_op_does_not_clobber_canceled(self):
+        op = self._make_persistent_op(is_persistent=True)
+        failure_handler = op._recoverable_failure_handler
+
+        def cancel_after_pending(recoverable, error):
+            failure_handler(recoverable, error)
+            concurrent_op = UpgradeOperation.objects.get(pk=op.pk)
+            concurrent_op.cancel()
+
+        with mock.patch.object(
+            DeviceConnection,
+            "get_working_connection",
+            side_effect=NoWorkingDeviceConnectionError(connection=None),
+        ), mock.patch.object(
+            op,
+            "_recoverable_failure_handler",
+            side_effect=cancel_after_pending,
+        ):
+            op.upgrade(recoverable=False)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "cancelled")
+        self.assertIn("cancelled by user", op.log)
+
     def test_no_connection_non_persistent_op_aborts(self):
         op = self._make_persistent_op(is_persistent=False)
         with mock.patch.object(
