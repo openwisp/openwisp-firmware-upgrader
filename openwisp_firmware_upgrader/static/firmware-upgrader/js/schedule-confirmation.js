@@ -11,9 +11,7 @@ django.jQuery(function ($) {
   const feedback = $("#schedule-feedback");
   const submits = $('input[name="upgrade_all"], input[name="upgrade_related"]');
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  $("#schedule-timezone").text(
-    interpolate(gettext("Your timezone: %s"), [timezone]),
-  );
+  $("#schedule-timezone").text(interpolate(gettext("Your timezone: %s"), [timezone]));
 
   function pad(value) {
     return String(value).padStart(2, "0");
