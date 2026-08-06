@@ -319,8 +319,8 @@
   font-weight: 600;
 }
 
-.batch-actions input[type="datetime-local"],
-.batch-actions select {
+.batch-actions select,
+.batch-actions .select2-container {
   max-width: 320px;
   min-width: 220px;
 }
@@ -328,20 +328,6 @@
 .batch-actions .help {
   padding-left: 0;
   margin-top: 4px;
-}
-
-.batch-actions .batch-reschedule-tz {
-  font-style: italic;
-  color: var(--body-quiet-color);
-}
-
-.batch-actions .batch-reschedule-feedback {
-  display: inline-block;
-  max-width: 100%;
-  margin-top: 4px;
-}
-.batch-actions .batch-reschedule-feedback.ow-hide {
-  display: none;
 }
 
 .batch-actions .vCheckboxLabel {
@@ -375,7 +361,6 @@
   .batch-actions .flex-container > label {
     min-width: 0;
   }
-  .batch-actions input[type="datetime-local"],
   .batch-actions select {
     width: 100%;
     max-width: none;

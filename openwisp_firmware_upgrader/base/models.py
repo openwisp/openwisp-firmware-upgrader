@@ -219,12 +219,11 @@ class AbstractBuild(TimeStampedEditableModel):
             is_persistent=is_persistent,
             firmwareless=firmwareless,
             scheduled_at=scheduled_at,
+            status="scheduled" if scheduled_at else "idle",
         )
         batch.full_clean()
         batch.save()
         if scheduled_at:
-            batch.status = "scheduled"
-            batch.save(update_fields=["status"])
             return batch
         transaction.on_commit(
             partial(batch_upgrade_operation.delay, batch.pk, firmwareless)
@@ -656,7 +655,7 @@ class AbstractBatchUpgradeOperation(
         blank=True,
         verbose_name=_("scheduled at"),
         help_text=_(
-            "future date and time (UTC) at which this mass upgrade is "
+            "future date and time at which this mass upgrade is "
             "launched, null for an immediate upgrade"
         ),
     )
@@ -742,7 +741,7 @@ class AbstractBatchUpgradeOperation(
         min_delay = app_settings.SCHEDULE_MIN_DELAY
         max_horizon = app_settings.SCHEDULE_MAX_HORIZON
         if self.scheduled_at < now + timedelta(seconds=min_delay):
-            minutes = min_delay // 60
+            minutes = max(1, -(-min_delay // 60))
             raise ValidationError(
                 {
                     "scheduled_at": ngettext(
@@ -762,7 +761,7 @@ class AbstractBatchUpgradeOperation(
                         "The scheduled time cannot be more than %(days)d "
                         "days in the future."
                     )
-                    % {"days": max_horizon // 86400}
+                    % {"days": max(1, -(-max_horizon // 86400))}
                 }
             )
 
@@ -865,10 +864,22 @@ class AbstractBatchUpgradeOperation(
 
     def _validate_no_conflict(self):
         """
-        Reject creation when an active batch or an active per-device operation
-        already covers this batch's device population: launching a second
-        upgrade over the same devices would flash them twice and make progress
-        reporting meaningless.
+        Reject creation or update (including reschedules and status edits)
+        when an active batch or an active per-device operation already covers
+        this batch's device population: launching a second upgrade over the
+        same devices would flash them twice and make progress reporting
+        meaningless.
+        """
+        conflict = self._find_conflict()
+        if conflict:
+            raise ValidationError(conflict)
+
+    def _find_conflict(self):
+        """
+        Return a message describing an active batch or per-device operation
+        that already covers this batch's device population, or ``None``. Run
+        both at create/edit time and again at launch, because the schedule
+        horizon is long enough for a clashing operation to appear in between.
         """
         Batch = load_model("BatchUpgradeOperation")
         active = (
@@ -886,17 +897,14 @@ class AbstractBatchUpgradeOperation(
                     when = "%s (%s)" % (local.strftime("%Y-%m-%d %H:%M"), local.tzinfo)
                 else:
                     when = _("immediate execution")
-                raise ValidationError(
-                    _(
-                        "A conflicting mass upgrade already exists: operation "
-                        "%(pk)s (status: %(status)s, scheduled for %(when)s)."
-                    )
-                    % {
-                        "pk": existing.pk,
-                        "status": existing.get_status_display(),
-                        "when": when,
-                    }
-                )
+                return _(
+                    "A conflicting mass upgrade already exists: operation "
+                    "%(pk)s (status: %(status)s, scheduled for %(when)s)."
+                ) % {
+                    "pk": existing.pk,
+                    "status": existing.get_status_display(),
+                    "when": when,
+                }
         UpgradeOperation = load_model("UpgradeOperation")
         device_ids = self.build._find_related_device_firmwares(
             group=self.group, location=self.location
@@ -909,19 +917,24 @@ class AbstractBatchUpgradeOperation(
             clashing = clashing.exclude(batch_id=self.pk)
         clash = clashing.first()
         if clash:
-            raise ValidationError(
-                _(
-                    "A device in this upgrade already has an active operation "
-                    "(device %(device)s, status: %(status)s)."
-                )
-                % {"device": clash.device_id, "status": clash.get_status_display()}
-            )
+            return _(
+                "A device in this upgrade already has an active operation "
+                "(device %(device)s, status: %(status)s)."
+            ) % {"device": clash.device_id, "status": clash.get_status_display()}
+        return None
 
     def upgrade(self, firmwareless=None):
         if firmwareless is None:
             firmwareless = self.firmwareless
+        # A cancel committed first moves the row out of these states, so the
+        # claim matches nothing and no operations are created.
+        claimed = self._meta.model.objects.filter(
+            pk=self.pk, status__in=("idle", "in-progress")
+        ).update(status="in-progress")
+        if not claimed:
+            return
         self.status = "in-progress"
-        self.save()
+        self.save(update_fields=["status"])
         with transaction.atomic():
             self.upgrade_related_devices()
             if firmwareless:
@@ -1238,6 +1251,7 @@ class AbstractBatchUpgradeOperation(
 
     def cancel(self):
         if self.status == "scheduled":
+            # Re-save the same status after the atomic claim so post_save fires.
             updated = self._meta.model.objects.filter(
                 pk=self.pk, status="scheduled"
             ).update(status="cancelled")
@@ -1252,6 +1266,18 @@ class AbstractBatchUpgradeOperation(
             return
         if self.status == "in-progress":
             UpgradeOperation = load_model("UpgradeOperation")
+            if not self.upgradeoperation_set.exists():
+                # No children yet: claim the row so the dispatched worker's CAS
+                # fails and it flashes nothing.
+                updated = self._meta.model.objects.filter(
+                    pk=self.pk, status="in-progress"
+                ).update(status="cancelled")
+                if updated:
+                    self.status = "cancelled"
+                    self.save(update_fields=["status"])
+                else:
+                    self.refresh_from_db(fields=["status"])
+                return
             operations = self.upgradeoperation_set.filter(
                 status__in=UpgradeOperation.CANCELLABLE_STATUS,
                 progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
@@ -1259,7 +1285,13 @@ class AbstractBatchUpgradeOperation(
             for operation in operations:
                 try:
                     operation.cancel()
-                except ValueError:
+                except ValueError as error:
+                    logger.warning(
+                        "Could not cancel upgrade operation %s of batch %s: %s",
+                        operation.pk,
+                        self.pk,
+                        error,
+                    )
                     continue
             self.refresh_from_db()
             return
@@ -1279,11 +1311,16 @@ class AbstractBatchUpgradeOperation(
             message=description,
         )
 
-    def _scheduled_validation_failed(self):
-        description = _(
-            "Scheduled mass upgrade %(batch)s was not started: no eligible "
-            "devices remained at the scheduled time."
-        ) % {"batch": self}
+    def _scheduled_validation_failed(self, reason=None):
+        if reason:
+            description = _(
+                "Scheduled mass upgrade %(batch)s was not started: %(reason)s"
+            ) % {"batch": self, "reason": reason}
+        else:
+            description = _(
+                "Scheduled mass upgrade %(batch)s was not started: no eligible "
+                "devices remained at the scheduled time."
+            ) % {"batch": self}
         notify.send(
             sender=self,
             type="generic_message",

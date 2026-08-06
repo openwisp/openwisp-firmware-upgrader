@@ -1,3 +1,5 @@
+from django import forms
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
@@ -81,7 +83,6 @@ class BuildSerializer(BaseSerializer):
 class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
     upgrade_all = serializers.BooleanField(required=False, default=False)
     is_persistent = serializers.BooleanField(required=False, default=True)
-    scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
 
     class Meta:
         fields = (
@@ -96,6 +97,33 @@ class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSeri
             "group": {"required": False, "allow_null": True},
             "location": {"required": False, "allow_null": True},
         }
+
+
+class BatchUpgradeRescheduleSerializer(BatchUpgradeSerializer):
+    class Meta(BatchUpgradeSerializer.Meta):
+        fields = BatchUpgradeSerializer.Meta.fields + ("build", "upgrade_options")
+        read_only_fields = ("build", "upgrade_options")
+
+    def to_internal_value(self, data):
+        # The admin panel posts the two AdminSplitDateTime inputs; combine them
+        # via the create form's field so the wall-clock is read in the server
+        # timezone. A direct scheduled_at (API clients) is left untouched.
+        if "scheduled_at_0" in data or "scheduled_at_1" in data:
+            data = data.copy() if hasattr(data, "copy") else dict(data)
+            date_value = data.get("scheduled_at_0") or ""
+            time_value = data.get("scheduled_at_1") or ""
+            data.pop("scheduled_at_0", None)
+            data.pop("scheduled_at_1", None)
+            if date_value or time_value:
+                try:
+                    data["scheduled_at"] = forms.SplitDateTimeField(
+                        required=False
+                    ).clean([date_value, time_value])
+                except DjangoValidationError as error:
+                    raise serializers.ValidationError({"scheduled_at": error.messages})
+            else:
+                data["scheduled_at"] = None
+        return super().to_internal_value(data)
 
 
 class UpgradeOperationSerializer(serializers.ModelSerializer):

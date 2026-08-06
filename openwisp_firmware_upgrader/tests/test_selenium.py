@@ -574,26 +574,14 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 by=By.CSS_SELECTOR,
                 value='.title-wrapper .object-tools form button[type="submit"]',
             ).click()
-            widget = self.wait_for_presence(By.NAME, "scheduled_at")
-            self.assertEqual(widget.get_attribute("type"), "datetime-local")
-            self.assertEqual(widget.get_attribute("value"), "")
-            self.wait_for_presence(By.ID, "schedule-timezone")
-            WebDriverWait(self.web_driver, 5).until(
-                lambda driver: "Your timezone:"
-                in driver.find_element(By.ID, "schedule-timezone").get_attribute(
-                    "textContent"
-                )
-            )
+            date_input = self.wait_for_presence(By.NAME, "scheduled_at_0")
+            time_input = self.find_element(By.NAME, "scheduled_at_1")
+            self.assertEqual(date_input.get_attribute("class"), "vDateField")
+            self.assertEqual(time_input.get_attribute("class"), "vTimeField")
             self._assert_no_js_errors(ignore_websockets=True)
-            self.web_driver.execute_script(
-                "var i=arguments[0];"
-                "var d=new Date(Date.now()+24*60*60*1000);"
-                "var p=function(n){return String(n).padStart(2,'0')};"
-                "i.value=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())"
-                "+'T'+p(d.getHours())+':'+p(d.getMinutes());"
-                "i.dispatchEvent(new Event('input',{bubbles:true}));",
-                widget,
-            )
+            scheduled = timezone.localtime() + timedelta(days=1)
+            date_input.send_keys(scheduled.strftime("%Y-%m-%d"))
+            time_input.send_keys(scheduled.strftime("%H:%M"))
             self.find_element(
                 by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
             ).click()
@@ -603,6 +591,49 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             batch = BatchUpgradeOperation.objects.get(build=build2)
             self.assertEqual(batch.status, "scheduled")
             self.assertIsNotNone(batch.scheduled_at)
+
+    def test_batch_reschedule_panel_widgets(self):
+        """The reschedule panel on a scheduled batch initializes the Select2
+        group/location widgets, renders the AdminSplitDateTime inputs prefilled
+        with the current schedule, and the cancel button opens the styled
+        confirmation modal."""
+        _, _, _, build2, _, _, _ = self._set_up_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=build2,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        self.login()
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                args=[batch.id],
+            )
+        )
+        self.hide_loading_overlay()
+        toggle = self.find_element(By.ID, "batch-reschedule-btn")
+        self.web_driver.execute_script("arguments[0].click();", toggle)
+        self.wait_for_visibility(By.ID, "batch-reschedule-form")
+        date_input = self.find_element(By.NAME, "scheduled_at_0")
+        time_input = self.find_element(By.NAME, "scheduled_at_1")
+        self.assertEqual(date_input.get_attribute("class"), "vDateField")
+        self.assertEqual(time_input.get_attribute("class"), "vTimeField")
+        self.assertTrue(date_input.get_attribute("value"))
+        self.assertTrue(time_input.get_attribute("value"))
+        self.assertGreaterEqual(
+            len(self.web_driver.find_elements(By.CSS_SELECTOR, ".select2-container")),
+            2,
+            "Both group and location Select2 widgets are initialized",
+        )
+        self._assert_no_js_errors(ignore_websockets=True)
+        # the cancel action opens the styled confirmation modal; asserting it
+        # opens is enough (the destructive cancel is covered by the API tests)
+        cancel_button = self.find_element(By.ID, "batch-cancel-btn")
+        self.web_driver.execute_script("arguments[0].click();", cancel_button)
+        modal = self.wait_for_visibility(
+            By.CSS_SELECTOR, "#ow-batch-cancel-modal.ow-overlay-notification"
+        )
+        self.assertTrue(modal.is_displayed())
 
     @patch(_mock_upgrade, return_value=True)
     def test_upgrade_operation_admin_no_submit_row(self, *args):

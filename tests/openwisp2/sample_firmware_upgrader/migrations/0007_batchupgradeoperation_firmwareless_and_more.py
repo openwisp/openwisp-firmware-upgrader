@@ -27,7 +27,7 @@ class Migration(migrations.Migration):
             name="scheduled_at",
             field=models.DateTimeField(
                 blank=True,
-                help_text="future date and time (UTC) at which this mass upgrade is launched, null for an immediate upgrade",
+                help_text="future date and time at which this mass upgrade is launched, null for an immediate upgrade",
                 null=True,
                 verbose_name="scheduled at",
             ),

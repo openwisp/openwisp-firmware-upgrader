@@ -30,24 +30,17 @@
 
   {% if batch.status == "scheduled" %}
   <div id="batch-reschedule-form" class="batch-reschedule-form ow-hide"
-       data-scheduled-at="{{ batch.scheduled_at|date:'c' }}"
-       data-min-delay="{{ schedule_min_delay }}"
-       data-max-horizon="{{ schedule_max_horizon }}"
        role="region" aria-label="{% trans 'Edit schedule' %}">
 
     <div class="form-row">
       <div>
         <div class="flex-container">
-          <label class="required" for="batch-reschedule-input">{% trans "Scheduled time" %}:</label>
-          <input type="datetime-local" id="batch-reschedule-input"
-                 aria-describedby="batch-reschedule-input_helptext batch-reschedule-feedback">
-          <span id="batch-reschedule-timezone" class="help batch-reschedule-tz"></span>
+          <label class="required">{% trans "Scheduled time" %}:</label>
+          {{ reschedule_form.scheduled_at }}
         </div>
-        <div class="help" id="batch-reschedule-input_helptext">
-          {% trans "The time is entered in your local timezone and stored in UTC." %}
+        <div class="help">
+          {% trans "Pick a future date and time, entered in the server timezone." %}
         </div>
-        <div class="errornote batch-reschedule-feedback ow-hide" id="batch-reschedule-feedback"
-             role="alert" aria-live="assertive"></div>
       </div>
     </div>
 
@@ -55,12 +48,7 @@
       <div>
         <div class="flex-container">
           <label for="batch-reschedule-group">{% trans "Device group" %}:</label>
-          <select id="batch-reschedule-group">
-            <option value="">{% trans "All groups" %}</option>
-            {% for group in reschedule_groups %}
-            <option value="{{ group.pk }}" {% if group.pk == batch.group_id %}selected{% endif %}>{{ group }}</option>
-            {% endfor %}
-          </select>
+          {{ reschedule_form.group }}
         </div>
         <div class="help">{% trans "Limit the upgrade to devices in this group." %}</div>
       </div>
@@ -70,12 +58,7 @@
       <div>
         <div class="flex-container">
           <label for="batch-reschedule-location">{% trans "Location" %}:</label>
-          <select id="batch-reschedule-location">
-            <option value="">{% trans "All locations" %}</option>
-            {% for location in reschedule_locations %}
-            <option value="{{ location.pk }}" {% if location.pk == batch.location_id %}selected{% endif %}>{{ location }}</option>
-            {% endfor %}
-          </select>
+          {{ reschedule_form.location }}
         </div>
         <div class="help">{% trans "Limit the upgrade to devices at this location." %}</div>
       </div>
@@ -293,6 +276,7 @@
 
 {% block footer %}
 {{ block.super }}
+{% if reschedule_form %}{{ reschedule_form.media }}{% endif %}
 <script src="{% static "admin/js/ow-filter.js" %}"></script>
 <script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
 <script>

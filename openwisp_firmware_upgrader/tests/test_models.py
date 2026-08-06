@@ -728,9 +728,10 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(batch.status, "scheduled")
 
     def test_scheduled_at_composite_index(self):
-        indexes = connection.introspection.get_constraints(
-            connection.cursor(), BatchUpgradeOperation._meta.db_table
-        )
+        with connection.cursor() as cursor:
+            indexes = connection.introspection.get_constraints(
+                cursor, BatchUpgradeOperation._meta.db_table
+            )
         self.assertTrue(
             any(
                 info["columns"] == ["status", "scheduled_at"] and info["index"]
@@ -847,7 +848,8 @@ class TestModels(TestUpgraderMixin, TestCase):
             with self.assertRaises(ValidationError) as ctx:
                 batch._validate_schedule()
             self.assertIn(
-                "180 days", str(ctx.exception.message_dict["scheduled_at"][0])
+                f"{app_settings.SCHEDULE_MAX_HORIZON // 86400} days",
+                str(ctx.exception.message_dict["scheduled_at"][0]),
             )
         with self.subTest("a valid future time passes"):
             batch.scheduled_at = now + timedelta(hours=1)

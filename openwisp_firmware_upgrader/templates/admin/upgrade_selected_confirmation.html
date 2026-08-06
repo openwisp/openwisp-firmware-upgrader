@@ -50,26 +50,22 @@
         {{ form.build }}
         <fieldset class="module aligned">
           <h2>{% trans "Persistence and scheduling" %}</h2>
-          <div class="form-row">
+          <div class="form-row" id="persistence-row">
             <label class="is-persistent-checkbox" for="{{ form.is_persistent.id_for_label }}">
               {{ form.is_persistent }}
               <span>{{ form.is_persistent.label }}</span>
             </label>
           </div>
-          <div class="form-row" id="schedule-row"
-               data-min-delay="{{ schedule_min_delay }}"
-               data-max-horizon="{{ schedule_max_horizon }}">
+          <div class="form-row" id="schedule-row">
             <div>
               <div class="flex-container">
                 {{ form.scheduled_at.errors }}
                 {{ form.scheduled_at.label_tag }}
                 {{ form.scheduled_at }}
-                <span id="schedule-timezone" class="help"></span>
               </div>
               <div class="help" id="{{ form.scheduled_at.auto_id }}_helptext">
                 {{ form.scheduled_at.help_text|safe }}
               </div>
-              <div class="errornote schedule-feedback ow-hide" id="schedule-feedback"></div>
             </div>
           </div>
         </fieldset>

@@ -3,7 +3,7 @@
 django.jQuery(function ($) {
   const upgradeOptions = $('textarea[name="upgrade_options"]');
   if (firmwareUpgraderSchema === null || !upgradeOptions.length) {
-    $(".form-row").not("#schedule-row").hide();
+    $(".form-row").not("#persistence-row, #schedule-row").hide();
   } else {
     django._loadJsonSchemaUi(
       $('textarea[name="upgrade_options"]').get(0),
