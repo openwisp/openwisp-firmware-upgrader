@@ -149,19 +149,37 @@ def execute_scheduled_upgrades():
         eligible = result["device_firmwares"].exists() or (
             batch.firmwareless and result["devices"].exists()
         )
-        if not eligible:
+        # Re-check for conflicts at launch: a device may have gained an active
+        # operation since the batch was scheduled.
+        conflict = batch._find_conflict()
+        if not eligible or conflict:
             failed = BatchUpgradeOperation.objects.filter(
-                pk=batch_id, status="scheduled"
+                pk=batch_id, status="scheduled", scheduled_at__lte=now
             ).update(status="failed")
             if failed:
-                batch._scheduled_validation_failed()
+                # Re-save so post_save publishers see the scheduled->failed flip.
+                batch.status = "failed"
+                batch.save(update_fields=["status"])
+                batch._scheduled_validation_failed(reason=conflict)
             continue
         claimed = BatchUpgradeOperation.objects.filter(
-            pk=batch_id, status="scheduled"
+            pk=batch_id, status="scheduled", scheduled_at__lte=now
         ).update(status="in-progress")
         if not claimed:
             continue
-        batch_upgrade_operation.delay(batch_id, batch.firmwareless)
+        try:
+            batch_upgrade_operation.delay(batch_id, batch.firmwareless)
+        except Exception:
+            # Enqueue failed after the claim committed; revert so the next scan
+            # retries instead of orphaning the batch in-progress.
+            BatchUpgradeOperation.objects.filter(
+                pk=batch_id, status="in-progress"
+            ).update(status="scheduled")
+            logger.warning(
+                "Failed to dispatch scheduled mass upgrade %s, reverted to scheduled",
+                batch_id,
+            )
+            continue
         batch._scheduled_started()
 
 

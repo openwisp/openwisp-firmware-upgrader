@@ -50,8 +50,9 @@ While the batch is still ``scheduled`` its detail page offers **Edit
 Schedule** and **Cancel** buttons. Rescheduling can change the launch
 time, the group and location filters, the *persistent* flag and the
 firmwareless option; the build and its upgrade options are fixed once the
-batch is created. As soon as the scheduled time passes and the batch
-starts, nothing can be changed any more.
+batch is created. After the batch starts, its schedule and other editable
+fields can no longer be changed, but an ``in-progress`` batch can still be
+cancelled.
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-mass-upgrade-detail.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-mass-upgrade-detail.png

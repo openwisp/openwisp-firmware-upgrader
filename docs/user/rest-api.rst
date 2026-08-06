@@ -87,6 +87,7 @@ The list of batch upgrade operations provides the following filters:
   cancelled)
 - ``is_persistent`` (true or false)
 - ``scheduled_at`` (launch time of a scheduled batch)
+- ``created`` (creation timestamp of the batch)
 
 Here's a few examples:
 
@@ -291,8 +292,12 @@ Example scheduling the upgrade for later:
 .. code-block:: json
 
     {
-        "scheduled_at": "2026-07-15T02:00:00+00:00"
+        "scheduled_at": "{future_iso8601_datetime}"
     }
+
+The ``scheduled_at`` value must be a timezone-aware ISO 8601 timestamp in
+the future that satisfies the configured minimum delay and maximum
+scheduling horizon (see :doc:`scheduled-mass-upgrades`).
 
 Dry-run Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~

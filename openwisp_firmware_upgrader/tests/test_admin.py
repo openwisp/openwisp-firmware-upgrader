@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
 from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -233,21 +234,25 @@ class TestAdmin(BaseTestAdmin, TestCase):
             },
             follow=True,
         )
-        self.assertContains(r, 'name="scheduled_at"')
-        self.assertContains(r, 'id="schedule-timezone"')
+        self.assertContains(r, 'name="scheduled_at_0"')
+        self.assertContains(r, 'name="scheduled_at_1"')
+        self.assertContains(r, 'class="vDateField"')
+        self.assertContains(r, 'class="vTimeField"')
 
     def test_scheduled_upgrade_creates_scheduled_batch(self):
         self._login()
         env = self._create_upgrade_env()
-        due = (timezone.now() + timedelta(days=1)).replace(second=0, microsecond=0)
-        posted = due.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
         r = self.client.post(
             self.build_list_url,
             {
                 "action": "upgrade_selected",
                 ACTION_CHECKBOX_NAME: (env["build2"].pk,),
                 "upgrade_all": "on",
-                "scheduled_at": posted,
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
             },
             follow=True,
         )
@@ -257,24 +262,69 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertTrue(batch.firmwareless)
         self.assertEqual(batch.scheduled_at, due)
 
+    def test_scheduled_upgrade_past_time_rejected_by_form(self):
+        self._login()
+        env = self._create_upgrade_env()
+        past = timezone.localtime() - timedelta(hours=1)
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": past.strftime("%Y-%m-%d"),
+                "scheduled_at_1": past.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "in the future")
+        self.assertFalse(
+            BatchUpgradeOperation.objects.filter(build=env["build2"]).exists()
+        )
+
     def test_scheduled_upgrade_related_persists_firmwareless_false(self):
         self._login()
         env = self._create_upgrade_env()
-        due = timezone.now() + timedelta(days=1)
-        posted = due.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        due = timezone.localtime() + timedelta(days=1)
         self.client.post(
             self.build_list_url,
             {
                 "action": "upgrade_selected",
                 ACTION_CHECKBOX_NAME: (env["build2"].pk,),
                 "upgrade_related": "on",
-                "scheduled_at": posted,
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
             },
             follow=True,
         )
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
         self.assertEqual(batch.status, "scheduled")
         self.assertFalse(batch.firmwareless)
+
+    @override_settings(TIME_ZONE="Asia/Kolkata")
+    def test_scheduled_at_interpreted_in_server_timezone(self):
+        # The admin datetime widget submits a naive wall-clock; it must be read
+        # in the server timezone, not as UTC. Kolkata's +05:30 offset makes a
+        # UTC misinterpretation land on a different instant.
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.scheduled_at, due)
 
     def test_batch_admin_list_shows_schedule_and_filters(self):
         self._login()
@@ -329,6 +379,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.assertContains(r, 'id="batch-reschedule-location"')
             self.assertContains(r, 'id="batch-reschedule-persistent"')
             self.assertContains(r, 'id="batch-reschedule-firmwareless"')
+            self.assertContains(r, "select2-input")
+            self.assertContains(r, "mass-upgrade-select2.js")
             batch.delete()
 
         with self.subTest("in-progress shows cancel only"):
@@ -344,6 +396,32 @@ class TestAdmin(BaseTestAdmin, TestCase):
             batch = BatchUpgradeOperation.objects.create(build=build, status="success")
             r = get_change(batch)
             self.assertNotContains(r, 'id="batch-cancel-btn"')
+            self.assertNotContains(r, 'id="batch-reschedule-btn"')
+
+    def test_batch_actions_hidden_for_view_only_user(self):
+        org = self._get_org()
+        build = self._create_build(organization=org)
+        batch = BatchUpgradeOperation.objects.create(
+            build=build,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        operator = self._create_operator(organizations=[org])
+        content_type = ContentType.objects.get_for_model(BatchUpgradeOperation)
+        operator.user_permissions.add(
+            Permission.objects.get(
+                content_type=content_type, codename="view_batchupgradeoperation"
+            )
+        )
+        self.client.force_login(operator)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'id="batch-cancel-btn"')
+        self.assertNotContains(r, 'id="batch-reschedule-btn"')
+        self.assertNotContains(r, "batch-actions.js")
 
     def test_batch_change_page_renders_without_api(self):
         self._login()

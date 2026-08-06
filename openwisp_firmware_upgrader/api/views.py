@@ -26,6 +26,7 @@ from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
     BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
+    BatchUpgradeRescheduleSerializer,
     BatchUpgradeSerializer,
     BuildSerializer,
     CategorySerializer,
@@ -401,7 +402,7 @@ class DeviceFirmwareDetailView(
         return obj
 
 
-class UpgradeOperationCancelPermission(DjangoModelPermissions):
+class PostRequiresChangePermission(DjangoModelPermissions):
     perms_map = {
         **DjangoModelPermissions.perms_map,
         "POST": ["%(app_label)s.change_%(model_name)s"],
@@ -413,7 +414,7 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     serializer_class = serializers.Serializer
     permission_classes = (
         IsOrganizationManager,
-        UpgradeOperationCancelPermission,
+        PostRequiresChangePermission,
     )
     lookup_field = "pk"
     organization_field = "device__organization"
@@ -481,19 +482,12 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
         return Response({"error": message}, status=status_code)
 
 
-class BatchUpgradeOperationPermission(DjangoModelPermissions):
-    perms_map = {
-        **DjangoModelPermissions.perms_map,
-        "POST": ["%(app_label)s.change_%(model_name)s"],
-    }
-
-
 class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
     queryset = BatchUpgradeOperation.objects.all()
-    serializer_class = BatchUpgradeSerializer
+    serializer_class = BatchUpgradeRescheduleSerializer
     permission_classes = (
         IsOrganizationManager,
-        BatchUpgradeOperationPermission,
+        PostRequiresChangePermission,
     )
     lookup_field = "pk"
     organization_field = "build__category__organization"
@@ -511,12 +505,26 @@ class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
     def post(self, request, pk):
         serializer = self.get_serializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data:
+            return self._error_response(
+                _("No editable fields were provided."),
+                status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            authorized = self.get_object()
+        except Http404:
+            return self._error_response(
+                _("Batch upgrade operation not found"), status.HTTP_404_NOT_FOUND
+            )
         try:
             with transaction.atomic():
-                batch = self.get_queryset().select_for_update().get(pk=pk)
+                batch = self.get_queryset().select_for_update().get(pk=authorized.pk)
                 if batch.status != "scheduled":
                     return self._error_response(
-                        "This batch is no longer scheduled and cannot be rescheduled.",
+                        _(
+                            "This batch is no longer scheduled and cannot be "
+                            "rescheduled."
+                        ),
                         status.HTTP_409_CONFLICT,
                     )
                 data = dict(serializer.validated_data)
@@ -526,14 +534,10 @@ class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
                     setattr(batch, field, value)
                 batch.full_clean()
                 batch.save()
-        except BatchUpgradeOperation.DoesNotExist:
-            return self._error_response(
-                "Batch upgrade operation not found", status.HTTP_404_NOT_FOUND
-            )
         except ValidationError as e:
             return self._error_response(str(e.messages[0]), status.HTTP_400_BAD_REQUEST)
         return Response(
-            {"message": "Mass upgrade rescheduled successfully"},
+            {"message": _("Mass upgrade rescheduled successfully")},
             status=status.HTTP_200_OK,
         )
 
@@ -546,7 +550,7 @@ class BatchUpgradeCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     serializer_class = serializers.Serializer
     permission_classes = (
         IsOrganizationManager,
-        BatchUpgradeOperationPermission,
+        PostRequiresChangePermission,
     )
     lookup_field = "pk"
     organization_field = "build__category__organization"
@@ -565,7 +569,7 @@ class BatchUpgradeCancelView(ProtectedAPIMixin, generics.GenericAPIView):
             batch = self.get_object()
         except Http404:
             return self._error_response(
-                "Batch upgrade operation not found", status.HTTP_404_NOT_FOUND
+                _("Batch upgrade operation not found"), status.HTTP_404_NOT_FOUND
             )
         try:
             batch.cancel()
@@ -574,11 +578,11 @@ class BatchUpgradeCancelView(ProtectedAPIMixin, generics.GenericAPIView):
         except Exception:
             logger.exception("Failed to cancel mass upgrade %s", pk)
             return self._error_response(
-                "Failed to cancel mass upgrade",
+                _("Failed to cancel mass upgrade"),
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         return Response(
-            {"message": "Mass upgrade cancelled successfully"},
+            {"message": _("Mass upgrade cancelled successfully")},
             status=status.HTTP_200_OK,
         )
 

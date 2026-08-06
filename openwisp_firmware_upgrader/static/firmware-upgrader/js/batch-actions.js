@@ -1,6 +1,27 @@
 "use strict";
 
 django.jQuery(function ($) {
+  function extractErrorMessage(xhr) {
+    const body = xhr.responseJSON;
+    if (body) {
+      if (body.error) {
+        return body.error;
+      }
+      // DRF serializer field errors are keyed by field name (e.g. an invalid
+      // group/location pk or an unparseable datetime); surface the first one.
+      for (const key of Object.keys(body)) {
+        const value = body[key];
+        if (Array.isArray(value) && value.length) {
+          return value[0];
+        }
+        if (typeof value === "string" && value) {
+          return value;
+        }
+      }
+    }
+    return gettext("The request could not be completed.");
+  }
+
   function post(url, data) {
     $("#ow-loading").show();
     $.ajax({
@@ -14,56 +35,63 @@ django.jQuery(function ($) {
       },
       error: function (xhr) {
         $("#ow-loading").hide();
-        const detail =
-          xhr.responseJSON && xhr.responseJSON.error
-            ? xhr.responseJSON.error
-            : gettext("The request could not be completed.");
-        alert(detail);
+        alert(extractErrorMessage(xhr));
       },
     });
   }
 
-  function pad(value) {
-    return String(value).padStart(2, "0");
+  function showBatchCancelModal() {
+    if ($("#ow-batch-cancel-modal").length === 0) {
+      createBatchCancelModal();
+    }
+    $("#ow-batch-cancel-modal").removeClass("ow-hide");
+    $("#ow-batch-cancel-modal .ow-batch-cancel-confirm").trigger("focus");
   }
 
-  function toUtcString(date) {
-    return (
-      date.getUTCFullYear() +
-      "-" +
-      pad(date.getUTCMonth() + 1) +
-      "-" +
-      pad(date.getUTCDate()) +
-      "T" +
-      pad(date.getUTCHours()) +
-      ":" +
-      pad(date.getUTCMinutes()) +
-      ":" +
-      pad(date.getUTCSeconds()) +
-      "+00:00"
-    );
+  function createBatchCancelModal() {
+    const modalHtml = `
+      <div id="ow-batch-cancel-modal" class="ow-overlay ow-overlay-notification ow-overlay-inner ow-hide">
+        <div class="ow-dialog-notification ow-cancel-confirmation-dialog">
+          <span class="ow-dialog-close ow-dialog-close-x">&times;</span>
+          <div class="ow-cancel-confirmation-header">
+            <h2 class="ow-cancel-confirmation-title">${gettext("Cancel mass upgrade")}</h2>
+          </div>
+          <div class="ow-cancel-confirmation-content">
+            <p>${gettext("Are you sure you want to cancel this mass upgrade?")}</p>
+          </div>
+          <div class="ow-dialog-buttons ow-cancel-confirmation-buttons">
+            <button class="ow-batch-cancel-confirm button default danger-btn">
+              ${gettext("Yes")}
+            </button>
+            <button class="ow-dialog-close button default">
+              ${gettext("No")}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    $("body").append(modalHtml);
+    $("#ow-batch-cancel-modal .ow-dialog-close").on("click", function () {
+      $("#ow-batch-cancel-modal").addClass("ow-hide");
+    });
+    $("#ow-batch-cancel-modal .ow-batch-cancel-confirm").on("click", function () {
+      $("#ow-batch-cancel-modal").addClass("ow-hide");
+      post(owBatchCancelUrl, {});
+    });
+    $(document).on("keyup", function (e) {
+      if (e.keyCode === 27 && $("#ow-batch-cancel-modal").is(":visible")) {
+        $("#ow-batch-cancel-modal").addClass("ow-hide");
+      }
+    });
+    $("#ow-batch-cancel-modal").on("click", function (e) {
+      if (e.target === this) {
+        $(this).addClass("ow-hide");
+      }
+    });
   }
-
-  function toLocalInputValue(date) {
-    return (
-      date.getFullYear() +
-      "-" +
-      pad(date.getMonth() + 1) +
-      "-" +
-      pad(date.getDate()) +
-      "T" +
-      pad(date.getHours()) +
-      ":" +
-      pad(date.getMinutes())
-    );
-  }
-
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   $("#batch-cancel-btn").on("click", function () {
-    if (window.confirm(gettext("Cancel this mass upgrade?"))) {
-      post(owBatchCancelUrl, {});
-    }
+    showBatchCancelModal();
   });
 
   const form = $("#batch-reschedule-form");
@@ -72,81 +100,15 @@ django.jQuery(function ($) {
   }
 
   const toggle = $("#batch-reschedule-btn");
-  const input = $("#batch-reschedule-input");
-  const save = $("#batch-reschedule-save");
-  const feedback = $("#batch-reschedule-feedback");
-  const minDelay = parseInt(form.data("min-delay"), 10);
-  const maxHorizon = parseInt(form.data("max-horizon"), 10);
-
-  $("#batch-reschedule-timezone").text(
-    interpolate(gettext("Your timezone: %s"), [timezone]),
-  );
-
-  const scheduledAt = form.data("scheduled-at");
-  if (scheduledAt) {
-    const current = new Date(scheduledAt);
-    if (!isNaN(current.getTime())) {
-      input.val(toLocalInputValue(current));
-    }
-  }
-  if (!isNaN(minDelay)) {
-    input.attr("min", toLocalInputValue(new Date(Date.now() + minDelay * 1000)));
-  }
-  if (!isNaN(maxHorizon)) {
-    input.attr("max", toLocalInputValue(new Date(Date.now() + maxHorizon * 1000)));
-  }
-
-  function showFeedback(message) {
-    feedback.text(message).removeClass("ow-hide");
-  }
-
-  function clearFeedback() {
-    feedback.text("").addClass("ow-hide");
-  }
-
-  function validate() {
-    clearFeedback();
-    save.prop("disabled", false);
-    const value = input.val();
-    if (!value) {
-      showFeedback(gettext("Select a scheduled time."));
-      save.prop("disabled", true);
-      return false;
-    }
-    const seconds = (new Date(value).getTime() - Date.now()) / 1000;
-    let message = "";
-    if (!isNaN(minDelay) && seconds < minDelay) {
-      const minutes = Math.floor(minDelay / 60);
-      message = interpolate(
-        ngettext(
-          "The scheduled time must be at least %s minute in the future.",
-          "The scheduled time must be at least %s minutes in the future.",
-          minutes,
-        ),
-        [minutes],
-      );
-    } else if (!isNaN(maxHorizon) && seconds > maxHorizon) {
-      message = interpolate(
-        gettext("The scheduled time cannot be more than %s days in the future."),
-        [Math.floor(maxHorizon / 86400)],
-      );
-    }
-    if (message) {
-      showFeedback(message);
-      save.prop("disabled", true);
-      return false;
-    }
-    return true;
-  }
-
-  input.on("input change", validate);
+  const dateInput = form.find('input[name="scheduled_at_0"]');
+  const timeInput = form.find('input[name="scheduled_at_1"]');
 
   toggle.on("click", function () {
     const opening = form.hasClass("ow-hide");
     form.toggleClass("ow-hide", !opening);
     toggle.attr("aria-expanded", String(opening));
     if (opening) {
-      validate();
+      dateInput.trigger("focus");
     }
   });
 
@@ -155,13 +117,12 @@ django.jQuery(function ($) {
     toggle.attr("aria-expanded", "false").trigger("focus");
   });
 
-  save.on("click", function () {
-    if (!validate()) {
-      input.trigger("focus");
-      return;
-    }
+  $("#batch-reschedule-save").on("click", function () {
+    // The two split inputs carry the localized wall-clock; the server reads
+    // them in its own timezone, matching the create/confirmation form.
     post(owBatchRescheduleUrl, {
-      scheduled_at: toUtcString(new Date(input.val())),
+      scheduled_at_0: dateInput.val(),
+      scheduled_at_1: timeInput.val(),
       group: $("#batch-reschedule-group").val() || null,
       location: $("#batch-reschedule-location").val() || null,
       is_persistent: $("#batch-reschedule-persistent").is(":checked"),

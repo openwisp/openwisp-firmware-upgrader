@@ -145,7 +145,10 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
 }
 function updateBatchProgress(data) {
   let $ = django.jQuery;
-  if (data.status && data.status !== "scheduled") {
+  if (data.status && FW_STATUS_HELPERS.isCompleted(data.status)) {
+    // A terminal batch can no longer be cancelled or rescheduled.
+    $(".batch-actions").remove();
+  } else if (data.status && data.status !== "scheduled") {
     $("#batch-reschedule-btn, #batch-reschedule-form").remove();
   }
   let mainProgressElement = $(".batch-main-progress");

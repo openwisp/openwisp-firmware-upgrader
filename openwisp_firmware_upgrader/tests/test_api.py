@@ -4,7 +4,7 @@ from unittest import mock
 
 import swapper
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -1017,15 +1017,52 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.scheduled_at, new_due)
 
+    @override_settings(TIME_ZONE="Asia/Kolkata")
+    def test_reschedule_naive_scheduled_at_interpreted_in_server_timezone(self):
+        # The admin reschedule panel posts the two AdminSplitDateTime inputs
+        # (scheduled_at_0/scheduled_at_1) as a naive wall-clock; it must be read
+        # in the server timezone, matching the create form, not as UTC.
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        due = (timezone.localtime() + timedelta(days=2)).replace(
+            second=0, microsecond=0
+        )
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(
+            url,
+            {
+                "scheduled_at_0": due.strftime("%d/%m/%Y"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+            },
+        )
+        self.assertEqual(r.status_code, 200)
+        batch.refresh_from_db()
+        self.assertEqual(batch.scheduled_at, due)
+
     def test_reschedule_updates_editable_fields(self):
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(env["build2"], is_persistent=True)
+        group = self._create_device_group(organization=self.org)
         url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
-        r = self.client.post(url, {"is_persistent": False, "upgrade_all": True})
+        r = self.client.post(
+            url, {"is_persistent": False, "upgrade_all": True, "group": group.pk}
+        )
         self.assertEqual(r.status_code, 200)
         batch.refresh_from_db()
         self.assertFalse(batch.is_persistent)
         self.assertTrue(batch.firmwareless)
+        self.assertEqual(batch.group_id, group.pk)
+
+    def test_reschedule_group_wrong_org_returns_400(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        org2 = self._create_org(name="org2", slug="org2")
+        group = self._create_device_group(name="Other Group", organization=org2)
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {"group": group.pk})
+        self.assertEqual(r.status_code, 400)
+        batch.refresh_from_db()
+        self.assertIsNone(batch.group_id)
 
     def test_reschedule_past_returns_400(self):
         env = self._create_upgrade_env()
@@ -1148,6 +1185,62 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         url = reverse("upgrader:api_batchupgradeoperation_cancel", args=[batch.pk])
         r = self.client.post(url)
         self.assertEqual(r.status_code, 404)
+
+    def test_reschedule_empty_body_returns_400(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("No editable fields", str(r.data["error"]))
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "scheduled")
+
+    def test_reschedule_location(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        location = Location.objects.create(
+            name="Reschedule Location", address="1 Reschedule St", organization=self.org
+        )
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {"location": location.pk})
+        self.assertEqual(r.status_code, 200)
+        batch.refresh_from_db()
+        self.assertEqual(batch.location_id, location.pk)
+
+    def test_reschedule_into_conflict_returns_400(self):
+        env = self._create_upgrade_env()
+        scheduled_at = timezone.now() + timedelta(days=1)
+        batch = self._create_scheduled_batch(env["build2"], scheduled_at=scheduled_at)
+        BatchUpgradeOperation.objects.create(build=env["build2"], status="in-progress")
+        new_due = (timezone.now() + timedelta(days=2)).replace(microsecond=0)
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {"scheduled_at": new_due.isoformat()})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("conflicting mass upgrade", str(r.data["error"]))
+        batch.refresh_from_db()
+        self.assertEqual(batch.scheduled_at, scheduled_at)
+
+    def test_reschedule_without_change_permission_returns_403(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        self._login("operator", "tester")
+        due = (timezone.now() + timedelta(days=2)).isoformat()
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(url, {"scheduled_at": due})
+        self.assertEqual(r.status_code, 403)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "scheduled")
+
+    def test_cancel_without_change_permission_returns_403(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        self._login("operator", "tester")
+        url = reverse("upgrader:api_batchupgradeoperation_cancel", args=[batch.pk])
+        r = self.client.post(url)
+        self.assertEqual(r.status_code, 403)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "scheduled")
 
     def test_batchupgradeoperation_list_django_filters(self):
         env = self._create_upgrade_env(organization=self.org)
