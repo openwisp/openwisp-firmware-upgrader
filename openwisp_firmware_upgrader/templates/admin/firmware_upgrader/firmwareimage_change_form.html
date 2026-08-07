@@ -22,7 +22,7 @@
     host: "{{ request.get_host|escapejs }}"
   };
   var owFirmwareImageId = "{{ original.pk }}";
-  var owFirmwareExtractionStatus = "{{ original.extraction_status }}";
+  var owFirmwareExtractionStatus = "{{ original.extraction_status|escapejs }}";
 </script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/extraction-progress.js' %}"></script>
 {% endblock footer %}

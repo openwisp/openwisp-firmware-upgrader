@@ -820,6 +820,38 @@ class TestModels(TestUpgraderMixin, TestCase):
             image._validate_file_replacement()
         self.assertIn("file", ctx.exception.message_dict)
 
+    def test_firmware_image_model_save_file_replacement_resets_and_reextracts(self):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="TP-Link WDR4300",
+            compatible="tplink,tl-wdr4300-v1",
+            target="ath79/generic",
+            fw_version="23.05.5",
+            compat_version="1.0",
+            source="fwtool",
+        )
+        fw.refresh_from_db()
+        storage = FirmwareImage.file.field.storage
+        old_file_name = fw.file.name
+        self.assertTrue(storage.exists(old_file_name))
+        with mock.patch(
+            "openwisp_firmware_upgrader.base.models.extract_firmware_metadata"
+        ) as mock_task:
+            with self.captureOnCommitCallbacks(execute=True):
+                fw.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2)
+                fw.save()
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertEqual(fw.board, "")
+        self.assertEqual(fw.compatible, "")
+        self.assertEqual(fw.target, "")
+        self.assertEqual(fw.fw_version, "")
+        self.assertEqual(fw.compat_version, "")
+        self.assertEqual(fw.source, "")
+        self.assertFalse(storage.exists(old_file_name))
+        mock_task.delay.assert_called_once_with(str(fw.pk))
+
     def test_validate_build_unchanged_blocks_persisted_change(self):
         image = self._create_firmware_image()
         other_build = self._create_build(category=image.build.category, version="99.0")

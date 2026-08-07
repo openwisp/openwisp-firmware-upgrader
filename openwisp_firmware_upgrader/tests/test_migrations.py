@@ -17,6 +17,7 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
     app_label = "firmware_upgrader"
     migrate_from = "0017_alter_batchupgradeoperation_status"
     migrate_to = "0023_backfill_board_from_hardware_map"
+    migrate_to_dependency = "0022_alter_firmwareimage_compatible"
 
     def setUp(self):
         boards = OPENWRT_FIRMWARE_IMAGE_MAP[_MULTI_BOARD_TYPE]["boards"]
@@ -71,3 +72,20 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
                 call_kwargs = mock_notify.call_args.kwargs
                 self.assertEqual(call_kwargs["level"], "warning")
                 self.assertIn("multiple boards", str(call_kwargs["message"]))
+
+    def test_legacy_multi_board_image_reconciliation_is_idempotent(self):
+        with mock.patch(_MOCK_EXTRACT_DELAY), mock.patch(_MOCK_NOTIFY):
+            call_command("migrate", self.app_label, self.migrate_to, verbosity=0)
+            FirmwareImage = apps.get_model(self.app_label, "FirmwareImage")
+            image = FirmwareImage.objects.get(pk=self.image_pk)
+            first_log = image.extraction_log
+            self.assertEqual(first_log.count("compatible with multiple boards"), 1)
+            call_command(
+                "migrate", self.app_label, self.migrate_to_dependency, verbosity=0
+            )
+            call_command("migrate", self.app_label, self.migrate_to, verbosity=0)
+            image.refresh_from_db()
+            self.assertEqual(
+                image.extraction_log.count("compatible with multiple boards"), 1
+            )
+            self.assertEqual(image.extraction_log, first_log)

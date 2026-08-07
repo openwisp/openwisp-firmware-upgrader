@@ -174,6 +174,7 @@ class TestMultiBoardReconciliationMigration(BaseTestMultiBoardReconciliationMigr
     app_label = "sample_firmware_upgrader"
     migrate_from = "0004_alter_firmwareimage_file"
     migrate_to = "0009_backfill_board_from_hardware_map"
+    migrate_to_dependency = "0008_backfill_extraction_status"
 
 
 # this is necessary to avoid excuting the base test suites

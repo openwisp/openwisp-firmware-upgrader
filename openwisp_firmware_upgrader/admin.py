@@ -226,6 +226,7 @@ class FirmwareImageAdmin(BaseAdmin):
         "extraction_log_display",
         "compatible_display",
         "source",
+        "compat_version",
     ]
     fieldsets = [
         (
@@ -257,6 +258,7 @@ class FirmwareImageAdmin(BaseAdmin):
                     "board",
                     "compatible_display",
                     "source",
+                    "compat_version",
                     "target",
                     "fw_version",
                 ],
@@ -301,7 +303,7 @@ class FirmwareImageAdmin(BaseAdmin):
                 Q(category__organization__in=request.user.organizations_managed)
                 | Q(category__organization__isnull=True)
             )
-            return super().formfield_for_foreignkey(db_field, request, **kwargs)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = list(super().get_fieldsets(request, obj))
@@ -342,32 +344,6 @@ class FirmwareImageAdmin(BaseAdmin):
         )
 
     def save_model(self, request, obj, form, change):
-        if change and "file" in form.changed_data:
-            old_file_name = (
-                FirmwareImage.objects.filter(pk=obj.pk)
-                .values_list("file", flat=True)
-                .first()
-            )
-            obj.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
-            obj.extraction_log = ""
-            obj.failure_reason = ""
-            obj.board = ""
-            obj.compatible = ""
-            obj.target = ""
-            obj.fw_version = ""
-            obj.compat_version = ""
-            obj.source = ""
-            super().save_model(request, obj, form, change)
-            Build.objects.filter(pk=obj.build_id).update(
-                status=Build.BUILD_STATUS_ANALYZING
-            )
-            new_file_name = obj.file.name
-            if old_file_name and old_file_name != new_file_name:
-                transaction.on_commit(
-                    partial(FirmwareImage._remove_file, old_file_name)
-                )
-            transaction.on_commit(lambda: extract_firmware_metadata.delay(obj.pk))
-            return
         update_build_status = False
         if change:
             if obj.extraction_status == FirmwareImage.STATUS_FAILED:
@@ -402,7 +378,7 @@ class FirmwareImageAdmin(BaseAdmin):
     )
     def re_extract_metadata(self, request, queryset):
         blocked_pks = list(
-            queryset.filter(upgradeoperation__status="success")
+            queryset.filter(upgradeoperation__status__in=["in-progress", "success"])
             .values_list("pk", flat=True)
             .distinct()
         )
@@ -410,14 +386,36 @@ class FirmwareImageAdmin(BaseAdmin):
             self.message_user(
                 request,
                 _(
-                    "%(count)d image(s) were skipped because they have already "
-                    "been flashed successfully."
+                    "%(count)d image(s) were skipped because they are currently "
+                    "being flashed to one or more devices, or have already been "
+                    "flashed successfully."
                 )
                 % {"count": len(blocked_pks)},
                 messages.WARNING,
             )
             queryset = queryset.exclude(pk__in=blocked_pks)
+        locked_pks = list(
+            queryset.filter(
+                extraction_status__in=[
+                    FirmwareImage.STATUS_IN_PROGRESS,
+                    FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+                ]
+            ).values_list("pk", flat=True)
+        )
+        if locked_pks:
+            self.message_user(
+                request,
+                _(
+                    "%(count)d image(s) were skipped because their metadata is "
+                    "already confirmed or extraction is currently in progress."
+                )
+                % {"count": len(locked_pks)},
+                messages.WARNING,
+            )
+            queryset = queryset.exclude(pk__in=locked_pks)
         image_pks = list(queryset.values_list("pk", flat=True))
+        if not image_pks:
+            return
         build_ids = set(queryset.values_list("build_id", flat=True))
         queryset.update(
             extraction_status=FirmwareImage.STATUS_UNCONFIRMED,

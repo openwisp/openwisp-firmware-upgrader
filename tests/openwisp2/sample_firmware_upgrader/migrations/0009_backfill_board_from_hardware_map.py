@@ -2,6 +2,8 @@ import logging
 
 from django.conf import settings
 from django.db import migrations
+from django.db.models import Value
+from django.db.models.functions import Concat
 from django.db.models.signals import post_migrate
 from django.urls import reverse
 from django.utils.html import format_html
@@ -21,16 +23,13 @@ def _write_multi_board_log(FirmwareImage, image_type, boards):
         f"with multiple boards: {boards_str}. "
         "Please set the board field manually to match your devices."
     )
-    affected_pks = []
-    for image in FirmwareImage.objects.filter(type=image_type, board=""):
-        image.extraction_log = (image.extraction_log or "") + log_suffix
-        image.save(update_fields=["extraction_log"])
-        affected_pks.append(image.pk)
-    if affected_pks:
-        FirmwareImage.objects.filter(pk__in=affected_pks).update(
-            extraction_status="failed"
-        )
-    return len(affected_pks)
+    affected_count = FirmwareImage.objects.filter(
+        type=image_type, board="", extraction_status="unconfirmed"
+    ).update(
+        extraction_log=Concat("extraction_log", Value(log_suffix)),
+        extraction_status="failed",
+    )
+    return affected_count
 
 
 def _send_multi_board_notifications(app_config, **kwargs):
@@ -92,7 +91,11 @@ def backfill_board_from_hardware_map(apps, schema_editor):
             FirmwareImage.objects.filter(
                 type=image_type,
                 board="",
-            ).update(board=boards[0], source="hardware map")
+            ).update(
+                board=boards[0],
+                source="hardware map",
+                extraction_status="manually_confirmed",
+            )
         else:
             if _write_multi_board_log(FirmwareImage, image_type, list(boards)):
                 has_multi_board_images = True
@@ -107,7 +110,11 @@ def backfill_board_from_hardware_map(apps, schema_editor):
                 FirmwareImage.objects.filter(
                     type=image_type,
                     board="",
-                ).update(board=boards[0], source="custom hardware map")
+                ).update(
+                    board=boards[0],
+                    source="custom hardware map",
+                    extraction_status="manually_confirmed",
+                )
             elif len(boards) > 1:
                 if _write_multi_board_log(FirmwareImage, image_type, list(boards)):
                     has_multi_board_images = True

@@ -23,7 +23,9 @@ def _write_multi_board_log(FirmwareImage, image_type, boards):
         f"with multiple boards: {boards_str}. "
         "Please set the board field manually to match your devices."
     )
-    affected_count = FirmwareImage.objects.filter(type=image_type, board="").update(
+    affected_count = FirmwareImage.objects.filter(
+        type=image_type, board="", extraction_status="unconfirmed"
+    ).update(
         extraction_log=Concat("extraction_log", Value(log_suffix)),
         extraction_status="failed",
     )
@@ -89,7 +91,11 @@ def backfill_board_from_hardware_map(apps, schema_editor):
             FirmwareImage.objects.filter(
                 type=image_type,
                 board="",
-            ).update(board=boards[0], source="hardware map")
+            ).update(
+                board=boards[0],
+                source="hardware map",
+                extraction_status="manually_confirmed",
+            )
         else:
             if _write_multi_board_log(FirmwareImage, image_type, list(boards)):
                 has_multi_board_images = True
@@ -104,7 +110,11 @@ def backfill_board_from_hardware_map(apps, schema_editor):
                 FirmwareImage.objects.filter(
                     type=image_type,
                     board="",
-                ).update(board=boards[0], source="custom hardware map")
+                ).update(
+                    board=boards[0],
+                    source="custom hardware map",
+                    extraction_status="manually_confirmed",
+                )
             elif len(boards) > 1:
                 if _write_multi_board_log(FirmwareImage, image_type, list(boards)):
                     has_multi_board_images = True

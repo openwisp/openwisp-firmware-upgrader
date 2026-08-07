@@ -456,8 +456,32 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         self._original_extraction_status = self.extraction_status
 
     def save(self, *args, **kwargs):
+        old_file_name = None
+        if not self._state.adding and self.pk:
+            original = self.__class__.objects.filter(pk=self.pk).values("file").first()
+            if original and original["file"] != self.file.name:
+                old_file_name = original["file"]
+        if old_file_name is not None:
+            self.extraction_status = self.STATUS_UNCONFIRMED
+            self.extraction_log = ""
+            self.failure_reason = ""
+            self.board = ""
+            self.compatible = ""
+            self.target = ""
+            self.fw_version = ""
+            self.compat_version = ""
+            self.source = ""
         super().save(*args, **kwargs)
         self._original_extraction_status = self.extraction_status
+        if old_file_name is not None:
+            Build = load_model("Build")
+            Build.objects.filter(pk=self.build_id).update(
+                status=Build.BUILD_STATUS_ANALYZING
+            )
+            new_file_name = self.file.name
+            if old_file_name and old_file_name != new_file_name:
+                transaction.on_commit(partial(self._remove_file, old_file_name))
+            transaction.on_commit(lambda: extract_firmware_metadata.delay(str(self.pk)))
 
     class Meta:
         abstract = True

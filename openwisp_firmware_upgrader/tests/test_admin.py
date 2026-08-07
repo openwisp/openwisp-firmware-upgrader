@@ -224,6 +224,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             extraction_status=FirmwareImage.STATUS_SUCCESS,
         )
         fw.refresh_from_db()
+        fw.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2)
         request = MockRequest()
         request.user = User.objects.first()
         form = mock.MagicMock()
@@ -371,6 +372,102 @@ class TestAdmin(BaseTestAdmin, TestCase):
         image_flashed.refresh_from_db()
         self.assertEqual(image_flashed.extraction_status, FirmwareImage.STATUS_SUCCESS)
         self.assertContains(r, "1 image(s) were skipped")
+
+    def test_re_extract_metadata_action_skips_state_machine_violations(self):
+        self._login()
+        build = self._create_build()
+
+        with self.subTest("skips image with in-progress upgrade operation"):
+            image_in_progress_upgrade = self._create_firmware_image(
+                build=build, type=self.TPLINK_4300_IMAGE
+            )
+            FirmwareImage.objects.filter(pk=image_in_progress_upgrade.pk).update(
+                extraction_status=FirmwareImage.STATUS_SUCCESS,
+                board="TP-Link WDR4300",
+            )
+            image_in_progress_upgrade.refresh_from_db()
+            device = self._create_config(
+                organization=image_in_progress_upgrade.build.category.organization
+            ).device
+            UpgradeOperation.objects.create(
+                device=device, image=image_in_progress_upgrade, status="in-progress"
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(image_in_progress_upgrade.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_not_called()
+            image_in_progress_upgrade.refresh_from_db()
+            self.assertEqual(
+                image_in_progress_upgrade.extraction_status,
+                FirmwareImage.STATUS_SUCCESS,
+            )
+            self.assertEqual(image_in_progress_upgrade.board, "TP-Link WDR4300")
+
+        with self.subTest("skips image currently being extracted"):
+            image_extracting = self._create_firmware_image(
+                build=build, type=self.TPLINK_4300_IL_IMAGE
+            )
+            FirmwareImage.objects.filter(pk=image_extracting.pk).update(
+                extraction_status=FirmwareImage.STATUS_IN_PROGRESS
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(image_extracting.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_not_called()
+            image_extracting.refresh_from_db()
+            self.assertEqual(
+                image_extracting.extraction_status, FirmwareImage.STATUS_IN_PROGRESS
+            )
+
+        with self.subTest("skips confirmed image and does not wipe its metadata"):
+            confirmed_image = self._create_firmware_image(
+                build=self._create_build(version="9.9")
+            )
+            FirmwareImage.objects.filter(pk=confirmed_image.pk).update(
+                extraction_status=FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+                board="Generic x86",
+                source="manual",
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(confirmed_image.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_not_called()
+            confirmed_image.refresh_from_db()
+            self.assertEqual(
+                confirmed_image.extraction_status,
+                FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+            )
+            self.assertEqual(confirmed_image.board, "Generic x86")
 
     def test_device_firmware_inline_has_add_permission(self):
         device_fw = self._create_device_firmware()
@@ -1400,6 +1497,24 @@ class TestAdmin(BaseTestAdmin, TestCase):
             with self.subTest(field=field):
                 self.assertIn(field, readonly)
 
+    def test_firmware_image_compat_version_always_readonly(self):
+        fw = self._create_firmware_image()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        for status in [
+            FirmwareImage.STATUS_UNCONFIRMED,
+            FirmwareImage.STATUS_IN_PROGRESS,
+            FirmwareImage.LOCKED_STATUSES,
+            FirmwareImage.STATUS_FAILED,
+            FirmwareImage.STATUS_INVALID,
+        ]:
+            with self.subTest(status=status):
+                fw.extraction_status = status
+                fw.save()
+                readonly = fw_admin.get_readonly_fields(request, obj=fw)
+                self.assertIn("compat_version", readonly)
+
     def test_firmware_image_fieldsets_hides_failure_reason_when_not_failed(self):
         fw = self._create_firmware_image()
         fw.extraction_status = FirmwareImage.STATUS_SUCCESS
@@ -1422,12 +1537,15 @@ class TestAdmin(BaseTestAdmin, TestCase):
         all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
         self.assertIn("failure_reason_display", all_fields)
 
-    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
-    def test_firmware_image_save_model_file_change_triggers_extraction(self, mock_task):
+    @mock.patch("openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay")
+    def test_firmware_image_save_model_file_change_triggers_extraction(
+        self, mock_delay
+    ):
         fw = self._create_firmware_image()
         fw.extraction_status = FirmwareImage.STATUS_SUCCESS
         fw.board = "Old Board"
         fw.save()
+        fw.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2)
         request = MockRequest()
         request.user = User.objects.first()
         fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
@@ -1438,7 +1556,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
         self.assertEqual(fw.board, "")
-        mock_task.delay.assert_called_once_with(fw.pk)
+        mock_delay.assert_called_once_with(str(fw.pk))
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     @mock.patch(
@@ -1463,6 +1581,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         Build.objects.filter(pk=fw.build_id).update(status=Build.BUILD_STATUS_SUCCESS)
         fw.refresh_from_db()
+        fw.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2)
         request = MockRequest()
         request.user = User.objects.first()
         fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
@@ -1470,7 +1589,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         form.changed_data = ["file"]
         with self.captureOnCommitCallbacks(execute=True):
             fw_admin.save_model(request, fw, form, change=True)
-        mock_delay.assert_called_once_with(fw.pk)
+        mock_delay.assert_called_once_with(str(fw.pk))
 
         with self.subTest("build is set to analyzing immediately"):
             fw.build.refresh_from_db()
