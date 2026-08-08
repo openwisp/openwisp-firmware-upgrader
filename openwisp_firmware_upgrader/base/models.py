@@ -504,9 +504,26 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     def clean(self):
         self._clean_type()
-        self._validate_locked()
-        self._validate_file_replacement()
-        self._validate_build_unchanged()
+        original = None
+        if not self._state.adding and self.pk:
+            original = (
+                self.__class__.objects.filter(pk=self.pk)
+                .values(
+                    "extraction_status",
+                    "board",
+                    "compatible",
+                    "target",
+                    "fw_version",
+                    "compat_version",
+                    "source",
+                    "file",
+                    "build_id",
+                )
+                .first()
+            )
+        self._validate_locked(original)
+        self._validate_file_replacement(original)
+        self._validate_build_unchanged(original)
         self._validate_file_header()
         self._validate_rootfs()
 
@@ -568,22 +585,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         )
         transaction.on_commit(lambda: extract_firmware_metadata.delay(str(instance.pk)))
 
-    def _validate_locked(self):
-        if self._state.adding or not self.pk:
-            return
-        original = (
-            self.__class__.objects.filter(pk=self.pk)
-            .values(
-                "extraction_status",
-                "board",
-                "compatible",
-                "target",
-                "fw_version",
-                "compat_version",
-                "source",
-            )
-            .first()
-        )
+    def _validate_locked(self, original):
         if not original:
             return
         if (
@@ -605,10 +607,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                     _("Metadata fields are read-only after confirmation.")
                 )
 
-    def _validate_file_replacement(self):
-        if self._state.adding or not self.pk:
-            return
-        original = self.__class__.objects.filter(pk=self.pk).values("file").first()
+    def _validate_file_replacement(self, original):
         if not original or self.file.name == original["file"]:
             return
         UpgradeOperation = load_model("UpgradeOperation")
@@ -625,10 +624,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                 }
             )
 
-    def _validate_build_unchanged(self):
-        if self._state.adding or not self.pk:
-            return
-        original = self.__class__.objects.filter(pk=self.pk).values("build_id").first()
+    def _validate_build_unchanged(self, original):
         if original and original["build_id"] != self.build_id:
             raise ValidationError(
                 {
@@ -780,7 +776,16 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     'please add one in the section named "Credentials"'
                 )
             )
-        if not self.image.board or self.device.model != self.image.board:
+        if not self.image.board:
+            raise ValidationError(
+                {
+                    "image": _(
+                        "This firmware image has no board value. "
+                        "Set the board field on the image before you use it."
+                    )
+                }
+            )
+        if self.device.model != self.image.board:
             raise ValidationError(_("Device model and image do not match"))
 
     @property

@@ -803,9 +803,22 @@ class TestModels(TestUpgraderMixin, TestCase):
         image.target = "ath79/generic"
         image.source = "fwtool"
         image.save()
-        image.board = "Changed Board"
+        original = (
+            FirmwareImage.objects.filter(pk=image.pk)
+            .values(
+                "extraction_status",
+                "board",
+                "compatible",
+                "target",
+                "fw_version",
+                "compat_version",
+                "source",
+            )
+            .first()
+        )
+        image.board = "Changed board"
         with self.assertRaises(ValidationError) as ctx:
-            image._validate_locked()
+            image._validate_locked(original)
         self.assertIn("read-only", str(ctx.exception))
 
     def test_validate_file_replacement_blocks_in_progress_operation(self):
@@ -815,9 +828,10 @@ class TestModels(TestUpgraderMixin, TestCase):
         UpgradeOperation.objects.create(
             device=device, image=image, status="in-progress"
         )
+        original = FirmwareImage.objects.filter(pk=image.pk).values("file").first()
         image.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH)
         with self.assertRaises(ValidationError) as ctx:
-            image._validate_file_replacement()
+            image._validate_file_replacement(original)
         self.assertIn("file", ctx.exception.message_dict)
 
     def test_firmware_image_model_save_file_replacement_resets_and_reextracts(self):
@@ -855,9 +869,10 @@ class TestModels(TestUpgraderMixin, TestCase):
     def test_validate_build_unchanged_blocks_persisted_change(self):
         image = self._create_firmware_image()
         other_build = self._create_build(category=image.build.category, version="99.0")
+        original = FirmwareImage.objects.filter(pk=image.pk).values("build_id").first()
         image.build = other_build
         with self.assertRaises(ValidationError) as ctx:
-            image._validate_build_unchanged()
+            image._validate_build_unchanged(original)
         self.assertIn("build", ctx.exception.message_dict)
 
     def test_validate_locked_allows_change_when_failed(self):
@@ -865,8 +880,21 @@ class TestModels(TestUpgraderMixin, TestCase):
         image.extraction_status = FirmwareImage.STATUS_FAILED
         image.board = ""
         image.save()
+        original = (
+            FirmwareImage.objects.filter(pk=image.pk)
+            .values(
+                "extraction_status",
+                "board",
+                "compatible",
+                "target",
+                "fw_version",
+                "compat_version",
+                "source",
+            )
+            .first()
+        )
         image.board = "Manually entered"
-        image._validate_locked()
+        image._validate_locked(original)
 
     def test_validate_locked_allows_filling_empty_dtb_fields(self):
         image = self._create_firmware_image()
@@ -875,8 +903,21 @@ class TestModels(TestUpgraderMixin, TestCase):
         image.target = ""
         image.source = "dtb"
         image.save()
+        original = (
+            FirmwareImage.objects.filter(pk=image.pk)
+            .values(
+                "extraction_status",
+                "board",
+                "compatible",
+                "target",
+                "fw_version",
+                "compat_version",
+                "source",
+            )
+            .first()
+        )
         image.target = "sunxi/cortexa7"
-        image._validate_locked()
+        image._validate_locked(original)
 
     def test_validate_locked_blocks_bypass_via_status_change(self):
         image = self._create_firmware_image()
@@ -885,10 +926,23 @@ class TestModels(TestUpgraderMixin, TestCase):
         image.target = "ath79/generic"
         image.source = "fwtool"
         image.save()
+        original = (
+            FirmwareImage.objects.filter(pk=image.pk)
+            .values(
+                "extraction_status",
+                "board",
+                "compatible",
+                "target",
+                "fw_version",
+                "compat_version",
+                "source",
+            )
+            .first()
+        )
         image.extraction_status = FirmwareImage.STATUS_FAILED
         image.board = "Tampered board"
         with self.assertRaises(ValidationError) as ctx:
-            image._validate_locked()
+            image._validate_locked(original)
         self.assertIn("read-only", str(ctx.exception))
 
     @capture_any_output()
@@ -922,7 +976,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         device_fw.device = device
         with self.assertRaises(ValidationError) as ctx:
             device_fw.clean()
-        self.assertIn("Device model and image do not match", str(ctx.exception))
+        self.assertIn("This firmware image has no board value.", str(ctx.exception))
 
     def test_auto_create_device_firmwares_skip_unconfirmed(self):
         image = self._create_firmware_image()

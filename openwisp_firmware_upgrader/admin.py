@@ -103,13 +103,15 @@ _FAILURE_REASON_TEXT = {
 }
 
 
-def _extraction_status_badge(status):
-    cfg = _STATUS_CONFIG.get(status, {"label": status, "class": "ow-status-grey"})
+def _status_badge(status, config):
+    cfg = config.get(status, {"label": status, "class": "ow-status-grey"})
     return format_html(
-        '<span class="ow-status-badge {}">{}</span>',
-        cfg["class"],
-        cfg["label"],
+        '<span class="ow-status-badge {}">{}</span>', cfg["class"], cfg["label"]
     )
+
+
+def _extraction_status_badge(status):
+    return _status_badge(status, _STATUS_CONFIG)
 
 
 def _compatible_display_html(obj):
@@ -145,7 +147,7 @@ class FirmwareImageInline(admin.StackedInline):
     fields = [
         "file",
         "extraction_status_display",
-        "extraction_log",
+        "extraction_log_display",
         "board",
         "compatible_display",
         "source",
@@ -159,12 +161,20 @@ class FirmwareImageInline(admin.StackedInline):
         "fw_version",
         "source",
         "extraction_status_display",
-        "extraction_log",
+        "extraction_log_display",
     ]
 
     @admin.display(description=_("Extraction Status"))
     def extraction_status_display(self, obj):
         return _extraction_status_badge(obj.extraction_status)
+
+    @admin.display(description=_("Extraction Log"))
+    def extraction_log_display(self, obj):
+        if not obj.extraction_log:
+            return "-"
+        return format_html(
+            '<pre style="white-space: pre-wrap;">{}</pre>', obj.extraction_log
+        )
 
     @admin.display(description=_("Compatible"))
     def compatible_display(self, obj):
@@ -542,6 +552,9 @@ class BuildAdmin(BaseAdmin):
     # Allows apps that extend this modules to use this template with less hacks
     change_form_template = "admin/firmware_upgrader/change_form.html"
 
+    class Media:
+        css = {"all": ["firmware-upgrader/css/extraction-status.css"]}
+
     def organization(self, obj):
         return obj.category.organization
 
@@ -549,14 +562,7 @@ class BuildAdmin(BaseAdmin):
 
     @admin.display(description=_("Extraction status"))
     def build_status_display(self, obj):
-        cfg = _BUILD_STATUS_CONFIG.get(
-            obj.status, {"label": obj.status, "class": "ow-status-grey"}
-        )
-        return format_html(
-            '<span class="ow-status-badge {}">{}</span>',
-            cfg["class"],
-            cfg["label"],
-        )
+        return _status_badge(obj.status, _BUILD_STATUS_CONFIG)
 
     @admin.action(
         description=_("Mass-upgrade devices related to the selected build"),
