@@ -28,6 +28,7 @@ def _write_multi_board_log(FirmwareImage, image_type, boards):
     ).update(
         extraction_log=Concat("extraction_log", Value(log_suffix)),
         extraction_status="failed",
+        failure_reason="unsupported_format",
     )
     return affected_count
 

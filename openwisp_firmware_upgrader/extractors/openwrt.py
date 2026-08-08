@@ -210,6 +210,8 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                     # Deep scan probes arbitrary offsets, so failed candidates are normal.
                     pass
                 offset = pos + 1
+        # LZMA-alone streams start with a properties byte followed by these
+        # dictionary-size values, so rewind one byte from each match
         for dict_sig in (b"\x00\x00\x80\x00", b"\x00\x00\x40\x00", b"\x00\x00\x00\x01"):
             offset = 1
             while True:
@@ -320,6 +322,8 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             raise ExtractionError(f"Failed to parse DTB: {e}")
         root = dt.get_node("/")
         model, compatible = None, []
+        # model uses prop.value (singel string), compatible uses prop.data
+        # (full list), don't swap these
         for prop in root.props:
             if prop.name == "model":
                 model = self._prop_str(prop.value)

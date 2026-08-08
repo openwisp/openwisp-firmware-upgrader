@@ -7,6 +7,7 @@ from django.db import migrations, models
 
 def convert_compatible_to_text(apps, schema_editor):
     FirmwareImage = apps.get_model("firmware_upgrader", "FirmwareImage")
+    batch = []
     for image in FirmwareImage.objects.iterator():
         try:
             value = json.loads(image.compatible or "null")
@@ -14,15 +15,18 @@ def convert_compatible_to_text(apps, schema_editor):
             continue
         if isinstance(value, list):
             image.compatible = "\n".join(value)
-            image.save(update_fields=["compatible"])
+            batch.append(image)
+    FirmwareImage.objects.bulk_update(batch, ["compatible"], batch_size=500)
 
 
 def convert_compatible_to_json(apps, schema_editor):
     FirmwareImage = apps.get_model("firmware_upgrader", "FirmwareImage")
+    batch = []
     for image in FirmwareImage.objects.iterator():
         lines = [line for line in (image.compatible or "").splitlines() if line]
         image.compatible = json.dumps(lines)
-        image.save(update_fields=["compatible"])
+        batch.append(image)
+    FirmwareImage.objects.bulk_update(batch, ["compatible"], batch_size=500)
 
 
 class Migration(migrations.Migration):

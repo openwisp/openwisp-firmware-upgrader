@@ -4,8 +4,9 @@ from django.utils.module_loading import import_string
 
 from openwisp_controller.connection import settings as conn_settings
 
-# Deprecated will be removed in openwisp-firmware-upgrader 1.5.
-# Firmware image metadata is now extracted automatically from the uploaded file.
+# The openwisp_firmware_upgrader.hardware module and the
+# OPENWISP_CUSTOM_OPENWRT_IMAGES setting are deprecated and will be removed
+# in a future release
 CUSTOM_OPENWRT_IMAGES = getattr(settings, "OPENWISP_CUSTOM_OPENWRT_IMAGES", None)
 # fmt: off
 UPGRADERS_MAP = getattr(settings, 'OPENWISP_FIRMWARE_UPGRADERS_MAP', {

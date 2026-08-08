@@ -294,6 +294,18 @@ class TestTryExtractDtbFromKernel(TestCase):
             self.extractor._metadata_from_dtb(result)["model"], "Gzip Router"
         )
 
+    def test_dtb_compatible_multi_string_list_extracted(self):
+        dtb = self._make_dtb(
+            model="Multi Compat Router",
+            compatible=["vendor,board-v1", "vendor,soc"],
+        )
+        kernel = gzip.compress(b"\x00" * 128 + dtb + b"\x00" * 64)
+        result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNotNone(result)
+        metadata = self.extractor._metadata_from_dtb(result)
+        self.assertEqual(metadata["model"], "Multi Compat Router")
+        self.assertEqual(metadata["compatible"], ["vendor,board-v1", "vendor,soc"])
+
     def test_xz_kernel_extracts_dtb(self):
         kernel = self._kernel_with_dtb(
             lambda d: lzma.compress(d, format=lzma.FORMAT_XZ), model="XZ Router"
