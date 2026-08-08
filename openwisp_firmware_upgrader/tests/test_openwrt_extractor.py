@@ -211,6 +211,18 @@ class TestCheckLimits(TestCase):
         ):
             self.extractor._check_limits(100, 100)  # must not raise
 
+    def test_size_exactly_at_limit_does_not_raise(self):
+        with mock.patch(
+            "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_BYTES", 200
+        ):
+            self.extractor._check_limits(200, 200)  # must not raise
+
+    def test_ratio_exactly_at_limit_does_not_raise(self):
+        with mock.patch(
+            "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_RATIO", 10
+        ):
+            self.extractor._check_limits(1000, 100)  # must not raise
+
     def test_hard_limit_exceeded_raises(self):
         with mock.patch(
             "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_BYTES", 200

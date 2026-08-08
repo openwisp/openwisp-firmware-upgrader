@@ -73,6 +73,13 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
                 self.assertEqual(call_kwargs["level"], "warning")
                 self.assertIn("multiple boards", str(call_kwargs["message"]))
 
+            with self.subTest("build status reflects the failed image"):
+                self.assertEqual(
+                    image.build.status,
+                    "failed",
+                    "build status was not recomputed after reconciliation",
+                )
+
     def test_legacy_multi_board_image_reconciliation_is_idempotent(self):
         with mock.patch(_MOCK_EXTRACT_DELAY), mock.patch(_MOCK_NOTIFY):
             call_command("migrate", self.app_label, self.migrate_to, verbosity=0)

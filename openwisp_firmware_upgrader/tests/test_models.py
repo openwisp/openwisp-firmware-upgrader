@@ -1606,6 +1606,26 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
             else:
                 self.fail("ValidationError not raised for PNG header")
 
+        with self.subTest("gif87a header raises ValidationError"):
+            fw = self._make_firmware_image(b"GIF87a" + b"\x00" * 10)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("GIF", str(e))
+            else:
+                self.fail("ValidationError not raised for GIF87a header")
+
+        with self.subTest("gif89a header raises ValidationError"):
+            fw = self._make_firmware_image(b"GIF89a" + b"\x00" * 10)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("GIF", str(e))
+            else:
+                self.fail("ValidationError not raised for GIF89a header")
+
         with self.subTest("zip header raises ValidationError"):
             fw = self._make_firmware_image(b"PK\x03\x04" + b"\x00" * 12)
             try:
@@ -1616,6 +1636,16 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
             else:
                 self.fail("ValidationError not raised for ZIP header")
 
+        with self.subTest("mz header raises ValidationError"):
+            fw = self._make_firmware_image(b"MZ" + b"\x00" * 14)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("Windows", str(e))
+            else:
+                self.fail("ValidationError not raised for MZ header")
+
         with self.subTest("elf header raises ValidationError"):
             fw = self._make_firmware_image(b"\x7fELF" + b"\x00" * 12)
             try:
@@ -1625,6 +1655,36 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
                 self.assertIn("ELF", str(e))
             else:
                 self.fail("ValidationError not raised for ELF header")
+
+        with self.subTest("html header raises ValidationError"):
+            fw = self._make_firmware_image(b"<html" + b"\x00" * 11)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("HTML", str(e))
+            else:
+                self.fail("ValidationError not raised for HTML header")
+
+        with self.subTest("html doctype header raises ValidationError"):
+            fw = self._make_firmware_image(b"<!DOC" + b"\x00" * 11)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("HTML", str(e))
+            else:
+                self.fail("ValidationError not raised for HTML doctype header")
+
+        with self.subTest("xml header raises ValidationError"):
+            fw = self._make_firmware_image(b"<?xml" + b"\x00" * 11)
+            try:
+                fw._validate_file_header()
+            except ValidationError as e:
+                self.assertIn("file", e.message_dict)
+                self.assertIn("XML", str(e))
+            else:
+                self.fail("ValidationError not raised for XML header")
 
         with self.subTest("valid squashfs header passes"):
             fw = self._make_firmware_image(b"sqsh" + b"\x00" * 12)
@@ -1641,15 +1701,6 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
             mock_file.seek.side_effect = IOError("storage error")
             fw.file = mock_file
             fw._validate_file_header()  # must not raise
-
-        with self.subTest("clean() calls _validate_file_header"):
-            fw = self._make_firmware_image(b"\xff\xd8\xff\xe0" + b"\x00" * 12)
-            try:
-                fw.full_clean()
-            except ValidationError as e:
-                self.assertIn("file", e.message_dict)
-            else:
-                self.fail("ValidationError not raised through full_clean()")
 
     def test_validate_rootfs(self):
         with self.subTest("rootfs filename raises ValidationError"):

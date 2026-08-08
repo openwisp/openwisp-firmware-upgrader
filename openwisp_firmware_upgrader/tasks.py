@@ -141,6 +141,25 @@ def _get_image_admin_url(image):
     )
 
 
+def _notify_image(image, level, message_template, **message_kwargs):
+    try:
+        admin_url = _get_image_admin_url(image)
+        notify.send(
+            sender=image.build.category.organization or image,
+            type="generic_message",
+            level=level,
+            url=admin_url,
+            target=image,
+            message=format_html(
+                message_template, url=admin_url, image=image, **message_kwargs
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send %s extraction notification for image %s", level, image.pk
+        )
+
+
 @shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
 def extract_firmware_metadata(self, image_pk):
     FirmwareImage = load_model("FirmwareImage")
@@ -326,55 +345,33 @@ def extract_firmware_metadata(self, image_pk):
         FirmwareImage.STATUS_FAILED,
         FirmwareImage.STATUS_INVALID,
     ):
-        try:
-            admin_url = _get_image_admin_url(fresh)
-            failure_reason_choices = dict(FirmwareImage.FAILURE_REASON_CHOICES)
-            reason_display = failure_reason_choices.get(
-                update.get("failure_reason", ""),
-                _("unknown error"),
-            )
-            notify.send(
-                sender=fresh.build.category.organization or fresh,
-                type="generic_message",
-                level="error",
-                url=admin_url,
-                target=fresh,
-                message=format_html(
-                    _(
-                        'Metadata extraction failed for <a href="{url}">{image}</a>: '
-                        "{reason}. Enter the metadata manually or re-upload the image."
-                    ),
-                    url=admin_url,
-                    image=fresh,
-                    reason=reason_display,
-                ),
-            )
-        except Exception:
-            logger.exception("Failed to send extraction failure notification")
+        failure_reason_choices = dict(FirmwareImage.FAILURE_REASON_CHOICES)
+        reason_display = failure_reason_choices.get(
+            update.get("failure_reason", ""),
+            _("unknown error"),
+        )
+        _notify_image(
+            fresh,
+            "error",
+            _(
+                'Metadata extraction failed for <a href="{url}">{image}</a>: '
+                "{reason}. Enter the metadata manually or re-upload the image."
+            ),
+            reason=reason_display,
+        )
 
     if (
         update.get("extraction_status") == FirmwareImage.STATUS_SUCCESS
         and update.get("source") == "dtb"
     ):
-        try:
-            admin_url = _get_image_admin_url(fresh)
-            notify.send(
-                sender=fresh.build.category.organization or fresh,
-                type="generic_message",
-                level="warning",
-                url=admin_url,
-                target=fresh,
-                message=format_html(
-                    _(
-                        'Partial metadata extracted via DTB scan for <a href="{url}">{image}</a>. '
-                        "Manual input required."
-                    ),
-                    url=admin_url,
-                    image=fresh,
-                ),
-            )
-        except Exception:
-            logger.exception("Failed to send DTB extraction notification")
+        _notify_image(
+            fresh,
+            "warning",
+            _(
+                'Partial metadata extracted via DTB scan for <a href="{url}">{image}</a>. '
+                "Manual input required."
+            ),
+        )
 
     try:
         fresh.build._update_extraction_status()
