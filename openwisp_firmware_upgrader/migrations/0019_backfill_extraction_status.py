@@ -11,7 +11,10 @@ def _queue_legacy_extractions(app_config, **kwargs):
     queue_unconfirmed_extractions.delay()
 
 
-def backfill_firmware_image_status(apps, schema_editor):
+# Queueing must run afterr the whole `migrate` command completes, because the
+# Celery worker reads committed rows, `RunPython` therefore only registers a
+# one-shot `post_migrate` receiver instead of enqueueing directly
+def register_legacy_extraction_queueing(apps, schema_editor):
     post_migrate.connect(_queue_legacy_extractions)
 
 
@@ -21,7 +24,7 @@ class Migration(migrations.Migration):
     ]
     operations = [
         migrations.RunPython(
-            backfill_firmware_image_status,
+            register_legacy_extraction_queueing,
             reverse_code=migrations.RunPython.noop,
         ),
     ]
