@@ -63,6 +63,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
                 codename__in=[
                     f"change_{Device._meta.model_name}",
                     f"change_{UpgradeOperation._meta.model_name}",
+                    f"change_{FirmwareImage._meta.model_name}",
                 ]
             ).values_list("pk", flat=True)
         )
@@ -738,6 +739,22 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         communicator.scope["user"] = self.regular_user
         connected, _ = await communicator.connect()
         self.assertFalse(connected)
+
+    async def test_firmware_extraction_consumer_other_organization(self):
+        org2 = await sync_to_async(self._create_org)(name="org2", slug="org2")
+        image = await sync_to_async(self._create_firmware_image)(organization=org2)
+        administrator = await self._create_administrator()
+        communicator = WebsocketCommunicator(
+            FirmwareExtractionConsumer.as_asgi(),
+            f"/ws/firmware-upgrader/firmware-image/{image.pk}/",
+        )
+        communicator.scope["url_scope"] = {"kwargs": {"image_id": str(image.pk)}}
+        communicator.scope["user"] = administrator
+        connected, _ = await communicator.connect()
+        self.assertFalse(
+            connected,
+            "administrator of another organization must not connect",
+        )
 
     async def test_firmware_extraction_consumer_terminal_update(self):
         image = await sync_to_async(self._create_firmware_image)()

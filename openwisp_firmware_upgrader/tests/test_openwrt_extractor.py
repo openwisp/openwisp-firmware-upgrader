@@ -394,7 +394,10 @@ class TestTryExtractDtbFromKernel(TestCase):
         ):
             with self.assertRaises(DecompressionLimitExceeded) as cm:
                 self.extractor._try_extract_dtb_from_kernel(kernel)
-        self.assertIn("MB", str(cm.exception))
+        self.assertEqual(
+            str(cm.exception),
+            "Decompressed size exceeded hard limit of 512B.",
+        )
 
     def test_decompression_ratio_limit_exceeded_propagates(self):
         kernel = gzip.compress(b"\x00" * 1100)
@@ -666,6 +669,14 @@ class TestReadKernelFromTar(TestCase):
                     extractor._read_kernel_from_tar()
         finally:
             os.unlink(path)
+
+    def test_returns_none_when_no_matching_member(self):
+        path = self._write_tar([("readme.txt", b"nothing here")])
+        try:
+            result = OpenWrtMetadataExtractor(path)._read_kernel_from_tar()
+        finally:
+            os.unlink(path)
+        self.assertIsNone(result)
 
 
 class TestRealFirmwareExtraction(TestCase):

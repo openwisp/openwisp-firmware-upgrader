@@ -52,7 +52,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         if len(data) > app_settings.MAX_KERNEL_BYTES:
             raise DecompressionLimitExceeded(
                 f"Firmware file exceeds limit of "
-                f"{app_settings.MAX_KERNEL_BYTES // (1024 * 1024)}MB."
+                f"{self._format_size(app_settings.MAX_KERNEL_BYTES)}."
             )
         file_size = len(data)
         offset = file_size - TRAILER_SIZE
@@ -101,11 +101,16 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             return data[UIMAGE_HEADER_SIZE : UIMAGE_HEADER_SIZE + payload_size]
         return data
 
+    def _format_size(self, size):
+        if size < 1024 * 1024:
+            return f"{size}B"
+        return f"{size // (1024 * 1024)}MB"
+
     def _check_limits(self, decompressed, compressed):
         if decompressed > app_settings.MAX_DECOMPRESSED_BYTES:
             raise DecompressionLimitExceeded(
                 f"Decompressed size exceeded hard limit of "
-                f"{app_settings.MAX_DECOMPRESSED_BYTES // (1024 * 1024)}MB."
+                f"{self._format_size(app_settings.MAX_DECOMPRESSED_BYTES)}."
             )
         if (
             compressed > 0
@@ -366,7 +371,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         if len(data) > app_settings.MAX_KERNEL_BYTES:
             raise DecompressionLimitExceeded(
                 f"Kernel data exceeds limit of "
-                f"{app_settings.MAX_KERNEL_BYTES // (1024 * 1024)}MB."
+                f"{self._format_size(app_settings.MAX_KERNEL_BYTES)}"
             )
         return data
 
@@ -382,7 +387,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                             if len(data) > app_settings.MAX_KERNEL_BYTES:
                                 raise DecompressionLimitExceeded(
                                     f"Kernel data exceeds limit of "
-                                    f"{app_settings.MAX_KERNEL_BYTES // (1024 * 1024)}MB."
+                                    f"{self._format_size(app_settings.MAX_KERNEL_BYTES)}."
                                 )
                             return data
 

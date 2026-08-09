@@ -205,7 +205,11 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         fake_pk = str(uuid.uuid4())
         tasks.extract_firmware_metadata.run(fake_pk)
         mock_warning.assert_called_once()
-        self.assertTrue(any(fake_pk in str(arg) for arg in mock_warning.call_args.args))
+        self.assertTrue(
+            any(fake_pk in str(arg) for arg in mock_warning.call_args.args),
+            f"warning should reference the missing image pk {fake_pk}, "
+            f"got {mock_warning.call_args.args}",
+        )
 
     @mock.patch(_MOCK_EXTRACTOR)
     def test_extract_firmware_metadata_skips_non_unconfirmed(self, MockExtractor):
