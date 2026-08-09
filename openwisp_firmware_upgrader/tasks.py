@@ -2,11 +2,13 @@ import logging
 import os
 import shutil
 import tempfile
+from functools import partial
 
 import swapper
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
@@ -98,9 +100,15 @@ def create_all_device_firmwares(self, firmware_image_id):
         )
         return
 
+    if not fw_image.board:
+        logger.info(
+            "Auto-pairing skipped for image %s: board is empty",
+            firmware_image_id,
+        )
+        return
+
     queryset = Device.objects.filter(os=fw_image.build.os)
-    if fw_image.board:
-        queryset = queryset.filter(model=fw_image.board)
+    queryset = queryset.filter(model=fw_image.board)
     org_id = fw_image.build.category.organization_id
     if org_id:
         queryset = queryset.filter(organization_id=org_id)
@@ -168,7 +176,7 @@ def extract_firmware_metadata(self, image_pk):
         image = FirmwareImage.objects.get(pk=image_pk)
     except FirmwareImage.DoesNotExist:
         logger.warning(
-            "extract_firmware_metadata: FirmwareImage pk=%s not found, skipping",
+            "extract_firmware_metadata: file changed concurrently for pk=%s, skipping",
             image_pk,
         )
         return
@@ -181,7 +189,15 @@ def extract_firmware_metadata(self, image_pk):
     ).update(extraction_status=FirmwareImage.STATUS_IN_PROGRESS)
     if not updated:
         return
-    image = FirmwareImage.objects.get(pk=image_pk, file=file_name)
+
+    try:
+        image = FirmwareImage.objects.get(pk=image_pk, file=file_name)
+    except FirmwareImage.DoesNotExist:
+        logger.warning(
+            "extract_firmware_metadata: file changed concurrently for pk=%s, skipping",
+            image_pk,
+        )
+        return
     log_lines = [f"[+] Analyzing: {os.path.basename(image.file.name)}"]
     update = {}
 
@@ -206,34 +222,25 @@ def extract_firmware_metadata(self, image_pk):
             )
         else:
             log_lines.append("[+] fwtool: metadata trailer found")
+        update = {
+            "board": board,
+            "compatible": "\n".join(meta.get("compatible") or []),
+            "target": meta.get("target", ""),
+            "fw_version": meta.get("version", ""),
+            "compat_version": meta.get("compat_version", ""),
+            "source": meta.get("source", "fwtool"),
+        }
         if not board:
             log_lines.append(
                 "[!] Extraction completed but no board/model could be "
                 "determined. Manual input is required. "
             )
-            update = {
-                "extraction_status": FirmwareImage.STATUS_FAILED,
-                "failure_reason": FirmwareImage.FAILURE_UNSUPPORTED,
-                "extraction_log": "\n".join(log_lines),
-                "board": meta.get("model") or "",
-                "compatible": "\n".join(meta.get("compatible", [])),
-                "target": meta.get("target", ""),
-                "fw_version": meta.get("version", ""),
-                "compat_version": meta.get("compat_version", ""),
-                "source": meta.get("source", "fwtool"),
-            }
+            update["extraction_status"] = FirmwareImage.STATUS_FAILED
+            update["failure_reason"] = FirmwareImage.FAILURE_UNSUPPORTED
         else:
             log_lines.append("[+] extraction: success")
-            update = {
-                "extraction_status": FirmwareImage.STATUS_SUCCESS,
-                "extraction_log": "\n".join(log_lines),
-                "board": meta.get("model") or "",
-                "compatible": "\n".join(meta.get("compatible", [])),
-                "target": meta.get("target", ""),
-                "fw_version": meta.get("version", ""),
-                "compat_version": meta.get("compat_version", ""),
-                "source": meta.get("source", "fwtool"),
-            }
+            update["extraction_status"] = FirmwareImage.STATUS_SUCCESS
+        update["extraction_log"] = "\n".join(log_lines)
 
     except SoftTimeLimitExceeded:
         log_lines.append(f"[!] Task timed out after {app_settings.TASK_TIMEOUT}s.")
@@ -381,7 +388,7 @@ def extract_firmware_metadata(self, image_pk):
         )
 
     if update.get("extraction_status") == FirmwareImage.STATUS_SUCCESS:
-        create_all_device_firmwares.delay(str(image_pk))
+        transaction.on_commit(partial(create_all_device_firmwares.delay, str(image.pk)))
 
 
 @shared_task(base=OpenwispCeleryTask)
