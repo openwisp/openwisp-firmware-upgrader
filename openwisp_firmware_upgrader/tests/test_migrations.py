@@ -24,6 +24,7 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
         assert len(boards) > 1, "fixture type must map to multiple boards"
 
         executor = MigrationExecutor(connection)
+        self.addCleanup(call_command, "migrate", self.app_label, verbosity=0)
         executor.migrate([(self.app_label, self.migrate_from)])
 
         old_apps = executor.loader.project_state(

@@ -49,20 +49,20 @@ def _get_firmware(key):
         with open(cached, "rb") as f:
             digest = hashlib.sha256(f.read()).hexdigest()
         if digest == entry["sha256"]:
-            return cached
+            return cached, None
         cached.unlink()
     try:
         with urllib.request.urlopen(entry["url"], timeout=60) as resp:
             with open(cached, "wb") as out:
                 out.write(resp.read())
-    except Exception:
-        return None
+    except Exception as error:
+        return None, f"download failed: {error}"
     with open(cached, "rb") as f:
         digest = hashlib.sha256(f.read()).hexdigest()
     if digest != entry["sha256"]:
         cached.unlink()
-        return None
-    return cached
+        return None, "checksum mismatch after download"
+    return cached, None
 
 
 class TestParseSupportedDevices(TestCase):
@@ -683,12 +683,14 @@ class TestRealFirmwareExtraction(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.sysupgrade = _get_firmware("sysupgrade")
-        cls.sunxi = _get_firmware("sunxi")
+        cls.sysupgrade, cls.sysupgrade_skip_reason = _get_firmware("sysupgrade")
+        cls.sunxi, cls.sunxi_skip_reason = _get_firmware("sunxi")
 
     def test_sysupgrade_fwtool(self):
         if not self.sysupgrade:
-            self.skipTest("sysupgrade image not available")
+            self.skipTest(
+                f"sysupgrade image not available: {self.sysupgrade_skip_reason}"
+            )
         result = OpenWrtMetadataExtractor(str(self.sysupgrade)).extract()
         self.assertEqual(result["source"], "fwtool")
         self.assertEqual(result["target"], "ath79/generic")
@@ -697,7 +699,7 @@ class TestRealFirmwareExtraction(TestCase):
 
     def test_sunxi_dtb_fallback(self):
         if not self.sunxi:
-            self.skipTest("sunxi image not available")
+            self.skipTest(f"sunxi image not available: {self.sunxi_skip_reason}")
         result = OpenWrtMetadataExtractor(str(self.sunxi)).extract()
         self.assertTrue(result["model"])
         self.assertTrue(result["compatible"])
