@@ -1437,6 +1437,18 @@ class TestAdmin(BaseTestAdmin, TestCase):
             with self.subTest(field=field):
                 self.assertIn(field, readonly)
 
+    def test_firmware_image_readonly_fields_unconfirmed(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        readonly = fw_admin.get_readonly_fields(request, obj=fw)
+        for field in ["board", "compatible", "target", "fw_version"]:
+            with self.subTest(field=field):
+                self.assertIn(field, readonly)
+
     def test_firmware_image_readonly_fields_success_fwtool(self):
         fw = self._create_firmware_image()
         fw.extraction_status = FirmwareImage.STATUS_SUCCESS
@@ -1613,6 +1625,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_firmware_image_save_model_failed_to_manually_confirmed(self, mock_task):
         fw = self._create_firmware_image()
         fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.failure_reason = FirmwareImage.FAILURE_UNSUPPORTED
         fw.board = "Generic x86"
         fw.target = "x86/64"
         fw.fw_version = "23.05.5"
@@ -1626,6 +1639,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
         self.assertEqual(fw.source, "manual")
+        self.assertEqual(fw.failure_reason, "")
         mock_task.delay.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
@@ -1657,6 +1671,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     ):
         fw = self._create_firmware_image()
         fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.failure_reason = FirmwareImage.FAILURE_UNSUPPORTED
         fw.compatible = "tplink,tl-wdr4300-v1"
         fw.save()
         request = MockRequest()
@@ -1668,6 +1683,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
         self.assertEqual(fw.source, "manual")
+        self.assertEqual(fw.failure_reason, "")
         mock_task.delay.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
@@ -1700,6 +1716,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     ):
         fw = self._create_firmware_image()
         fw.extraction_status = FirmwareImage.STATUS_SUCCESS
+        fw.failure_reason = FirmwareImage.FAILURE_UNSUPPORTED
         fw.source = "dtb"
         fw.board = "Xunlong Orange Pi Zero"
         fw.target = ""
@@ -1716,6 +1733,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
         self.assertEqual(fw.source, "dtb")
+        self.assertEqual(fw.failure_reason, "")
         mock_task.delay.assert_not_called()
 
     def test_firmware_image_file_replacement_blocked_after_successful_upgrade(self):

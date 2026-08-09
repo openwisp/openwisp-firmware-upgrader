@@ -524,7 +524,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         self._validate_locked(original)
         self._validate_file_replacement(original)
         self._validate_build_unchanged(original)
-        self._validate_file_header()
+        self._validate_file_header(original)
         self._validate_rootfs()
 
     def delete(self, *args, **kwargs):
@@ -634,8 +634,10 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                 }
             )
 
-    def _validate_file_header(self):
+    def _validate_file_header(self, original):
         if not self.file:
+            return
+        if original and original["file"] == self.file.name:
             return
         try:
             self.file.seek(0)

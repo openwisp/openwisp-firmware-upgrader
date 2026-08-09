@@ -1579,7 +1579,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("jpeg header raises ValidationError"):
             fw = self._make_firmware_image(b"\xff\xd8\xff\xe0" + b"\x00" * 12)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("JPEG", str(e))
@@ -1589,7 +1589,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("pdf header raises ValidationError"):
             fw = self._make_firmware_image(b"%PDF-1.4" + b"\x00" * 8)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("PDF", str(e))
@@ -1599,7 +1599,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("png header raises ValidationError"):
             fw = self._make_firmware_image(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("PNG", str(e))
@@ -1609,7 +1609,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("gif87a header raises ValidationError"):
             fw = self._make_firmware_image(b"GIF87a" + b"\x00" * 10)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("GIF", str(e))
@@ -1619,7 +1619,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("gif89a header raises ValidationError"):
             fw = self._make_firmware_image(b"GIF89a" + b"\x00" * 10)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("GIF", str(e))
@@ -1629,7 +1629,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("zip header raises ValidationError"):
             fw = self._make_firmware_image(b"PK\x03\x04" + b"\x00" * 12)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("ZIP", str(e))
@@ -1639,7 +1639,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("mz header raises ValidationError"):
             fw = self._make_firmware_image(b"MZ" + b"\x00" * 14)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("Windows", str(e))
@@ -1649,7 +1649,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("elf header raises ValidationError"):
             fw = self._make_firmware_image(b"\x7fELF" + b"\x00" * 12)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("ELF", str(e))
@@ -1659,7 +1659,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("html header raises ValidationError"):
             fw = self._make_firmware_image(b"<html" + b"\x00" * 11)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("HTML", str(e))
@@ -1669,7 +1669,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("html doctype header raises ValidationError"):
             fw = self._make_firmware_image(b"<!DOC" + b"\x00" * 11)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("HTML", str(e))
@@ -1679,7 +1679,7 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
         with self.subTest("xml header raises ValidationError"):
             fw = self._make_firmware_image(b"<?xml" + b"\x00" * 11)
             try:
-                fw._validate_file_header()
+                fw._validate_file_header(None)
             except ValidationError as e:
                 self.assertIn("file", e.message_dict)
                 self.assertIn("XML", str(e))
@@ -1688,19 +1688,19 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
 
         with self.subTest("valid squashfs header passes"):
             fw = self._make_firmware_image(b"sqsh" + b"\x00" * 12)
-            fw._validate_file_header()  # must not raise
+            fw._validate_file_header(None)  # must not raise
 
         with self.subTest("no file set is handled gracefully"):
             fw = FirmwareImage()
             fw.file = None
-            fw._validate_file_header()  # must not raise
+            fw._validate_file_header(None)  # must not raise
 
         with self.subTest("ioerror on file seek is handled gracefully"):
             fw = FirmwareImage()
             mock_file = mock.MagicMock()
             mock_file.seek.side_effect = IOError("storage error")
             fw.file = mock_file
-            fw._validate_file_header()  # must not raise
+            fw._validate_file_header(None)  # must not raise
 
     def test_validate_rootfs(self):
         with self.subTest("rootfs filename raises ValidationError"):

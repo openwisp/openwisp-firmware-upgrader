@@ -285,6 +285,7 @@ class FirmwareImageAdmin(BaseAdmin):
             readonly.append("build")
             status = obj.extraction_status
             if status in (
+                FirmwareImage.STATUS_UNCONFIRMED,
                 FirmwareImage.STATUS_IN_PROGRESS,
                 FirmwareImage.STATUS_INVALID,
                 FirmwareImage.STATUS_MANUALLY_CONFIRMED,
@@ -362,6 +363,7 @@ class FirmwareImageAdmin(BaseAdmin):
                     if obj.board:
                         obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
                         obj.source = "manual"
+                        obj.failure_reason = ""
                         update_build_status = True
                     else:
                         self.message_user(
@@ -377,6 +379,7 @@ class FirmwareImageAdmin(BaseAdmin):
                 )
             ):
                 obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
+                obj.failure_reason = ""
                 update_build_status = True
         super().save_model(request, obj, form, change)
         if update_build_status:
