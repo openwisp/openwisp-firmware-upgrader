@@ -11,7 +11,7 @@ for a Device Tree Blob (DTB).
 When a device registers on OpenWISP, the :doc:`openwisp-config agent
 </openwrt-config-agent/index>` reads the device board name from
 ``/tmp/sysinfo/model`` and sends it to OpenWISP. This value is saved in
-the ``Device.model`` field, *OpenWISP Firmware Upgrader* uses this field
+the ``Device.model`` field. *OpenWISP Firmware Upgrader* uses this field
 to automatically pair devices with the firmware image whose ``board``
 matches ``Device.model`` and whose build's **OS identifier** matches the
 device's ``os`` field.

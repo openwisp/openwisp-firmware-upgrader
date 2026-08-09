@@ -929,7 +929,12 @@ class TestAdmin(BaseTestAdmin, TestCase):
 
         with self.subTest("posting a different build is ignored"):
             data = {"build": str(other_build.pk), "_save": "Save"}
-            self.client.post(url, data)
+            response = self.client.post(url, data, follow=True)
+            self.assertNotContains(
+                response,
+                "errorlist",
+                msg_prefix="form should be valid so read-only handling is exercised",
+            )
             image.refresh_from_db()
             self.assertEqual(image.build_id, original_build_id)
 
@@ -1505,7 +1510,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         for status in [
             FirmwareImage.STATUS_UNCONFIRMED,
             FirmwareImage.STATUS_IN_PROGRESS,
-            FirmwareImage.LOCKED_STATUSES,
+            *FirmwareImage.LOCKED_STATUSES,
             FirmwareImage.STATUS_FAILED,
             FirmwareImage.STATUS_INVALID,
         ]:

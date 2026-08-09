@@ -80,8 +80,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
 
     @mock.patch(_MOCK_EXTRACTOR)
     @capture_any_output()
-    def test_extract_firmware_metadata_success(self, *args):
-        MockExtractor = args[0]
+    def test_extract_firmware_metadata_success(self, MockExtractor, *args):
         MockExtractor.return_value.extract.return_value = {
             "model": "TP-Link WDR4300",
             "compatible": ["tplink,tl-wdr4300-v1"],
