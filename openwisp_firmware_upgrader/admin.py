@@ -426,6 +426,22 @@ class FirmwareImageAdmin(BaseAdmin):
                 messages.WARNING,
             )
             queryset = queryset.exclude(pk__in=locked_pks)
+        referenced_pks = list(
+            DeviceFirmware.objects.filter(image__in=queryset)
+            .values_list("image_id", flat=True)
+            .distinct()
+        )
+        if referenced_pks:
+            self.message_user(
+                request,
+                _(
+                    "%(count)d image(s) were skipped because they are currently "
+                    "assigned to one or more devices."
+                )
+                % {"count": len(referenced_pks)},
+                messages.WARNING,
+            )
+            queryset = queryset.exclude(pk__in=referenced_pks)
         image_pks = list(queryset.values_list("pk", flat=True))
         if not image_pks:
             return

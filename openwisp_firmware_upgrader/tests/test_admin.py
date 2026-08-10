@@ -469,6 +469,44 @@ class TestAdmin(BaseTestAdmin, TestCase):
             )
             self.assertEqual(confirmed_image.board, "Generic x86")
 
+    def test_re_extract_metadata_action_skips_referenced_images(self):
+        self._login()
+        build = self._create_build()
+        image = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="TP-Link WDR4300",
+            source="fwtool",
+        )
+        image.refresh_from_db()
+        device = self._create_device_with_connection(
+            organization=image.build.category.organization,
+            model=image.board,
+        )
+        device_fw = DeviceFirmware.create_for_device(device, image)
+        self.assertIsNotNone(device_fw)
+        self.assertFalse(UpgradeOperation.objects.filter(image=image).exists())
+
+        url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+        ) as mocked_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                r = self.client.post(
+                    url,
+                    {
+                        "action": "re_extract_metadata",
+                        ACTION_CHECKBOX_NAME: (str(image.pk),),
+                    },
+                    follow=True,
+                )
+        self.assertEqual(r.status_code, 200)
+        mocked_delay.assert_not_called()
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertEqual(image.board, "TP-Link WDR4300")
+        self.assertContains(r, "1 image(s) were skipped")
+
     def test_device_firmware_inline_has_add_permission(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device

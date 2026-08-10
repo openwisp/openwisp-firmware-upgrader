@@ -569,6 +569,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         if self.type:
             return
         filename = self.file.name
+        filename = filename.rsplit("/", 1)[-1]
         parts = filename.split("-")
         parts = parts[1:]
         if parts and parts[0][:1].isdigit():

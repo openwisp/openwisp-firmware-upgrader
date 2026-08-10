@@ -117,6 +117,13 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(fw23.type, fw24.type)
         self.assertEqual(fw23.type, self.TPLINK_4300_IMAGE)
 
+    def test_clean_type_strips_directory_from_persisted_path(self):
+        fw = self._create_firmware_image()
+        fw.type = ""
+        fw._clean_type()
+        self.assertEqual(fw.type, self.TPLINK_4300_IMAGE)
+        self.assertNotIn(str(fw.build.pk), fw.type)
+
     def test_device_firmware_multitenancy(self):
         device_fw = self._create_device_firmware()
         org2 = self._create_org(name="org2")
