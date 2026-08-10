@@ -36,16 +36,17 @@ documentation regarding automatic retries for known errors
 ``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT``
 -------------------------------------------
 
-============ =======
+============ ========
 **type**:    ``int``
-**default**: ``600``
-============ =======
+**default**: ``1500``
+============ ========
 
-Timeout for the background tasks which perform firmware upgrades.
+Timeout for the background tasks which perform firmware upgrades and
+firmware metadata extraction.
 
-If for some unexpected reason an upgrade remains stuck for more than 10
-minutes, the upgrade operation will be flagged as failed and the task will
-be killed.
+If for some unexpected reason an upgrade or metadata extraction remains
+stuck for more than 25 minutes, the operation will be flagged as failed
+and the task will be killed.
 
 This should not happen, but a global task time out is a best practice when
 using background tasks because it prevents the situation in which an
@@ -123,7 +124,7 @@ consuming all available memory, e.g.:
 **Notes**: - ``MAX_KERNEL_BYTES`` and ``MAX_DECOMPRESSED_BYTES`` are
 per-task memory ceilings, not global ones. Since multiple metadata
 extraction tasks can run concurrently within the same Celery worker, size
-your worker's cocurrency and container's memory limit so that
+your worker's concurrency and container's memory limit so that
 ``concurrency * (MAX_KERNEL_BYTES + MAX_DECOMPRESSED_BYTES)`` fits
 comfortably within the available memory.
 
@@ -223,3 +224,42 @@ This instance is used to store firmware image files.
 
 By default, an instance of
 ``private_storage.storage.files.PrivateFileSystemStorage`` is used.
+
+.. _openwisp_custom_openwrt_images:
+
+``OPENWISP_CUSTOM_OPENWRT_IMAGES``
+----------------------------------
+
+.. warning::
+
+    This setting is deprecated and retained only for backward
+    compatibility with the legacy static hardware map. It will be removed
+    in a future release. Firmware metadata (board, target, compatible
+    devices) is now detected automatically at upload time — see
+    :doc:`automatic-device-firmware-detection`.
+
+============ =========
+**type**:    ``tuple``
+**default**: ``None``
+============ =========
+
+This setting was historically used to extend the static list of firmware
+image types recognized by *OpenWISP Firmware Upgrader* before automatic
+metadata extraction was introduced.
+
+.. code-block:: python
+
+    OPENWISP_CUSTOM_OPENWRT_IMAGES = (
+        (
+            # Firmware image file name.
+            "customimage-squashfs-sysupgrade.bin",
+            {
+                # Human readable name of the model which is displayed on
+                # the UI
+                "label": "Custom WAP-1200",
+                # Tuple of board names with which the different versions of
+                # the hardware are identified on OpenWrt
+                "boards": ("CWAP1200",),
+            },
+        ),
+    )

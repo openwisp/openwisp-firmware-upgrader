@@ -7,7 +7,8 @@
 Core code lives in `openwisp_firmware_upgrader/`:
 
 - `base/` contains abstract models and core firmware/upgrade behavior.
-- `upgraders/`, `tasks.py`, `signals.py`, and `private_storage/` handle upgrade execution, metadata, background jobs, and protected files.
+- `extractors/` implements OpenWrt firmware metadata extraction (fwtool trailer parsing, DTB fallback).
+- `upgraders/`, `tasks.py`, `signals.py`, and `private_storage/` handle upgrade execution, background jobs, and protected files.
 - `api/`, `filters.py`, `admin.py`, `websockets.py`, `templates/`, and `static/` provide API, admin/UI, and realtime behavior.
 - Tests live in `openwisp_firmware_upgrader/tests/` and `tests/`.
 
