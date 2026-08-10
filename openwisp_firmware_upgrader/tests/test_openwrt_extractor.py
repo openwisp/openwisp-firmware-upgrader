@@ -639,6 +639,28 @@ class TestExtractFwtoolMetadata(TestCase):
             os.unlink(path)
         self.assertIsNone(result)
 
+    def test_skips_corrupt_trailer_finds_valid(self):
+        meta = {
+            "version": {
+                "board": "tplink,tl-wdr4300-v1",
+                "target": "ath79/generic",
+                "version": "SNAPSHOT",
+            },
+            "compat_version": "1.0",
+            "supported_devices": ["tplink,tl-wdr4300-v1"],
+        }
+        corrupt_image = bytearray(self._build_image(meta))
+        corrupt_image[-TRAILER_SIZE + 4] ^= 0xFF
+        leading = bytes(corrupt_image) + b"\x00" * 32
+        data = self._build_image(meta, prefix=leading)
+        path = self._write_image(data)
+        try:
+            result = OpenWrtMetadataExtractor(path)._extract_fwtool_metadata()
+        finally:
+            os.unlink(path)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["version"]["board"], "tplink,tl-wdr4300-v1")
+
 
 class TestReadKernelFromTar(TestCase):
     def _write_tar(self, members):

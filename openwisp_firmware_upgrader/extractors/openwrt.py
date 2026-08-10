@@ -48,24 +48,29 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
     def _extract_fwtool_metadata(self):
         with open(self.image_path, "rb") as f:
             data = f.read(app_settings.MAX_KERNEL_BYTES + 1)
-        # reads full file at once; a tail-only seek could reduce memory usage
+        # must read the full file, not just the tail, the trailer's CRC
+        # covers the entire prefix from byte 0, so a partial read can
+        # never match a genuine trailer's checksum
         if len(data) > app_settings.MAX_KERNEL_BYTES:
             raise DecompressionLimitExceeded(
                 f"Firmware file exceeds limit of "
                 f"{self._format_size(app_settings.MAX_KERNEL_BYTES)}."
             )
         file_size = len(data)
+        magic_bytes = struct.pack(">I", FWIMAGE_MAGIC)
+        view = memoryview(data)
         offset = file_size - TRAILER_SIZE
         while offset >= 0:
+            offset = data.rfind(magic_bytes, 0, offset + len(magic_bytes))
+            if offset == -1:
+                break
             trailer_data = data[offset : offset + TRAILER_SIZE]
             if len(trailer_data) < TRAILER_SIZE:
-                break
-            magic, crc32_val, type_val, _pad, size = struct.unpack(
-                TRAILER_FORMAT, trailer_data
-            )
-            if magic != FWIMAGE_MAGIC:
                 offset -= 1
                 continue
+            _magic, crc32_val, type_val, _pad, size = struct.unpack(
+                TRAILER_FORMAT, trailer_data
+            )
             data_start = offset - (size - TRAILER_SIZE)
             data_end = offset
             if data_start >= offset:
@@ -74,7 +79,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             if data_start < 0:
                 offset -= 1
                 continue
-            if zlib.crc32(data[:data_end]) ^ 0xFFFFFFFF != crc32_val:
+            if zlib.crc32(view[:data_end]) ^ 0xFFFFFFFF != crc32_val:
                 offset = data_start
                 continue
             if type_val == FWIMAGE_INFO:
@@ -153,13 +158,19 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         try:
             dec = make_decompressor()
             offset = 0
-            while offset < len(data) and not dec.eof:
-                chunk = dec.decompress(data[offset : offset + _CHUNK_SIZE])
-                offset += _CHUNK_SIZE
+            chunk_in = b""
+            while not dec.eof and (offset < len(data) or not dec.needs_input):
+                if dec.needs_input:
+                    chunk_in = data[offset : offset + _CHUNK_SIZE]
+                    offset += _CHUNK_SIZE
+                chunk = dec.decompress(chunk_in, max_length=_CHUNK_SIZE)
+                chunk_in = b""
                 if chunk:
                     buf.extend(chunk)
                     total += len(chunk)
                     self._check_limits(total, compressed)
+                elif dec.needs_input and not chunk_in and offset >= len(data):
+                    break
         except DecompressionLimitExceeded:
             raise
         except Exception:
@@ -199,10 +210,12 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         memlimit = app_settings.MAX_DECOMPRESSED_BYTES
         for magic, decompress_fn in self._decompressors():
             offset = 0
+            probes = 0
             while True:
                 pos = data.find(magic, offset)
-                if pos == -1:
+                if pos == -1 or probes >= app_settings.MAX_DEEP_SCAN_PROBES:
                     break
+                probes += 1
                 try:
                     decompressed = decompress_fn(data[pos:])
                     if decompressed:
@@ -219,10 +232,12 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         # dictionary-size values, so rewind one byte from each match
         for dict_sig in (b"\x00\x00\x80\x00", b"\x00\x00\x40\x00", b"\x00\x00\x00\x01"):
             offset = 1
+            probes = 0
             while True:
                 pos = data.find(dict_sig, offset)
-                if pos == -1:
+                if pos == -1 or probes >= app_settings.MAX_DEEP_SCAN_PROBES:
                     break
+                probes += 1
                 try:
                     decompressed = self._try_decompress(
                         data[pos - 1 :],
@@ -243,61 +258,50 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 offset = pos + 1
         return None
 
-    def _dtb_from_fit(self, data):
-        offset = 4
+    def _iterate_dtb_candidates(self, data, start=0):
+        offset = start
         while True:
             pos = data.find(DTB_MAGIC, offset)
-            if pos == -1:
-                return None
-            if pos + 8 > len(data):
-                break
+            if pos == -1 or pos + 8 > len(data):
+                return
             total_size = struct.unpack_from(">I", data, pos + 4)[0]
-            if DTB_MIN_SIZE < total_size < DTB_MAX_SIZE:
-                end = pos + total_size
-                if end <= len(data):
-                    candidate = data[pos:end]
-                    try:
-                        dt = fdt.parse_dtb(candidate)
-                        root = dt.get_node("/")
-                        if any(p.name in ("model", "compatible") for p in root.props):
-                            return candidate
-                    except Exception:
-                        # DTB magic may appear in invalid candidate data.
-                        pass
+            end = pos + total_size
+            if DTB_MIN_SIZE < total_size < DTB_MAX_SIZE and end <= len(data):
+                candidate = data[pos:end]
+                try:
+                    yield candidate, fdt.parse_dtb(candidate)
+                except Exception:
+                    # DTB magic may appear in invalid candidate data
+                    pass
             offset = pos + 1
+
+    def _dtb_from_fit(self, data):
+        for candidate, dt in self._iterate_dtb_candidates(data, start=4):
+            try:
+                root = dt.get_node("/")
+                if any(p.name in ("model", "compatible") for p in root.props):
+                    return candidate
+            except Exception:
+                pass
         return None
 
     def _locate_dtb(self, kernel_data):
-        offset = 0
         fit_candidate = None
-        while True:
-            pos = kernel_data.find(DTB_MAGIC, offset)
-            if pos == -1:
-                break
-            if pos + 8 > len(kernel_data):
-                break
-            total_size = struct.unpack_from(">I", kernel_data, pos + 4)[0]
-            if DTB_MIN_SIZE < total_size < DTB_MAX_SIZE:
-                end = pos + total_size
-                if end <= len(kernel_data):
-                    candidate = kernel_data[pos:end]
+        for candidate, dt in self._iterate_dtb_candidates(kernel_data):
+            try:
+                root = dt.get_node("/")
+                prop_names = {p.name for p in root.props}
+                if "model" in prop_names or "compatible" in prop_names:
+                    return candidate
+                if fit_candidate is None:
                     try:
-                        dt = fdt.parse_dtb(candidate)
-                        root = dt.get_node("/")
-                        prop_names = {p.name for p in root.props}
-                        if "model" in prop_names or "compatible" in prop_names:
-                            return candidate
-                        if fit_candidate is None:
-                            try:
-                                if dt.get_node("/images") is not None:
-                                    fit_candidate = candidate
-                            except Exception:
-                                # Not every valid DTB candidate is a FIT image.
-                                pass
+                        if dt.get_node("/images") is not None:
+                            fit_candidate = candidate
                     except Exception:
-                        # DTB magic may appear in invalid candidate data.
+                        # Not every valid DTB candidate is a FIT image
                         pass
-            offset = pos + 1
+            except Exception:
+                pass
         if fit_candidate is not None:
             return self._dtb_from_fit(fit_candidate)
         return None
