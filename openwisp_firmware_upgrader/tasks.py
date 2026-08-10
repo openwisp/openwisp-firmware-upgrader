@@ -176,7 +176,7 @@ def extract_firmware_metadata(self, image_pk):
         image = FirmwareImage.objects.get(pk=image_pk)
     except FirmwareImage.DoesNotExist:
         logger.warning(
-            "extract_firmware_metadata: file changed concurrently for pk=%s, skipping",
+            "extract_firmware_metadata: FirmwareImage pk=%s not found, skipping",
             image_pk,
         )
         return
@@ -394,10 +394,10 @@ def extract_firmware_metadata(self, image_pk):
 @shared_task(base=OpenwispCeleryTask)
 def queue_unconfirmed_extractions():
     FirmwareImage = load_model("FirmwareImage")
-    pks = (
-        FirmwareImage.objects.filter(extraction_status=FirmwareImage.STATUS_UNCONFIRMED)
-        .values_list("pk", flat=True)
-        .iterator()
+    pks = list(
+        FirmwareImage.objects.filter(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        ).values_list("pk", flat=True)
     )
     for pk in pks:
         extract_firmware_metadata.delay(pk)
