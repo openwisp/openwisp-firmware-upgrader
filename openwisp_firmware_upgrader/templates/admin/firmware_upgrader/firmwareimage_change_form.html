@@ -21,7 +21,7 @@
   var owFirmwareUpgraderApiHost = {
     host: "{{ request.get_host|escapejs }}"
   };
-  var owFirmwareImageId = "{{ original.pk }}";
+  var owFirmwareImageId = "{{ original.pk|escapejs }}";
   var owFirmwareExtractionStatus = "{{ original.extraction_status|escapejs }}";
 </script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/extraction-progress.js' %}"></script>

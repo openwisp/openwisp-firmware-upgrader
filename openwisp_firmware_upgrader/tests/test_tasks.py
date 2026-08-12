@@ -407,6 +407,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self._create_device(
             os="OpenWrt 23.05.5",
             organization=image.build.category.organization,
+            model=image.board,
         )
         FirmwareImage.objects.filter(pk=image.pk).update(compat_version="2.0")
         tasks.create_all_device_firmwares.run(str(image.pk))

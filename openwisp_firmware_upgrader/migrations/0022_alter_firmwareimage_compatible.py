@@ -16,7 +16,11 @@ def convert_compatible_to_text(apps, schema_editor):
         if isinstance(value, list):
             image.compatible = "\n".join(value)
             batch.append(image)
-    FirmwareImage.objects.bulk_update(batch, ["compatible"], batch_size=500)
+            if len(batch) >= 500:
+                FirmwareImage.objects.bulk_update(batch, ["compatible"])
+                batch.clear()
+    if batch:
+        FirmwareImage.objects.bulk_update(batch, ["compatible"])
 
 
 def convert_compatible_to_json(apps, schema_editor):
@@ -26,7 +30,11 @@ def convert_compatible_to_json(apps, schema_editor):
         lines = [line for line in (image.compatible or "").splitlines() if line]
         image.compatible = json.dumps(lines)
         batch.append(image)
-    FirmwareImage.objects.bulk_update(batch, ["compatible"], batch_size=500)
+        if len(batch) >= 500:
+            FirmwareImage.objects.bulk_update(batch, ["compatible"])
+            batch.clear()
+    if batch:
+        FirmwareImage.objects.bulk_update(batch, ["compatible"])
 
 
 class Migration(migrations.Migration):

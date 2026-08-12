@@ -298,13 +298,24 @@ class TestTryExtractDtbFromKernel(TestCase):
         dtb = self._make_dtb(model=model)
         return compress_fn(b"\x00" * 128 + dtb + b"\x00" * 64)
 
-    def test_gzip_kernel_extracts_dtb(self):
-        kernel = self._kernel_with_dtb(gzip.compress, model="Gzip Router")
-        result = self.extractor._try_extract_dtb_from_kernel(kernel)
-        self.assertIsNotNone(result)
-        self.assertEqual(
-            self.extractor._metadata_from_dtb(result)["model"], "Gzip Router"
+    def test_compressed_kernel_extracts_dtb(self):
+        formats = (
+            ("gzip", gzip.compress),
+            ("xz", lambda d: lzma.compress(d, format=lzma.FORMAT_XZ)),
+            ("bz2", bz2.compress),
+            ("lzma", lambda d: lzma.compress(d, format=lzma.FORMAT_ALONE)),
+            ("lz4", lz4frame.compress),
         )
+        for name, compress_fn in formats:
+
+            with self.subTest(compression=name):
+                model = f"{name} Router"
+                kernel = self._kernel_with_dtb(compress_fn, model=model)
+                result = self.extractor._try_extract_dtb_from_kernel(kernel)
+                self.assertIsNotNone(result, f"no DTB located in {name} kernel")
+                self.assertEqual(
+                    self.extractor._metadata_from_dtb(result)["model"], model
+                )
 
     def test_dtb_compatible_multi_string_list_extracted(self):
         dtb = self._make_dtb(
@@ -317,42 +328,6 @@ class TestTryExtractDtbFromKernel(TestCase):
         metadata = self.extractor._metadata_from_dtb(result)
         self.assertEqual(metadata["model"], "Multi Compat Router")
         self.assertEqual(metadata["compatible"], ["vendor,board-v1", "vendor,soc"])
-
-    def test_xz_kernel_extracts_dtb(self):
-        kernel = self._kernel_with_dtb(
-            lambda d: lzma.compress(d, format=lzma.FORMAT_XZ), model="XZ Router"
-        )
-        result = self.extractor._try_extract_dtb_from_kernel(kernel)
-        self.assertIsNotNone(result)
-        self.assertEqual(
-            self.extractor._metadata_from_dtb(result)["model"], "XZ Router"
-        )
-
-    def test_bz2_kernel_extracts_dtb(self):
-        kernel = self._kernel_with_dtb(bz2.compress, model="BZ2 Router")
-        result = self.extractor._try_extract_dtb_from_kernel(kernel)
-        self.assertIsNotNone(result)
-        self.assertEqual(
-            self.extractor._metadata_from_dtb(result)["model"], "BZ2 Router"
-        )
-
-    def test_lzma_kernel_extracts_dtb(self):
-        kernel = self._kernel_with_dtb(
-            lambda d: lzma.compress(d, format=lzma.FORMAT_ALONE), model="LZMA Router"
-        )
-        result = self.extractor._try_extract_dtb_from_kernel(kernel)
-        self.assertIsNotNone(result)
-        self.assertEqual(
-            self.extractor._metadata_from_dtb(result)["model"], "LZMA Router"
-        )
-
-    def test_lz4_kernel_extracts_dtb(self):
-        kernel = self._kernel_with_dtb(lz4frame.compress, model="LZ4 Router")
-        result = self.extractor._try_extract_dtb_from_kernel(kernel)
-        self.assertIsNotNone(result)
-        self.assertEqual(
-            self.extractor._metadata_from_dtb(result)["model"], "LZ4 Router"
-        )
 
     def test_double_decompressed_gzip_xz_kernel_extracts_dtb(self):
         dtb = self._make_dtb(model="Double Compressed Router")
