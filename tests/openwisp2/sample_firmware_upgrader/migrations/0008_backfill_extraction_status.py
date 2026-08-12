@@ -11,7 +11,7 @@ def _queue_legacy_extractions(app_config, **kwargs):
     queue_unconfirmed_extractions.delay()
 
 
-# Queueing must run afterr the whole `migrate` command completes, because the
+# Queueing must run after the whole `migrate` command completes, because the
 # Celery worker reads committed rows, `RunPython` therefore only registers a
 # one-shot `post_migrate` receiver instead of enqueueing directly
 def register_legacy_extraction_queueing(apps, schema_editor):

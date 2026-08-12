@@ -121,12 +121,15 @@ consuming all available memory, e.g.:
 
     OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_RATIO = 150
 
-**Notes**: - ``MAX_KERNEL_BYTES`` and ``MAX_DECOMPRESSED_BYTES`` are
-per-task memory ceilings, not global ones. Since multiple metadata
-extraction tasks can run concurrently within the same Celery worker, size
-your worker's concurrency and container's memory limit so that
-``concurrency * (MAX_KERNEL_BYTES + MAX_DECOMPRESSED_BYTES)`` fits
-comfortably within the available memory.
+**Notes**:
+
+- ``OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES`` and
+  ``OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES`` are per-task
+  memory ceilings, not global ones. Multiple metadata extraction tasks can
+  run concurrently within the same Celery worker. Size the worker
+  concurrency and the container memory limit so that ``concurrency *
+  (MAX_KERNEL_BYTES + MAX_DECOMPRESSED_BYTES)`` fits within the available
+  memory.
 
 .. _openwisp_firmware_upgrader_api:
 

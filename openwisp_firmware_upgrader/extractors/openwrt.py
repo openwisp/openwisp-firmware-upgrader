@@ -456,6 +456,6 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 fwtool_result["model"] = dtb_result["model"]
             if not fwtool_result.get("compatible") and dtb_result.get("compatible"):
                 fwtool_result["compatible"] = dtb_result["compatible"]
-        except (ExtractionError, UnsupportedImageError):
+        except ExtractionError:
             pass
         return fwtool_result

@@ -19,8 +19,11 @@ class BaseMetadataExtractor(ABC):
             return self.extract_from_image()
         except (UnsupportedImageError, DecompressionLimitExceeded):
             raise
-        except ExtractionError:
-            return self.extract_from_dtb()
+        except ExtractionError as exc:
+            try:
+                return self.extract_from_dtb()
+            except UnsupportedImageError:
+                raise UnsupportedImageError(str(exc)) from exc
 
     @abstractmethod
     def extract_from_image(self):

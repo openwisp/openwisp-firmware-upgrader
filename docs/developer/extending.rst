@@ -173,6 +173,14 @@ Once you have created the models, add the following to your
 
 Substitute ``myupgrader`` with the name you chose in step 1.
 
+.. note::
+
+    If you swap ``CONFIG_DEVICEGROUP_MODEL`` (the device group model from
+    *OpenWISP Controller*) for a custom app, that app's migrations must
+    include one named exactly ``0036_device_group``, since
+    ``openwisp_firmware_upgrader``'s migration ``0015`` depends on it
+    directly.
+
 9. Create Database Migrations
 -----------------------------
 
