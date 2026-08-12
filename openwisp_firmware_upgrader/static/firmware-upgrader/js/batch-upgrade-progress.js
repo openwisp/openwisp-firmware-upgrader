@@ -140,61 +140,127 @@ function updateBatchProgress(data) {
   let $ = django.jQuery;
   let mainProgressElement = $(".batch-main-progress");
   if (mainProgressElement.length > 0) {
-    let progressPercentage =
-      data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
+    let total = data.total || 0;
+    let completed = data.completed || 0;
+    let progressPercentage = total > 0 ? Math.round((completed / total) * 100) : 0;
     let showPercentageText = true;
-    let statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS; // Safe default
+    let progressHtml = "";
+    let legendHtml = "";
 
-    if (data.status === FW_UPGRADE_STATUS.SUCCESS) {
-      progressPercentage = 100;
-      statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
-      showPercentageText = true;
-    } else if (data.status === FW_UPGRADE_STATUS.CANCELLED) {
-      progressPercentage = 100;
-      statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
-      showPercentageText = false;
-    } else if (data.status === FW_UPGRADE_STATUS.FAILED) {
-      let successfulOpsCount = $("#result_list tbody tr").filter(function () {
-        let statusText = $(this).find(".status-cell .status-content").text().trim();
-        return FW_STATUS_GROUPS.SUCCESS.has(statusText);
-      }).length;
-      // Also check individual operation containers for success
-      if (successfulOpsCount === 0) {
-        $("#result_list tbody tr").each(function () {
-          let statusContainer = $(this).find(".upgrade-status-container");
-          if (
-            statusContainer.length &&
-            statusContainer.find(".upgrade-progress-fill.success").length
-          ) {
-            successfulOpsCount++;
-          }
+    let statusCountSum =
+      (data.successful || 0) +
+      (data.failed || 0) +
+      (data.aborted || 0) +
+      (data.cancelled || 0);
+    if (data.successful !== undefined && total > 0 && statusCountSum > 0) {
+      // Multicolor status which shows proportional segments per status
+      let successful = data.successful || 0;
+      let failed = data.failed || 0;
+      let aborted = data.aborted || 0;
+      let cancelled = data.cancelled || 0;
+      let segments = [];
+      if (successful > 0) {
+        segments.push({
+          cssClass: FW_UPGRADE_CSS_CLASSES.SUCCESS,
+          count: successful,
+          label: FW_UPGRADE_DISPLAY_STATUS.SUCCESS,
         });
       }
-      if (successfulOpsCount > 0) {
-        // Some operations succeeded - partial success (orange)
-        progressPercentage = 100;
-        statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
+      if (failed > 0) {
+        segments.push({
+          cssClass: FW_UPGRADE_CSS_CLASSES.FAILED,
+          count: failed,
+          label: FW_UPGRADE_DISPLAY_STATUS.FAILED,
+        });
+      }
+      if (aborted > 0) {
+        segments.push({
+          cssClass: FW_UPGRADE_CSS_CLASSES.ABORTED,
+          count: aborted,
+          label: FW_UPGRADE_DISPLAY_STATUS.ABORTED,
+        });
+      }
+      if (cancelled > 0) {
+        segments.push({
+          cssClass: FW_UPGRADE_CSS_CLASSES.CANCELLED,
+          count: cancelled,
+          label: FW_UPGRADE_DISPLAY_STATUS.CANCELLED,
+        });
+      }
+      let usedWidth = 0;
+      let cumulativeCount = 0;
+      let segmentsHtml = segments
+        .map(function (seg) {
+          cumulativeCount += seg.count;
+          let cumulativeWidth = Math.round(
+            (cumulativeCount / statusCountSum) * progressPercentage,
+          );
+          let segmentWidth = Math.max(cumulativeWidth - usedWidth, 0);
+          usedWidth = cumulativeWidth;
+          return (
+            '<div class="upgrade-progress-fill ' +
+            escapeHtml(seg.cssClass) +
+            '" style="width: ' +
+            escapeHtml(String(segmentWidth)) +
+            '%"></div>'
+          );
+        })
+        .join("");
+      progressHtml = '<div class="upgrade-progress-bar">' + segmentsHtml + "</div>";
+
+      if (segments.length > 0) {
+        let legendItems = segments
+          .map(function (seg) {
+            return (
+              '<span class="legend-item">' +
+              '<span class="legend-dot ' +
+              escapeHtml(seg.cssClass) +
+              '"></span>' +
+              escapeHtml(String(seg.count)) +
+              " " +
+              escapeHtml(seg.label) +
+              "</span>"
+            );
+          })
+          .join("");
+        legendHtml = '<div class="batch-progress-legend">' + legendItems + "</div>";
+      }
+      if (
+        data.status === FW_UPGRADE_STATUS.FAILED ||
+        data.status === FW_UPGRADE_STATUS.CANCELLED
+      ) {
         showPercentageText = false;
-      } else {
-        // All operations failed - total failure (red)
+      }
+    } else {
+      // Fallback: single-color will be rendered when per-status counts are not available
+      let statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
+      if (data.status === FW_UPGRADE_STATUS.SUCCESS) {
+        progressPercentage = 100;
+        statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
+      } else if (data.status === FW_UPGRADE_STATUS.CANCELLED) {
+        progressPercentage = 100;
+        statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
+        showPercentageText = false;
+      } else if (data.status === FW_UPGRADE_STATUS.FAILED) {
         progressPercentage = 100;
         statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
         showPercentageText = false;
       }
+      progressHtml =
+        '<div class="upgrade-progress-bar">' +
+        '<div class="upgrade-progress-fill ' +
+        escapeHtml(statusClass) +
+        '" style="width: ' +
+        escapeHtml(String(progressPercentage)) +
+        '%"></div></div>';
     }
-    let progressHtml = `
-      <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill ${escapeHtml(statusClass)}"
-             style="width: ${escapeHtml(String(progressPercentage))}%">
-        </div>
-      </div>
-    `;
     if (showPercentageText) {
-      progressHtml += `<span class="upgrade-progress-text">
-        ${escapeHtml(String(progressPercentage))}%
-      </span>`;
+      progressHtml +=
+        '<span class="upgrade-progress-text">' +
+        escapeHtml(String(progressPercentage)) +
+        "%</span>";
     }
-    mainProgressElement.html(progressHtml);
+    mainProgressElement.html(progressHtml + legendHtml);
   }
   // Update completion information in the admin form if available
   if (data.total !== undefined && data.completed !== undefined) {
