@@ -109,12 +109,16 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
       if (data.type === "batch_state") {
         updateBatchProgress(data.batch_status);
         if (data.operations && Array.isArray(data.operations)) {
+          // Replay the initial snapshot onto each existing row.
           data.operations.forEach(function (operation) {
             updateBatchOperationProgress({
               operation_id: operation.id,
               status: operation.status,
               progress: operation.progress,
               modified: operation.modified,
+              is_persistent: operation.is_persistent,
+              retry_count: operation.retry_count,
+              next_retry_at: operation.next_retry_at,
             });
           });
         }
@@ -128,6 +132,9 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
           status: data.operation.status,
           progress: data.operation.progress,
           modified: data.operation.modified,
+          is_persistent: data.operation.is_persistent,
+          retry_count: data.operation.retry_count,
+          next_retry_at: data.operation.next_retry_at,
         });
       }
     } catch (error) {
@@ -261,6 +268,21 @@ function updateBatchOperationProgress(data) {
         progress: data.progress,
       };
       renderOperationProgressBarInCell(statusCell, operation);
+      if ("retry_count" in data) {
+        row.find("td.retry-count-cell").text(data.retry_count);
+      }
+      if ("next_retry_at" in data) {
+        let nextRetry =
+          data.status === "pending" && data.next_retry_at
+            ? getFormattedDateTimeString(data.next_retry_at)
+            : "";
+        row.find("td.next-retry-cell").text(nextRetry);
+      }
+      if ("modified" in data && data.modified) {
+        row
+          .find("td.last-updated-cell")
+          .text(getFormattedDateTimeString(data.modified));
+      }
     }
   });
   if (!found) {

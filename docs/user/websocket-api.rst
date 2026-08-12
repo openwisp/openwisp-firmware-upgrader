@@ -79,6 +79,9 @@ exactly one message:
             "id": "<uuid>",                 // Operation identifier
             "device": "<uuid>",             // Device identifier
             "image": "<uuid>",              // Firmware image identifier
+            "is_persistent": <boolean>,     // Whether the operation retries persistently
+            "retry_count": <integer>,       // Number of retry attempts made
+            "next_retry_at": "<datetime>",  // Next scheduled retry (null if none)
             "status": "<string>",           // Current operation status
             "log": "<string>",              // Operation log output
             "progress": <integer>,          // Progress percentage (0–100)
@@ -144,6 +147,9 @@ exactly one message:
                 "id": "<uuid>",             // Operation identifier
                 "device": "<uuid>",         // Device identifier
                 "image": "<uuid>",          // Firmware image identifier
+                "is_persistent": <boolean>,     // Whether the operation retries persistently
+                "retry_count": <integer>,       // Number of retry attempts made
+                "next_retry_at": "<datetime>",  // Next scheduled retry (null if none)
                 "status": "<string>",       // Operation status
                 "log": "<string>",          // Operation log output
                 "progress": <integer>,      // Progress percentage (0–100)
@@ -168,6 +174,8 @@ The endpoint may push:
         "status": "<string>",               // Operation status
         "progress": <integer>,              // Progress percentage (0–100)
         "modified": "<datetime>",           // Last modification timestamp
+        "retry_count": <integer>,           // Number of retry attempts made
+        "next_retry_at": "<datetime>",      // Next scheduled retry (null if none)
         "device_id": "<uuid>",              // Device identifier
         "device_name": "<string>",          // Device display name
         "image_name": "<string>"            // Firmware image display name
@@ -230,6 +238,9 @@ Each message uses the following envelope:
                 "id": "<uuid>",             // Operation identifier
                 "device": "<uuid>",         // Device identifier
                 "image": "<uuid>",          // Firmware image identifier
+                "is_persistent": <boolean>,     // Whether the operation retries persistently
+                "retry_count": <integer>,       // Number of retry attempts made
+                "next_retry_at": "<datetime>",  // Next scheduled retry (null if none)
                 "status": "<string>",       // Operation status
                 "log": "<string>",          // Operation log output
                 "progress": <integer>,      // Progress percentage (0–100)

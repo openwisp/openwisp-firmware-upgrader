@@ -94,8 +94,11 @@ upgrades:
 - a **reminder** fires when a persistent batch still has pending children
   after the configured cadence has elapsed, and
 - a **failure** notification fires when a persistent operation finally
-  ends as ``failed`` (for example, the firmware image fails its checksum
-  check, or the device cannot be reached after reflashing).
+  ends as ``failed`` (for example, the device cannot be reached after
+  reflashing, or the upgrade fails for an unexpected reason). An image
+  whose checksum already matches the device is reported as ``success``,
+  and an image rejected by the pre-flash validation is ``aborted``;
+  neither of those outcomes triggers this notification.
 - a **completion** notification fires when a mass upgrade succeeds or
   fails (a user-initiated cancellation is not notified), whether or not it
   is persistent.

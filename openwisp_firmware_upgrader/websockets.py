@@ -448,6 +448,8 @@ class UpgradeProgressPublisher:
                     getattr(instance, "progress", 0),
                     instance.modified,
                     device_info,
+                    instance.retry_count,
+                    instance.next_retry_at,
                 )
                 batch_publisher.update_batch_status(instance.batch)
         except (ConnectionError, TimeoutError):
@@ -483,7 +485,14 @@ class BatchUpgradeProgressPublisher:
         _run_coroutine_safely(_send_message)
 
     def publish_operation_progress(
-        self, operation_id, status, progress, modified=None, device_info=None
+        self,
+        operation_id,
+        status,
+        progress,
+        modified=None,
+        device_info=None,
+        retry_count=None,
+        next_retry_at=None,
     ):
         progress_data = {
             "type": "operation_progress",
@@ -491,6 +500,8 @@ class BatchUpgradeProgressPublisher:
             "status": status,
             "progress": progress,
             "modified": modified.isoformat() if modified else None,
+            "retry_count": retry_count,
+            "next_retry_at": next_retry_at.isoformat() if next_retry_at else None,
         }
         # Add device information if available
         if device_info:

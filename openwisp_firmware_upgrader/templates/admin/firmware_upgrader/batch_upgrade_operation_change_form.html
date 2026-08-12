@@ -121,7 +121,8 @@
             {{ operation.device.name }}
           </a>
         </td>
-        <td class="status-cell" data-operation-id="{{ operation.id }}" data-operation-status="{{ operation.status }}">
+        <td class="status-cell" data-operation-id="{{ operation.id }}"
+          data-operation-status="{{ operation.status }}">
           <div class="status-content">{{ operation.get_status_display }}</div>
         </td>
         <td>
@@ -132,16 +133,16 @@
           {% endif %}
         </td>
         {% if is_persistent %}
-        <td>{{ operation.retry_count }}</td>
+        <td class="retry-count-cell">{{ operation.retry_count }}</td>
         {% endif %}
         {% if show_next_retry %}
-        <td>
+        <td class="next-retry-cell">
           {% if operation.status == 'pending' %}
           {{ operation.next_retry_at|date:"DATETIME_FORMAT" }}
           {% endif %}
         </td>
         {% endif %}
-        <td>{{ operation.modified|date:"DATETIME_FORMAT" }}</td>
+        <td class="last-updated-cell">{{ operation.modified|date:"DATETIME_FORMAT" }}</td>
       </tr>
       {% empty %}
       <tr>

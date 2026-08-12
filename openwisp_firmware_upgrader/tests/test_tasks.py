@@ -324,7 +324,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         mocked_upgrade.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
-    @mock.patch("openwisp_firmware_upgrader.tasks.logger.warning")
+    @mock.patch("openwisp_firmware_upgrader.base.models.logger.warning")
     def test_retry_pending_upgrade_resilience(self, mocked_logger, mocked_upgrade):
         op = self._create_pending_op()
         mocked_qs = mock.MagicMock()

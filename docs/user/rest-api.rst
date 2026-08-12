@@ -220,7 +220,8 @@ the request body:
 - ``location`` (Location ID): limit the upgrade to devices at a specific
   geographic location
 - ``is_persistent`` (boolean, default ``true``): keep retrying offline
-  devices until they come back online or the operation is cancelled
+  devices until they come back online or the operation is cancelled. See
+  :doc:`persistent-mass-upgrades`.
 
 Example with filters:
 
@@ -380,7 +381,8 @@ firmware if it does not already exist.
 
 The request body accepts an optional ``is_persistent`` (boolean, default
 ``false``) flag; when enabled, the resulting upgrade keeps retrying the
-device until it comes back online or the operation is cancelled.
+device until it comes back online or the operation is cancelled. See
+:doc:`persistent-mass-upgrades`.
 
 Get Device Firmware Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

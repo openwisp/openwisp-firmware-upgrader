@@ -75,7 +75,7 @@ application.
         signal_jitter=120,
     )
 
-Backoff settings for persistent retries.
+Backoff settings for :doc:`persistent retries <persistent-mass-upgrades>`.
 
 When an upgrade operation has its ``is_persistent`` flag set and the
 device is unreachable, the operation transitions to ``pending`` rather
@@ -107,12 +107,13 @@ this dict:
 **default**: ``5184000`` (60 days)
 ============ =====================
 
-Seconds between consecutive reminders for a single persistent batch that
-still has pending children. The first reminder fires when the batch is
-older than this period; subsequent reminders fire when the same period has
-elapsed since the previous send. The reminder itself goes out as a
-``generic_message`` notification to the batch's organization admins and
-all superusers, linking to the batch filtered to its pending devices.
+Seconds between consecutive reminders for a single :doc:`persistent
+<persistent-mass-upgrades>` batch that still has pending children. The
+first reminder fires when the batch is older than this period; subsequent
+reminders fire when the same period has elapsed since the previous send.
+The reminder itself goes out as a ``generic_message`` notification to the
+batch's organization admins and all superusers, linking to the batch
+filtered to its pending devices.
 
 The Beat task that drives these reminders
 (``send_pending_upgrade_reminders``) is registered in the deployment's own

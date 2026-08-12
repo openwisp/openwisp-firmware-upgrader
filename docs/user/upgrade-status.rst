@@ -40,8 +40,8 @@ Pending
 
 **Description**: The device was unreachable when the upgrade was last
 attempted. The operation keeps a future ``next_retry_at`` and a Celery
-Beat task picks it up later. This is the status that persistent mass
-upgrades use while a device is offline.
+Beat task picks it up later. This is the status that :doc:`Persistent Mass
+Upgrades <persistent-mass-upgrades>` use while a device is offline.
 
 **What happens during this status:**
 
@@ -144,7 +144,8 @@ button that appears next to in-progress and pending operations.
 - Before the new firmware image is written to the flash memory of the
   network device
 - While the operation status is still ``in-progress`` or ``pending`` (a
-  pending operation can be cancelled to stop its persistent retries)
+  pending operation can be cancelled to stop its :doc:`persistent retries
+  <persistent-mass-upgrades>`)
 
 **What happens when the upgrade operation is cancelled:**
 

@@ -14,6 +14,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
 from openwisp_notifications.signals import notify
 from private_storage.fields import PrivateFileField
 
@@ -700,9 +701,57 @@ class AbstractBatchUpgradeOperation(
     def upgrade(self, firmwareless):
         self.status = "in-progress"
         self.save()
-        self.upgrade_related_devices()
-        if firmwareless:
-            self.upgrade_firmwareless_devices()
+        with transaction.atomic():
+            self.upgrade_related_devices()
+            if firmwareless:
+                self.upgrade_firmwareless_devices()
+
+    @classmethod
+    def send_pending_reminders(cls):
+        """
+        Notifies organization admins about persistent batches that still have
+        pending children after the configured reminder period has elapsed.
+        """
+        period = app_settings.PERSISTENT_REMINDER_PERIOD
+        threshold = timezone.now() - timedelta(seconds=period)
+        due_condition = Q(last_reminder_at__lte=threshold) | Q(
+            last_reminder_at__isnull=True, created__lte=threshold
+        )
+        qs = (
+            cls.objects.filter(
+                status="in-progress",
+                is_persistent=True,
+                upgradeoperation__status="pending",
+            )
+            .filter(due_condition)
+            .distinct()
+        )
+        for batch in qs.iterator():
+            pending_count = batch.upgradeoperation_set.filter(status="pending").count()
+            if not pending_count:
+                continue
+            with transaction.atomic():
+                claimed = (
+                    cls.objects.filter(
+                        pk=batch.pk, status="in-progress", is_persistent=True
+                    )
+                    .filter(due_condition, upgradeoperation__status="pending")
+                    .update(last_reminder_at=timezone.now())
+                )
+                if not claimed:
+                    continue
+                description = ngettext(
+                    "%(count)d device is still pending in mass upgrade %(batch)s.",
+                    "%(count)d devices are still pending in mass upgrade %(batch)s.",
+                    pending_count,
+                ) % {"count": pending_count, "batch": batch}
+                notify.send(
+                    sender=batch,
+                    type="generic_message",
+                    target=batch,
+                    message=description,
+                    target_url_suffix="?status=pending",
+                )
 
     @staticmethod
     def dry_run(build, group=None, location=None):
@@ -1129,18 +1178,94 @@ class AbstractUpgradeOperation(
         """
         if status != "ok":
             return
-        pending_pks = list(
+        pending_ops = list(
             cls.objects.filter(device=instance.device, status="pending").values_list(
-                "pk", flat=True
+                "pk", "retry_count"
             )
         )
-        if not pending_pks:
+        if not pending_ops:
             return
         jitter = app_settings.PERSISTENT_RETRY_OPTIONS["signal_jitter"]
-        for pk in pending_pks:
+        for pk, retry_count in pending_ops:
             retry_pending_upgrade.apply_async(
-                args=[pk], countdown=random.uniform(0, jitter)
+                args=[pk],
+                kwargs={"expected_retry_count": retry_count},
+                countdown=random.uniform(0, jitter),
             )
+
+    @classmethod
+    def retry_pending(cls, operation_id, expected_retry_count=None):
+        """
+        Claims a pending operation and dispatches its upgrade, unless a
+        concurrent cancellation or a device deactivation intervened.
+        """
+        claim = dict(pk=operation_id, status="pending")
+        if expected_retry_count is not None:
+            claim["retry_count"] = expected_retry_count
+        updated = cls.objects.filter(**claim).update(
+            status="in-progress", next_retry_at=None
+        )
+        if not updated:
+            return
+        try:
+            operation = cls.objects.select_related("device").get(pk=operation_id)
+        except ObjectDoesNotExist:
+            logger.warning(
+                f"The UpgradeOperation object with id {operation_id} has been deleted"
+            )
+            return
+        try:
+            if operation.device.is_deactivated():
+                aborted = cls.objects.filter(
+                    pk=operation_id, status="in-progress"
+                ).update(status="aborted")
+                if aborted:
+                    operation.status = "aborted"
+                    operation.log_line(
+                        _("Device has been deactivated; persistent retry aborted."),
+                        save=False,
+                    )
+                    operation.save(update_fields=["status", "log"])
+                return
+            if not cls.objects.filter(pk=operation_id, status="in-progress").exists():
+                return
+            operation.log_line(
+                _("Persistent retry #%(count)s starting.")
+                % {"count": operation.retry_count}
+                + "\n",
+                save=False,
+            )
+            operation.save(update_fields=["log"])
+            upgrade_firmware.delay(operation.pk)
+        except BaseException:
+            cls.objects.filter(pk=operation_id, status="in-progress").update(
+                status="pending", next_retry_at=timezone.now()
+            )
+            raise
+
+    @classmethod
+    def dispatch_due_pending_retries(cls):
+        """
+        Claims every pending operation whose ``next_retry_at`` has elapsed and
+        dispatches it, spreading the dispatches over the configured jitter.
+        """
+        jitter = app_settings.PERSISTENT_RETRY_OPTIONS["dispatch_jitter"]
+        now = timezone.now()
+        due_ops = (
+            cls.objects.filter(status="pending", next_retry_at__lte=now)
+            .values_list("pk", "retry_count")
+            .iterator()
+        )
+        for op_id, retry_count in due_ops:
+            claimed = cls.objects.filter(
+                pk=op_id, status="pending", retry_count=retry_count
+            ).update(next_retry_at=now + timedelta(seconds=jitter))
+            if claimed:
+                retry_pending_upgrade.apply_async(
+                    args=[op_id],
+                    kwargs={"expected_retry_count": retry_count},
+                    countdown=random.uniform(0, jitter),
+                )
 
     @classmethod
     def notify_on_failed_persistent_upgrade(cls, sender, instance, created, **kwargs):
@@ -1168,23 +1293,53 @@ class AbstractUpgradeOperation(
         cause = str(error)
         if recoverable:
             self.log_line(f"Detected a recoverable failure: {cause}.\n", save=False)
-            self.log_line("The upgrade operation will be retried soon.")
+            self.log_line("The upgrade operation will be retried soon.", save=False)
+            self.save(update_fields=["log"])
             raise error
         if self.is_persistent and isinstance(error, RecoverableFailure):
             self.status = "pending"
             self.retry_count += 1
             self.next_retry_at = self._calculate_next_retry()
-            self.log_line(f"All immediate retries exhausted: {cause}.\n", save=False)
+            self.log_line(
+                _("All immediate retries exhausted: %(cause)s.\n") % {"cause": cause},
+                save=False,
+            )
             retry_time = timezone.localtime(self.next_retry_at).strftime(
                 "%Y-%m-%d %H:%M:%S %Z"
             )
             self.log_line(
-                f"Scheduled persistent retry #{self.retry_count} at {retry_time}.\n",
+                _("Scheduled persistent retry #%(count)s at %(time)s.\n")
+                % {"count": self.retry_count, "time": retry_time},
                 save=False,
             )
             return
         self.status = "failed"
         self.log_line(f"Max retries exceeded. Upgrade failed: {cause}.", save=False)
+
+    def _commit_result(self):
+        with transaction.atomic():
+            claimed = self._meta.model.objects.filter(
+                pk=self.pk, status="in-progress"
+            ).update(
+                status=self.status,
+                retry_count=self.retry_count,
+                next_retry_at=self.next_retry_at,
+                progress=self.progress,
+                log=self.log,
+            )
+            if not claimed:
+                self.refresh_from_db()
+                return False
+            self.save(
+                update_fields=[
+                    "status",
+                    "retry_count",
+                    "next_retry_at",
+                    "progress",
+                    "log",
+                ]
+            )
+            return True
 
     def upgrade(self, recoverable=True):
         # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
@@ -1196,7 +1351,7 @@ class AbstractUpgradeOperation(
                 _("Upgrade aborted because the device has been deactivated."),
                 save=False,
             )
-            self.save()
+            self._commit_result()
             return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:
@@ -1204,17 +1359,15 @@ class AbstractUpgradeOperation(
         except NoWorkingDeviceConnectionError as error:
             if error.connection is None:
                 # a device with no usable connection can never be upgraded here
+                self.log_line(_("No device connection available"), save=False)
                 if self.is_persistent:
-                    self.log_line(_("No device connection available"), save=False)
                     self._recoverable_failure_handler(
                         recoverable,
                         RecoverableFailure("No device connection available"),
                     )
-                    self.save()
                 else:
-                    self.log_line(_("No device connection available"), save=False)
                     self.status = "aborted"
-                    self.save()
+                self._commit_result()
                 return
 
             log_template = (
@@ -1239,7 +1392,7 @@ class AbstractUpgradeOperation(
                     )
                 ),
             )
-            self.save()
+            self._commit_result()
             return
         installed = False
         # prevent multiple upgrade operations for
@@ -1254,7 +1407,7 @@ class AbstractUpgradeOperation(
             logger.warning(message)
             self.log_line(message, save=False)
             self.status = "aborted"
-            self.save()
+            self._commit_result()
             return
         upgrader_class = get_upgrader_class_from_device_connection(conn)
         if not upgrader_class:
@@ -1284,7 +1437,7 @@ class AbstractUpgradeOperation(
         # other unexpected exception will flag the upgrade as failed
         except (Exception, ReconnectionFailed) as e:
             cause = str(e)
-            self.log_line(cause)
+            self.log_line(cause, save=False)
             self.status = "failed"
             # if the reconnection failed we'll add some more info
             if isinstance(e, ReconnectionFailed):
@@ -1301,11 +1454,8 @@ class AbstractUpgradeOperation(
             installed = True
             self.status = "success"
             self.update_progress(100, save=False)
-        self.save()
-        # if the firmware has been successfully installed,
-        # or if it was already installed
-        # set `instaleld` to `True` on the devicefirmware instance
-        if installed:
+        committed = self._commit_result()
+        if committed and installed:
             self.device.devicefirmware.installed = True
             self.device.devicefirmware.save(upgrade=False)
 
