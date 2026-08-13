@@ -22,6 +22,8 @@ from .. import settings as app_settings
 from ..constants import (
     DEACTIVATED_DEVICE_FIRMWARE_ERROR,
     DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR,
+    DISABLED_ORGANIZATION_FIRMWARE_ERROR,
+    DISABLED_ORGANIZATION_UPGRADE_OPERATION_ERROR,
 )
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
@@ -175,6 +177,8 @@ class AbstractBuild(TimeStampedEditableModel):
         self, firmwareless, upgrade_options=None, group=None, location=None
     ):
         upgrade_options = upgrade_options or {}
+        if self.category.organization_id and not self.category.organization.is_active:
+            raise ValidationError(DISABLED_ORGANIZATION_FIRMWARE_ERROR)
         # Check if there are any devices to upgrade with the given filters
         dry_run_result = load_model("BatchUpgradeOperation").dry_run(
             build=self, group=group, location=location
@@ -209,12 +213,15 @@ class AbstractBuild(TimeStampedEditableModel):
         """
         related = ["image"]
         if select_devices:
-            related.append("device")
+            related.append("device__organization")
         qs = (
             load_model("DeviceFirmware")
             .objects.all()
             .select_related(*related)
-            .filter(image__build__category_id=self.category_id)
+            .filter(
+                image__build__category_id=self.category_id,
+                device__organization__is_active=True,
+            )
             .exclude(image__build=self, installed=True)
             .exclude(device___is_deactivated=True)
             .order_by("-created")
@@ -238,6 +245,7 @@ class AbstractBuild(TimeStampedEditableModel):
         qs = Device.objects.filter(
             devicefirmware__isnull=True,
             model__in=boards,
+            organization__is_active=True,
         ).exclude(_is_deactivated=True)
         if self.category.organization_id:
             qs = qs.filter(organization_id=self.category.organization_id)
@@ -404,6 +412,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             return
         if self.device.is_deactivated():
             raise ValidationError(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
+        if not self.device.organization.is_active:
+            raise ValidationError(DISABLED_ORGANIZATION_FIRMWARE_ERROR)
         if (
             self.image.build.category.organization is not None
             and self.image.build.category.organization != self.device.organization
@@ -481,6 +491,9 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
         May return ``None`` if it was not possible to create the DeviceFirmware.
         """
+        if device.is_deactivated() or not device.organization.is_active:
+            return
+
         DeviceFirmware = load_model("DeviceFirmware")
         FirmwareImage = load_model("FirmwareImage")
         image_type = REVERSE_FIRMWARE_IMAGE_MAP.get(device.model)
@@ -515,6 +528,11 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if not instance.device.os or not instance.device.model:
             return
         if instance.device.model not in REVERSE_FIRMWARE_IMAGE_MAP:
+            return
+        if (
+            instance.device.is_deactivated()
+            or not instance.device.organization.is_active
+        ):
             return
 
         transaction.on_commit(partial(create_device_firmware.delay, instance.device.pk))
@@ -613,11 +631,21 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             )
 
     def upgrade(self, firmwareless):
+        if (
+            self.build.category.organization_id
+            and not self.build.category.organization.is_active
+        ):
+            self.status = "cancelled"
+            self.save()
+            return
         self.status = "in-progress"
         self.save()
         self.upgrade_related_devices()
         if firmwareless:
             self.upgrade_firmwareless_devices()
+        if not self.upgradeoperation_set.exists():
+            self.status = "cancelled"
+            self.save(update_fields=["status"])
 
     @staticmethod
     def dry_run(build, group=None, location=None):
@@ -857,8 +885,11 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     def clean(self):
         super().clean()
-        if hasattr(self, "device") and self.device and self.device.is_deactivated():
-            raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
+        if hasattr(self, "device") and self.device:
+            if self.device.is_deactivated():
+                raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
+            if not self.device.organization.is_active:
+                raise ValidationError(DISABLED_ORGANIZATION_UPGRADE_OPERATION_ERROR)
 
     def log_line(self, line, save=True):
         if self.log:
@@ -940,6 +971,14 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.status = "aborted"
             self.log_line(
                 _("Upgrade aborted because the device has been deactivated."),
+                save=False,
+            )
+            self.save()
+            return
+        if not self.device.organization.is_active:
+            self.status = "aborted"
+            self.log_line(
+                _("Upgrade aborted because the organization has been disabled."),
                 save=False,
             )
             self.save()

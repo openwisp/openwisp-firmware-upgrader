@@ -1815,7 +1815,7 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
+                with self.assertNumQueries(26 if django.VERSION < (5, 2) else 24):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")
@@ -2122,6 +2122,81 @@ class TestAdminTransaction(
             initial_total_upgrade_op_count,
             "Total UpgradeOperation count should remain unchanged",
         )
+
+    def test_device_inlines_readonly_for_disabled_organization(self):
+        active_device_fw = self._create_device_firmware()
+        active_device = active_device_fw.device
+        disabled_org = self._create_org(name="disabled-org")
+        disabled_image = self._create_firmware_image(organization=disabled_org)
+        disabled_device_fw = self._create_device_firmware(image=disabled_image)
+        disabled_device = disabled_device_fw.device
+        disabled_org.is_active = False
+        disabled_org.save(update_fields=["is_active"])
+        deviceadmin = DeviceAdmin(model=Device, admin_site=admin.site)
+        self._test_disabled_org_admin_inline_readonly(
+            deviceadmin,
+            disabled_obj=disabled_device,
+            active_obj=active_device,
+            inline_models=(DeviceFirmwareInline, DeviceUpgradeOperationInline),
+        )
+
+    def test_upgrade_selected_disabled_organization(self):
+        self._login()
+        org = self._get_org()
+        build = self._create_build(organization=org)
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        r = self.client.post(
+            self.build_list_url,
+            {"action": "upgrade_selected", ACTION_CHECKBOX_NAME: (build.pk,)},
+            follow=True,
+        )
+        self.assertContains(
+            r, "Cannot start a mass upgrade for a disabled organization."
+        )
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+    def test_batch_upgrade_confirmation_form_excludes_disabled_organizations(self):
+        org = self._get_org()
+        disabled_org = self._create_org(name="disabled-org")
+        category = self._create_category(organization=None)
+        build = self._create_build(category=category, version="1.0")
+        group = self._create_device_group(name="Group", organization=org)
+        disabled_group = self._create_device_group(
+            name="Disabled group", organization=disabled_org
+        )
+        location = Location.objects.create(
+            name="Location", address="somewhere", organization=org
+        )
+        disabled_location = Location.objects.create(
+            name="Disabled location", address="somewhere", organization=disabled_org
+        )
+        disabled_org.is_active = False
+        disabled_org.save(update_fields=["is_active"])
+        admin_user = self._get_admin()
+        form = BatchUpgradeConfirmationForm(initial={"build": build}, user=admin_user)
+        group_qs = form.fields["group"].queryset
+        location_qs = form.fields["location"].queryset
+        self.assertIn(group, group_qs)
+        self.assertNotIn(disabled_group, group_qs)
+        self.assertIn(location, location_qs)
+        self.assertNotIn(disabled_location, location_qs)
+
+        with self.subTest("submitting a disabled org group is rejected"):
+            form = BatchUpgradeConfirmationForm(
+                data={"build": build.pk, "group": disabled_group.pk},
+                user=admin_user,
+            )
+            self.assertFalse(form.is_valid())
+            self.assertIn("group", form.errors)
+
+        with self.subTest("submitting a disabled org location is rejected"):
+            form = BatchUpgradeConfirmationForm(
+                data={"build": build.pk, "location": disabled_location.pk},
+                user=admin_user,
+            )
+            self.assertFalse(form.is_valid())
+            self.assertIn("location", form.errors)
 
 
 class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
