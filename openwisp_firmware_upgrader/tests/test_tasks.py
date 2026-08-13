@@ -1,6 +1,5 @@
 from unittest import mock
 
-import swapper
 from celery.exceptions import SoftTimeLimitExceeded
 from django.test import TransactionTestCase
 
@@ -12,9 +11,7 @@ from .base import TestUpgraderMixin
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
-FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
-DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 
 
 class TestTasks(TestUpgraderMixin, TransactionTestCase):
@@ -114,6 +111,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         credentials = self._create_credentials(organization=None, auto_add=False)
 
         with self.subTest("deactivated device"):
+            mocked_delay.reset_mock()
             device = self._create_device(
                 name="deactivated-device",
                 organization=org,
@@ -128,6 +126,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(DeviceFirmware.objects.filter(device=device).count(), 0)
 
         with self.subTest("disabled organization device"):
+            mocked_delay.reset_mock()
             disabled_org = self._create_org(name="disabled-org")
             device = self._create_device(
                 name="disabled-org-device",

@@ -1305,8 +1305,13 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
         with self.subTest("DeviceFirmware.save(upgrade=True) raises and creates no op"):
             uo_count = UpgradeOperation.objects.count()
+            device_fw.installed = False
             with self.assertRaises(ValidationError):
-                device_fw.installed = False
                 device_fw.full_clean()
+            with self.assertRaises(ValidationError) as cm:
                 device_fw.save(upgrade=True)
+            self.assertIn(
+                "Upgrade operations are not allowed for disabled organizations.",
+                str(cm.exception),
+            )
             self.assertEqual(UpgradeOperation.objects.count(), uo_count)

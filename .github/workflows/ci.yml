@@ -74,6 +74,8 @@ jobs:
           pip install -U -e .
           pip install -U ${{ matrix.django-version }}
           sudo npm install -g prettier
+          pip install --upgrade --force-reinstall --no-deps --no-cache-dir https://github.com/openwisp/openwisp-users/tarball/issues/522-disabled-org
+          pip install --upgrade --force-reinstall --no-deps --no-cache-dir https://github.com/openwisp/openwisp-controller/tarball/issues/1393-disabled-org
 
       - name: Start redis
         if: ${{ !cancelled() && steps.deps.conclusion == 'success' }}

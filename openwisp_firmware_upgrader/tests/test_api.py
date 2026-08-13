@@ -67,7 +67,9 @@ class TestAPIUpgraderMixin(
         # hitting the username/email unique constraint in the upstream helper.
         if role == "org_admin" and organization is not None and not kwargs:
             OrganizationUser.objects.get_or_create(
-                user=self.administrator, organization=organization
+                user=self.administrator,
+                organization=organization,
+                defaults={"is_admin": True},
             )
             return self.administrator
         return super()._disabled_org_role_user(
