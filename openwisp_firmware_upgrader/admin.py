@@ -19,7 +19,7 @@ from django.templatetags.static import static
 from django.urls import resolve, reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-from django.utils.timezone import localtime
+from django.utils.timezone import get_current_timezone, localtime, make_naive
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
@@ -43,7 +43,7 @@ from .filters import (
     LocationFilter,
 )
 from .swapper import load_model
-from .utils import get_upgrader_schema_for_device
+from .utils import get_upgrader_schema_for_device, reanchor_wall_clock_to_utc
 from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
 
 logger = logging.getLogger(__name__)
@@ -183,6 +183,21 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         self.fields["group"].queryset = device_group_qs
         self.fields["location"].queryset = location_qs
 
+    def clean(self):
+        cleaned_data = super().clean()
+        scheduled_at = cleaned_data.get("scheduled_at")
+        offset = self.data.get("scheduled_at_tz_offset")
+        if scheduled_at is not None and offset not in (None, ""):
+            try:
+                offset = int(offset)
+            except (TypeError, ValueError):
+                return cleaned_data
+            wall_clock = make_naive(scheduled_at, get_current_timezone())
+            cleaned_data["scheduled_at"] = reanchor_wall_clock_to_utc(
+                wall_clock, offset
+            )
+        return cleaned_data
+
     class Media:
         # We don't need to include any select2 JS/CSS files as they are
         # included by the JSONSchemaWidget used for upgrade_options.
@@ -319,6 +334,9 @@ class BuildAdmin(BaseAdmin):
                     "is_persistent": is_persistent,
                     "scheduled_at_0": scheduled_at_date,
                     "scheduled_at_1": scheduled_at_time,
+                    "scheduled_at_tz_offset": request.POST.get(
+                        "scheduled_at_tz_offset"
+                    ),
                 },
                 user=request.user,
             )
@@ -397,6 +415,7 @@ class BuildAdmin(BaseAdmin):
                 "media": self.media + form.media,
                 "schedule_min_delay": app_settings.SCHEDULE_MIN_DELAY,
                 "schedule_max_horizon": app_settings.SCHEDULE_MAX_HORIZON,
+                "server_timezone": settings.TIME_ZONE,
             }
         )
         request.current_app = self.admin_site.name
@@ -819,6 +838,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                     "is_persistent": obj.is_persistent,
                     "show_next_retry": show_next_retry,
                     "batch": obj,
+                    "server_timezone": settings.TIME_ZONE,
                 }
             )
             if app_settings.FIRMWARE_UPGRADER_API:

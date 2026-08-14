@@ -13,4 +13,32 @@ django.jQuery(function ($) {
     );
   }
   $("#ow-loading").hide();
+
+  // Interpret the scheduled time in the browser timezone instead of the
+  // server's: post the browser UTC offset and relabel the picker note.
+  const scheduleRow = $("#schedule-row");
+  if (scheduleRow.length) {
+    const form = scheduleRow.closest("form");
+    const offsetInput = $('<input type="hidden" name="scheduled_at_tz_offset">');
+    form.append(offsetInput);
+    form.on("submit", function () {
+      offsetInput.val(new Date().getTimezoneOffset());
+    });
+    labelScheduleTimezone($, scheduleRow);
+  }
 });
+
+function labelScheduleTimezone($, container) {
+  let browserTz = "";
+  try {
+    browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch (error) {
+    browserTz = "";
+  }
+  const serverTz = container.data("server-tz") || "";
+  let text = interpolate(gettext("Entered in your timezone (%s)."), [browserTz]);
+  if (serverTz) {
+    text += " " + interpolate(gettext("The server runs in %s."), [serverTz]);
+  }
+  container.find(".ow-schedule-tz-note").text(text);
+}

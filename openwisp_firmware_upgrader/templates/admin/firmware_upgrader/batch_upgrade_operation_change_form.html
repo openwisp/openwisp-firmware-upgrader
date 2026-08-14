@@ -30,7 +30,9 @@
 
   {% if batch.status == "scheduled" %}
   <div id="batch-reschedule-form" class="batch-reschedule-form ow-hide"
-       role="region" aria-label="{% trans 'Edit schedule' %}">
+       role="region" aria-label="{% trans 'Edit schedule' %}"
+       data-server-tz="{{ server_timezone }}"
+       data-scheduled-utc="{{ batch.scheduled_at|date:'c' }}">
 
     <div class="form-row">
       <div>
@@ -38,9 +40,7 @@
           <label class="required">{% trans "Scheduled time" %}:</label>
           {{ reschedule_form.scheduled_at }}
         </div>
-        <div class="help">
-          {% trans "Pick a future date and time, entered in the server timezone." %}
-        </div>
+        <div class="help ow-schedule-tz-note"></div>
       </div>
     </div>
 

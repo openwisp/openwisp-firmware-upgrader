@@ -56,7 +56,7 @@
               <span>{{ form.is_persistent.label }}</span>
             </label>
           </div>
-          <div class="form-row" id="schedule-row">
+          <div class="form-row" id="schedule-row" data-server-tz="{{ server_timezone }}">
             <div>
               <div class="flex-container">
                 {{ form.scheduled_at.errors }}
@@ -66,6 +66,7 @@
               <div class="help" id="{{ form.scheduled_at.auto_id }}_helptext">
                 {{ form.scheduled_at.help_text|safe }}
               </div>
+              <div class="help ow-schedule-tz-note"></div>
             </div>
           </div>
         </fieldset>
