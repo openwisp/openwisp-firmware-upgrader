@@ -8,6 +8,7 @@ import swapper
 from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models.query import QuerySet
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
@@ -803,6 +804,42 @@ class TestModels(TestUpgraderMixin, TestCase):
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_SUCCESS)
 
+    def test_extraction_status_retries_when_status_changes_concurrently(self):
+        build = self._create_build()
+        image1 = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
+        image2 = self._create_firmware_image(
+            build=build, type=self.TPLINK_4300_IL_IMAGE
+        )
+        FirmwareImage.objects.filter(pk__in=[image1.pk, image2.pk]).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        Build.objects.filter(pk=build.pk).update(status=Build.BUILD_STATUS_ANALYZING)
+        original_update = QuerySet.update
+        state = {"raced": False}
+
+        def racy_update(self, *args, **kwargs):
+            if (
+                not state["raced"]
+                and self.model is Build
+                and kwargs.get("status") == Build.BUILD_STATUS_SUCCESS
+            ):
+                state["raced"] = True
+                FirmwareImage.objects.filter(pk=image2.pk).update(
+                    extraction_status=FirmwareImage.STATUS_FAILED
+                )
+                original_update(
+                    Build.objects.filter(pk=build.pk),
+                    status=Build.BUILD_STATUS_FAILED,
+                )
+                return 0
+            return original_update(self, *args, **kwargs)
+
+        with mock.patch.object(QuerySet, "update", racy_update):
+            build._update_extraction_status()
+
+        build.refresh_from_db()
+        self.assertEqual(build.status, Build.BUILD_STATUS_FAILED)
+
     def test_validate_locked_blocks_field_change_on_success(self):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_SUCCESS
@@ -872,6 +909,29 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(fw.source, "")
         self.assertFalse(storage.exists(old_file_name))
         mock_task.delay.assert_called_once_with(str(fw.pk))
+
+    def test_firmware_image_save_update_fields_preserves_metadata_reset(self):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="TP-Link WDR4300",
+            compatible="tplink,tl-wdr4300-v1",
+            target="ath79/generic",
+            fw_version="23.05.5",
+            compat_version="1.0",
+            source="fwtool",
+        )
+        fw.refresh_from_db()
+        fw.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2)
+        fw.save(update_fields=["file"])
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertEqual(fw.board, "")
+        self.assertEqual(fw.compatible, "")
+        self.assertEqual(fw.target, "")
+        self.assertEqual(fw.fw_version, "")
+        self.assertEqual(fw.compat_version, "")
+        self.assertEqual(fw.source, "")
 
     def test_validate_build_unchanged_blocks_persisted_change(self):
         image = self._create_firmware_image()

@@ -92,7 +92,7 @@ def backfill_board_from_hardware_map(apps, schema_editor):
             FirmwareImage.objects.filter(
                 type=image_type,
                 board="",
-            ).update(
+            ).exclude(extraction_status="in_progress").update(
                 board=boards[0],
                 source="hardware map",
                 extraction_status="manually_confirmed",
@@ -111,7 +111,7 @@ def backfill_board_from_hardware_map(apps, schema_editor):
                 FirmwareImage.objects.filter(
                     type=image_type,
                     board="",
-                ).update(
+                ).exclude(extraction_status="in_progress").update(
                     board=boards[0],
                     source="custom hardware map",
                     extraction_status="manually_confirmed",

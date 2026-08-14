@@ -303,38 +303,54 @@ class AbstractBuild(TimeStampedEditableModel):
     def _update_extraction_status(self):
         Build = load_model("Build")
         FirmwareImage = load_model("FirmwareImage")
-        statuses = set(
-            FirmwareImage.objects.filter(build_id=self.pk).values_list(
-                "extraction_status", flat=True
+        final_statuses = {
+            Build.BUILD_STATUS_SUCCESS,
+            Build.BUILD_STATUS_FAILED,
+            Build.BUILD_STATUS_INVALID,
+            Build.BUILD_STATUS_MANUALLY_CONFIRMED,
+        }
+        for attempt in range(5):
+            current_status = (
+                Build.objects.filter(pk=self.pk)
+                .values_list("status", flat=True)
+                .first()
             )
-        )
-        if not statuses:
-            return
-        analyzing = {FirmwareImage.STATUS_UNCONFIRMED, FirmwareImage.STATUS_IN_PROGRESS}
-        if statuses & analyzing:
-            new_status = self.BUILD_STATUS_ANALYZING
-        elif FirmwareImage.STATUS_INVALID in statuses:
-            new_status = self.BUILD_STATUS_INVALID
-        elif FirmwareImage.STATUS_FAILED in statuses:
-            new_status = self.BUILD_STATUS_FAILED
-        elif FirmwareImage.STATUS_MANUALLY_CONFIRMED in statuses:
-            new_status = self.BUILD_STATUS_MANUALLY_CONFIRMED
-        else:
-            new_status = self.BUILD_STATUS_SUCCESS
-        rows_updated = Build.objects.filter(
-            pk=self.pk, status=self.BUILD_STATUS_ANALYZING
-        ).update(status=new_status)
-        if rows_updated:
-            self.status = new_status
-            if new_status != self.BUILD_STATUS_ANALYZING:
+            if current_status is None:
+                return
+            statuses = set(
+                FirmwareImage.objects.filter(build_id=self.pk).values_list(
+                    "extraction_status", flat=True
+                )
+            )
+            if not statuses:
+                return
+            analyzing = {
+                FirmwareImage.STATUS_UNCONFIRMED,
+                FirmwareImage.STATUS_IN_PROGRESS,
+            }
+            if statuses & analyzing and current_status in final_statuses:
+                self.status = current_status
+                return
+            if statuses & analyzing:
+                new_status = Build.BUILD_STATUS_ANALYZING
+            elif FirmwareImage.STATUS_INVALID in statuses:
+                new_status = Build.BUILD_STATUS_INVALID
+            elif FirmwareImage.STATUS_FAILED in statuses:
+                new_status = Build.BUILD_STATUS_FAILED
+            elif FirmwareImage.STATUS_MANUALLY_CONFIRMED in statuses:
+                new_status = self.BUILD_STATUS_MANUALLY_CONFIRMED
+            else:
+                new_status = self.BUILD_STATUS_SUCCESS
+            if current_status == new_status:
+                self.status = new_status
+                return
+            rows_updated = Build.objects.filter(
+                pk=self.pk, status=current_status
+            ).update(status=new_status)
+            if rows_updated:
+                self.status = new_status
                 self._notify_extraction_complete(new_status)
-            return
-        if new_status == self.BUILD_STATUS_ANALYZING:
-            return
-        Build.objects.filter(pk=self.pk).exclude(status=new_status).update(
-            status=new_status
-        )
-        self.status = new_status
+                return
 
     def _notify_extraction_complete(self, new_status):
         if new_status == self.BUILD_STATUS_INVALID:
@@ -471,6 +487,18 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
             self.fw_version = ""
             self.compat_version = ""
             self.source = ""
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {
+                    "extraction_status",
+                    "extraction_log",
+                    "failure_reason",
+                    "board",
+                    "compatible",
+                    "target",
+                    "fw_version",
+                    "compat_version",
+                    "source",
+                }
         super().save(*args, **kwargs)
         self._original_extraction_status = self.extraction_status
         if old_file_name is not None:

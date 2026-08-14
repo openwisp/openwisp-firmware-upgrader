@@ -15,6 +15,8 @@ from openwisp_firmware_upgrader.swapper import load_model
 
 logger = logging.getLogger(__name__)
 
+_affected_pks = []
+
 
 def _write_multi_board_log(FirmwareImage, image_type, boards):
     boards_str = ", ".join(boards)
@@ -23,14 +25,20 @@ def _write_multi_board_log(FirmwareImage, image_type, boards):
         f"with multiple boards: {boards_str}. "
         "Please set the board field manually to match your devices."
     )
-    affected_count = FirmwareImage.objects.filter(
-        type=image_type, board="", extraction_status="unconfirmed"
-    ).update(
+    candidate_pks = list(
+        FirmwareImage.objects.filter(
+            type=image_type, board="", extraction_status="unconfirmed"
+        ).values_list("pk", flat=True)
+    )
+    if not candidate_pks:
+        return 0
+    FirmwareImage.objects.filter(pk__in=candidate_pks).update(
         extraction_log=Concat("extraction_log", Value(log_suffix)),
         extraction_status="failed",
         failure_reason="unsupported_format",
     )
-    return affected_count
+    _affected_pks.extend(candidate_pks)
+    return len(candidate_pks)
 
 
 def _send_multi_board_notifications(app_config, **kwargs):
@@ -39,10 +47,11 @@ def _send_multi_board_notifications(app_config, **kwargs):
     post_migrate.disconnect(_send_multi_board_notifications)
     FirmwareImage = load_model("FirmwareImage")
     Build = load_model("Build")
-    affected = FirmwareImage.objects.filter(
-        extraction_status="failed",
-        extraction_log__contains="compatible with multiple boards",
-    ).select_related("build__category__organization")
+    if not _affected_pks:
+        return
+    affected = FirmwareImage.objects.filter(pk__in=_affected_pks).select_related(
+        "build__category__organization"
+    )
     affected_build_ids = affected.values_list("build_id", flat=True).distinct()
     for build in Build.objects.filter(pk__in=affected_build_ids):
         build._update_extraction_status()
@@ -85,6 +94,7 @@ def _send_multi_board_notifications(app_config, **kwargs):
 def backfill_board_from_hardware_map(apps, schema_editor):
     FirmwareImage = apps.get_model("firmware_upgrader", "FirmwareImage")
     has_multi_board_images = False
+    _affected_pks.clear()
 
     for image_type, info in OPENWRT_FIRMWARE_IMAGE_MAP.items():
         boards = info["boards"]
@@ -92,7 +102,7 @@ def backfill_board_from_hardware_map(apps, schema_editor):
             FirmwareImage.objects.filter(
                 type=image_type,
                 board="",
-            ).update(
+            ).exclude(extraction_status="in_progress").update(
                 board=boards[0],
                 source="hardware map",
                 extraction_status="manually_confirmed",
@@ -111,7 +121,7 @@ def backfill_board_from_hardware_map(apps, schema_editor):
                 FirmwareImage.objects.filter(
                     type=image_type,
                     board="",
-                ).update(
+                ).exclude(extraction_status="in_progress").update(
                     board=boards[0],
                     source="custom hardware map",
                     extraction_status="manually_confirmed",

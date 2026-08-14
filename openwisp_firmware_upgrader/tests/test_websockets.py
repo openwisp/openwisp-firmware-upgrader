@@ -748,7 +748,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             FirmwareExtractionConsumer.as_asgi(),
             f"/ws/firmware-upgrader/firmware-image/{image.pk}/",
         )
-        communicator.scope["url_scope"] = {"kwargs": {"image_id": str(image.pk)}}
+        communicator.scope["url_route"] = {"kwargs": {"image_id": str(image.pk)}}
         communicator.scope["user"] = administrator
         connected, _ = await communicator.connect()
         self.assertFalse(
