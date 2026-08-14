@@ -410,7 +410,6 @@ class FirmwareImageAdmin(BaseAdmin):
         locked_pks = list(
             queryset.filter(
                 extraction_status__in=[
-                    FirmwareImage.STATUS_IN_PROGRESS,
                     FirmwareImage.STATUS_MANUALLY_CONFIRMED,
                 ]
             ).values_list("pk", flat=True)
@@ -420,7 +419,7 @@ class FirmwareImageAdmin(BaseAdmin):
                 request,
                 _(
                     "%(count)d image(s) were skipped because their metadata is "
-                    "already confirmed or extraction is currently in progress."
+                    "already confirmed."
                 )
                 % {"count": len(locked_pks)},
                 messages.WARNING,

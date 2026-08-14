@@ -413,7 +413,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             )
             self.assertEqual(image_in_progress_upgrade.board, "TP-Link WDR4300")
 
-        with self.subTest("skips image currently being extracted"):
+        with self.subTest("reclaims image stuck in progress"):
             image_extracting = self._create_firmware_image(
                 build=build, type=self.TPLINK_4300_IL_IMAGE
             )
@@ -433,10 +433,10 @@ class TestAdmin(BaseTestAdmin, TestCase):
                         },
                         follow=True,
                     )
-            mocked_delay.assert_not_called()
+            mocked_delay.assert_called_once_with(image_extracting.pk)
             image_extracting.refresh_from_db()
             self.assertEqual(
-                image_extracting.extraction_status, FirmwareImage.STATUS_IN_PROGRESS
+                image_extracting.extraction_status, FirmwareImage.STATUS_UNCONFIRMED
             )
 
         with self.subTest("skips confirmed image and does not wipe its metadata"):

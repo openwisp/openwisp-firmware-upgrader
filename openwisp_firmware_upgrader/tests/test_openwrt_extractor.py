@@ -278,6 +278,22 @@ class TestLocateDtb(TestCase):
         bad_dtb = DTB_MAGIC + struct.pack(">I", DTB_MIN_SIZE - 1) + b"\x00" * 60
         self.assertIsNone(self.extractor._locate_dtb(b"\x00" * 100 + bad_dtb))
 
+    def test_scan_stops_after_max_probes(self):
+        random = (
+            DTB_MAGIC
+            + struct.pack(">I", DTB_MIN_SIZE + 1)
+            + b"\xff" * (DTB_MIN_SIZE + 1 - 8)
+        )
+        real_dtb = TestTryExtractDtbFromKernel._make_dtb(model="Beyond Cap")
+        data = random * 10 + real_dtb
+        # generous cap, the real dtb is still reachable
+        result = self.extractor._locate_dtb(data)
+        self.assertIsNotNone(result)
+        # tight cap, scan gives up before reaching the real dtb
+        with mock.patch("openwisp_firmware_upgrader.settings.MAX_DEEP_SCAN_PROBES", 5):
+            result = self.extractor._locate_dtb(data)
+        self.assertIsNone(result)
+
 
 class TestTryExtractDtbFromKernel(TestCase):
     @staticmethod
@@ -674,6 +690,37 @@ class TestReadKernelFromTar(TestCase):
         finally:
             os.unlink(path)
         self.assertIsNone(result)
+
+    def _write_gzip_tar(self, members):
+        tar_path = self._write_tar(members)
+        with open(tar_path, "rb") as f:
+            raw = f.read()
+        os.unlink(tar_path)
+        f = tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False)
+        f.write(gzip.compress(raw))
+        f.close()
+        return f.name
+
+    def test_gzip_compressed_tar_extracts_kernel(self):
+        payload = DTB_MAGIC + b"\x00" * 60
+        path = self._write_gzip_tar([("sysupgrade-kernel", payload)])
+        try:
+            result = OpenWrtMetadataExtractor(path)._read_kernel_from_tar()
+        finally:
+            os.unlink(path)
+        self.assertEqual(result, payload)
+
+    def test_compressed_tar_bomb_raises_before_tarfile_parses(self):
+        path = self._write_gzip_tar([("kernel.bin", b"\x00" * 2000)])
+        try:
+            extractor = OpenWrtMetadataExtractor(path)
+            with mock.patch(
+                "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_BYTES", 512
+            ):
+                with self.assertRaises(DecompressionLimitExceeded):
+                    extractor._read_kernel_from_tar()
+        finally:
+            os.unlink(path)
 
 
 class TestRealFirmwareExtraction(TestCase):

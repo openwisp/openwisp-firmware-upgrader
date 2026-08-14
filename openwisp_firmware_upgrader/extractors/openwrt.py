@@ -260,10 +260,16 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
 
     def _iterate_dtb_candidates(self, data, start=0):
         offset = start
+        probes = 0
         while True:
             pos = data.find(DTB_MAGIC, offset)
-            if pos == -1 or pos + 8 > len(data):
+            if (
+                pos == -1
+                or pos + 8 > len(data)
+                or probes >= app_settings.MAX_DEEP_SCAN_PROBES
+            ):
                 return
+            probes += 1
             total_size = struct.unpack_from(">I", data, pos + 4)[0]
             end = pos + total_size
             if DTB_MIN_SIZE < total_size < DTB_MAX_SIZE and end <= len(data):
@@ -380,8 +386,16 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         return data
 
     def _read_kernel_from_tar(self):
+        with open(self.image_path, "rb") as f:
+            raw = f.read()
+        decompressed = None
+        for _, decompress_fn in self._decompressors():
+            decompressed = decompress_fn(raw)
+            if decompressed is not None:
+                break
+        tar_bytes = decompressed if decompressed is not None else raw
         try:
-            with tarfile.open(self.image_path, "r:*") as tf:
+            with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tf:
                 for member in tf.getmembers():
                     name = member.name.lower()
                     if "kernel" in name or name.endswith(".bin"):
@@ -394,7 +408,6 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                                     f"{self._format_size(app_settings.MAX_KERNEL_BYTES)}."
                                 )
                             return data
-
         except tarfile.TarError:
             pass
         return None
