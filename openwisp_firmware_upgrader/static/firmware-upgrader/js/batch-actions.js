@@ -103,6 +103,39 @@ django.jQuery(function ($) {
   const dateInput = form.find('input[name="scheduled_at_0"]');
   const timeInput = form.find('input[name="scheduled_at_1"]');
 
+  function pad(value) {
+    return String(value).padStart(2, "0");
+  }
+
+  // Interpret the schedule in the browser timezone: show the stored UTC value
+  // as local time and relabel the picker note.
+  const scheduledUtc = form.data("scheduled-utc");
+  if (scheduledUtc) {
+    const local = new Date(scheduledUtc);
+    if (!isNaN(local.getTime())) {
+      dateInput.val(
+        local.getFullYear() +
+          "-" +
+          pad(local.getMonth() + 1) +
+          "-" +
+          pad(local.getDate()),
+      );
+      timeInput.val(pad(local.getHours()) + ":" + pad(local.getMinutes()));
+    }
+  }
+  let browserTz = "";
+  try {
+    browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch (error) {
+    browserTz = "";
+  }
+  const serverTz = form.data("server-tz") || "";
+  let tzText = interpolate(gettext("Entered in your timezone (%s)."), [browserTz]);
+  if (serverTz) {
+    tzText += " " + interpolate(gettext("The server runs in %s."), [serverTz]);
+  }
+  form.find(".ow-schedule-tz-note").text(tzText);
+
   toggle.on("click", function () {
     const opening = form.hasClass("ow-hide");
     form.toggleClass("ow-hide", !opening);
@@ -118,11 +151,12 @@ django.jQuery(function ($) {
   });
 
   $("#batch-reschedule-save").on("click", function () {
-    // The two split inputs carry the localized wall-clock; the server reads
-    // them in its own timezone, matching the create/confirmation form.
+    // The two split inputs carry the wall-clock the user typed; the browser
+    // offset lets the server re-anchor it to the user's timezone.
     post(owBatchRescheduleUrl, {
       scheduled_at_0: dateInput.val(),
       scheduled_at_1: timeInput.val(),
+      scheduled_at_tz_offset: new Date().getTimezoneOffset(),
       group: $("#batch-reschedule-group").val() || null,
       location: $("#batch-reschedule-location").val() || null,
       is_persistent: $("#batch-reschedule-persistent").is(":checked"),

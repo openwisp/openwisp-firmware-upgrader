@@ -8,6 +8,7 @@ from openwisp_users.api.mixins import FilterSerializerByOrgManaged
 from openwisp_utils.api.serializers import ValidatedModelSerializer
 
 from ..swapper import load_model
+from ..utils import reanchor_wall_clock_to_utc
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Build = load_model("Build")
@@ -105,22 +106,34 @@ class BatchUpgradeRescheduleSerializer(BatchUpgradeSerializer):
         read_only_fields = ("build", "upgrade_options")
 
     def to_internal_value(self, data):
-        # The admin panel posts the two AdminSplitDateTime inputs; combine them
-        # via the create form's field so the wall-clock is read in the server
-        # timezone. A direct scheduled_at (API clients) is left untouched.
+        # The admin panel posts the two AdminSplitDateTime inputs plus the
+        # browser UTC offset; combine the wall-clock and re-anchor it to the
+        # user's timezone. A direct scheduled_at (API clients) is left untouched.
         if "scheduled_at_0" in data or "scheduled_at_1" in data:
             data = data.copy() if hasattr(data, "copy") else dict(data)
             date_value = data.get("scheduled_at_0") or ""
             time_value = data.get("scheduled_at_1") or ""
+            offset = data.get("scheduled_at_tz_offset")
             data.pop("scheduled_at_0", None)
             data.pop("scheduled_at_1", None)
+            data.pop("scheduled_at_tz_offset", None)
             if date_value or time_value:
                 try:
-                    data["scheduled_at"] = forms.SplitDateTimeField(
-                        required=False
-                    ).clean([date_value, time_value])
+                    wall_clock = forms.SplitDateTimeField(required=False).clean(
+                        [date_value, time_value]
+                    )
                 except DjangoValidationError as error:
                     raise serializers.ValidationError({"scheduled_at": error.messages})
+                try:
+                    offset = int(offset)
+                except (TypeError, ValueError):
+                    offset = None
+                if wall_clock is not None and offset is not None:
+                    data["scheduled_at"] = reanchor_wall_clock_to_utc(
+                        wall_clock, offset
+                    )
+                else:
+                    data["scheduled_at"] = wall_clock
             else:
                 data["scheduled_at"] = None
         return super().to_internal_value(data)

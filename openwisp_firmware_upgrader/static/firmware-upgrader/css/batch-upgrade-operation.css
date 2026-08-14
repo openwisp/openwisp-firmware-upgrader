@@ -366,3 +366,9 @@
     max-width: none;
   }
 }
+
+/* the reschedule time is entered in the browser timezone, so Django's
+   server-time warning does not apply */
+#batch-reschedule-form .timezonewarning {
+  display: none;
+}

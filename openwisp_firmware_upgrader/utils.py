@@ -1,10 +1,20 @@
 import logging
+from datetime import timedelta, timezone
 
 from django.utils.module_loading import import_string
 
 from . import settings as app_settings
 
 logger = logging.getLogger(__name__)
+
+
+def reanchor_wall_clock_to_utc(wall_clock, offset_minutes):
+    """
+    Treats ``wall_clock`` (a naive datetime) as entered in a browser whose
+    UTC offset is ``offset_minutes`` (the value of JavaScript's
+    ``Date.getTimezoneOffset()``) and returns the equivalent UTC datetime.
+    """
+    return (wall_clock + timedelta(minutes=offset_minutes)).replace(tzinfo=timezone.utc)
 
 
 def get_upgrader_schema_for_device(device):
