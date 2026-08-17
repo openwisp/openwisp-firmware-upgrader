@@ -60,7 +60,11 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         magic_bytes = struct.pack(">I", FWIMAGE_MAGIC)
         view = memoryview(data)
         offset = file_size - TRAILER_SIZE
+        probes = 0
         while offset >= 0:
+            if probes >= app_settings.MAX_TRAILER_PROBES:
+                break
+            probes += 1
             offset = data.rfind(magic_bytes, 0, offset + len(magic_bytes))
             if offset == -1:
                 break
@@ -206,20 +210,26 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             ),
         ]
 
-    def _deep_scan_for_dtb(self, data):
+    def _deep_scan_for_dtb(self, data, budget=None):
+        if budget is None:
+            budget = [app_settings.MAX_DEEP_SCAN_PROBES]
         memlimit = app_settings.MAX_DECOMPRESSED_BYTES
         for magic, decompress_fn in self._decompressors():
             offset = 0
             probes = 0
             while True:
                 pos = data.find(magic, offset)
-                if pos == -1 or probes >= app_settings.MAX_DEEP_SCAN_PROBES:
+                if (
+                    pos == -1
+                    or probes >= app_settings.MAX_DEEP_SCAN_PROBES
+                    or budget[0] <= 0
+                ):
                     break
                 probes += 1
                 try:
                     decompressed = decompress_fn(data[pos:])
                     if decompressed:
-                        dtb = self._locate_dtb(decompressed)
+                        dtb = self._locate_dtb(decompressed, budget=budget)
                         if dtb is not None:
                             return dtb
                 except DecompressionLimitExceeded:
@@ -235,7 +245,11 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             probes = 0
             while True:
                 pos = data.find(dict_sig, offset)
-                if pos == -1 or probes >= app_settings.MAX_DEEP_SCAN_PROBES:
+                if (
+                    pos == -1
+                    or probes >= app_settings.MAX_DEEP_SCAN_PROBES
+                    or budget[0] <= 0
+                ):
                     break
                 probes += 1
                 try:
@@ -247,7 +261,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                         ),
                     )
                     if decompressed:
-                        dtb = self._locate_dtb(decompressed)
+                        dtb = self._locate_dtb(decompressed, budget=budget)
                         if dtb is not None:
                             return dtb
                 except DecompressionLimitExceeded:
@@ -258,18 +272,15 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 offset = pos + 1
         return None
 
-    def _iterate_dtb_candidates(self, data, start=0):
+    def _iterate_dtb_candidates(self, data, start=0, budget=None):
+        if budget is None:
+            budget = [app_settings.MAX_DEEP_SCAN_PROBES]
         offset = start
-        probes = 0
         while True:
             pos = data.find(DTB_MAGIC, offset)
-            if (
-                pos == -1
-                or pos + 8 > len(data)
-                or probes >= app_settings.MAX_DEEP_SCAN_PROBES
-            ):
+            if pos == -1 or pos + 8 > len(data) or budget[0] <= 0:
                 return
-            probes += 1
+            budget[0] -= 1
             total_size = struct.unpack_from(">I", data, pos + 4)[0]
             end = pos + total_size
             if DTB_MIN_SIZE < total_size < DTB_MAX_SIZE and end <= len(data):
@@ -281,8 +292,8 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                     pass
             offset = pos + 1
 
-    def _dtb_from_fit(self, data):
-        for candidate, dt in self._iterate_dtb_candidates(data, start=4):
+    def _dtb_from_fit(self, data, budget=None):
+        for candidate, dt in self._iterate_dtb_candidates(data, start=4, budget=budget):
             try:
                 root = dt.get_node("/")
                 if any(p.name in ("model", "compatible") for p in root.props):
@@ -291,9 +302,11 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 pass
         return None
 
-    def _locate_dtb(self, kernel_data):
+    def _locate_dtb(self, kernel_data, budget=None):
+        if budget is None:
+            budget = [app_settings.MAX_DEEP_SCAN_PROBES]
         fit_candidate = None
-        for candidate, dt in self._iterate_dtb_candidates(kernel_data):
+        for candidate, dt in self._iterate_dtb_candidates(kernel_data, budget=budget):
             try:
                 root = dt.get_node("/")
                 prop_names = {p.name for p in root.props}
@@ -309,7 +322,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             except Exception:
                 pass
         if fit_candidate is not None:
-            return self._dtb_from_fit(fit_candidate)
+            return self._dtb_from_fit(fit_candidate, budget=budget)
         return None
 
     def _prop_str(self, value):
@@ -430,9 +443,10 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             )
         if decompressed is None:
             decompressed = stripped
-        dtb = self._locate_dtb(decompressed)
+        budget = [app_settings.MAX_DEEP_SCAN_PROBES]
+        dtb = self._locate_dtb(decompressed, budget=budget)
         if dtb is None:
-            dtb = self._deep_scan_for_dtb(decompressed)
+            dtb = self._deep_scan_for_dtb(decompressed, budget=budget)
         return dtb
 
     def extract_from_dtb(self):

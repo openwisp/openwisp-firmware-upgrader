@@ -424,6 +424,21 @@ class TestTryExtractDtbFromKernel(TestCase):
             self.extractor._metadata_from_dtb(result)["model"], "FIT Device"
         )
 
+    def test_deep_scan_shares_dtb_candidate_budget_with_top_level_scan(self):
+        false_candidate = (
+            DTB_MAGIC
+            + struct.pack(">I", DTB_MIN_SIZE + 1)
+            + b"\xff" * (DTB_MIN_SIZE + 1 - 8)
+        )
+        inner_false = gzip.compress(false_candidate * 60)
+        kernel = false_candidate * 60 + inner_false
+        with mock.patch(
+            "openwisp_firmware_upgrader.settings.MAX_DEEP_SCAN_PROBES", 64
+        ), mock.patch("fdt.parse_dtb", wraps=fdt.parse_dtb) as mock_parse:
+            result = self.extractor._try_extract_dtb_from_kernel(kernel)
+        self.assertIsNone(result)
+        self.assertLessEqual(mock_parse.call_count, 64)
+
 
 class TestExtractOverride(TestCase):
     _PATH = "/path/to/ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
@@ -651,6 +666,35 @@ class TestExtractFwtoolMetadata(TestCase):
             os.unlink(path)
         self.assertIsNotNone(result)
         self.assertEqual(result["version"]["board"], "tplink,tl-wdr4300-v1")
+
+    def test_many_false_trailers_bounds_crc32_calls(self):
+        meta = {"version": {"board": "x", "target": "x", "version": "x"}}
+        real_image = self._build_image(meta)
+        fake_trailer = struct.pack(
+            TRAILER_FORMAT,
+            FWIMAGE_MAGIC,
+            0,
+            FWIMAGE_INFO,
+            b"\x00\x00\x00",
+            TRAILER_SIZE + 16,
+        )
+        # a lot of plausible but fake trailers, placed after the real
+        # image so the backward scan hits everry decoy before it would
+        # ever reach the genuine trailer
+        data = real_image + fake_trailer * 5000
+        path = self._write_image(data)
+        try:
+            with mock.patch(
+                "openwisp_firmware_upgrader.settings.MAX_TRAILER_PROBES", 10
+            ), mock.patch(
+                "openwisp_firmware_upgrader.extractors.openwrt.zlib.crc32",
+                wraps=zlib.crc32,
+            ) as mock_crc32:
+                result = OpenWrtMetadataExtractor(path)._extract_fwtool_metadata()
+            self.assertIsNone(result)
+            self.assertLessEqual(mock_crc32.call_count, 10)
+        finally:
+            os.unlink(path)
 
 
 class TestReadKernelFromTar(TestCase):
