@@ -1062,6 +1062,34 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 msg_prefix="Firmware image multi-tenancy test failed",
             )
 
+        with self.subTest("add form build choices exclude shared builds"):
+            shared_build = self._create_build(
+                category=self._create_category(
+                    name="Shared Multitenancy Category", organization=None
+                ),
+                version="2.0",
+            )
+            add_url = reverse(f"admin:{self.app_label}_firmwareimage_add")
+            response = self.client.get(add_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(
+                response,
+                f'<option value="{shared_build.pk}"',
+                msg_prefix="Firmware image multi-tenancy test failed",
+            )
+
+        with self.subTest("posting a shared build as non-superuser is rejected"):
+            data = {
+                "build": str(shared_build.pk),
+                "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+                "type": self.TPLINK_4300_IMAGE,
+                "_save": "Save",
+            }
+            response = self.client.post(add_url, data)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "errorlist")
+            self.assertFalse(FirmwareImage.objects.filter(build=shared_build).exists())
+
     def test_empty_device_firmware_image(self):
         self._login()
         device = self._create_device_with_connection()
@@ -1616,6 +1644,19 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_firmware_image_fieldsets_shows_failure_reason_when_failed(self):
         fw = self._create_firmware_image()
         fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.failure_reason = FirmwareImage.FAILURE_UNSUPPORTED
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertIn("failure_reason_display", all_fields)
+
+    def test_firmware_image_fieldsets_shows_failure_reason_when_invalid(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INVALID
+        fw.failure_reason = FirmwareImage.FAILURE_INVALID
         fw.save()
         request = MockRequest()
         request.user = User.objects.first()

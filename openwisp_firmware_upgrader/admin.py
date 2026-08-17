@@ -14,7 +14,6 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
-from django.db.models import Q
 from django.forms.formsets import DELETION_FIELD_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -311,18 +310,18 @@ class FirmwareImageAdmin(BaseAdmin):
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "build" and not request.user.is_superuser:
             kwargs["queryset"] = Build.objects.filter(
-                Q(category__organization__in=request.user.organizations_managed)
-                | Q(category__organization__isnull=True)
+                category__organization__in=request.user.organizations_managed
             )
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = list(super().get_fieldsets(request, obj))
+        has_failure_reason = obj and bool(obj.failure_reason)
         is_failed = obj and obj.extraction_status == FirmwareImage.STATUS_FAILED
         result = []
         for title, opts in fieldsets:
             fields = list(opts["fields"])
-            if not is_failed:
+            if not has_failure_reason:
                 fields = [f for f in fields if f != "failure_reason_display"]
             if is_failed:
                 fields = [
