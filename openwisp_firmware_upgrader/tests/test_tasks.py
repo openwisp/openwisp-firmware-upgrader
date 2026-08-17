@@ -2,11 +2,13 @@ import uuid
 from unittest import mock
 
 from celery.exceptions import SoftTimeLimitExceeded
+from django.db.models.query import QuerySet
 from django.test import TransactionTestCase
 from openwisp_notifications.swapper import load_model as load_notification_model
 
 from openwisp_utils.tests import capture_any_output
 
+from .. import settings as app_settings
 from .. import tasks
 from ..extractors.exceptions import DecompressionLimitExceeded, UnsupportedImageError
 from ..swapper import load_model
@@ -486,3 +488,64 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         tasks.extract_firmware_metadata.run(str(image.pk))
         mock_create_firmwares.delay.assert_called_once_with(str(image.pk))
+
+    @mock.patch(
+        "openwisp_firmware_upgrader.tasks._dispatch_unconfirmed_extractions_chunk.delay"
+    )
+    def test_queue_unconfirmed_extractions_dispatch_in_chunks(self, mock_delay):
+        image1 = self._create_firmware_image()
+        image2 = self._create_firmware_image(build=self._create_build(version="0.2"))
+        image3 = self._create_firmware_image(build=self._create_build(version="0.3"))
+        FirmwareImage.objects.filter(pk__in=[image1.pk, image2.pk, image3.pk]).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        with mock.patch.object(app_settings, "QUEUE_UNCONFIRMED_CHUNK_SIZE", 2):
+            tasks.queue_unconfirmed_extractions.run()
+        self.assertEqual(mock_delay.call_count, 2)
+        dispatched_pks = [
+            pk for call in mock_delay.call_args_list for pk in call.args[0]
+        ]
+        self.assertEqual(set(dispatched_pks), {image1.pk, image2.pk, image3.pk})
+        self.assertEqual(len(dispatched_pks), 3)
+        chunk_size = sorted(len(call.args[0]) for call in mock_delay.call_args_list)
+        self.assertEqual(chunk_size, [1, 2])
+
+    @capture_any_output()
+    def test_extract_firmware_metadata_persist_failure_notifies_and_publishes(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        original_update = QuerySet.update
+
+        def flaky_update(self, *args, **kwargs):
+            if self.model is FirmwareImage and "board" in kwargs:
+                raise Exception("simulated persist failure")
+            return original_update(self, *args, **kwargs)
+
+        with mock.patch(_MOCK_EXTRACTOR) as MockExtractor, mock.patch.object(
+            QuerySet, "update", flaky_update
+        ), mock.patch(
+            "openwisp_firmware_upgrader.tasks.FirmwareExtractionPublisher"
+        ) as MockPublisher, mock.patch(
+            _MOCK_NOTIFY
+        ) as mock_notify:
+            MockExtractor.return_value.extract.return_value = {
+                "model": "TP-Link WDR4300",
+                "compatible": ["tplink,tl-wdr4300-v1"],
+                "target": "ath79/generic",
+                "version": "23.05.5",
+                "compat_version": "1.0",
+                "source": "fwtool",
+            }
+            tasks.extract_firmware_metadata.run(str(image.pk))
+
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_INVALID)
+        self.assertEqual(image.failure_reason, FirmwareImage.FAILURE_INVALID)
+        self.assertTrue(image.extraction_log)
+        MockPublisher.return_value.publish_status.assert_called_once_with(
+            FirmwareImage.STATUS_INVALID
+        )
+        mock_notify.assert_called_once()
+        self.assertEqual(mock_notify.call_args.kwargs["level"], "error")

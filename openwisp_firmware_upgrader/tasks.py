@@ -304,15 +304,48 @@ def extract_firmware_metadata(self, image_pk):
             "extract_firmware_metadata: failed to persist result for pk=%s",
             image_pk,
         )
+        log_lines.append("[!] Failed to save extraction result. Manual input required.")
         FirmwareImage.objects.filter(
             pk=image_pk,
             extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
         ).update(
             extraction_status=FirmwareImage.STATUS_INVALID,
             failure_reason=FirmwareImage.FAILURE_INVALID,
+            extraction_log="\n".join(log_lines),
         )
         try:
-            fresh = FirmwareImage.objects.select_related("build").get(pk=image_pk)
+            FirmwareExtractionPublisher(image_pk).publish_status(
+                FirmwareImage.STATUS_INVALID
+            )
+        except Exception:
+            logger.exception(
+                "Failed to publish extraction status via WebSocket for image %s",
+                image_pk,
+            )
+        try:
+            fresh = FirmwareImage.objects.select_related(
+                "build", "build__category"
+            ).get(pk=image_pk)
+        except Exception:
+            logger.exception(
+                "Failed to re-fetch image %s for post-extraction steps",
+                image_pk,
+            )
+            return
+        failure_reason_choices = dict(FirmwareImage.FAILURE_REASON_CHOICES)
+        reason_display = failure_reason_choices.get(
+            FirmwareImage.FAILURE_INVALID, _("unknown error")
+        )
+        _notify_image(
+            fresh,
+            "error",
+            _(
+                'Metadata extraction failed for <a href="{url}">{image}</a>: '
+                "{reason}. Enter the metadata manually or re-upload the image."
+            ),
+            reason=reason_display,
+        )
+        try:
             fresh.build._update_extraction_status()
         except Exception:
             logger.exception(
@@ -320,6 +353,7 @@ def extract_firmware_metadata(self, image_pk):
                 image_pk,
             )
         return
+
     if not completed:
         return
 
@@ -392,6 +426,12 @@ def extract_firmware_metadata(self, image_pk):
 
 
 @shared_task(base=OpenwispCeleryTask)
+def _dispatch_unconfirmed_extractions_chunk(pks):
+    for pk in pks:
+        extract_firmware_metadata.delay(pk)
+
+
+@shared_task(base=OpenwispCeleryTask)
 def queue_unconfirmed_extractions():
     FirmwareImage = load_model("FirmwareImage")
     pks = list(
@@ -399,5 +439,9 @@ def queue_unconfirmed_extractions():
             extraction_status=FirmwareImage.STATUS_UNCONFIRMED
         ).values_list("pk", flat=True)
     )
-    for pk in pks:
-        extract_firmware_metadata.delay(pk)
+    # dispatch in chunks instead of one .delay() per pk, to avoid flooding
+    # the broker on installs with a large backlog of unconfirmed images
+    chunk_size = app_settings.QUEUE_UNCONFIRMED_CHUNK_SIZE
+    for i in range(0, len(pks), chunk_size):
+        chunk = pks[i : i + chunk_size]
+        _dispatch_unconfirmed_extractions_chunk.delay(chunk)
