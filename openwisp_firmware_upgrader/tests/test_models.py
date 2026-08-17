@@ -727,6 +727,22 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(batch.build, env["build2"])
             self.assertEqual(batch.status, "success")
 
+    @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.delay")
+    def test_upgrade_related_devices_query_count(self, _mocked_delay):
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(build=env["build2"])
+        with self.assertNumQueries(43):
+            batch.upgrade(firmwareless=False)
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+
+    @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.delay")
+    def test_upgrade_firmwareless_devices_query_count(self, _mocked_delay):
+        env = self._create_upgrade_env(device_firmware=False)
+        batch = BatchUpgradeOperation.objects.create(build=env["build2"])
+        with self.assertNumQueries(43):
+            batch.upgrade(firmwareless=True)
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+
     @mock.patch(_mock_updrade, return_value=True)
     def test_upgrade_firmwareless_devices(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
@@ -1451,9 +1467,12 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
         with self.subTest("DeviceFirmware.save(upgrade=True) raises and creates no op"):
             uo_count = UpgradeOperation.objects.count()
-            device_fw.installed = False
-            with self.assertRaises(ValidationError):
-                device_fw.full_clean()
+            previous_image_id = device_fw.image_id
+            previous_installed = device_fw.installed
+            build = self._create_build(
+                category=device_fw.image.build.category, version="0.2"
+            )
+            device_fw.image = self._create_firmware_image(build=build)
             with self.assertRaises(ValidationError) as cm:
                 device_fw.save(upgrade=True)
             self.assertIn(
@@ -1461,3 +1480,6 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
                 str(cm.exception),
             )
             self.assertEqual(UpgradeOperation.objects.count(), uo_count)
+            device_fw.refresh_from_db()
+            self.assertEqual(device_fw.image_id, previous_image_id)
+            self.assertEqual(device_fw.installed, previous_installed)

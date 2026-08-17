@@ -1595,7 +1595,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 0)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(24):
+        with self.assertNumQueries(26):
             data = {"image": image1a.pk}
             # This API view allows the creation
             # of new devicefirmware objects with
@@ -1633,7 +1633,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
         self.client.force_login(self.administrator)
-        with self.assertNumQueries(23):
+        with self.assertNumQueries(25):
             data = {"image": shared_image.pk}
             r = self.client.put(
                 f"{path}?format=api", data, content_type="application/json"
@@ -1663,7 +1663,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(21):
+        with self.assertNumQueries(23):
             data = {"image": image2a.pk}
             r = self.client.put(
                 f"{url}?format=api", data, content_type="application/json"
@@ -1702,7 +1702,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(DeviceFirmware.objects.count(), 2)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
 
-        with self.assertNumQueries(21):
+        with self.assertNumQueries(23):
             data = {"image": image2a.pk}
             r = self.client.patch(
                 f"{url}?format=api", data, content_type="application/json"
@@ -1895,19 +1895,11 @@ class TestDeviceFirmwareImageViewsTransaction(
             self.assertEqual(response.status_code, 403)
 
         with self.subTest(
-            "Test superuser cannot delete DeviceFirmwareImage of a deactivated device"
+            "Test superuser can delete DeviceFirmwareImage of a disabled organization"
         ):
-            # Disabling the organization cascades into deactivating its
-            # devices (see openwisp-controller's `organization_disabled`
-            # handler), and a deactivated device blocks all non-GET/HEAD
-            # requests regardless of the requesting user's role.
             response = self.client.delete(url)
-            self.assertEqual(response.status_code, 403)
-            self.assertEqual(
-                response.data["detail"],
-                "Firmware upgrades are not allowed for deactivated devices.",
-            )
-            self.assertEqual(DeviceFirmware.objects.count(), 1)
+            self.assertEqual(response.status_code, 204)
+            self.assertEqual(DeviceFirmware.objects.count(), 0)
 
 
 class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):

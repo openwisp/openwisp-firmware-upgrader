@@ -210,6 +210,12 @@ Upgrades all the devices related to the specified build ID.
 
     POST /api/v1/firmware-upgrader/build/{id}/upgrade/
 
+.. note::
+
+    If the firmware category belongs to a disabled organization, the
+    request is rejected with ``403 Forbidden``. For shared categories,
+    devices in disabled organizations are skipped.
+
 **Optional Parameters**
 
 The batch upgrade operation accepts the following optional parameters in
@@ -374,6 +380,11 @@ firmware if it does not already exist.
 .. code-block:: text
 
     PUT /api/v1/firmware-upgrader/device/{device_id}/firmware/
+
+.. note::
+
+    Requests that create or update device firmware for a disabled
+    organization are rejected with ``403 Forbidden``.
 
 Get Device Firmware Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

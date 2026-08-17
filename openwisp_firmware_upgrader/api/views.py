@@ -396,7 +396,11 @@ class DeviceFirmwareDetailView(
                 # PATCH requests where the object does not exist should still
                 # return a 404 response.
                 raise
-        if self.request.method not in ("GET", "HEAD") and obj.device.is_deactivated():
+        if (
+            self.request.method not in ("GET", "HEAD")
+            and obj.device.is_deactivated()
+            and obj.device.organization.is_active
+        ):
             raise PermissionDenied(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
         return obj
 
