@@ -26,12 +26,6 @@ def _run_coroutine_safely(coro):
     """
     try:
         asyncio.get_running_loop()
-        if asyncio.iscoroutine(coro):
-            task = asyncio.create_task(coro)
-        else:
-            task = asyncio.create_task(coro())
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
         if asyncio.iscoroutine(coro):
 
@@ -41,6 +35,13 @@ def _run_coroutine_safely(coro):
             async_to_sync(wrapper)()
         else:
             async_to_sync(coro)()
+    else:
+        if asyncio.iscoroutine(coro):
+            task = asyncio.create_task(coro)
+        else:
+            task = asyncio.create_task(coro())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
 
 class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):

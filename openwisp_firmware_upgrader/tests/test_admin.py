@@ -340,7 +340,10 @@ class TestAdmin(BaseTestAdmin, TestCase):
         image_flashed = self._create_firmware_image(
             build=build, type=self.TPLINK_4300_IL_IMAGE
         )
-        FirmwareImage.objects.filter(pk__in=[image_safe.pk, image_flashed.pk]).update(
+        FirmwareImage.objects.filter(pk=image_safe.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+        )
+        FirmwareImage.objects.filter(pk=image_flashed.pk).update(
             extraction_status=FirmwareImage.STATUS_SUCCESS
         )
         device = self._create_config(
@@ -468,6 +471,35 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 FirmwareImage.STATUS_MANUALLY_CONFIRMED,
             )
             self.assertEqual(confirmed_image.board, "Generic x86")
+
+        with self.subTest("skips successfully-extracted image"):
+            success_image = self._create_firmware_image(
+                build=self._create_build(version="8.8")
+            )
+            FirmwareImage.objects.filter(pk=success_image.pk).update(
+                extraction_status=FirmwareImage.STATUS_SUCCESS,
+                board="TP-Link WDR4300",
+                source="fwtool",
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(success_image.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_not_called()
+            success_image.refresh_from_db()
+            self.assertEqual(
+                success_image.extraction_status, FirmwareImage.STATUS_SUCCESS
+            )
+            self.assertEqual(success_image.board, "TP-Link WDR4300")
 
     def test_re_extract_metadata_action_skips_referenced_images(self):
         self._login()

@@ -409,9 +409,7 @@ class FirmwareImageAdmin(BaseAdmin):
             queryset = queryset.exclude(pk__in=blocked_pks)
         locked_pks = list(
             queryset.filter(
-                extraction_status__in=[
-                    FirmwareImage.STATUS_MANUALLY_CONFIRMED,
-                ]
+                extraction_status__in=FirmwareImage.LOCKED_STATUSES,
             ).values_list("pk", flat=True)
         )
         if locked_pks:
