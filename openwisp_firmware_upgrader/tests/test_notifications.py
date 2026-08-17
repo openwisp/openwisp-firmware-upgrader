@@ -78,6 +78,8 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         count = QuerySet.count
         status_changed = False
 
+        # Mark the batch failed after selection but before claiming its reminder,
+        # so this test verifies that stale reminders are not sent.
         def fail_batch_before_claim(queryset):
             nonlocal status_changed
             if queryset.model is UpgradeOperation and not status_changed:

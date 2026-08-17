@@ -84,6 +84,7 @@ The list of batch upgrade operations provides the following filters:
 
 - ``build`` (Firmware build ID)
 - ``status`` (One of: idle, in-progress, success, failed, cancelled)
+- ``is_persistent`` (true or false)
 
 Here's a few examples:
 
@@ -91,6 +92,7 @@ Here's a few examples:
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?build={build_id}
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status={status}
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?is_persistent=true
 
 Get Mass Upgrade Operation Detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

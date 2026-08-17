@@ -231,22 +231,20 @@ Each message uses the following envelope:
 .. code-block:: javascript
 
     {
-        "model": "UpgradeOperation",        // Model identifier
-        "data": {
-            "type": "operation_update",     // Message type identifier
-            "operation": {
-                "id": "<uuid>",             // Operation identifier
-                "device": "<uuid>",         // Device identifier
-                "image": "<uuid>",          // Firmware image identifier
-                "is_persistent": <boolean>,     // Whether the operation retries persistently
-                "retry_count": <integer>,       // Number of retry attempts made
-                "next_retry_at": "<datetime>",  // Next scheduled retry (null if none)
-                "status": "<string>",       // Operation status
-                "log": "<string>",          // Operation log output
-                "progress": <integer>,      // Progress percentage (0–100)
-                "modified": "<datetime>"    // Last modification timestamp
-            }
-        }
+        "type": "operation_update",         // Message type identifier
+        "operation": {
+            "id": "<uuid>",                 // Operation identifier
+            "device": "<uuid>",             // Device identifier
+            "image": "<uuid>",              // Firmware image identifier
+            "is_persistent": <boolean>,       // Whether the operation retries persistently
+            "retry_count": <integer>,         // Number of retry attempts made
+            "next_retry_at": "<datetime>",  // Next scheduled retry (null if none)
+            "status": "<string>",           // Operation status
+            "log": "<string>",              // Operation log output
+            "progress": <integer>,            // Progress percentage (0-100)
+            "modified": "<datetime>"         // Last modification timestamp
+        },
+        "timestamp": "<datetime>"            // Message timestamp
     }
 
 Real-time Updates
