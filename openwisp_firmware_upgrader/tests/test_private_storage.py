@@ -1,5 +1,5 @@
 import swapper
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
@@ -30,6 +30,14 @@ class TestPrivateStorage(
     def get_download_url(self):
         """Return the private storage firmware download URL"""
         return reverse("serve_private_file", args=[self.image.file])
+
+
+class TestPrivateStorageTransaction(
+    TestUpgraderMixin, TestMultitenantAdminMixin, TransactionTestCase
+):
+    def setUp(self):
+        self._ensure_default_group_permissions()
+        super().setUp()
 
     def test_firmware_download_disabled_organization(self):
         org = self._create_org(name="disabled-download-org")

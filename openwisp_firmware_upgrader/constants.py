@@ -12,3 +12,6 @@ DISABLED_ORGANIZATION_FIRMWARE_ERROR = _(
 DISABLED_ORGANIZATION_UPGRADE_OPERATION_ERROR = _(
     "Upgrade operations are not allowed for disabled organizations."
 )
+DELETED_FIRMWARE_IMAGE_UPGRADE_OPERATION_ERROR = _(
+    "Upgrade aborted because the firmware image has been deleted."
+)

@@ -3,7 +3,7 @@ from unittest import mock
 
 import swapper
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, TransactionTestCase
 from django.urls import reverse
 from packaging.version import parse as parse_version
 from rest_framework import VERSION as REST_FRAMEWORK_VERSION
@@ -285,32 +285,6 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(Build.objects.count(), 0)
-
-    def test_build_disabled_organization_crud(self):
-        org = self._get_org()
-        category = self._create_category(organization=org)
-        build = self._create_build(category=category, version="1.0")
-        org.is_active = False
-        org.save(update_fields=["is_active"])
-        self._test_disabled_org_api_crud(
-            build,
-            detail_url=reverse("upgrader:api_build_detail", args=[build.pk]),
-            list_url=reverse("upgrader:api_build_list"),
-            create_payload={"category": category.pk, "version": "2.0"},
-            update_payload={"changelog": "changed"},
-            unchanged_field="version",
-            organization=org,
-            # Build has no "organization" field: the disabled org is reached
-            # through "category", which _filter_related_field filters out
-            # without customizing the DRF "does_not_exist" error message.
-            superuser_expected={
-                "create": {
-                    "status": 400,
-                    "error_field": "category",
-                    "error_contains": "does not exist",
-                }
-            },
-        )
 
     def test_shared_build(self):
         self._create_admin(username="admin", password="tester")
@@ -765,6 +739,38 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(len(r.data["devices"]), 0)
 
 
+class TestBuildViewsTransaction(TestAPIUpgraderMixin, TransactionTestCase):
+    def setUp(self):
+        self._ensure_default_group_permissions()
+        super().setUp()
+
+    def test_build_disabled_organization_crud(self):
+        org = self._get_org()
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category, version="1.0")
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        self._test_disabled_org_api_crud(
+            build,
+            detail_url=reverse("upgrader:api_build_detail", args=[build.pk]),
+            list_url=reverse("upgrader:api_build_list"),
+            create_payload={"category": category.pk, "version": "2.0"},
+            update_payload={"changelog": "changed"},
+            unchanged_field="version",
+            organization=org,
+            # Build has no "organization" field: the disabled org is reached
+            # through "category", which _filter_related_field filters out
+            # without customizing the DRF "does_not_exist" error message.
+            superuser_expected={
+                "create": {
+                    "status": 400,
+                    "error_field": "category",
+                    "error_contains": "does not exist",
+                }
+            },
+        )
+
+
 class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
     def _serialize_category(self, category):
         serializer = CategorySerializer()
@@ -959,6 +965,12 @@ class TestCategoryViews(TestAPIUpgraderMixin, TestCase):
         r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(Category.objects.count(), 0)
+
+
+class TestCategoryViewsTransaction(TestAPIUpgraderMixin, TransactionTestCase):
+    def setUp(self):
+        self._ensure_default_group_permissions()
+        super().setUp()
 
     def test_category_disabled_organization_crud(self):
         org = self._get_org()
@@ -1303,27 +1315,12 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         self.assertEqual(FirmwareImage.objects.count(), 1)
         url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
-        with self.assertNumQueries(8):
+        # +1 query: `_abort_related_upgrade_operations` looks up in-progress
+        # operations referencing the image before it is deleted.
+        with self.assertNumQueries(9):
             r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(FirmwareImage.objects.count(), 0)
-
-    def test_firmware_disabled_organization_crud(self):
-        org = self._get_org()
-        image = self._create_firmware_image(organization=org)
-        org.is_active = False
-        org.save(update_fields=["is_active"])
-        self._test_disabled_org_api_crud(
-            image,
-            detail_url=reverse(
-                "upgrader:api_firmware_detail", args=[image.build.pk, image.pk]
-            ),
-            list_url=reverse("upgrader:api_firmware_list", args=[image.build.pk]),
-            # FirmwareImageDetailView is retrieve/destroy only, and creation
-            # requires a multipart file upload the JSON-only helper cannot do.
-            operations=("list", "retrieve", "delete"),
-            organization=org,
-        )
 
     def test_firmware_download(self):
         image = self._create_firmware_image()
@@ -1358,6 +1355,29 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         data = dict(type=self.TPLINK_4300_IL_IMAGE)
         r = self.client.patch(url, data, content_type="application/json")
         self.assertEqual(r.status_code, 405)
+
+
+class TestFirmwareImageViewsTransaction(TestAPIUpgraderMixin, TransactionTestCase):
+    def setUp(self):
+        self._ensure_default_group_permissions()
+        super().setUp()
+
+    def test_firmware_disabled_organization_crud(self):
+        org = self._get_org()
+        image = self._create_firmware_image(organization=org)
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        self._test_disabled_org_api_crud(
+            image,
+            detail_url=reverse(
+                "upgrader:api_firmware_detail", args=[image.build.pk, image.pk]
+            ),
+            list_url=reverse("upgrader:api_firmware_list", args=[image.build.pk]),
+            # FirmwareImageDetailView is retrieve/destroy only, and creation
+            # requires a multipart file upload the JSON-only helper cannot do.
+            operations=("list", "retrieve", "delete"),
+            organization=org,
+        )
 
 
 class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
@@ -1500,96 +1520,6 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         )
         self.assertEqual(DeviceFirmware.objects.count(), 0)
         self.assertEqual(UpgradeOperation.objects.count(), 0)
-
-    def test_disabled_organization_device_firmware_put_as_create(self):
-        env = self._create_upgrade_env(device_firmware=False)
-        url = reverse("upgrader:api_devicefirmware_detail", args=[env["d1"].pk])
-        org = env["category"].organization
-        org.is_active = False
-        org.save(update_fields=["is_active"])
-
-        with self.subTest("Test org manager cannot create DeviceFirmwareImage"):
-            response = self.client.put(
-                url,
-                data={"image": env["image1a"].pk},
-                content_type="application/json",
-            )
-            self.assertEqual(response.status_code, 403)
-            self.assertEqual(
-                response.data["detail"],
-                "User is not a manager of the organization to which the "
-                "requested resource belongs.",
-            )
-
-        with self.subTest("Test superuser cannot create DeviceFirmwareImage"):
-            superuser = self._create_operator(
-                username="superuser", email="superuser@test.com", is_superuser=True
-            )
-            self._login(username=superuser.username)
-            response = self.client.put(
-                url,
-                data={"image": env["image1a"].pk},
-                content_type="application/json",
-            )
-            self.assertEqual(response.status_code, 403)
-            self.assertEqual(
-                response.data["detail"],
-                "Firmware upgrades are not allowed for disabled organizations.",
-            )
-
-        self.assertEqual(DeviceFirmware.objects.count(), 0)
-        self.assertEqual(UpgradeOperation.objects.count(), 0)
-
-    def test_disabled_organization_device_firmware(self):
-        device_fw = self._create_device_firmware()
-        org = device_fw.device.organization
-        org.is_active = False
-        org.save(update_fields=["is_active"])
-        url = reverse("upgrader:api_devicefirmware_detail", args=[device_fw.device.pk])
-
-        with self.subTest("Test org manager cannot retrieve DeviceFirmwareImage"):
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 403)
-
-        with self.subTest("Test org manager cannot update DeviceFirmwareImage"):
-            response = self.client.put(
-                url,
-                data={"image": device_fw.image.pk},
-                content_type="application/json",
-            )
-            self.assertEqual(response.status_code, 403)
-            self.assertEqual(
-                response.data["detail"],
-                "User is not a manager of the organization to which the "
-                "requested resource belongs.",
-            )
-
-        with self.subTest("Test org manager cannot delete DeviceFirmwareImage"):
-            response = self.client.delete(url)
-            self.assertEqual(response.status_code, 403)
-            self.assertEqual(DeviceFirmware.objects.count(), 1)
-
-        superuser = self._create_operator(
-            username="superuser", email="superuser@test.com", is_superuser=True
-        )
-        self._login(username=superuser.username)
-
-        with self.subTest("Test superuser can retrieve DeviceFirmwareImage"):
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-
-        with self.subTest("Test superuser cannot update DeviceFirmwareImage"):
-            response = self.client.put(
-                url,
-                data={"image": device_fw.image.pk},
-                content_type="application/json",
-            )
-            self.assertEqual(response.status_code, 403)
-
-        with self.subTest("Test superuser can delete DeviceFirmwareImage"):
-            response = self.client.delete(url)
-            self.assertEqual(response.status_code, 204)
-            self.assertEqual(DeviceFirmware.objects.count(), 0)
 
     def test_device_firmware_detail_delete(self):
         device_fw = self._create_device_firmware()
@@ -1870,6 +1800,114 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             "Firmware upgrades are not allowed for deactivated devices.",
             str(serializer.errors),
         )
+
+
+class TestDeviceFirmwareImageViewsTransaction(
+    TestAPIUpgraderMixin, TransactionTestCase
+):
+    def setUp(self):
+        self._ensure_default_group_permissions()
+        super().setUp()
+
+    def test_disabled_organization_device_firmware_put_as_create(self):
+        env = self._create_upgrade_env(device_firmware=False)
+        url = reverse("upgrader:api_devicefirmware_detail", args=[env["d1"].pk])
+        org = env["category"].organization
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+
+        with self.subTest("Test org manager cannot create DeviceFirmwareImage"):
+            response = self.client.put(
+                url,
+                data={"image": env["image1a"].pk},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "User is not a manager of the organization to which the "
+                "requested resource belongs.",
+            )
+
+        with self.subTest("Test superuser cannot create DeviceFirmwareImage"):
+            superuser = self._create_operator(
+                username="superuser", email="superuser@test.com", is_superuser=True
+            )
+            self._login(username=superuser.username)
+            response = self.client.put(
+                url,
+                data={"image": env["image1a"].pk},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "Firmware upgrades are not allowed for deactivated devices.",
+            )
+
+        self.assertEqual(DeviceFirmware.objects.count(), 0)
+        self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+    def test_disabled_organization_device_firmware(self):
+        device_fw = self._create_device_firmware()
+        org = device_fw.device.organization
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        url = reverse("upgrader:api_devicefirmware_detail", args=[device_fw.device.pk])
+
+        with self.subTest("Test org manager cannot retrieve DeviceFirmwareImage"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 403)
+
+        with self.subTest("Test org manager cannot update DeviceFirmwareImage"):
+            response = self.client.put(
+                url,
+                data={"image": device_fw.image.pk},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "User is not a manager of the organization to which the "
+                "requested resource belongs.",
+            )
+
+        with self.subTest("Test org manager cannot delete DeviceFirmwareImage"):
+            response = self.client.delete(url)
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(DeviceFirmware.objects.count(), 1)
+
+        superuser = self._create_operator(
+            username="superuser", email="superuser@test.com", is_superuser=True
+        )
+        self._login(username=superuser.username)
+
+        with self.subTest("Test superuser can retrieve DeviceFirmwareImage"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+
+        with self.subTest("Test superuser cannot update DeviceFirmwareImage"):
+            response = self.client.put(
+                url,
+                data={"image": device_fw.image.pk},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 403)
+
+        with self.subTest(
+            "Test superuser cannot delete DeviceFirmwareImage of a deactivated device"
+        ):
+            # Disabling the organization cascades into deactivating its
+            # devices (see openwisp-controller's `organization_disabled`
+            # handler), and a deactivated device blocks all non-GET/HEAD
+            # requests regardless of the requesting user's role.
+            response = self.client.delete(url)
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "Firmware upgrades are not allowed for deactivated devices.",
+            )
+            self.assertEqual(DeviceFirmware.objects.count(), 1)
 
 
 class TestDeviceUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):

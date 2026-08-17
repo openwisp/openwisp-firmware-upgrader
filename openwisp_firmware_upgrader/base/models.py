@@ -22,6 +22,7 @@ from .. import settings as app_settings
 from ..constants import (
     DEACTIVATED_DEVICE_FIRMWARE_ERROR,
     DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR,
+    DELETED_FIRMWARE_IMAGE_UPGRADE_OPERATION_ERROR,
     DISABLED_ORGANIZATION_FIRMWARE_ERROR,
     DISABLED_ORGANIZATION_UPGRADE_OPERATION_ERROR,
 )
@@ -304,6 +305,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
             raise ValidationError({"type": "Could not find boards for this type"})
 
     def delete(self, *args, **kwargs):
+        self._abort_related_upgrade_operations([self])
         super().delete(*args, **kwargs)
         self._remove_file(self.file.name)
 
@@ -370,6 +372,24 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         cls.schedule_firmware_file_deletion(build__category__organization=instance)
 
     @classmethod
+    def _abort_related_upgrade_operations(cls, images):
+        """
+        Aborts in-progress upgrade operations which reference the given
+        firmware images, so that workers do not keep flashing a file which
+        is about to be removed from storage.
+        """
+        UpgradeOperation = load_model("UpgradeOperation")
+        queryset = UpgradeOperation.objects.filter(
+            status="in-progress", image__in=images
+        )
+        for operation in queryset.iterator():
+            operation.status = "aborted"
+            operation.log_line(
+                DELETED_FIRMWARE_IMAGE_UPGRADE_OPERATION_ERROR, save=False
+            )
+            operation.save()
+
+    @classmethod
     def schedule_firmware_file_deletion(cls, **filter_kwargs):
         """
         Schedules the deletion of firmware image files in the background.
@@ -380,12 +400,11 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         # Avoid circular import
         from ..tasks import delete_firmware_files
 
-        files_to_delete = []
-        # Get all firmware images matching the filter criteria
-        queryset = cls.objects.filter(**filter_kwargs)
-        for image in queryset.iterator():
-            if image.file and image.file.name:
-                files_to_delete.append(image.file.name)
+        images = list(cls.objects.filter(**filter_kwargs).iterator())
+        cls._abort_related_upgrade_operations(images)
+        files_to_delete = [
+            image.file.name for image in images if image.file and image.file.name
+        ]
         if files_to_delete:
             # Schedule file deletion after transaction is committed
             transaction.on_commit(partial(delete_firmware_files.delay, files_to_delete))

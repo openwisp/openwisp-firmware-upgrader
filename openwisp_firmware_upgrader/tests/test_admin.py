@@ -165,7 +165,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(15):
+        with self.assertNumQueries(16):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -179,7 +179,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(14):
+        with self.assertNumQueries(15):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -1100,6 +1100,27 @@ class TestAdminTransaction(
     _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
+    def _ensure_administrator_group_permissions(self):
+        Group = swapper.load_model("openwisp_users", "Group")
+        group, _ = Group.objects.get_or_create(name="Administrator")
+        model_names = (
+            "build",
+            "category",
+            "devicefirmware",
+            "firmwareimage",
+            "batchupgradeoperation",
+            "upgradeoperation",
+        )
+        codenames = [
+            f"{action}_{model_name}"
+            for action in ("add", "change", "delete", "view")
+            for model_name in model_names
+        ]
+        permissions = Permission.objects.filter(
+            content_type__app_label=self.app_label, codename__in=codenames
+        )
+        group.permissions.add(*permissions)
+
     @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_selected_action_perms(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
@@ -1833,6 +1854,7 @@ class TestAdminTransaction(
     @mock.patch(_mock_upgrade, return_value=True)
     def test_batch_upgrade_confirmation_form_multitenancy(self, *args):
         """Test BatchUpgradeConfirmationForm multitenancy for organization admin vs superuser."""
+        self._ensure_administrator_group_permissions()
         with mock.patch(self._mock_connect, return_value=True):
             # Setup common objects
             org1 = self._get_org()
@@ -2152,7 +2174,7 @@ class TestAdminTransaction(
             follow=True,
         )
         self.assertContains(
-            r, "Cannot start a mass upgrade for a disabled organization."
+            r, "Actions cannot modify objects of disabled organizations."
         )
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
@@ -2197,6 +2219,54 @@ class TestAdminTransaction(
             )
             self.assertFalse(form.is_valid())
             self.assertIn("location", form.errors)
+
+    def test_category_disabled_org_admin_crud(self):
+        self._ensure_administrator_group_permissions()
+        org = self._create_org(name="disabled-org", slug="disabled-org")
+        category = self._create_category(name="disabled-category", organization=org)
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        self._test_disabled_org_admin_crud(
+            category, change_data={"name": "renamed-category"}
+        )
+
+    def test_category_disabled_org_admin_org_field_excludes_disabled(self):
+        active_org = self._get_org()
+        disabled_org = self._create_org(name="disabled-org", is_active=False)
+        add_url = reverse(f"admin:{self.app_label}_category_add")
+        self._test_disabled_org_admin_org_field_excludes_disabled(
+            add_url, disabled_org, organization=active_org
+        )
+
+    def test_build_disabled_org_admin_crud(self):
+        self._ensure_administrator_group_permissions()
+        org = self._create_org(name="disabled-org", slug="disabled-org")
+        build = self._create_build(organization=org, version="1.0")
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        self._test_disabled_org_admin_crud(
+            build,
+            change_data={"version": "2.0"},
+            organization=org,
+            unchanged_field="version",
+        )
+
+    def test_build_disabled_org_admin_category_field_excludes_disabled(self):
+        active_org = self._get_org()
+        disabled_org = self._create_org(name="disabled-org", is_active=False)
+        active_category = self._create_category(
+            name="active-org-category", organization=active_org
+        )
+        disabled_category = self._create_category(
+            name="disabled-org-category", organization=disabled_org
+        )
+        request = self.factory.get(reverse(f"admin:{self.app_label}_build_add"))
+        request.user = self._get_admin()
+        build_admin = BuildAdmin(model=Build, admin_site=admin.site)
+        form = build_admin.get_form(request)
+        category_qs = form.base_fields["category"].queryset
+        self.assertIn(active_category, category_qs)
+        self.assertNotIn(disabled_category, category_qs)
 
 
 class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
