@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import tempfile
+from datetime import timedelta
 from functools import partial
 
 import swapper
@@ -9,7 +10,9 @@ from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
+from django.db.models import Q
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from openwisp_notifications.signals import notify
@@ -186,7 +189,10 @@ def extract_firmware_metadata(self, image_pk):
         pk=image_pk,
         file=file_name,
         extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
-    ).update(extraction_status=FirmwareImage.STATUS_IN_PROGRESS)
+    ).update(
+        extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+        extraction_claimed_at=timezone.now(),
+    )
     if not updated:
         return
 
@@ -445,3 +451,60 @@ def queue_unconfirmed_extractions():
     for i in range(0, len(pks), chunk_size):
         chunk = pks[i : i + chunk_size]
         _dispatch_unconfirmed_extractions_chunk.delay(chunk)
+
+
+@shared_task(base=OpenwispCeleryTask)
+def reclaim_stale_extractions():
+    FirmwareImage = load_model("FirmwareImage")
+    cutoff = timezone.now() - timedelta(seconds=app_settings.EXTRACTION_CLAIM_TIMEOUT)
+    stale_pks = list(
+        FirmwareImage.objects.filter(extraction_status=FirmwareImage.STATUS_IN_PROGRESS)
+        .filter(
+            Q(extraction_claimed_at__lt=cutoff) | Q(extraction_claimed_at__isnull=True)
+        )
+        .values_list("pk", flat=True)
+    )
+    for pk in stale_pks:
+        rows_updated = FirmwareImage.objects.filter(
+            pk=pk, extraction_status=FirmwareImage.STATUS_IN_PROGRESS
+        ).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            failure_reason=FirmwareImage.FAILURE_TIMEOUT,
+            extraction_log=(
+                "[!] Extraction task did not complete (worker crash or hard "
+                "timeout). Manual input required."
+            ),
+        )
+        if not rows_updated:
+            continue
+        try:
+            FirmwareExtractionPublisher(pk).publish_status(FirmwareImage.STATUS_FAILED)
+        except Exception:
+            logger.exception(
+                "Failed to publish extraction status via WebSocket for image %s", pk
+            )
+        try:
+            fresh = FirmwareImage.objects.select_related(
+                "build", "build__category"
+            ).get(pk=pk)
+        except FirmwareImage.DoesNotExist:
+            continue
+        failure_reason_choices = dict(FirmwareImage.FAILURE_REASON_CHOICES)
+        reason_display = failure_reason_choices.get(
+            FirmwareImage.FAILURE_TIMEOUT, _("unknown error")
+        )
+        _notify_image(
+            fresh,
+            "error",
+            _(
+                'Metadata extraction failed for <a href="{url}">{image}</a>: '
+                "{reason}. Enter the metadata manually or re-upload the image."
+            ),
+            reason=reason_display,
+        )
+        try:
+            fresh.build._update_extraction_status()
+        except Exception:
+            logger.exception(
+                "reclaim_stale_extractions: failed to update build status for pk=%s", pk
+            )

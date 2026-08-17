@@ -1,9 +1,11 @@
 import uuid
+from datetime import timedelta
 from unittest import mock
 
 from celery.exceptions import SoftTimeLimitExceeded
 from django.db.models.query import QuerySet
 from django.test import TransactionTestCase
+from django.utils import timezone
 from openwisp_notifications.swapper import load_model as load_notification_model
 
 from openwisp_utils.tests import capture_any_output
@@ -549,3 +551,68 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         mock_notify.assert_called_once()
         self.assertEqual(mock_notify.call_args.kwargs["level"], "error")
+
+    @capture_any_output()
+    def test_reclaim_stale_extractions_recovers_stuck_image(self):
+        image = self._create_firmware_image()
+        stale_claim = timezone.now() - timedelta(
+            seconds=app_settings.EXTRACTION_CLAIM_TIMEOUT + 60
+        )
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+            extraction_claimed_at=stale_claim,
+        )
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.FirmwareExtractionPublisher"
+        ) as MockPublisher, mock.patch(_MOCK_NOTIFY) as mock_notify:
+            tasks.reclaim_stale_extractions.run()
+
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_FAILED)
+        self.assertEqual(image.failure_reason, FirmwareImage.FAILURE_TIMEOUT)
+        self.assertTrue(image.extraction_log)
+        MockPublisher.return_value.publish_status.assert_called_once_with(
+            FirmwareImage.STATUS_FAILED
+        )
+        self.assertEqual(mock_notify.call_count, 2)
+        call_kwargs = mock_notify.call_args_list[0].kwargs
+        self.assertEqual(call_kwargs["level"], "error")
+        image.build.refresh_from_db()
+        self.assertEqual(image.build.status, image.build.BUILD_STATUS_FAILED)
+
+    @capture_any_output()
+    def test_reclaim_stale_extractions_ignores_fresh_claim(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+            extraction_claimed_at=timezone.now(),
+        )
+        tasks.reclaim_stale_extractions.run()
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_IN_PROGRESS)
+
+    @capture_any_output()
+    def test_reclaim_stale_extractions_ignores_non_in_progress_images(self):
+        image = self._create_firmware_image()
+        stale_claim = timezone.now() - timedelta(
+            seconds=app_settings.EXTRACTION_CLAIM_TIMEOUT + 60
+        )
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
+            extraction_claimed_at=stale_claim,
+        )
+        tasks.reclaim_stale_extractions.run()
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+
+    @capture_any_output()
+    def test_reclaim_stale_extractions_reclaims_null_claimed_at(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+            extraction_claimed_at=None,
+        )
+        tasks.reclaim_stale_extractions.run()
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_FAILED)
+        self.assertEqual(image.failure_reason, FirmwareImage.FAILURE_TIMEOUT)

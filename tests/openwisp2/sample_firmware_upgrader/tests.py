@@ -173,7 +173,7 @@ class TestOrgAPIMixin(BaseTestOrgAPIMixin):
 class TestMultiBoardReconciliationMigration(BaseTestMultiBoardReconciliationMigration):
     app_label = "sample_firmware_upgrader"
     migrate_from = "0004_alter_firmwareimage_file"
-    migrate_to = "0009_backfill_board_from_hardware_map"
+    migrate_to = "0010_firmwareimage_extraction_claimed_at"
     migrate_to_dependency = "0008_backfill_extraction_status"
 
 

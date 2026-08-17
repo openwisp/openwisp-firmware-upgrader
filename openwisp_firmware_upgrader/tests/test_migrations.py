@@ -16,7 +16,7 @@ _MOCK_EXTRACT_DELAY = "openwisp_firmware_upgrader.tasks.extract_firmware_metadat
 class TestMultiBoardReconciliationMigration(TransactionTestCase):
     app_label = "firmware_upgrader"
     migrate_from = "0017_alter_batchupgradeoperation_status"
-    migrate_to = "0023_backfill_board_from_hardware_map"
+    migrate_to = "0024_firmwareimage_extraction_claimed_at"
     migrate_to_dependency = "0022_alter_firmwareimage_compatible"
 
     def setUp(self):

@@ -460,6 +460,9 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         blank=True,
         default="",
     )
+    extraction_claimed_at = models.DateTimeField(
+        _("extraction claimed at"), blank=True, null=True
+    )
     board = models.CharField(_("board"), max_length=200, blank=True)
     compatible = models.TextField(_("compatible"), default="", blank=True)
     target = models.CharField(_("target"), max_length=100, blank=True)
