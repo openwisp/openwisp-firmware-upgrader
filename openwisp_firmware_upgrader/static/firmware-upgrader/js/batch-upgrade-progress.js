@@ -322,14 +322,24 @@ function addNewOperationRow(data) {
   let $statusContent = $("<div>").addClass("status-content").text(data.status); // SAFE
   $statusTd.append($statusContent);
   let $imageTd = $("<td>").text(imageDisplay);
-  let $modifiedTd = $("<td>").text(modifiedTime);
   $row.append($deviceTd, $statusTd, $imageTd);
-  // add empty cells for the retry columns present in the header, if any
+  // add the retry columns present in the header, if any
   let extraColumns = $("#result_list thead th").length - 4;
-  for (let i = 0; i < extraColumns; i++) {
-    $row.append($("<td>"));
+  if (extraColumns >= 1) {
+    $row.append(
+      $("<td>")
+        .addClass("retry-count-cell")
+        .text(data.retry_count != null ? data.retry_count : ""),
+    );
   }
-  $row.append($modifiedTd);
+  if (extraColumns >= 2) {
+    let nextRetry =
+      data.status === "pending" && data.next_retry_at
+        ? getFormattedDateTimeString(data.next_retry_at)
+        : "";
+    $row.append($("<td>").addClass("next-retry-cell").text(nextRetry));
+  }
+  $row.append($("<td>").addClass("last-updated-cell").text(modifiedTime));
   tbody.append($row);
 
   let operation = {

@@ -1,6 +1,7 @@
 import io
 import uuid
 from contextlib import redirect_stdout
+from datetime import timedelta
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -842,6 +843,8 @@ class TestModels(TestUpgraderMixin, TestCase):
 
     def test_no_connection_persistent_op_pends(self):
         op = self._make_persistent_op(is_persistent=True)
+        UpgradeOperation.objects.filter(pk=op.pk).update(claimed_at=timezone.now())
+        op.refresh_from_db()
         with mock.patch.object(
             DeviceConnection,
             "get_working_connection",
@@ -852,6 +855,22 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(op.status, "pending")
         self.assertEqual(op.retry_count, 1)
         self.assertIsNotNone(op.next_retry_at)
+        self.assertIsNone(op.claimed_at)
+
+    def test_upgrade_renews_stale_claim(self):
+        op = self._make_persistent_op(is_persistent=True)
+        stale = timezone.now() - timedelta(hours=2)
+        UpgradeOperation.objects.filter(pk=op.pk).update(claimed_at=stale)
+        op.refresh_from_db()
+        with mock.patch.object(
+            DeviceConnection,
+            "get_working_connection",
+            side_effect=NoWorkingDeviceConnectionError(connection=None),
+        ), self.assertRaises(RecoverableFailure):
+            op.upgrade(recoverable=True)
+        op.refresh_from_db()
+        self.assertEqual(op.status, "in-progress")
+        self.assertGreater(op.claimed_at, stale)
 
     def test_no_connection_persistent_op_does_not_clobber_canceled(self):
         op = self._make_persistent_op(is_persistent=True)
@@ -887,14 +906,27 @@ class TestModels(TestUpgraderMixin, TestCase):
         op.refresh_from_db()
         self.assertEqual(op.status, "aborted")
 
-    def test_create_upgrade_operation_standalone_is_persistent(self):
+    @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.apply_async")
+    def test_create_upgrade_operation_standalone_is_persistent(self, mocked_dispatch):
         device_fw = self._create_device_firmware()
-        op = device_fw.create_upgrade_operation(
-            batch=None, upgrade_options={}, is_persistent=True
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            op = device_fw.create_upgrade_operation(
+                batch=None, upgrade_options={}, is_persistent=True
+            )
         self.assertTrue(op.is_persistent)
-        default_op = device_fw.create_upgrade_operation(batch=None, upgrade_options={})
+        self.assertIsNotNone(op.claimed_at)
+        self.assertEqual(
+            mocked_dispatch.call_args.kwargs["expires"],
+            app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"],
+        )
+        mocked_dispatch.reset_mock()
+        with self.captureOnCommitCallbacks(execute=True):
+            default_op = device_fw.create_upgrade_operation(
+                batch=None, upgrade_options={}
+            )
         self.assertFalse(default_op.is_persistent)
+        self.assertIsNone(default_op.claimed_at)
+        self.assertNotIn("expires", mocked_dispatch.call_args.kwargs)
 
     def test_recoverable_failure_handler_only_routes_recoverable_failure_to_pending(
         self,
@@ -1113,19 +1145,19 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(batch.status, "success")
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.apply_async")
     def test_batch_waits_for_all_operations_before_completing(
         self, mocked_upgrade, mocked_notify
     ):
         env = self._create_upgrade_env()
         completed = False
 
-        def complete_first_operation(operation_id):
+        def complete_first_operation(args, **kwargs):
             nonlocal completed
             if completed:
                 return
             completed = True
-            operation = UpgradeOperation.objects.get(pk=operation_id)
+            operation = UpgradeOperation.objects.get(pk=args[0])
             operation.status = "success"
             operation.save()
 
@@ -1577,7 +1609,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
     )
     @mock.patch("openwisp_firmware_upgrader.websockets._run_coroutine_safely")
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_batch_upgrade_excludes_deactivated_devices(self, *args):
         env = self._create_upgrade_env()
         # Test firmwareless=False case (devices with existing DeviceFirmware)

@@ -230,7 +230,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         mocked_notify.assert_not_called()
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_deactivated_path_does_not_fire_notification(
         self, _mocked_upgrade, mocked_notify
     ):

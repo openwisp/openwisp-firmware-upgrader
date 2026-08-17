@@ -24,7 +24,8 @@ exponential-backoff ``next_retry_at`` (10 minutes, doubling on each retry
 up to a 12-hour cap, with ±25% jitter). A periodic Celery Beat task
 re-dispatches pending operations once their retry time has elapsed, and
 the batch stays ``in-progress`` until every device has either upgraded or
-been cancelled.
+been cancelled. The same task also recovers upgrades left ``in-progress``
+by a terminated worker, returning them to ``pending`` for another attempt.
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade.png

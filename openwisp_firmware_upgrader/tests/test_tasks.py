@@ -199,7 +199,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         tasks.check_pending_upgrades.run()
         self.assertEqual(mocked_dispatch.call_count, 1)
 
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_retry_pending_upgrade_happy_path(self, mocked_upgrade):
         op = self._create_pending_op(retry_count=2)
         tasks.retry_pending_upgrade.run(op.pk)
@@ -207,10 +207,13 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.status, "in-progress")
         self.assertIsNone(op.next_retry_at)
         self.assertIn("Persistent retry #2 starting", op.log)
-        mocked_upgrade.assert_called_once_with(op.pk)
+        mocked_upgrade.assert_called_once_with(
+            (op.pk,),
+            expires=app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"],
+        )
 
     @mock.patch(
-        "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay",
+        "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async",
         side_effect=RuntimeError("broker down"),
     )
     def test_retry_pending_upgrade_reverts_to_pending_on_dispatch_failure(
@@ -224,7 +227,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertIsNotNone(op.next_retry_at)
 
     @mock.patch(
-        "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay",
+        "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async",
         side_effect=SystemExit("worker terminated"),
     )
     def test_retry_pending_upgrade_crash_does_not_strand_operation(
@@ -240,7 +243,54 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertIsNotNone(op.next_retry_at)
         self.assertLessEqual(op.next_retry_at, now)
 
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.retry_pending_upgrade.apply_async")
+    def test_dispatch_recovers_stranded_claim(self, mocked_dispatch):
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        now = timezone.now()
+        op = self._create_pending_op()
+        UpgradeOperation.objects.filter(pk=op.pk).update(
+            status="in-progress",
+            next_retry_at=None,
+            claimed_at=now - timedelta(seconds=options["claim_timeout"] + 1),
+        )
+        with time_travel(now):
+            tasks.check_pending_upgrades.run()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "pending")
+        self.assertIsNone(op.claimed_at)
+        self.assertGreater(op.next_retry_at, now)
+        mocked_dispatch.assert_not_called()
+        with time_travel(now + timedelta(seconds=options["base_delay"] + 1)):
+            tasks.check_pending_upgrades.run()
+        mocked_dispatch.assert_called_once()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.retry_pending_upgrade.apply_async")
+    def test_dispatch_keeps_fresh_claim(self, mocked_dispatch):
+        now = timezone.now()
+        op = self._create_pending_op()
+        UpgradeOperation.objects.filter(pk=op.pk).update(
+            status="in-progress", next_retry_at=None, claimed_at=now
+        )
+        tasks.check_pending_upgrades.run()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "in-progress")
+        mocked_dispatch.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.retry_pending_upgrade.apply_async")
+    def test_dispatch_ignores_non_retry_in_progress(self, mocked_dispatch):
+        now = timezone.now()
+        timeout = app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"]
+        op = self._create_pending_op()
+        UpgradeOperation.objects.filter(pk=op.pk).update(
+            status="in-progress", next_retry_at=None, claimed_at=None
+        )
+        with time_travel(now + timedelta(seconds=timeout + 1)):
+            tasks.check_pending_upgrades.run()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "in-progress")
+        mocked_dispatch.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_retry_pending_upgrade_raced_out(self, mocked_upgrade):
         op = self._create_pending_op()
         # simulate another worker (or admin cancellation) already flipping the status
@@ -251,7 +301,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.status, "in-progress")
         self.assertNotIn("Persistent retry", op.log or "")
 
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_retry_pending_upgrade_skips_stale_retry_count(self, mocked_upgrade):
         now = timezone.now()
         with time_travel(now):
@@ -272,7 +322,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.next_retry_at, future_retry)
         mocked_upgrade.assert_not_called()
 
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_retry_pending_upgrade_deactivated_device(self, mocked_upgrade):
         op = self._create_pending_op()
         with mock.patch(
@@ -285,7 +335,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertIn("Device has been deactivated", op.log)
         mocked_upgrade.assert_not_called()
 
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_retry_pending_upgrade_deactivated_does_not_clobber_cancel(
         self, mocked_upgrade
     ):
@@ -304,7 +354,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.status, "cancelled")
         mocked_upgrade.assert_not_called()
 
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_retry_pending_upgrade_cancel_between_claim_and_dispatch(
         self, mocked_upgrade
     ):
@@ -323,7 +373,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.status, "cancelled")
         mocked_upgrade.assert_not_called()
 
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     @mock.patch("openwisp_firmware_upgrader.base.models.logger.warning")
     def test_retry_pending_upgrade_resilience(self, mocked_logger, mocked_upgrade):
         op = self._create_pending_op()
@@ -366,15 +416,15 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             tasks.check_pending_upgrades.run()
             dispatch.assert_not_called()
 
-        def fail_again(operation_id):
-            offline = UpgradeOperation.objects.get(pk=operation_id)
+        def fail_again(args, **kwargs):
+            offline = UpgradeOperation.objects.get(pk=args[0])
             offline._recoverable_failure_handler(
                 recoverable=False, error=RecoverableFailure("device offline")
             )
             offline.save()
 
         with time_travel(first_due + timedelta(seconds=1)), mock.patch(
-            "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay",
+            "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async",
             side_effect=fail_again,
         ):
             tasks.check_pending_upgrades.run()
@@ -383,13 +433,13 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.retry_count, 2)
         self.assertGreater(op.next_retry_at, first_due)
 
-        def succeed(operation_id):
-            online = UpgradeOperation.objects.get(pk=operation_id)
+        def succeed(args, **kwargs):
+            online = UpgradeOperation.objects.get(pk=args[0])
             online.status = "success"
             online.save()
 
         with time_travel(op.next_retry_at + timedelta(seconds=1)), mock.patch(
-            "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay",
+            "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async",
             side_effect=succeed,
         ):
             tasks.check_pending_upgrades.run()

@@ -73,6 +73,7 @@ application.
         max_delay=43200,
         dispatch_jitter=300,
         signal_jitter=120,
+        claim_timeout=3600,
     )
 
 Backoff settings for :doc:`persistent retries <persistent-mass-upgrades>`.
@@ -98,6 +99,10 @@ this dict:
   interval. Smaller than ``dispatch_jitter`` because the signal wake-up is
   meant to feel fast. Has no effect when ``openwisp-monitoring`` is not
   installed.
+- ``claim_timeout`` (seconds): a persistent upgrade left ``in-progress``
+  longer than this is treated as stranded by a terminated worker and
+  returned to ``pending``. The claim is renewed on every attempt, so a
+  running upgrade is never reclaimed.
 
 ``OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD``
 ---------------------------------------------------------

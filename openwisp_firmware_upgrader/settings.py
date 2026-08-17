@@ -31,6 +31,7 @@ PERSISTENT_RETRY_OPTIONS = dict(
     max_delay=43200,
     dispatch_jitter=300,
     signal_jitter=120,
+    claim_timeout=3600,
 )
 PERSISTENT_RETRY_OPTIONS.update(
     getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS", {})

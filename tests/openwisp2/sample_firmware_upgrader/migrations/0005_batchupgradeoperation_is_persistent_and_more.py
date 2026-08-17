@@ -79,4 +79,24 @@ class Migration(migrations.Migration):
                 max_length=12,
             ),
         ),
+        migrations.AddField(
+            model_name="batchupgradeoperation",
+            name="last_reminder_at",
+            field=models.DateTimeField(
+                blank=True,
+                help_text="timestamp of the last pending-upgrade reminder fired for this batch, null if no reminder has been sent yet",
+                null=True,
+                verbose_name="last reminder at",
+            ),
+        ),
+        migrations.AddField(
+            model_name="upgradeoperation",
+            name="claimed_at",
+            field=models.DateTimeField(
+                blank=True,
+                help_text="time the persistent upgrade was claimed for dispatch",
+                null=True,
+                verbose_name="claimed at",
+            ),
+        ),
     ]

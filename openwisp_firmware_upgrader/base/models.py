@@ -506,11 +506,19 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if batch:
             operation.batch = batch
             operation.is_persistent = batch.is_persistent
+        dispatch_kwargs = {}
+        if operation.is_persistent:
+            operation.claimed_at = timezone.now()
+            dispatch_kwargs["expires"] = app_settings.PERSISTENT_RETRY_OPTIONS[
+                "claim_timeout"
+            ]
         operation.full_clean()
         operation.save()
         # launch ``upgrade_firmware`` in the background (celery)
         # once changes are committed to the database
-        transaction.on_commit(partial(upgrade_firmware.delay, operation.pk))
+        transaction.on_commit(
+            partial(upgrade_firmware.apply_async, (operation.pk,), **dispatch_kwargs)
+        )
         return operation
 
     @classmethod
@@ -1061,6 +1069,12 @@ class AbstractUpgradeOperation(
         verbose_name=_("next retry at"),
         help_text=_("date and time of the next retry attempt"),
     )
+    claimed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("claimed at"),
+        help_text=_("time the persistent upgrade was claimed for dispatch"),
+    )
 
     def clean(self):
         super().clean()
@@ -1203,7 +1217,7 @@ class AbstractUpgradeOperation(
         if expected_retry_count is not None:
             claim["retry_count"] = expected_retry_count
         updated = cls.objects.filter(**claim).update(
-            status="in-progress", next_retry_at=None
+            status="in-progress", next_retry_at=None, claimed_at=timezone.now()
         )
         if not updated:
             return
@@ -1230,16 +1244,18 @@ class AbstractUpgradeOperation(
             if not cls.objects.filter(pk=operation_id, status="in-progress").exists():
                 return
             operation.log_line(
-                _("Persistent retry #%(count)s starting.")
-                % {"count": operation.retry_count}
-                + "\n",
+                _("Persistent retry #%(count)s starting.\n")
+                % {"count": operation.retry_count},
                 save=False,
             )
             operation.save(update_fields=["log"])
-            upgrade_firmware.delay(operation.pk)
+            upgrade_firmware.apply_async(
+                (operation.pk,),
+                expires=app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"],
+            )
         except BaseException:
             cls.objects.filter(pk=operation_id, status="in-progress").update(
-                status="pending", next_retry_at=timezone.now()
+                status="pending", next_retry_at=timezone.now(), claimed_at=None
             )
             raise
 
@@ -1249,8 +1265,17 @@ class AbstractUpgradeOperation(
         Claims every pending operation whose ``next_retry_at`` has elapsed and
         dispatches it, spreading the dispatches over the configured jitter.
         """
-        jitter = app_settings.PERSISTENT_RETRY_OPTIONS["dispatch_jitter"]
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        jitter = options["dispatch_jitter"]
         now = timezone.now()
+        stale_claim = now - timedelta(seconds=options["claim_timeout"])
+        cls.objects.filter(
+            status="in-progress", is_persistent=True, claimed_at__lte=stale_claim
+        ).update(
+            status="pending",
+            next_retry_at=now + timedelta(seconds=options["base_delay"]),
+            claimed_at=None,
+        )
         due_ops = (
             cls.objects.filter(status="pending", next_retry_at__lte=now)
             .values_list("pk", "retry_count")
@@ -1258,7 +1283,10 @@ class AbstractUpgradeOperation(
         )
         for op_id, retry_count in due_ops:
             claimed = cls.objects.filter(
-                pk=op_id, status="pending", retry_count=retry_count
+                pk=op_id,
+                status="pending",
+                retry_count=retry_count,
+                next_retry_at__lte=now,
             ).update(next_retry_at=now + timedelta(seconds=jitter))
             if claimed:
                 retry_pending_upgrade.apply_async(
@@ -1292,8 +1320,11 @@ class AbstractUpgradeOperation(
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
         if recoverable:
-            self.log_line(f"Detected a recoverable failure: {cause}.\n", save=False)
-            self.log_line("The upgrade operation will be retried soon.", save=False)
+            self.log_line(
+                _("Detected a recoverable failure: %(cause)s.\n") % {"cause": cause},
+                save=False,
+            )
+            self.log_line(_("The upgrade operation will be retried soon."), save=False)
             self.save(update_fields=["log"])
             raise error
         if self.is_persistent and isinstance(error, RecoverableFailure):
@@ -1314,7 +1345,10 @@ class AbstractUpgradeOperation(
             )
             return
         self.status = "failed"
-        self.log_line(f"Max retries exceeded. Upgrade failed: {cause}.", save=False)
+        self.log_line(
+            _("Max retries exceeded. Upgrade failed: %(cause)s.") % {"cause": cause},
+            save=False,
+        )
 
     def _commit_result(self):
         with transaction.atomic():
@@ -1326,10 +1360,12 @@ class AbstractUpgradeOperation(
                 next_retry_at=self.next_retry_at,
                 progress=self.progress,
                 log=self.log,
+                claimed_at=None,
             )
             if not claimed:
                 self.refresh_from_db()
                 return False
+            self.claimed_at = None
             self.save(
                 update_fields=[
                     "status",
@@ -1337,6 +1373,7 @@ class AbstractUpgradeOperation(
                     "next_retry_at",
                     "progress",
                     "log",
+                    "claimed_at",
                 ]
             )
             return True
@@ -1345,6 +1382,12 @@ class AbstractUpgradeOperation(
         # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
         if self.status != "in-progress":
             return
+        if self.claimed_at is not None:
+            now = timezone.now()
+            self._meta.model.objects.filter(pk=self.pk, status="in-progress").update(
+                claimed_at=now
+            )
+            self.claimed_at = now
         if self.device.is_deactivated():
             self.status = "aborted"
             self.log_line(

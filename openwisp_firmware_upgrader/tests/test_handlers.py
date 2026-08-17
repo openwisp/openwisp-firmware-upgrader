@@ -144,7 +144,7 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(mocked_dispatch.call_count, 1)
         self.assertEqual(mocked_dispatch.call_args.kwargs["args"], [own.pk])
 
-    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.delay")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_signal_and_beat_concurrent_dispatch_runs_upgrade_once(
         self, mocked_upgrade
     ):

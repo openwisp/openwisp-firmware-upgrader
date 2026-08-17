@@ -40,7 +40,10 @@ def upgrade_firmware(self, operation_id):
         operation.refresh_from_db()
         operation.upgrade(recoverable=recoverable)
     except ObjectDoesNotExist:
-        # the operation or a related row was deleted after dispatch
+        logger.warning(
+            f"The UpgradeOperation object with id {operation_id} "
+            "or a related object has been deleted"
+        )
         return
     except SoftTimeLimitExceeded:
         claimed = UpgradeOperation.objects.filter(

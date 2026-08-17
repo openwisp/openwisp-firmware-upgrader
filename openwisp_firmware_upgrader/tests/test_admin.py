@@ -22,6 +22,7 @@ from openwisp_firmware_upgrader.admin import (
     DeviceFirmwareInline,
     DeviceUpgradeOperationInline,
     FirmwareImageInline,
+    UpgradeOperationAdmin,
     admin,
 )
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
@@ -308,7 +309,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertNotContains(r, "field-next_retry_at")
 
     def test_upgrade_operation_admin_list_retry_count_only_when_persistent(self):
-        model_admin = admin.site._registry[UpgradeOperation]
+        model_admin = UpgradeOperationAdmin(UpgradeOperation, admin.site)
         persistent = UpgradeOperation(is_persistent=True, retry_count=7)
         non_persistent = UpgradeOperation(is_persistent=False, retry_count=0)
         self.assertEqual(model_admin.retry_count_display(persistent), 7)
@@ -2186,7 +2187,7 @@ class TestAdminTransaction(
             )
             with self.subTest("Test actual batch upgrade with location"):
                 with mock.patch(
-                    "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"
+                    "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async"
                 ):
                     response = self.client.post(url, data, follow=True)
                     self.assertEqual(response.status_code, 200)
