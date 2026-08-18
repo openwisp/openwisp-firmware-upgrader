@@ -600,6 +600,9 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         if self.type:
             return
         filename = self.file.name
+        # expected shape: <distro>-<version>-<target>-<profile>-<suffix>
+        # the distro and version tokens are removed so that two releases of
+        # the same image share one type; mass upgrade match images by type
         filename = filename.rsplit("/", 1)[-1]
         parts = filename.split("-")
         parts = parts[1:]
@@ -692,6 +695,8 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     def _validate_rootfs(self):
         if not (self.file and self.file.name):
             return
+        # the OpenWrt image kind is the hyphen-separated token before the
+        # extension, for example "...-squashfs-rootf.tar.gz" -> "rootfs"
         filename = self.file.name.lower().rsplit("/", 1)[-1]
         image_type = filename.rsplit("-", 1)[-1].split(".", 1)[0]
         if image_type == "rootfs":

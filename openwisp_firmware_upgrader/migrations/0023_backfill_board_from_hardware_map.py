@@ -107,6 +107,10 @@ def _send_multi_board_notifications(app_config, **kwargs):
             )
 
 
+# imports OPENWRT_FIRMWARE_IMAGE_MAP from the deprecated hardware.py module
+# on purpose. hardware.py is staying for now, so this is safe. When it is
+# eventually removed, this migration must be updated first, or a fresh
+# migrate from zero will break.
 def backfill_board_from_hardware_map(apps, schema_editor):
     FirmwareImage = apps.get_model("firmware_upgrader", "FirmwareImage")
     has_multi_board_images = False

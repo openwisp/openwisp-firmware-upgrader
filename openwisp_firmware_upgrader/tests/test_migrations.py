@@ -1,9 +1,11 @@
+from importlib import import_module
 from unittest import mock
 
 from django.apps import apps
 from django.core.management import call_command
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
+from django.db.models.signals import post_migrate
 from django.test import TransactionTestCase
 
 from ..hardware import OPENWRT_FIRMWARE_IMAGE_MAP
@@ -46,7 +48,10 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
         self.assertFalse(hasattr(FirmwareImage(), "extraction_status"))
 
     def tearDown(self):
-        call_command("migrate", self.app_label, verbosity=0)
+        migration = import_module(
+            "openwisp_firmware_upgrader.migrations.0023_backfill_board_from_hardware_map"
+        )
+        post_migrate.disconnect(migration._send_multi_board_notifications)
         super().tearDown()
 
     def test_legacy_multi_board_image_is_reconciled(self):
@@ -110,7 +115,6 @@ class TestQueueUnconfirmedExtractionsMigration(TransactionTestCase):
         executor.migrate([(self.app_label, self.migrate_from)])
 
     def tearDown(self):
-        call_command("migrate", self.app_label, verbosity=0)
         super().tearDown()
 
     def test_broker_publish_failure_is_caught_and_logged_without_failing_migrate(self):
