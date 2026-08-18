@@ -97,3 +97,39 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
                 image.extraction_log.count("compatible with multiple boards"), 1
             )
             self.assertEqual(image.extraction_log, first_log)
+
+
+class TestQueueUnconfirmedExtractionsMigration(TransactionTestCase):
+    app_label = "firmware_upgrader"
+    migrate_from = "0018_build_status_firmwareimage_board_and_more"
+    migrate_to = "0019_backfill_extraction_status"
+
+    def setUp(self):
+        executor = MigrationExecutor(connection)
+        self.addCleanup(call_command, "migrate", self.app_label, verbosity=0)
+        executor.migrate([(self.app_label, self.migrate_from)])
+
+    def tearDown(self):
+        call_command("migrate", self.app_label, verbosity=0)
+        super().tearDown()
+
+    def test_broker_publish_failure_is_caught_and_logged_without_failing_migrate(self):
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.queue_unconfirmed_extractions.delay",
+            side_effect=Exception("simulated broker failure"),
+        ):
+            with self.assertLogs(level="ERROR") as cm:
+                call_command(
+                    "migrate",
+                    self.app_label,
+                    self.migrate_to,
+                    verbosity=0,
+                )
+        self.assertTrue(
+            any(
+                "Failed to queue legacy unconfirmed firmware image extractions. "
+                "Run the 'queue_unconfirmed_extractions' Celery task manually to retry."
+                in msg
+                for msg in cm.output
+            )
+        )

@@ -16,7 +16,8 @@ def _queue_legacy_extractions(app_config, **kwargs):
         queue_unconfirmed_extractions.delay()
     except Exception:
         logger.exception(
-            "Failed to queue legacy unconfirmed firmware image extractions"
+            "Failed to queue legacy unconfirmed firmware image extractions. "
+            "Run the 'queue_unconfirmed_extractions' Celery task manually to retry."
         )
 
 

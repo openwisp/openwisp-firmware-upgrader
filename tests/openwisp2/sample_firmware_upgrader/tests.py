@@ -23,6 +23,9 @@ from openwisp_firmware_upgrader.tests.test_api import (
 from openwisp_firmware_upgrader.tests.test_migrations import (
     TestMultiBoardReconciliationMigration as BaseTestMultiBoardReconciliationMigration,
 )
+from openwisp_firmware_upgrader.tests.test_migrations import (
+    TestQueueUnconfirmedExtractionsMigration as BaseTestQueueUnconfirmedExtractionsMigration,
+)
 from openwisp_firmware_upgrader.tests.test_models import TestModels as BaseTestModels
 from openwisp_firmware_upgrader.tests.test_models import (
     TestModelsTransaction as BaseTestModelsTransaction,
@@ -177,6 +180,14 @@ class TestMultiBoardReconciliationMigration(BaseTestMultiBoardReconciliationMigr
     migrate_to_dependency = "0008_backfill_extraction_status"
 
 
+class TestQueueUnconfirmedExtractionsMigration(
+    BaseTestQueueUnconfirmedExtractionsMigration
+):
+    app_label = "sample_firmware_upgrader"
+    migrate_from = "0007_alter_firmwareimage_compatible_and_more"
+    migrate_to = "0008_backfill_extraction_status"
+
+
 # this is necessary to avoid excuting the base test suites
 del BaseTestModels
 del BaseTestAdmin
@@ -192,3 +203,4 @@ del BaseTestBatchUpgradeOperationViews
 del BaseTestFirmwareImageViews
 del BaseTestOrgAPIMixin
 del BaseTestMultiBoardReconciliationMigration
+del BaseTestQueueUnconfirmedExtractionsMigration
