@@ -102,7 +102,9 @@ this dict:
 - ``claim_timeout`` (seconds): a persistent upgrade left ``in-progress``
   longer than this is treated as stranded by a terminated worker and
   returned to ``pending``. The claim is renewed on every attempt, so a
-  running upgrade is never reclaimed.
+  running upgrade is never reclaimed. Must be greater than
+  ``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT`` plus the
+  ``retry_backoff_max`` of ``OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS``.
 
 ``OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD``
 ---------------------------------------------------------

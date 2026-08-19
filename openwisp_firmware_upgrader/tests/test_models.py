@@ -1,3 +1,4 @@
+import importlib
 import io
 import uuid
 from contextlib import redirect_stdout
@@ -7,9 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import swapper
 from celery.exceptions import Retry
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import connection
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
@@ -828,6 +829,25 @@ class TestModels(TestUpgraderMixin, TestCase):
             before = timezone.now()
             scheduled = op._calculate_next_retry()
             self.assertAlmostEqual((scheduled - before).total_seconds(), 60, delta=1)
+
+    def test_claim_timeout_must_exceed_task_timeout_plus_backoff(self):
+        self.addCleanup(importlib.reload, app_settings)
+        with override_settings(
+            OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT=1500,
+            OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS={"claim_timeout": 1600},
+        ), self.assertRaises(ImproperlyConfigured):
+            importlib.reload(app_settings)
+
+    def test_claim_timeout_above_floor_is_accepted(self):
+        self.addCleanup(importlib.reload, app_settings)
+        with override_settings(
+            OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT=1500,
+            OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS={"claim_timeout": 2200},
+        ):
+            importlib.reload(app_settings)
+            self.assertEqual(
+                app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"], 2200
+            )
 
     def test_calculate_next_retry_safe_when_retry_count_zero(self):
         op = self._make_persistent_op(is_persistent=True)

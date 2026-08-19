@@ -36,6 +36,14 @@ PERSISTENT_RETRY_OPTIONS = dict(
 PERSISTENT_RETRY_OPTIONS.update(
     getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS", {})
 )
+if PERSISTENT_RETRY_OPTIONS["claim_timeout"] <= TASK_TIMEOUT + RETRY_OPTIONS.get(
+    "retry_backoff_max", 600
+):
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS['claim_timeout'] "
+        "must be greater than OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT plus the "
+        "retry_backoff_max of OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS"
+    )
 PERSISTENT_REMINDER_PERIOD = getattr(
     settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD", 5184000
 )
