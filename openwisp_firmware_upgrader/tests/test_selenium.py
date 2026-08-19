@@ -1382,7 +1382,7 @@ class TestRealTimeProgress(
         original_modified = (
             self.find_element(By.CSS_SELECTOR, row_selector)
             .find_element(By.XPATH, "..")
-            .find_elements(By.TAG_NAME, "td")[5]
+            .find_element(By.CSS_SELECTOR, "td.last-updated-cell")
             .text
         )
         next_retry_at = timezone.now() + timedelta(hours=1)
@@ -1403,8 +1403,9 @@ class TestRealTimeProgress(
             row = driver.find_element(By.CSS_SELECTOR, row_selector).find_element(
                 By.XPATH, ".."
             )
-            cells = row.find_elements(By.TAG_NAME, "td")
-            retry_count, next_retry, modified = [cell.text for cell in cells][3:]
+            retry_count = row.find_element(By.CSS_SELECTOR, "td.retry-count-cell").text
+            next_retry = row.find_element(By.CSS_SELECTOR, "td.next-retry-cell").text
+            modified = row.find_element(By.CSS_SELECTOR, "td.last-updated-cell").text
             return (
                 retry_count == "2"
                 and next_retry == expected_next_retry

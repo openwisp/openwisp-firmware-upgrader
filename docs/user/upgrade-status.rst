@@ -39,9 +39,11 @@ Pending
 **Status**: ``pending``
 
 **Description**: The device was unreachable when the upgrade was last
-attempted. The operation keeps a future ``next_retry_at`` and a Celery
-Beat task picks it up later. This is the status that :doc:`Persistent Mass
-Upgrades <persistent-mass-upgrades>` use while a device is offline.
+attempted, or the worker running an ``in-progress`` attempt was terminated
+before it finished. The operation keeps a future ``next_retry_at`` and a
+Celery Beat task picks it up later. This is the status that
+:doc:`Persistent Mass Upgrades <persistent-mass-upgrades>` use while a
+device is offline.
 
 **What happens during this status:**
 

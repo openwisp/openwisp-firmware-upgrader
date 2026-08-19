@@ -1099,6 +1099,13 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertNotContains(response, delete_url)
 
+        with self.subTest("pending operation does not show delete button"):
+            operation.status = "pending"
+            operation.save(update_fields=["status"])
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, delete_url)
+
         with self.subTest("failed operation can be deleted"):
             operation.status = "failed"
             operation.save(update_fields=["status"])
@@ -1113,6 +1120,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self._login()
         device = self._create_device_with_connection()
         operation = UpgradeOperation.objects.create(device=device)
+        pending_operation = UpgradeOperation.objects.create(
+            device=device, status="pending"
+        )
         failed_operation = UpgradeOperation.objects.create(
             device=device, status="failed"
         )
@@ -1121,7 +1131,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
             url,
             data={
                 "action": "delete_selected",
-                ACTION_CHECKBOX_NAME: [str(operation.pk), str(failed_operation.pk)],
+                ACTION_CHECKBOX_NAME: [
+                    str(operation.pk),
+                    str(pending_operation.pk),
+                    str(failed_operation.pk),
+                ],
                 "post": "yes",
             },
             follow=True,
@@ -1133,6 +1147,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
             "Remove them from the selection and try again.",
         )
         self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+        self.assertTrue(
+            UpgradeOperation.objects.filter(pk=pending_operation.pk).exists()
+        )
         self.assertTrue(
             UpgradeOperation.objects.filter(pk=failed_operation.pk).exists()
         )
@@ -1230,6 +1247,25 @@ class TestAdmin(BaseTestAdmin, TestCase):
         url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
 
         with self.subTest("in-progress operation cannot be deleted inline"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            delete_input = self._get_input_tag(
+                response.content.decode(), "upgradeoperation_set-0-DELETE"
+            )
+            self.assertIn("disabled", delete_input)
+            response = self.client.post(
+                url,
+                data=self._get_device_upgrade_operation_delete_params(
+                    device, device_conn, device_fw, operation
+                ),
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+        with self.subTest("pending operation cannot be deleted inline"):
+            operation.status = "pending"
+            operation.save(update_fields=["status"])
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             delete_input = self._get_input_tag(

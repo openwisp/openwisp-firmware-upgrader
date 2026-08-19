@@ -1,5 +1,6 @@
-Persistent Mass Upgrades
-========================
+##########################
+ Persistent Mass Upgrades
+##########################
 
 When a mass upgrade runs against a large fleet, some devices are usually
 offline at that moment. Without persistence, each unreachable device ends
@@ -8,15 +9,18 @@ operator to track down and re-launch every failed device by hand.
 
 A *persistent* mass upgrade does not give up on offline devices. Instead
 of marking them ``failed``, it parks them in the ``pending`` state with a
-scheduled retry time and keeps retrying in the background until the device
-comes back online or the operation is cancelled.
+scheduled retry time and keeps retrying in the background. Retrying stops
+only when the upgrade succeeds, the operation is cancelled, the device is
+deactivated (``aborted``), or an attempt hits a non-recoverable error
+(``failed``).
 
 .. contents:: **Table of contents**:
     :depth: 2
     :local:
 
-How it works
-------------
+**************
+ How it works
+**************
 
 An operation whose device is unreachable transitions to ``pending``
 instead of ``failed``, with an incremented ``retry_count`` and an
@@ -37,8 +41,9 @@ batch open until the offline device is retried successfully or cancelled.
 See :doc:`upgrade-status` for the full operation state machine and the
 meaning of the ``pending`` state.
 
-Enabling from the admin
------------------------
+*************************
+ Enabling from the admin
+*************************
 
 On the mass-upgrade confirmation page (reached from a build's *Upgrade*
 action) the **persistent** checkbox is shown pre-checked. Leave it checked
@@ -52,15 +57,16 @@ The flag is locked in once the mass upgrade leaves the ``idle`` state, so
 it cannot be changed midway through a running batch.
 
 Enabling via the REST API
-~~~~~~~~~~~~~~~~~~~~~~~~~
+=========================
 
 The mass-upgrade endpoint accepts an ``is_persistent`` field that defaults
 to ``true``; the single-device upgrade endpoint accepts the same field but
 defaults to ``false``. See :doc:`rest-api` for the full request and
 response reference.
 
-Finding pending operations
---------------------------
+****************************
+ Finding pending operations
+****************************
 
 Pending operations are listed in the upgrade-operation admin and can be
 isolated with the ``status`` filter set to ``pending``. The list shows the
@@ -77,8 +83,9 @@ backoff-scheduled ``persistent retry`` line for the next run.
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/pending-operation.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/pending-operation.png
 
-Cancelling a pending operation
-------------------------------
+********************************
+ Cancelling a pending operation
+********************************
 
 A pending operation is still active, so it can be cancelled the same way
 as an in-progress one, from the admin cancel button or the REST cancel
@@ -86,8 +93,9 @@ endpoint. Cancelling stops the retry loop and moves the operation to
 ``cancelled``. A pending operation cannot be *deleted* until it reaches a
 terminal state (see :ref:`deleting_upgrade_operations`).
 
-Notifications
--------------
+***************
+ Notifications
+***************
 
 Three notifications keep operators informed about long-running persistent
 upgrades:
@@ -111,8 +119,9 @@ These are delivered to the organization's administrators (and superusers).
 
 The cadence and related settings are documented in :doc:`settings`.
 
-Behaviour with and without openwisp-monitoring
-----------------------------------------------
+************************************************
+ Behaviour with and without openwisp-monitoring
+************************************************
 
 Persistent upgrades work with Celery Beat alone: the periodic scan retries
 due pending operations on a fixed cadence. Installing
