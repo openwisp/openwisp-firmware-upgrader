@@ -341,23 +341,23 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, "Retry Count")
         self.assertContains(r, "Next Retry")
 
-    def test_batch_change_page_hides_next_retry_without_pending(self):
+    def test_batch_change_page_shows_next_retry_for_persistent_without_pending(self):
         self._login()
         env = self._create_upgrade_env()
         batch = BatchUpgradeOperation.objects.create(
             build=env["build1"], status="in-progress", is_persistent=True
         )
         UpgradeOperation.objects.create(
-            device=env["d1"], image=env["image1a"], batch=batch, status="success"
+            device=env["d1"], image=env["image1a"], batch=batch, status="in-progress"
         )
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
         )
         r = self.client.get(url)
         self.assertContains(r, "Retry Count")
-        self.assertNotContains(r, "Next Retry")
+        self.assertContains(r, "Next Retry")
 
-    def test_batch_change_page_hides_next_retry_when_pending_is_filtered_out(self):
+    def test_batch_change_page_shows_next_retry_for_persistent_when_filtered(self):
         self._login()
         env = self._create_upgrade_env()
         batch = BatchUpgradeOperation.objects.create(
@@ -374,7 +374,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         r = self.client.get(url, {"status": "success"})
         self.assertContains(r, "Retry Count")
-        self.assertNotContains(r, "Next Retry")
+        self.assertContains(r, "Next Retry")
 
     def test_batch_change_page_hides_retry_columns_when_not_persistent(self):
         self._login()
@@ -419,11 +419,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.client.force_login(org1_admin)
             r = self.client.get(url)
             self.assertEqual(r.status_code, 200)
-            self.assertNotContains(r, "Next Retry")
+            self.assertNotContains(r, org2_device.name)
         with self.subTest("Superuser sees the pending op"):
             self._login()
             r = self.client.get(url)
-            self.assertContains(r, "Next Retry")
+            self.assertContains(r, org2_device.name)
 
     def test_firmware_image_has_change_permission(self):
         request = MockRequest()
@@ -2035,7 +2035,7 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
+                with self.assertNumQueries(24 if django.VERSION < (5, 2) else 22):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")

@@ -1377,13 +1377,6 @@ class TestRealTimeProgress(
             modified=timezone.now() - timedelta(hours=1)
         )
         operation.refresh_from_db()
-        UpgradeOperation.objects.create(
-            device=self.device2,
-            image=self.image2,
-            batch=batch,
-            status="pending",
-            is_persistent=True,
-        )
         self._prepare_batch(batch)
         row_selector = f'#result_list .status-cell[data-operation-id="{operation.pk}"]'
         original_modified = (

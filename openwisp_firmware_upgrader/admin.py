@@ -701,9 +701,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                 upgrades_qs = upgrades_qs.filter(status=current_status)
             if current_org:
                 upgrades_qs = upgrades_qs.filter(device__organization_id=current_org)
-            show_next_retry = (
-                obj.is_persistent and upgrades_qs.filter(status="pending").exists()
-            )
+            show_next_retry = obj.is_persistent
             # build filter specs and paginate results
             filter_specs = self._build_filter_specs(
                 request, obj, current_status, current_org
