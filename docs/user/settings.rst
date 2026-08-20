@@ -106,6 +106,8 @@ this dict:
   ``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT`` plus the
   ``retry_backoff_max`` of ``OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS``.
 
+.. _firmware_upgrader_persistent_reminder_period:
+
 ``OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD``
 ---------------------------------------------------------
 

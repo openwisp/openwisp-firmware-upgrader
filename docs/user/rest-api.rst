@@ -203,6 +203,8 @@ Download Firmware Image
 
     GET /api/v1/firmware-upgrader/build/{build_id}/image/{id}/download/
 
+.. _firmware_upgrader_perform_batch_upgrade:
+
 Perform Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -370,6 +372,8 @@ of: in-progress, pending, success, failed, aborted, cancelled).
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/device/{device_id}/upgrade-operation/?status={status}
+
+.. _firmware_upgrader_create_device_firmware:
 
 Create Device Firmware
 ~~~~~~~~~~~~~~~~~~~~~~

@@ -1,17 +1,15 @@
 Persistent Mass Upgrades
 ========================
 
-When a mass upgrade runs against a large fleet, some devices are usually
-offline at that moment. Without persistence, each unreachable device ends
-as ``failed`` once the immediate retries are exhausted, leaving the
-operator to track down and re-launch every failed device by hand.
+Some devices may be offline when a mass upgrade starts. Persistent mass
+upgrades keep those devices in the same operation and try them again when
+they become reachable, so you do not have to create a new upgrade for each
+device.
 
-A *persistent* mass upgrade does not give up on offline devices. Instead
-of marking them ``failed``, it parks them in the ``pending`` state with a
-scheduled retry time and keeps retrying in the background. Retrying stops
-only when the upgrade succeeds, the operation is cancelled, the device is
-deactivated (``aborted``), or an attempt hits a non-recoverable error
-(``failed``).
+Choose this option when you expect devices to come back online later. The
+operation stops retrying when it succeeds, is cancelled, is aborted
+because the device was deactivated, or encounters an error that needs
+attention.
 
 .. contents:: **Table of contents**:
     :depth: 2
@@ -20,14 +18,17 @@ deactivated (``aborted``), or an attempt hits a non-recoverable error
 How it works
 ------------
 
-An operation whose device is unreachable transitions to ``pending``
-instead of ``failed``, with an incremented ``retry_count`` and an
-exponential-backoff ``next_retry_at`` (10 minutes, doubling on each retry
-up to a 12-hour cap, with ±25% jitter). A periodic Celery Beat task
-re-dispatches pending operations once their retry time has elapsed, and
-the batch stays ``in-progress`` until every device has either upgraded or
-been cancelled. The same task also recovers upgrades left ``in-progress``
-by a terminated worker, returning them to ``pending`` for another attempt.
+When a device cannot be reached, its upgrade waits in the ``pending``
+state instead of failing. OpenWISP tries it again automatically, while the
+mass upgrade remains in progress until every device has finished or been
+cancelled.
+
+After the normal immediate retries are exhausted, OpenWISP records the
+next attempt in ``next_retry_at`` and increments ``retry_count``. Each
+attempt waits longer than the previous one, starting at about 10 minutes,
+doubling up to 12 hours, and adding a small random delay to spread retries
+across the fleet. A periodic Celery Beat task also recovers an upgrade
+left ``in-progress`` by a terminated worker.
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade.png
@@ -39,8 +40,8 @@ batch open until the offline device is retried successfully or cancelled.
 See :doc:`upgrade-status` for the full operation state machine and the
 meaning of the ``pending`` state.
 
-Enabling from the admin
------------------------
+Using the admin
+---------------
 
 On the mass-upgrade confirmation page (reached from a build's *Upgrade*
 action) the **persistent** checkbox is shown pre-checked. Leave it checked
@@ -53,21 +54,23 @@ behaviour where unreachable devices end as ``failed``.
 The flag is locked in once the mass upgrade leaves the ``idle`` state, so
 it cannot be changed midway through a running batch.
 
-Enabling via the REST API
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Using the REST API
+~~~~~~~~~~~~~~~~~~
 
-The mass-upgrade endpoint accepts an ``is_persistent`` field that defaults
-to ``true``; the single-device upgrade endpoint accepts the same field but
-defaults to ``false``. See :doc:`rest-api` for the full request and
-response reference.
+Set ``is_persistent`` to choose the same behaviour from an API client. It
+defaults to ``true`` for the :ref:`batch upgrade API
+<firmware_upgrader_perform_batch_upgrade>` and ``false`` for the
+:ref:`single-device upgrade API
+<firmware_upgrader_create_device_firmware>`.
 
 Finding pending operations
 --------------------------
 
-Pending operations are listed in the upgrade-operation admin and can be
-isolated with the ``status`` filter set to ``pending``. The list shows the
-``persistent`` flag and the ``retry_count`` column, the latter being how
-many times an operation has been retried so far.
+The upgrade-operation admin lists devices waiting for another attempt. Set
+the ``status`` filter to ``pending`` to focus on them.
+
+The list also shows the ``persistent`` flag and ``retry_count``, which is
+the number of retry attempts made so far.
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/pending-operations-list.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/pending-operations-list.png
@@ -82,17 +85,18 @@ backoff-scheduled ``persistent retry`` line for the next run.
 Cancelling a pending operation
 ------------------------------
 
-A pending operation is still active, so it can be cancelled the same way
-as an in-progress one, from the admin cancel button or the REST cancel
-endpoint. Cancelling stops the retry loop and moves the operation to
-``cancelled``. A pending operation cannot be *deleted* until it reaches a
-terminal state (see :ref:`deleting_upgrade_operations`).
+A pending operation is still active, so you can cancel it from the admin
+or the REST API. Cancelling stops future retries and moves the operation
+to ``cancelled``.
+
+A pending operation cannot be *deleted* until it reaches a terminal state
+(see :ref:`deleting_upgrade_operations`).
 
 Notifications
 -------------
 
-Three notifications keep operators informed about long-running persistent
-upgrades:
+OpenWISP notifies the organization's administrators and superusers about
+long-running or completed mass upgrades:
 
 - a **reminder** fires when a persistent batch still has pending children
   after the configured cadence has elapsed, and
@@ -106,23 +110,19 @@ upgrades:
   fails (a user-initiated cancellation is not notified), whether or not it
   is persistent.
 
-These are delivered to the organization's administrators (and superusers).
-
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/notifications.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/notifications.png
 
-The cadence and related settings are documented in :doc:`settings`.
+The reminder cadence is configured with
+:ref:`OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD
+<firmware_upgrader_persistent_reminder_period>`.
 
-Behaviour with and without openwisp-monitoring
-----------------------------------------------
+With OpenWISP Monitoring
+------------------------
 
-Persistent upgrades work with Celery Beat alone: the periodic scan retries
-due pending operations on a fixed cadence. Installing
-``openwisp-monitoring`` adds a faster wake-up path: a device returning to
-a healthy state triggers its pending retries immediately, without waiting
-for the next scan. When ``openwisp-monitoring`` is not installed, the Beat
-scan remains the only retry trigger.
-
-The periodic tasks (``check_pending_upgrades`` and
-``send_pending_upgrade_reminders``) must be present in the deployment's
-``CELERY_BEAT_SCHEDULE``; see :doc:`settings`.
+Persistent upgrades work without monitoring: the periodic scan retries due
+operations on its normal schedule. To retry a device as soon as it comes
+back online, make sure `OpenWISP Monitoring
+<https://github.com/openwisp/openwisp-monitoring>`_ is installed and
+enabled. Its healthy-device event starts pending retries without waiting
+for the next scan.
