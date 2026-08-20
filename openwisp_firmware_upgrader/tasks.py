@@ -164,6 +164,43 @@ def _notify_image(image, level, message_template, **message_kwargs):
         )
 
 
+def _finalize_failed_extraction(
+    image_pk, status, failure_reason, update_status_log_message
+):
+    FirmwareImage = load_model("FirmwareImage")
+    try:
+        FirmwareExtractionPublisher(image_pk).publish_status(status)
+    except Exception:
+        logger.exception(
+            "Failed to publish extraction status via WebSocket for image %s",
+            image_pk,
+        )
+    try:
+        fresh = FirmwareImage.objects.select_related("build", "build__category").get(
+            pk=image_pk
+        )
+    except Exception:
+        logger.exception(
+            "Failed to re-fetch image %s for post-extraction steps", image_pk
+        )
+        return
+    failure_reason_choices = dict(FirmwareImage.FAILURE_REASON_CHOICES)
+    reason_display = failure_reason_choices.get(failure_reason, _("unknown error"))
+    _notify_image(
+        fresh,
+        "error",
+        _(
+            'Metadata extraction failed for <a href="{url}">{image}</a>: '
+            "{reason}. Enter the metadata manually or re-upload the image."
+        ),
+        reason=reason_display,
+    )
+    try:
+        fresh.build._update_extraction_status()
+    except Exception:
+        logger.exception(update_status_log_message, image_pk)
+
+
 @shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
 def extract_firmware_metadata(self, image_pk):
     FirmwareImage = load_model("FirmwareImage")
@@ -312,45 +349,12 @@ def extract_firmware_metadata(self, image_pk):
             failure_reason=FirmwareImage.FAILURE_INVALID,
             extraction_log="\n".join(log_lines),
         )
-        try:
-            FirmwareExtractionPublisher(image_pk).publish_status(
-                FirmwareImage.STATUS_INVALID
-            )
-        except Exception:
-            logger.exception(
-                "Failed to publish extraction status via WebSocket for image %s",
-                image_pk,
-            )
-        try:
-            fresh = FirmwareImage.objects.select_related(
-                "build", "build__category"
-            ).get(pk=image_pk)
-        except Exception:
-            logger.exception(
-                "Failed to re-fetch image %s for post-extraction steps",
-                image_pk,
-            )
-            return
-        failure_reason_choices = dict(FirmwareImage.FAILURE_REASON_CHOICES)
-        reason_display = failure_reason_choices.get(
-            FirmwareImage.FAILURE_INVALID, _("unknown error")
+        _finalize_failed_extraction(
+            image_pk,
+            FirmwareImage.STATUS_INVALID,
+            FirmwareImage.FAILURE_INVALID,
+            "extract_firmware_metadata: failed to update build status for pk=%s",
         )
-        _notify_image(
-            fresh,
-            "error",
-            _(
-                'Metadata extraction failed for <a href="{url}">{image}</a>: '
-                "{reason}. Enter the metadata manually or re-upload the image."
-            ),
-            reason=reason_display,
-        )
-        try:
-            fresh.build._update_extraction_status()
-        except Exception:
-            logger.exception(
-                "extract_firmware_metadata:failed to update build status after fallback for pk=%s",
-                image_pk,
-            )
         return
 
     if not completed:
@@ -470,34 +474,9 @@ def reclaim_stale_extractions():
         )
         if not rows_updated:
             continue
-        try:
-            FirmwareExtractionPublisher(pk).publish_status(FirmwareImage.STATUS_FAILED)
-        except Exception:
-            logger.exception(
-                "Failed to publish extraction status via WebSocket for image %s", pk
-            )
-        try:
-            fresh = FirmwareImage.objects.select_related(
-                "build", "build__category"
-            ).get(pk=pk)
-        except FirmwareImage.DoesNotExist:
-            continue
-        failure_reason_choices = dict(FirmwareImage.FAILURE_REASON_CHOICES)
-        reason_display = failure_reason_choices.get(
-            FirmwareImage.FAILURE_TIMEOUT, _("unknown error")
+        _finalize_failed_extraction(
+            pk,
+            FirmwareImage.STATUS_FAILED,
+            FirmwareImage.FAILURE_TIMEOUT,
+            "reclaim_stale_extractions: failed to update build status for pk=%s",
         )
-        _notify_image(
-            fresh,
-            "error",
-            _(
-                'Metadata extraction failed for <a href="{url}">{image}</a>: '
-                "{reason}. Enter the metadata manually or re-upload the image."
-            ),
-            reason=reason_display,
-        )
-        try:
-            fresh.build._update_extraction_status()
-        except Exception:
-            logger.exception(
-                "reclaim_stale_extractions: failed to update build status for pk=%s", pk
-            )
