@@ -11,7 +11,7 @@ from openwisp_notifications.swapper import load_model as load_notification_model
 from openwisp_utils.tests import capture_any_output
 
 from .. import settings as app_settings
-from .. import tasks
+from .. import tasks, utils
 from ..extractors.exceptions import DecompressionLimitExceeded, UnsupportedImageError
 from ..swapper import load_model
 from .base import TestUpgraderMixin
@@ -386,17 +386,17 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(image.source, "dtb")
 
     def test_compat_blocks_pairing_above_1_0(self):
-        self.assertTrue(tasks._compat_blocks_pairing("1.1"))
-        self.assertTrue(tasks._compat_blocks_pairing("2.0"))
+        self.assertTrue(utils.compat_blocks_pairing("1.1"))
+        self.assertTrue(utils.compat_blocks_pairing("2.0"))
 
     def test_compat_blocks_pairing_at_or_below_1_0(self):
-        self.assertFalse(tasks._compat_blocks_pairing("1.0"))
-        self.assertFalse(tasks._compat_blocks_pairing("0.9"))
+        self.assertFalse(utils.compat_blocks_pairing("1.0"))
+        self.assertFalse(tasks.compat_blocks_pairing("0.9"))
 
     def test_compat_blocks_pairing_invalid_values(self):
-        self.assertFalse(tasks._compat_blocks_pairing(""))
-        self.assertFalse(tasks._compat_blocks_pairing(None))
-        self.assertFalse(tasks._compat_blocks_pairing("bad"))
+        self.assertFalse(utils.compat_blocks_pairing(""))
+        self.assertFalse(utils.compat_blocks_pairing(None))
+        self.assertFalse(utils.compat_blocks_pairing("bad"))
 
     @mock.patch(
         "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_for_device"

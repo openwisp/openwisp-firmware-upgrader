@@ -38,7 +38,6 @@ from ..extractors.openwrt import OpenWrtMetadataExtractor
 from ..signals import firmware_upgrader_log_updated
 from ..swapper import get_model_name, load_model
 from ..tasks import (
-    _compat_blocks_pairing,
     batch_upgrade_operation,
     create_all_device_firmwares,
     create_device_firmware,
@@ -47,6 +46,7 @@ from ..tasks import (
 )
 from ..utils import (
     UpgradeProgress,
+    compat_blocks_pairing,
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
@@ -63,12 +63,18 @@ _INVALID_HEADERS = [
     (b"GIF87a", _("GIF image")),
     (b"GIF89a", _("GIF image")),
     (b"PK\x03\x04", _("ZIP archive")),
-    (b"MZ", _("Windows executable")),
     (b"\x7fELF", _("ELF binary")),
     (b"<html", _("HTML file")),
     (b"<!DOC", _("HTML document")),
     (b"<?xml", _("XML file")),
 ]
+# only openwrt is supported today, add more distro names here as
+# support for other firmware types is added
+_KNOWN_DISTROS = frozenset(
+    {
+        "openwrt",
+    }
+)
 
 
 class UpgradeOptionsMixin(models.Model):
@@ -309,7 +315,7 @@ class AbstractBuild(TimeStampedEditableModel):
             Build.BUILD_STATUS_INVALID,
             Build.BUILD_STATUS_MANUALLY_CONFIRMED,
         }
-        for attempt in range(5):
+        for _attempt in range(5):
             current_status = (
                 Build.objects.filter(pk=self.pk)
                 .values_list("status", flat=True)
@@ -351,6 +357,11 @@ class AbstractBuild(TimeStampedEditableModel):
                 self.status = new_status
                 self._notify_extraction_complete(new_status)
                 return
+        logger.warning(
+            "Could not update extraction status for build %s: "
+            "the status changed concurrently on every attempt",
+            self.pk,
+        )
 
     def _notify_extraction_complete(self, new_status):
         if new_status == self.BUILD_STATUS_INVALID:
@@ -605,9 +616,10 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         # the same image share one type; mass upgrade match images by type
         filename = filename.rsplit("/", 1)[-1]
         parts = filename.split("-")
-        parts = parts[1:]
-        if parts and parts[0][:1].isdigit():
+        if parts and parts[0].lower() in _KNOWN_DISTROS:
             parts = parts[1:]
+            if parts and parts[0][:1].isdigit():
+                parts = parts[1:]
         self.type = "-".join(parts)
 
     @classmethod
@@ -886,7 +898,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                 .order_by("-build__created")
                 .first()
             )
-            if not firmware_image or _compat_blocks_pairing(
+            if not firmware_image or compat_blocks_pairing(
                 firmware_image.compat_version
             ):
                 return

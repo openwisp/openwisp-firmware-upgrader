@@ -23,6 +23,7 @@ from . import settings as app_settings
 from .exceptions import RecoverableFailure
 from .extractors.exceptions import DecompressionLimitExceeded, UnsupportedImageError
 from .swapper import load_model
+from .utils import compat_blocks_pairing
 from .websockets import FirmwareExtractionPublisher
 
 logger = logging.getLogger(__name__)
@@ -95,7 +96,7 @@ def create_all_device_firmwares(self, firmware_image_id):
         pk=firmware_image_id
     )
 
-    if _compat_blocks_pairing(fw_image.compat_version):
+    if compat_blocks_pairing(fw_image.compat_version):
         logger.info(
             "Auto-pairing skipped for image %s: compat_version %s > 1.0",
             firmware_image_id,
@@ -131,14 +132,6 @@ def delete_firmware_files(files_to_delete):
     FirmwareImage = load_model("FirmwareImage")
     for file_path in files_to_delete:
         FirmwareImage._remove_file(file_path)
-
-
-def _compat_blocks_pairing(compat_version):
-    try:
-        major, minor = (int(x) for x in str(compat_version).split("."))
-        return (major, minor) > (1, 0)
-    except (ValueError, AttributeError, TypeError):
-        return False
 
 
 def _get_image_admin_url(image):

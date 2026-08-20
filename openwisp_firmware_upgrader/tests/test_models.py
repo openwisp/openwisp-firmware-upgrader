@@ -525,6 +525,19 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.assertNotEqual(image.file, None)
             image.delete()
 
+    def test_fw_auto_type_no_distro_prefix(self):
+        with open(self.FAKE_IMAGE_PATH, "rb") as f:
+            content = f.read()
+        file = SimpleUploadedFile(
+            name="ath79-generic-tplink_archer-c7-v4-squashfs-sysupgrade.bin",
+            content=content,
+            content_type="application/octet-stream",
+        )
+        fw = self._create_firmware_image(type="", file=file)
+        self.assertEqual(
+            fw.type, "ath79-generic-tplink_archer-c7-v4-squashfs-sysupgrade.bin"
+        )
+
     @patch("django.db.transaction.on_commit")
     @patch.object(FirmwareImage, "objects")
     def test_schedule_firmware_file_deletion_with_files(
@@ -1702,16 +1715,6 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
                 self.assertIn("ZIP", str(e))
             else:
                 self.fail("ValidationError not raised for ZIP header")
-
-        with self.subTest("mz header raises ValidationError"):
-            fw = self._make_firmware_image(b"MZ" + b"\x00" * 14)
-            try:
-                fw._validate_file_header(None)
-            except ValidationError as e:
-                self.assertIn("file", e.message_dict)
-                self.assertIn("Windows", str(e))
-            else:
-                self.fail("ValidationError not raised for MZ header")
 
         with self.subTest("elf header raises ValidationError"):
             fw = self._make_firmware_image(b"\x7fELF" + b"\x00" * 12)

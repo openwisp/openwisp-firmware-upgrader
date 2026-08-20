@@ -43,6 +43,14 @@ def get_upgrader_class_from_device_connection(device_conn):
     return upgrader_class
 
 
+def compat_blocks_pairing(compat_version):
+    try:
+        major, minor = (int(x) for x in compat_version.split("."))
+        return (major, minor) > (1, 0)
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 class UpgradeProgress:
     CONNECTION_SUCCESS = 10
     DEVICE_VERIFIED = 15
