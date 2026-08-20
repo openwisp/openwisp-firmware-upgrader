@@ -24,11 +24,11 @@ mass upgrade remains in progress until every device has finished or been
 cancelled.
 
 After the normal immediate retries are exhausted, OpenWISP records the
-next attempt in ``next_retry_at`` and increments ``retry_count``. Each
-attempt waits longer than the previous one, starting at about 10 minutes,
-doubling up to 12 hours, and adding a small random delay to spread retries
-across the fleet. A periodic Celery Beat task also recovers an upgrade
-left ``in-progress`` by a terminated worker.
+next attempt in ``next_retry_at`` and increments ``retry_count``. By
+default, each attempt waits longer than the previous one, starting at
+about 10 minutes, doubling up to 12 hours, and adding a small random delay
+to spread retries across the fleet. A periodic Celery Beat task also
+recovers an upgrade left ``in-progress`` by a terminated worker.
 
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade.png
