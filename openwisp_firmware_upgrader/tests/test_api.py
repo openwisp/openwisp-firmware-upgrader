@@ -1894,8 +1894,10 @@ class TestDeviceFirmwareImageViewsTransaction(
             )
             self.assertEqual(response.status_code, 403)
 
+        device_fw.device.deactivate()
+
         with self.subTest(
-            "Test superuser can delete DeviceFirmwareImage of a disabled organization"
+            "Test superuser can delete DeviceFirmwareImage of a disabled organization and deactivated device"
         ):
             response = self.client.delete(url)
             self.assertEqual(response.status_code, 204)

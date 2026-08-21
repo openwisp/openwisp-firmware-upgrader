@@ -2227,7 +2227,9 @@ class TestAdminTransaction(
         org.is_active = False
         org.save(update_fields=["is_active"])
         self._test_disabled_org_admin_crud(
-            category, change_data={"name": "renamed-category"}
+            category,
+            change_data={"name": "renamed-category"},
+            create_data={"name": "new-category", "organization": str(org.pk)},
         )
 
     def test_category_disabled_org_admin_org_field_excludes_disabled(self):
@@ -2247,6 +2249,7 @@ class TestAdminTransaction(
         self._test_disabled_org_admin_crud(
             build,
             change_data={"version": "2.0"},
+            create_data={"version": "2.0", "category": str(build.category_id)},
             organization=org,
             unchanged_field="version",
         )
