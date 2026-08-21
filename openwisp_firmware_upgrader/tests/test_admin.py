@@ -290,7 +290,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
         r = self.client.get(url)
         self.assertContains(r, "field-retry_count")
-        self.assertNotContains(r, "field-next_retry_at")
+        self.assertContains(r, "field-next_retry_at")
 
     def test_upgrade_operation_detail_hides_retry_fields(self):
         self._login()

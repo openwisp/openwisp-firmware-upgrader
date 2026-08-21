@@ -497,6 +497,10 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
         )
         extra_context["django_locale"] = get_language()
         obj = self.get_object(request, object_id)
+        extra_context["upgrade_operation_state"] = {
+            "retry_count": obj.retry_count if obj else 0,
+            "next_retry_at": obj.next_retry_at if obj else None,
+        }
         # for custom breadcrumbs
         if obj and obj.batch_id:
             batch_opts = BatchUpgradeOperation._meta
@@ -535,8 +539,6 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
             fields.insert(1, "batch")
         if obj and not obj.is_persistent:
             hidden = ("retry_count", "next_retry_at")
-        elif obj and obj.next_retry_at is None:
-            hidden = ("next_retry_at",)
         else:
             hidden = ()
         return [field for field in fields if field not in hidden]

@@ -1417,6 +1417,78 @@ class TestRealTimeProgress(
         WebDriverWait(self.web_driver, 10).until(retry_details_are_updated)
         self._assert_no_js_errors()
 
+    def test_detail_retry_fields_update_live(self):
+        operation = UpgradeOperation.objects.create(
+            device=self.device,
+            image=self.image2,
+            status="in-progress",
+            is_persistent=True,
+            retry_count=0,
+        )
+        self.login(username=self.admin.username, password=self.admin_password)
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_upgradeoperation_change",
+                args=[operation.pk],
+            )
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: driver.execute_script(
+                "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;"
+            )
+        )
+        # A persistent operation without retries does not show retry details.
+        retry_count_row = self.web_driver.find_element(
+            By.CSS_SELECTOR, ".field-retry_count"
+        )
+        next_retry_row = self.web_driver.find_element(
+            By.CSS_SELECTOR, ".field-next_retry_at"
+        )
+        self.assertFalse(retry_count_row.is_displayed())
+        self.assertFalse(next_retry_row.is_displayed())
+        # A scheduled retry reveals and populates both fields.
+        next_retry_at = timezone.now() + timedelta(hours=1)
+        operation.status = "pending"
+        operation.retry_count = 1
+        operation.next_retry_at = next_retry_at
+        operation.save()
+        expected_next_retry = self.web_driver.execute_script(
+            "return getFormattedDateTimeString(arguments[0]);",
+            next_retry_at.isoformat(),
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: (
+                driver.find_element(
+                    By.CSS_SELECTOR, ".field-retry_count"
+                ).is_displayed()
+                and driver.find_element(
+                    By.CSS_SELECTOR, ".field-retry_count .readonly"
+                ).text
+                == "1"
+                and driver.find_element(
+                    By.CSS_SELECTOR, ".field-next_retry_at"
+                ).is_displayed()
+                and driver.find_element(
+                    By.CSS_SELECTOR, ".field-next_retry_at .readonly"
+                ).text
+                == expected_next_retry
+            )
+        )
+        # Dispatching the retry clears both fields again.
+        operation.status = "in-progress"
+        operation.retry_count = 0
+        operation.next_retry_at = None
+        operation.save()
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: not driver.find_element(
+                By.CSS_SELECTOR, ".field-retry_count"
+            ).is_displayed()
+            and not driver.find_element(
+                By.CSS_SELECTOR, ".field-next_retry_at"
+            ).is_displayed()
+        )
+        self._assert_no_js_errors()
+
     def test_batch_completion_with_mixed_results(self):
         """Test batch completion with partial success scenario"""
         batch_operation = BatchUpgradeOperation.objects.create(
