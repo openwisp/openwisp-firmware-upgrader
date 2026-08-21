@@ -1,6 +1,7 @@
 from datetime import timedelta
 from unittest import mock
 
+from django.db import transaction
 from django.db.models.query import QuerySet
 from django.test import TransactionTestCase
 from django.utils import timezone
@@ -103,7 +104,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         "openwisp_notifications.signals.notify.send",
         side_effect=RuntimeError("notification backend unavailable"),
     )
-    def test_failed_reminder_send_does_not_record_reminder(self, mocked_notify):
+    def test_failed_reminder_send_records_reminder(self, mocked_notify):
         now = timezone.now()
         batch = self._create_persistent_batch()
         self._create_pending_op_for_batch(batch)
@@ -114,6 +115,21 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
             RuntimeError, "notification backend unavailable"
         ):
             tasks.send_pending_upgrade_reminders.run()
+        batch.refresh_from_db()
+        self.assertIsNotNone(batch.last_reminder_at)
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_rolled_back_reminder_stays_silent(self, mocked_notify):
+        batch = self._create_persistent_batch()
+        self._create_pending_op_for_batch(batch)
+        BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
+            created=timezone.now()
+            - timedelta(seconds=app_settings.PERSISTENT_REMINDER_PERIOD + 1)
+        )
+        with transaction.atomic():
+            tasks.send_pending_upgrade_reminders.run()
+            transaction.set_rollback(True)
+        mocked_notify.assert_not_called()
         batch.refresh_from_db()
         self.assertIsNone(batch.last_reminder_at)
 
@@ -257,6 +273,18 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         self.assertEqual(op.status, "failed")
         self.assertEqual(mocked_notify.call_count, 1)
 
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_rolled_back_failure_stays_silent(self, mocked_notify):
+        op = self._create_persistent_op(status="in-progress")
+        op = UpgradeOperation.objects.get(pk=op.pk)
+        with transaction.atomic():
+            op.status = "failed"
+            op.save()
+            transaction.set_rollback(True)
+        mocked_notify.assert_not_called()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "in-progress")
+
 
 class TestBatchCompletionNotification(TestUpgraderMixin, TransactionTestCase):
     def _complete_batch(self, index, is_persistent, op_status):
@@ -305,3 +333,22 @@ class TestBatchCompletionNotification(TestUpgraderMixin, TransactionTestCase):
         mocked_notify.reset_mock()
         batch.save()
         mocked_notify.assert_not_called()
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_rolled_back_completion_stays_silent(self, mocked_notify):
+        device_fw = self._create_device_firmware()
+        build = device_fw.image.build
+        batch = BatchUpgradeOperation.objects.create(build=build, status="in-progress")
+        operation = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="in-progress",
+        )
+        with transaction.atomic():
+            operation.status = "success"
+            operation.save()
+            transaction.set_rollback(True)
+        mocked_notify.assert_not_called()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")

@@ -248,25 +248,16 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                 operations_data = await sync_to_async(
                     lambda: UpgradeOperationSerializer(operations_list, many=True).data
                 )()
-                # Calculate counts
-                total_operations = len(operations_list)
-                completed_operations = sum(
-                    1
-                    for op in operations_list
-                    if op.status not in ("in-progress", "pending")
-                )
-                pending_operations = sum(
-                    1 for op in operations_list if op.status == "pending"
-                )
+                stats = await sync_to_async(batch_operation.get_status_stats)()
                 # Send everything in ONE message
                 await self.send_json(
                     {
                         "type": "batch_state",
                         "batch_status": {
                             "status": batch_operation.status,
-                            "completed": completed_operations,
-                            "pending": pending_operations,
-                            "total": total_operations,
+                            "completed": stats["completed"],
+                            "pending": stats["pending"],
+                            "total": stats["total_operations"],
                         },
                         "operations": operations_data,
                     }

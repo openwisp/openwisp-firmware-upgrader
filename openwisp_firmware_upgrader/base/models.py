@@ -753,12 +753,15 @@ class AbstractBatchUpgradeOperation(
                     "%(count)d devices are still pending in mass upgrade %(batch)s.",
                     pending_count,
                 ) % {"count": pending_count, "batch": batch}
-                notify.send(
-                    sender=batch,
-                    type="generic_message",
-                    target=batch,
-                    message=description,
-                    target_url_suffix="?status=pending",
+                transaction.on_commit(
+                    partial(
+                        notify.send,
+                        sender=batch,
+                        type="generic_message",
+                        target=batch,
+                        message=description,
+                        target_url_suffix="?status=pending",
+                    )
                 )
 
     @staticmethod
@@ -917,8 +920,36 @@ class AbstractBatchUpgradeOperation(
         - 'success': If all operations completed successfully
         - Otherwise: Maintain current status
         """
-        operations = self.upgradeoperation_set
-        stats = operations.aggregate(
+        stats = self.get_status_stats()
+        # Determine overall batch status based on individual operation statuses
+        if stats["in_progress"] > 0 or stats["pending"] > 0:
+            new_status = "in-progress"
+        elif stats["failed"] > 0 or stats["aborted"] > 0:
+            new_status = "failed"
+        elif stats["cancelled"] > 0:
+            new_status = "cancelled"
+        elif (
+            stats["successful"] > 0
+            and stats["completed"] == stats["total_operations"]
+            and stats["total_operations"] > 0
+        ):
+            new_status = "success"
+        else:
+            new_status = self.status
+        if self.status != new_status:
+            with transaction.atomic():
+                claimed = self._meta.model.objects.filter(
+                    pk=self.pk, status=self.status
+                ).update(status=new_status)
+                if claimed:
+                    self.status = new_status
+                    self.save(update_fields=["status"])
+                else:
+                    self.refresh_from_db(fields=["status"])
+        return self.status, stats
+
+    def get_status_stats(self):
+        return self.upgradeoperation_set.aggregate(
             total_operations=models.Count("id"),
             in_progress=models.Count(
                 models.Case(
@@ -965,32 +996,6 @@ class AbstractBatchUpgradeOperation(
                 )
             ),
         )
-        # Determine overall batch status based on individual operation statuses
-        if stats["in_progress"] > 0 or stats["pending"] > 0:
-            new_status = "in-progress"
-        elif stats["failed"] > 0 or stats["aborted"] > 0:
-            new_status = "failed"
-        elif stats["cancelled"] > 0:
-            new_status = "cancelled"
-        elif (
-            stats["successful"] > 0
-            and stats["completed"] == stats["total_operations"]
-            and stats["total_operations"] > 0
-        ):
-            new_status = "success"
-        else:
-            new_status = self.status
-        if self.status != new_status:
-            with transaction.atomic():
-                claimed = self._meta.model.objects.filter(
-                    pk=self.pk, status=self.status
-                ).update(status=new_status)
-                if claimed:
-                    self.status = new_status
-                    self.save(update_fields=["status"])
-                else:
-                    self.refresh_from_db(fields=["status"])
-        return self.status, stats
 
     @classmethod
     def notify_on_completion(cls, sender, instance, created, **kwargs):
@@ -1005,11 +1010,14 @@ class AbstractBatchUpgradeOperation(
             "batch": instance,
             "status": instance.get_status_display(),
         }
-        notify.send(
-            sender=instance,
-            type="generic_message",
-            target=instance,
-            message=description,
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=instance,
+                type="generic_message",
+                target=instance,
+                message=description,
+            )
         )
         instance._previous_status = instance.status
 
@@ -1309,11 +1317,14 @@ class AbstractUpgradeOperation(
         description = _("Persistent upgrade for device %(device)s failed.") % {
             "device": instance.device
         }
-        notify.send(
-            sender=instance,
-            type="generic_message",
-            target=instance.device,
-            message=description,
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=instance,
+                type="generic_message",
+                target=instance.device,
+                message=description,
+            )
         )
         instance._previous_status = instance.status
 

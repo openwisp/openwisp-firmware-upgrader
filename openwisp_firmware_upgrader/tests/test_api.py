@@ -1545,6 +1545,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
     def test_device_firmware_upgrade_is_persistent(self):
         env = self._create_upgrade_env(device_firmware=False)
         url = reverse("upgrader:api_devicefirmware_detail", args=[env["d1"].pk])
+
         with self.subTest("is_persistent=true opts the standalone upgrade in"):
             r = self.client.put(
                 url,
@@ -1555,6 +1556,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             self.assertTrue(UpgradeOperation.objects.get().is_persistent)
         UpgradeOperation.objects.all().delete()
         DeviceFirmware.objects.all().delete()
+
         with self.subTest("defaults to false when omitted"):
             r = self.client.put(
                 url,

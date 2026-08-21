@@ -643,6 +643,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         device_fw = self._create_device_firmware()
         build = device_fw.image.build
         with mock.patch.object(UpgradeOperation, "upgrade", return_value=None):
+
             with self.subTest("is_persistent=True batch propagates True to child"):
                 batch = BatchUpgradeOperation.objects.create(
                     build=build, is_persistent=True
@@ -700,6 +701,7 @@ class TestModels(TestUpgraderMixin, TestCase):
     def test_full_clean_on_unsaved_instances(self):
         """Regression: full_clean() on a brand-new UUID-pk instance must not query for a stored value."""
         device_fw = self._create_device_firmware()
+
         with self.subTest("brand-new UpgradeOperation"):
             op = UpgradeOperation(device=device_fw.device, image=device_fw.image)
             self.assertTrue(op._state.adding)
@@ -778,6 +780,7 @@ class TestModels(TestUpgraderMixin, TestCase):
                 expected = base * (multiplier ** (retry_count - 1))
                 self.assertGreaterEqual(delta, expected * (1 - jitter))
                 self.assertLessEqual(delta, expected * (1 + jitter))
+
             with self.subTest("retry_count=8 is the first to hit the cap"):
                 op.retry_count = 8
                 self.assertGreater(
@@ -1089,6 +1092,32 @@ class TestModels(TestUpgraderMixin, TestCase):
             is_persistent=True,
         )
         self.assertEqual(batch.pending_count, 2)
+
+    def test_get_status_stats(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(
+            build=device_fw.image.build, status="in-progress"
+        )
+        for status in ("in-progress", "pending", "success", "failed"):
+            UpgradeOperation.objects.create(
+                device=device_fw.device,
+                image=device_fw.image,
+                batch=batch,
+                status=status,
+            )
+        self.assertEqual(
+            batch.get_status_stats(),
+            {
+                "total_operations": 4,
+                "in_progress": 1,
+                "pending": 1,
+                "completed": 2,
+                "successful": 1,
+                "failed": 1,
+                "cancelled": 0,
+                "aborted": 0,
+            },
+        )
 
     def test_cancel_in_progress_below_threshold_succeeds(self):
         device_fw = self._create_device_firmware()
