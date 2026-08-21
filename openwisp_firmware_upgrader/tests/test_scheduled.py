@@ -13,7 +13,7 @@ from .base import TestUpgraderMixin, time_travel
 UpgradeOperation = load_model("UpgradeOperation")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 
-_upgrade_delay = "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"
+_upgrade_dispatch = "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async"
 _connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
 
@@ -28,8 +28,8 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         future = timezone.now() + timedelta(days=1)
         batch = self._schedule(future, is_persistent=True)
 
-        def pend(operation_id):
-            op = UpgradeOperation.objects.get(pk=operation_id)
+        def pend(args, **kwargs):
+            op = UpgradeOperation.objects.get(pk=args[0])
             op._recoverable_failure_handler(
                 recoverable=False, error=RecoverableFailure("device offline")
             )
@@ -37,7 +37,7 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
 
         due = future + timedelta(seconds=1)
         with time_travel(due), mock.patch(_connect, return_value=True), mock.patch(
-            _upgrade_delay, side_effect=pend
+            _upgrade_dispatch, side_effect=pend
         ):
             tasks.execute_scheduled_upgrades.run()
 
@@ -49,13 +49,13 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, "in-progress")
 
-        def succeed(operation_id):
-            recovered = UpgradeOperation.objects.get(pk=operation_id)
+        def succeed(args, **kwargs):
+            recovered = UpgradeOperation.objects.get(pk=args[0])
             recovered.status = "success"
             recovered.save()
 
         with time_travel(op.next_retry_at + timedelta(seconds=1)), mock.patch(
-            _upgrade_delay, side_effect=succeed
+            _upgrade_dispatch, side_effect=succeed
         ):
             tasks.check_pending_upgrades.run()
 
@@ -103,7 +103,7 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         batch.cancel()
         batch.refresh_from_db()
         self.assertEqual(batch.status, "cancelled")
-        with mock.patch(_upgrade_delay) as mocked_upgrade:
+        with mock.patch(_upgrade_dispatch) as mocked_upgrade:
             tasks.batch_upgrade_operation.run(batch.pk, batch.firmwareless)
         batch.refresh_from_db()
         self.assertEqual(batch.status, "cancelled")
