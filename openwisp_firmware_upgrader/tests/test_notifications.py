@@ -36,7 +36,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         )
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_no_pending_batches_no_notification(self, mocked_notify):
+    def test_ignores_batches_without_pending(self, mocked_notify):
         batch = self._create_persistent_batch()
         device_fw = self._create_device_firmware()
         UpgradeOperation.objects.create(
@@ -51,7 +51,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         mocked_notify.assert_not_called()
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_qualifying_batch_fires_reminder(self, mocked_notify):
+    def test_reminds_qualifying_batch(self, mocked_notify):
         batch = self._create_persistent_batch()
         self._create_pending_op_for_batch(batch)
         BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
@@ -69,7 +69,8 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         self.assertIsNotNone(batch.last_reminder_at)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_reminder_skips_batch_failed_after_selection(self, mocked_notify):
+    def test_reminder_skips_stale_batch(self, mocked_notify):
+        """Do not notify if the selected batch becomes terminal before claiming."""
         now = timezone.now()
         batch = self._create_persistent_batch()
         self._create_pending_op_for_batch(batch)
@@ -104,7 +105,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         "openwisp_notifications.signals.notify.send",
         side_effect=RuntimeError("notification backend unavailable"),
     )
-    def test_failed_reminder_send_records_reminder(self, mocked_notify):
+    def test_failed_send_records_reminder(self, mocked_notify):
         now = timezone.now()
         batch = self._create_persistent_batch()
         self._create_pending_op_for_batch(batch)
@@ -134,7 +135,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         self.assertIsNone(batch.last_reminder_at)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_multiple_qualifying_batches_each_fire(self, mocked_notify):
+    def test_reminds_all_qualifying_batches(self, mocked_notify):
         env = self._create_upgrade_env()
         stale = timezone.now() - timedelta(
             seconds=app_settings.PERSISTENT_REMINDER_PERIOD + 1
@@ -151,7 +152,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(notified, set(batches))
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_cadence_guard_within_window(self, mocked_notify):
+    def test_cadence_blocks_recent_reminder(self, mocked_notify):
         batch = self._create_persistent_batch()
         self._create_pending_op_for_batch(batch)
         within_window = app_settings.PERSISTENT_REMINDER_PERIOD - 1
@@ -163,7 +164,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         mocked_notify.assert_not_called()
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_cadence_guard_window_elapsed(self, mocked_notify):
+    def test_cadence_allows_elapsed_reminder(self, mocked_notify):
         batch = self._create_persistent_batch()
         self._create_pending_op_for_batch(batch)
         BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
@@ -174,7 +175,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(mocked_notify.call_count, 1)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_brand_new_batch_skips_reminder(self, mocked_notify):
+    def test_ignores_new_batch(self, mocked_notify):
         batch = self._create_persistent_batch()
         self._create_pending_op_for_batch(batch)
         tasks.send_pending_upgrade_reminders.run()
@@ -204,7 +205,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         )
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_in_progress_to_failed_fires_notification(self, mocked_notify):
+    def test_notifies_in_progress_failure(self, mocked_notify):
         op = self._create_persistent_op(status="in-progress")
         op = UpgradeOperation.objects.get(pk=op.pk)
         op.status = "failed"
@@ -215,7 +216,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         self.assertEqual(kwargs["type"], "generic_message")
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_pending_to_failed_fires_notification(self, mocked_notify):
+    def test_notifies_pending_failure(self, mocked_notify):
         op = self._create_persistent_op(status="pending")
         op = UpgradeOperation.objects.get(pk=op.pk)
         op.status = "failed"
@@ -223,7 +224,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         self.assertEqual(mocked_notify.call_count, 1)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_pending_to_pending_stays_silent(self, mocked_notify):
+    def test_ignores_pending_updates(self, mocked_notify):
         op = self._create_persistent_op(status="pending")
         op = UpgradeOperation.objects.get(pk=op.pk)
         op.retry_count = 3
@@ -231,7 +232,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         mocked_notify.assert_not_called()
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_non_persistent_failure_stays_silent(self, mocked_notify):
+    def test_ignores_nonpersistent_failure(self, mocked_notify):
         op = self._create_persistent_op(status="in-progress")
         UpgradeOperation.objects.filter(pk=op.pk).update(is_persistent=False)
         op = UpgradeOperation.objects.get(pk=op.pk)
@@ -240,7 +241,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         mocked_notify.assert_not_called()
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_failed_to_failed_does_not_duplicate(self, mocked_notify):
+    def test_does_not_duplicate_failure(self, mocked_notify):
         op = self._create_persistent_op(status="failed")
         op = UpgradeOperation.objects.get(pk=op.pk)
         op.log = "second save"
@@ -249,9 +250,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
-    def test_deactivated_path_does_not_fire_notification(
-        self, _mocked_upgrade, mocked_notify
-    ):
+    def test_ignores_deactivated_operation(self, _mocked_upgrade, mocked_notify):
         op = self._create_persistent_op(status="pending")
         with mock.patch(
             "openwisp_controller.config.base.device.AbstractDevice.is_deactivated",
@@ -263,7 +262,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         self.assertEqual(mocked_notify.call_count, 0)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_non_recoverable_failure_fires_notification(self, mocked_notify):
+    def test_notifies_nonrecoverable_failure(self, mocked_notify):
         op = self._create_persistent_op(status="in-progress")
         op = UpgradeOperation.objects.get(pk=op.pk)
         op._recoverable_failure_handler(
@@ -274,7 +273,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         self.assertEqual(mocked_notify.call_count, 1)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_rolled_back_failure_stays_silent(self, mocked_notify):
+    def test_ignores_rolled_back_failure(self, mocked_notify):
         op = self._create_persistent_op(status="in-progress")
         op = UpgradeOperation.objects.get(pk=op.pk)
         with transaction.atomic():
@@ -306,7 +305,7 @@ class TestBatchCompletionNotification(TestUpgraderMixin, TransactionTestCase):
         return BatchUpgradeOperation.objects.get(build=build)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_completion_notifies_except_on_cancel(self, mocked_notify):
+    def test_notifies_noncancelled_completion(self, mocked_notify):
         cases = [
             (True, "success", "success", 1),
             (True, "aborted", "failed", 1),
@@ -327,7 +326,7 @@ class TestBatchCompletionNotification(TestUpgraderMixin, TransactionTestCase):
                     self.assertIn(batch.get_status_display(), str(kwargs["message"]))
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_completion_does_not_duplicate(self, mocked_notify):
+    def test_does_not_duplicate_completion(self, mocked_notify):
         batch = self._complete_batch(0, is_persistent=False, op_status="success")
         self.assertEqual(mocked_notify.call_count, 1)
         mocked_notify.reset_mock()
@@ -335,7 +334,7 @@ class TestBatchCompletionNotification(TestUpgraderMixin, TransactionTestCase):
         mocked_notify.assert_not_called()
 
     @mock.patch("openwisp_notifications.signals.notify.send")
-    def test_rolled_back_completion_stays_silent(self, mocked_notify):
+    def test_ignores_rolled_back_completion(self, mocked_notify):
         device_fw = self._create_device_firmware()
         build = device_fw.image.build
         batch = BatchUpgradeOperation.objects.create(build=build, status="in-progress")

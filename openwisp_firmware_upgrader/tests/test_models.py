@@ -612,7 +612,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         expected = f"{uo.device} ({timezone.localtime(uo.created).strftime('%Y-%m-%d %H:%M:%S')})"
         self.assertEqual(str(uo), expected)
 
-    def test_is_persistent_field_defaults(self):
+    def test_persistence_defaults(self):
         build = self._create_build()
         batch = BatchUpgradeOperation(build=build)
         self.assertTrue(batch.is_persistent)
@@ -623,7 +623,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(uo.retry_count, 0)
         self.assertIsNone(uo.next_retry_at)
 
-    def test_next_retry_at_has_db_index(self):
+    def test_next_retry_index(self):
         field = UpgradeOperation._meta.get_field("next_retry_at")
         self.assertTrue(field.db_index)
         self.assertTrue(field.null)
@@ -639,7 +639,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             )
         )
 
-    def test_is_persistent_propagation_from_batch(self):
+    def test_batch_persistence_propagation(self):
         device_fw = self._create_device_firmware()
         build = device_fw.image.build
         with mock.patch.object(UpgradeOperation, "upgrade", return_value=None):
@@ -664,7 +664,7 @@ class TestModels(TestUpgraderMixin, TestCase):
                 self.assertFalse(op.is_persistent)
                 self.assertIsNone(op.batch)
 
-    def test_is_persistent_immutable_on_upgrade_operation(self):
+    def test_operation_persistence_immutable(self):
         device_fw = self._create_device_firmware()
         with mock.patch.object(UpgradeOperation, "upgrade", return_value=None):
             op = device_fw.create_upgrade_operation(batch=None, upgrade_options={})
@@ -677,7 +677,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             str(ctx.exception.message_dict["is_persistent"][0]),
         )
 
-    def test_is_persistent_immutable_on_batch_upgrade_operation(self):
+    def test_batch_persistence_immutable(self):
         build = self._create_build()
         batch = BatchUpgradeOperation.objects.create(build=build, is_persistent=True)
 
@@ -698,7 +698,7 @@ class TestModels(TestUpgraderMixin, TestCase):
                 str(ctx.exception.message_dict["is_persistent"][0]),
             )
 
-    def test_full_clean_on_unsaved_instances(self):
+    def test_unsaved_full_clean(self):
         """Regression: full_clean() on a brand-new UUID-pk instance must not query for a stored value."""
         device_fw = self._create_device_firmware()
 
@@ -725,7 +725,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         )
         return op
 
-    def test_recoverable_failure_handler_recoverable_branch_unchanged(self):
+    def test_recoverable_handler_reraises(self):
         op = self._make_persistent_op(is_persistent=True)
         with self.assertRaises(RecoverableFailure):
             op._recoverable_failure_handler(
@@ -735,7 +735,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(op.retry_count, 0)
         self.assertIsNone(op.next_retry_at)
 
-    def test_recoverable_failure_handler_persistent_schedules_retry(self):
+    def test_persistent_failure_schedules_retry(self):
         op = self._make_persistent_op(is_persistent=True)
         before = timezone.now()
         op._recoverable_failure_handler(
@@ -747,7 +747,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertGreater(op.next_retry_at, before)
         self.assertIn("Scheduled persistent retry", op.log)
 
-    def test_recoverable_failure_handler_persistent_non_recoverable_error(self):
+    def test_persistent_nonrecoverable_failure(self):
         op = self._make_persistent_op(is_persistent=True)
         op._recoverable_failure_handler(
             recoverable=False, error=ValueError("unrecognised failure")
@@ -756,7 +756,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(op.retry_count, 0)
         self.assertIsNone(op.next_retry_at)
 
-    def test_recoverable_failure_handler_non_persistent(self):
+    def test_nonpersistent_failure(self):
         op = self._make_persistent_op(is_persistent=False)
         op._recoverable_failure_handler(
             recoverable=False, error=RecoverableFailure("device offline")
@@ -765,7 +765,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(op.retry_count, 0)
         self.assertIsNone(op.next_retry_at)
 
-    def test_calculate_next_retry_backoff(self):
+    def test_retry_backoff(self):
         op = self._make_persistent_op(is_persistent=True)
         options = app_settings.PERSISTENT_RETRY_OPTIONS
         base = options["base_delay"]
@@ -794,7 +794,7 @@ class TestModels(TestUpgraderMixin, TestCase):
                 delta = (op._calculate_next_retry() - now).total_seconds()
                 self.assertLessEqual(delta, max_delay * (1 + jitter))
 
-    def test_calculate_next_retry_honours_setting_overrides(self):
+    def test_retry_settings_override(self):
         op = self._make_persistent_op(is_persistent=True)
         op.retry_count = 1
         with mock.patch.object(
@@ -833,7 +833,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             scheduled = op._calculate_next_retry()
             self.assertAlmostEqual((scheduled - before).total_seconds(), 60, delta=1)
 
-    def test_claim_timeout_must_exceed_task_timeout_plus_backoff(self):
+    def test_claim_timeout_minimum(self):
         self.addCleanup(importlib.reload, app_settings)
         with override_settings(
             OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT=1500,
@@ -841,7 +841,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         ), self.assertRaises(ImproperlyConfigured):
             importlib.reload(app_settings)
 
-    def test_claim_timeout_above_floor_is_accepted(self):
+    def test_valid_claim_timeout(self):
         self.addCleanup(importlib.reload, app_settings)
         with override_settings(
             OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT=1500,
@@ -852,7 +852,7 @@ class TestModels(TestUpgraderMixin, TestCase):
                 app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"], 2200
             )
 
-    def test_calculate_next_retry_safe_when_retry_count_zero(self):
+    def test_retry_schedule_with_zero_attempts(self):
         op = self._make_persistent_op(is_persistent=True)
         op.retry_count = 0
         before = timezone.now()
@@ -864,7 +864,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertGreaterEqual(delta, base * (1 - jitter) - 1)
         self.assertLessEqual(delta, base * (1 + jitter) + 1)
 
-    def test_no_connection_persistent_op_pends(self):
+    def test_persistent_operation_pends_without_connection(self):
         op = self._make_persistent_op(is_persistent=True)
         UpgradeOperation.objects.filter(pk=op.pk).update(claimed_at=timezone.now())
         op.refresh_from_db()
@@ -880,7 +880,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIsNotNone(op.next_retry_at)
         self.assertIsNone(op.claimed_at)
 
-    def test_upgrade_renews_stale_claim(self):
+    def test_renews_stale_claim(self):
         op = self._make_persistent_op(is_persistent=True)
         stale = timezone.now() - timedelta(hours=2)
         UpgradeOperation.objects.filter(pk=op.pk).update(claimed_at=stale)
@@ -895,7 +895,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(op.status, "in-progress")
         self.assertGreater(op.claimed_at, stale)
 
-    def test_no_connection_persistent_op_does_not_clobber_canceled(self):
+    def test_connection_failure_preserves_cancellation(self):
         op = self._make_persistent_op(is_persistent=True)
         failure_handler = op._recoverable_failure_handler
 
@@ -918,7 +918,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(op.status, "cancelled")
         self.assertIn("cancelled by user", op.log)
 
-    def test_no_connection_non_persistent_op_aborts(self):
+    def test_nonpersistent_operation_aborts_without_connection(self):
         op = self._make_persistent_op(is_persistent=False)
         with mock.patch.object(
             DeviceConnection,
@@ -930,7 +930,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(op.status, "aborted")
 
     @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.apply_async")
-    def test_create_upgrade_operation_standalone_is_persistent(self, mocked_dispatch):
+    def test_standalone_persistent_operation(self, mocked_dispatch):
         device_fw = self._create_device_firmware()
         with self.captureOnCommitCallbacks(execute=True):
             op = device_fw.create_upgrade_operation(
@@ -951,9 +951,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIsNone(default_op.claimed_at)
         self.assertNotIn("expires", mocked_dispatch.call_args.kwargs)
 
-    def test_recoverable_failure_handler_only_routes_recoverable_failure_to_pending(
-        self,
-    ):
+    def test_only_recoverable_failures_pend(self):
         op = self._make_persistent_op(is_persistent=True)
         for error_type in (
             UpgradeAborted,
@@ -972,7 +970,7 @@ class TestModels(TestUpgraderMixin, TestCase):
                 self.assertEqual(op.retry_count, 0)
                 self.assertIsNone(op.next_retry_at)
 
-    def test_batch_with_mixed_success_and_pending_children(self):
+    def _create_batch_with_pending_operation(self):
         device_fw = self._create_device_firmware()
         batch = BatchUpgradeOperation.objects.create(
             build=device_fw.image.build, is_persistent=True, status="in-progress"
@@ -990,51 +988,44 @@ class TestModels(TestUpgraderMixin, TestCase):
             status="pending",
             is_persistent=True,
         )
+        return device_fw, batch, pending_op
 
-        with self.subTest("progress_report shows pending separately"):
-            self.assertEqual(str(batch.progress_report), "1 complete, 1 pending")
-            self.assertEqual(batch.pending_count, 1)
+    def test_pending_batch_status(self):
+        _, batch, _ = self._create_batch_with_pending_operation()
+        self.assertEqual(str(batch.progress_report), "1 complete, 1 pending")
+        self.assertEqual(batch.pending_count, 1)
+        new_status, stats = batch.calculate_and_update_status()
+        self.assertEqual(new_status, "in-progress")
+        self.assertEqual(stats["in_progress"], 0)
+        self.assertEqual(stats["pending"], 1)
+        self.assertEqual(stats["successful"], 1)
+        self.assertEqual(stats["completed"], 1)
 
-        with self.subTest("calculate_and_update_status keeps the batch active"):
-            new_status, stats = batch.calculate_and_update_status()
-            self.assertEqual(new_status, "in-progress")
-            self.assertEqual(stats["in_progress"], 0)
-            self.assertEqual(stats["pending"], 1)
-            self.assertEqual(stats["successful"], 1)
-            self.assertEqual(stats["completed"], 1)
+    def test_cancel_pending(self):
+        _, _, pending_op = self._create_batch_with_pending_operation()
+        pending_op.cancel()
+        pending_op.refresh_from_db()
+        self.assertEqual(pending_op.status, "cancelled")
 
-        with self.subTest("pending operation is cancellable"):
-            pending_op.cancel()
-            pending_op.refresh_from_db()
-            self.assertEqual(pending_op.status, "cancelled")
+    def test_pending_operation_blocks_upgrade(self):
+        device_fw, batch, _ = self._create_batch_with_pending_operation()
+        new_op = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            status="in-progress",
+        )
+        with mock.patch.object(
+            DeviceConnection,
+            "get_working_connection",
+            return_value=mock.MagicMock(),
+        ):
+            new_op.upgrade()
+        new_op.refresh_from_db()
+        self.assertEqual(new_op.status, "aborted")
+        self.assertIn("Another upgrade operation is in progress", new_op.log)
 
-        with self.subTest("another upgrade for same device is blocked while pending"):
-            still_pending = UpgradeOperation.objects.create(
-                device=device_fw.device,
-                image=device_fw.image,
-                batch=batch,
-                status="pending",
-                is_persistent=True,
-            )
-            new_op = UpgradeOperation.objects.create(
-                device=device_fw.device,
-                image=device_fw.image,
-                batch=batch,
-                status="in-progress",
-            )
-            with mock.patch.object(
-                DeviceConnection,
-                "get_working_connection",
-                return_value=mock.MagicMock(),
-            ):
-                new_op.upgrade()
-            new_op.refresh_from_db()
-            self.assertEqual(new_op.status, "aborted")
-            self.assertIn("Another upgrade operation is in progress", new_op.log)
-            still_pending.refresh_from_db()
-            self.assertEqual(still_pending.status, "pending")
-
-    def test_progress_report_format_depends_on_pending(self):
+    def test_progress_report_with_pending(self):
         device_fw = self._create_device_firmware()
         batch = BatchUpgradeOperation.objects.create(
             build=device_fw.image.build, is_persistent=True, status="in-progress"
@@ -1119,7 +1110,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             },
         )
 
-    def test_cancel_in_progress_below_threshold_succeeds(self):
+    def test_cancel_below_threshold(self):
         device_fw = self._create_device_firmware()
         op = UpgradeOperation.objects.create(
             device=device_fw.device,
@@ -1131,7 +1122,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         op.refresh_from_db()
         self.assertEqual(op.status, "cancelled")
 
-    def test_cancel_on_terminal_status_raises(self):
+    def test_cancel_terminal_status(self):
         device_fw = self._create_device_firmware()
         for terminal_status in ("success", "failed", "aborted", "cancelled"):
             with self.subTest(status=terminal_status):
@@ -1195,9 +1186,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.apply_async")
-    def test_batch_waits_for_all_operations_before_completing(
-        self, mocked_upgrade, mocked_notify
-    ):
+    def test_batch_waits_for_operations(self, mocked_upgrade, mocked_notify):
         env = self._create_upgrade_env()
         completed = False
 

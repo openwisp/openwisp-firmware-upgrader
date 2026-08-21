@@ -206,7 +206,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         r = self.client.get(url)
         self.assertContains(r, str(device_fw.image_id))
 
-    def test_confirmation_page_renders_is_persistent_checkbox(self):
+    def test_confirmation_persistence(self):
         self._login()
         env = self._create_upgrade_env()
         r = self.client.post(
@@ -220,7 +220,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, 'name="is_persistent"')
         self.assertTrue(r.context["form"].fields["is_persistent"].initial)
 
-    def test_upgrade_operation_admin_filter_by_is_persistent(self):
+    def test_upgrade_operation_filter_by_persistence(self):
         self._login()
         env = self._create_upgrade_env()
         persistent_op = UpgradeOperation.objects.create(
@@ -240,7 +240,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, str(persistent_op.pk))
         self.assertNotContains(r, str(non_persistent_op.pk))
 
-    def test_upgrade_operation_admin_filter_by_status_pending(self):
+    def test_upgrade_operation_filter_by_pending(self):
         self._login()
         env = self._create_upgrade_env()
         pending_op = UpgradeOperation.objects.create(
@@ -260,7 +260,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, str(pending_op.pk))
         self.assertNotContains(r, str(running_op.pk))
 
-    def test_upgrade_operation_admin_detail_exposes_persistence_fields(self):
+    def test_upgrade_operation_detail_persistence(self):
         self._login()
         env = self._create_upgrade_env()
         op = UpgradeOperation.objects.create(
@@ -277,7 +277,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, "field-retry_count")
         self.assertContains(r, "field-next_retry_at")
 
-    def test_upgrade_operation_admin_detail_hides_empty_next_retry_at(self):
+    def test_upgrade_operation_detail_empty_next_retry(self):
         self._login()
         env = self._create_upgrade_env()
         op = UpgradeOperation.objects.create(
@@ -292,9 +292,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, "field-retry_count")
         self.assertNotContains(r, "field-next_retry_at")
 
-    def test_upgrade_operation_admin_detail_hides_retry_fields_when_not_persistent(
-        self,
-    ):
+    def test_upgrade_operation_detail_hides_retry_fields(self):
         self._login()
         env = self._create_upgrade_env()
         op = UpgradeOperation.objects.create(
@@ -308,14 +306,14 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertNotContains(r, "field-retry_count")
         self.assertNotContains(r, "field-next_retry_at")
 
-    def test_upgrade_operation_admin_list_retry_count_only_when_persistent(self):
+    def test_upgrade_operation_retry_count_display(self):
         model_admin = UpgradeOperationAdmin(UpgradeOperation, admin.site)
         persistent = UpgradeOperation(is_persistent=True, retry_count=7)
         non_persistent = UpgradeOperation(is_persistent=False, retry_count=0)
         self.assertEqual(model_admin.retry_count_display(persistent), 7)
         self.assertEqual(model_admin.retry_count_display(non_persistent), "")
 
-    def test_batch_upgrade_operation_admin_list_shows_is_persistent(self):
+    def test_batch_list_persistence(self):
         self._login()
         env = self._create_upgrade_env()
         BatchUpgradeOperation.objects.create(
@@ -325,7 +323,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         r = self.client.get(url)
         self.assertContains(r, "column-is_persistent")
 
-    def test_batch_change_page_shows_retry_columns_when_persistent(self):
+    def test_batch_change_page_retry_columns(self):
         self._login()
         env = self._create_upgrade_env()
         batch = BatchUpgradeOperation.objects.create(
@@ -341,7 +339,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, "Retry Count")
         self.assertContains(r, "Next Retry")
 
-    def test_batch_change_page_shows_next_retry_for_persistent_without_pending(self):
+    def test_batch_change_page_retry_columns_without_pending(self):
         self._login()
         env = self._create_upgrade_env()
         batch = BatchUpgradeOperation.objects.create(
@@ -357,7 +355,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, "Retry Count")
         self.assertContains(r, "Next Retry")
 
-    def test_batch_change_page_shows_next_retry_for_persistent_when_filtered(self):
+    def test_batch_change_page_retry_columns_when_filtered(self):
         self._login()
         env = self._create_upgrade_env()
         batch = BatchUpgradeOperation.objects.create(
@@ -376,7 +374,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, "Retry Count")
         self.assertContains(r, "Next Retry")
 
-    def test_batch_change_page_hides_retry_columns_when_not_persistent(self):
+    def test_batch_change_page_hides_retry_columns(self):
         self._login()
         env = self._create_upgrade_env()
         batch = BatchUpgradeOperation.objects.create(
@@ -392,7 +390,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertNotContains(r, "Retry Count")
         self.assertNotContains(r, "Next Retry")
 
-    def test_batch_change_page_next_retry_scoped_to_managed_orgs(self):
+    def test_batch_change_page_tenant_isolation(self):
         env = self._create_upgrade_env()
         org1 = env["d1"].organization
         org2 = self._create_org(name="org2", slug="org2")
@@ -2382,7 +2380,7 @@ class TestAdminTransaction(
         )
 
     @mock.patch(_mock_upgrade, return_value=True)
-    def test_upgrade_with_is_persistent_true(self, *args):
+    def test_persistent_upgrade(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             self._login()
             env = self._create_upgrade_env()
@@ -2406,7 +2404,7 @@ class TestAdminTransaction(
             self.assertTrue(all(child_flags))
 
     @mock.patch(_mock_upgrade, return_value=True)
-    def test_upgrade_with_is_persistent_false(self, *args):
+    def test_nonpersistent_upgrade(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             self._login()
             env = self._create_upgrade_env()

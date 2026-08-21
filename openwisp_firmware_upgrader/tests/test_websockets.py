@@ -702,7 +702,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(len(messages), 1)
         await communicator.disconnect()
 
-    async def test_batch_consumer_snapshot_counts_pending_separately(self):
+    async def test_batch_snapshot_counts_pending(self):
         build = await sync_to_async(self._get_build)()
         device_fw = await sync_to_async(self._create_device_firmware)()
         batch = await sync_to_async(BatchUpgradeOperation.objects.create)(
@@ -734,7 +734,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
 
     @patch(_mock_upgrade, return_value=True)
     @patch(_mock_connect, return_value=True)
-    async def test_device_consumer_snapshot_includes_pending(self, *args):
+    async def test_device_snapshot_includes_pending(self, *args):
         _, device_id = await self._create_test_device_with_upgrade()
         op = await sync_to_async(
             lambda: UpgradeOperation.objects.filter(device_id=device_id).first()
@@ -751,9 +751,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
 
     @patch(_mock_upgrade, return_value=True)
     @patch(_mock_connect, return_value=True)
-    async def test_pending_transition_publishes_batch_status_with_pending_count(
-        self, *args
-    ):
+    async def test_pending_transition_publishes_batch_count(self, *args):
         build = await sync_to_async(self._get_build)()
         device_fw = await sync_to_async(self._create_device_firmware)()
         batch = await sync_to_async(BatchUpgradeOperation.objects.create)(

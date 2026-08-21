@@ -278,7 +278,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
 
     @patch(_mock_upgrade, return_value=True)
-    def test_mass_upgrade_persistent_checkbox_propagates(self, *args):
+    def test_persistence_checkbox_propagates(self, *args):
         with patch(self._mock_connect, return_value=True):
             _, _, _, build2, _, _, _ = self._set_up_env()
             self.login()
@@ -377,7 +377,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                     BatchUpgradeOperation.objects.filter(upgrade_options={}).count(), 1
                 )
 
-    def test_pending_operation_cancel_button(self):
+    def test_pending_cancel_button(self):
         org, category, build1, build2, image1, image2, device = self._set_up_env()
         UpgradeOperation.objects.create(
             device=device,
@@ -498,7 +498,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
 
-    def test_pending_operation_cancel_transition(self):
+    def test_pending_cancellation(self):
         org, category, build1, build2, image1, image2, device = self._set_up_env()
         operation = UpgradeOperation.objects.create(
             device=device,
@@ -1101,8 +1101,8 @@ class TestRealTimeProgress(
         self.assertIn("width: 100%", style)
         self._assert_no_js_errors()
 
-    def test_batch_completion_text_pending_branch(self):
-        """Test batch completion field renders pending count and switches formats via websocket"""
+    def test_pending_completion_text(self):
+        """Check initial and WebSocket-updated completion text with pending operations."""
         batch_operation = BatchUpgradeOperation.objects.create(
             build=self.build2, status="in-progress"
         )
@@ -1153,7 +1153,8 @@ class TestRealTimeProgress(
         )
         self._assert_no_js_errors()
 
-    def test_pending_operation_renders_orange_indicator(self):
+    def test_pending_indicator(self):
+        """Render pending operations with the orange status indicator."""
         batch_operation = BatchUpgradeOperation.objects.create(
             build=self.build2, status="in-progress"
         )
@@ -1361,7 +1362,7 @@ class TestRealTimeProgress(
             self.assertEqual(log, "Succeeded because you're very smart!")
             self._assert_no_js_errors()
 
-    def test_batch_operation_retry_details_update_live(self):
+    def test_batch_retry_details_update_live(self):
         batch = BatchUpgradeOperation.objects.create(
             build=self.build2, status="in-progress", is_persistent=True
         )

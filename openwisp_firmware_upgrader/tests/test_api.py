@@ -694,7 +694,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(len(r.data["device_firmwares"]), 0)
             self.assertEqual(len(r.data["devices"]), 0)
 
-    def test_api_batch_upgrade_is_persistent(self):
+    def test_batch_upgrade_persistence(self):
         env = self._create_upgrade_env()
         url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
 
@@ -1067,7 +1067,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
 
-    def test_batchupgradeoperation_view_exposes_is_persistent(self):
+    def test_detail_exposes_persistence(self):
         env = self._create_upgrade_env()
         env["build2"].batch_upgrade(firmwareless=False, is_persistent=False)
         operation = BatchUpgradeOperation.objects.get(build=env["build2"])
@@ -1077,7 +1077,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self.assertIn("is_persistent", r.data)
         self.assertFalse(r.data["is_persistent"])
 
-    def test_batchupgradeoperation_list_exposes_is_persistent(self):
+    def test_list_exposes_persistence(self):
         env = self._create_upgrade_env()
         env["build2"].batch_upgrade(firmwareless=False, is_persistent=False)
         url = reverse("upgrader:api_batchupgradeoperation_list")
@@ -1542,7 +1542,7 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         self.assertNotIn(f"{image2b}</option>", repsonse)
         self.assertNotIn(f"{image2}</option>", repsonse)
 
-    def test_device_firmware_upgrade_is_persistent(self):
+    def test_upgrade_persistence(self):
         env = self._create_upgrade_env(device_firmware=False)
         url = reverse("upgrader:api_devicefirmware_detail", args=[env["d1"].pk])
 
@@ -2034,7 +2034,7 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             serializer_list = self._serialize_upgrade_operation(uo1)
             self.assertEqual(r.data, serializer_list)
 
-    def test_uo_detail_exposes_persistence_fields(self):
+    def test_detail_exposes_persistence(self):
         self._create_upgrade_env(upgrade_operation=True)
         uo = UpgradeOperation.objects.first()
         url = reverse("upgrader:api_upgradeoperation_detail", args=[uo.pk])
@@ -2044,7 +2044,7 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self.assertIn("retry_count", r.data)
         self.assertIn("next_retry_at", r.data)
 
-    def test_uo_list_filter_status_pending(self):
+    def test_list_filters_pending(self):
         env = self._create_upgrade_env(upgrade_operation=True)
         pending = UpgradeOperation.objects.create(
             device=env["d1"],
@@ -2251,7 +2251,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn("not found", response.data["error"])
 
-    def test_upgrade_operation_cancel_pending(self):
+    def test_cancel_pending(self):
         env = self._create_upgrade_env(upgrade_operation=True, organization=self.org)
         operation = UpgradeOperation.objects.create(
             device=env["d1"],
@@ -2267,7 +2267,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         operation.refresh_from_db()
         self.assertEqual(operation.status, "cancelled")
 
-    def test_upgrade_operation_cancel_terminal_status(self):
+    def test_cancel_terminal(self):
         env = self._create_upgrade_env(upgrade_operation=True, organization=self.org)
         operation = UpgradeOperation.objects.create(
             device=env["d1"],
@@ -2280,7 +2280,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         response = self.client.post(url)
         self.assertEqual(response.status_code, 409)
 
-    def test_batch_serializer_allows_is_persistent_update_while_idle(self):
+    def test_batch_serializer_allows_idle_persistence_update(self):
         env = self._create_upgrade_env()
         env["build2"].batch_upgrade(firmwareless=False)
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
@@ -2291,7 +2291,7 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
         serializer.save()
 
-    def test_batch_serializer_rejects_is_persistent_update(self):
+    def test_batch_serializer_rejects_persistence_update(self):
         env = self._create_upgrade_env()
         env["build2"].batch_upgrade(firmwareless=False)
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
