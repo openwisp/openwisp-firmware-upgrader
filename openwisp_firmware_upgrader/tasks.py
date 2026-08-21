@@ -4,6 +4,7 @@ import swapper
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from openwisp_utils.tasks import OpenwispCeleryTask
