@@ -212,9 +212,10 @@ Upgrades all the devices related to the specified build ID.
 
 .. note::
 
-Batch upgrades for builds belonging to disabled organizations are
-    rejected with ``403 Forbidden``. For shared builds, devices belonging to
-    disabled organizations or deactivated devices are skipped.
+    Batch upgrades for builds belonging to disabled organizations are
+    rejected with ``403 Forbidden``. For shared builds, devices belonging
+    to disabled organizations or deactivated devices are skipped.
+
 **Optional Parameters**
 
 The batch upgrade operation accepts the following optional parameters in
