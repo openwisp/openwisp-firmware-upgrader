@@ -76,22 +76,27 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         org2 = self._create_org(name="Other Org", slug="other-org")
         os_version = "OpenWrt 23.05.0"
         build = self._create_build(organization=org1, os=os_version)
-        fw_image = self._create_firmware_image(
-            build=build, type=self.TPLINK_4300_IMAGE
-        )
+        fw_image = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
         supported_board = fw_image.boards[0]
 
         # 1. Eligible device: matching OS, matching model, no existing firmware, active, same org
-        d_eligible = self._create_device_with_connection(
-            name="Eligible Device",
-            mac_address="00:11:22:33:44:01",
-            organization=org1,
-            model=supported_board,
-            os=os_version,
-        )
+        # Patch the auto-create signal handler so that connecting the device
+        # does not immediately associate a DeviceFirmware, otherwise the
+        # device would no longer be eligible by the time the task under
+        # test runs.
+        with mock.patch(
+            "openwisp_firmware_upgrader.base.models.create_device_firmware.delay"
+        ):
+            d_eligible = self._create_device_with_connection(
+                name="eligible-device",
+                mac_address="00:11:22:33:44:01",
+                organization=org1,
+                model=supported_board,
+                os=os_version,
+            )
         # 2. Ineligible: different hardware model sharing same OS
         d_different_model = self._create_device(
-            name="Different Model Device",
+            name="different-model-device",
             mac_address="00:11:22:33:44:02",
             organization=org1,
             model="YunCore XD3200",
@@ -99,7 +104,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         # 3. Ineligible: different organization
         d_different_org = self._create_device(
-            name="Different Org Device",
+            name="different-org-device",
             mac_address="00:11:22:33:44:03",
             organization=org2,
             model=supported_board,
@@ -107,7 +112,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         # 4. Ineligible: deactivated device
         d_deactivated = self._create_device(
-            name="Deactivated Device",
+            name="deactivated-device",
             mac_address="00:11:22:33:44:04",
             organization=org1,
             model=supported_board,
@@ -115,16 +120,19 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         d_deactivated.deactivate()
         # 5. Ineligible: device already has a DeviceFirmware
-        d_existing_fw = self._create_device_with_connection(
-            name="Existing FW Device",
-            mac_address="00:11:22:33:44:05",
-            organization=org1,
-            model=supported_board,
-            os=os_version,
-        )
+        with mock.patch(
+            "openwisp_firmware_upgrader.base.models.create_device_firmware.delay"
+        ):
+            d_existing_fw = self._create_device_with_connection(
+                name="existing-fw-device",
+                mac_address="00:11:22:33:44:05",
+                organization=org1,
+                model=supported_board,
+                os=os_version,
+            )
         # 6. Ineligible: different OS
         d_different_os = self._create_device(
-            name="Different OS Device",
+            name="different-os-device",
             mac_address="00:11:22:33:44:06",
             organization=org1,
             model=supported_board,
@@ -169,25 +177,30 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             name="Shared Category", organization=None
         )
         build = self._create_build(category=shared_category, os=os_version)
-        fw_image = self._create_firmware_image(
-            build=build, type=self.TPLINK_4300_IMAGE
-        )
+        fw_image = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
         supported_board = fw_image.boards[0]
 
-        d_org1 = self._create_device_with_connection(
-            name="Org1 Device",
-            mac_address="00:11:22:33:44:11",
-            organization=org1,
-            model=supported_board,
-            os=os_version,
-        )
-        d_org2 = self._create_device_with_connection(
-            name="Org2 Device",
-            mac_address="00:11:22:33:44:12",
-            organization=org2,
-            model=supported_board,
-            os=os_version,
-        )
+        # Patch the auto-create signal handler so that connecting the devices
+        # does not immediately associate a DeviceFirmware, otherwise the
+        # devices would no longer be eligible by the time the task under
+        # test runs.
+        with mock.patch(
+            "openwisp_firmware_upgrader.base.models.create_device_firmware.delay"
+        ):
+            d_org1 = self._create_device_with_connection(
+                name="org1-device",
+                mac_address="00:11:22:33:44:11",
+                organization=org1,
+                model=supported_board,
+                os=os_version,
+            )
+            d_org2 = self._create_device_with_connection(
+                name="org2-device",
+                mac_address="00:11:22:33:44:12",
+                organization=org2,
+                model=supported_board,
+                os=os_version,
+            )
 
         tasks.create_all_device_firmwares.run(fw_image.pk)
 
@@ -199,9 +212,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
     def test_create_all_device_firmwares_no_build_os(self):
         org = self._get_org()
         build = self._create_build(organization=org, os=None)
-        fw_image = self._create_firmware_image(
-            build=build, type=self.TPLINK_4300_IMAGE
-        )
+        fw_image = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
         d = self._create_device_with_connection(
             name="Device",
             organization=org,
