@@ -13,6 +13,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.formats import localize
 from django.utils.timezone import localtime
 
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
@@ -354,7 +355,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
         )
         r = self.client.get(url)
-        self.assertContains(r, localtime(due).strftime("%Y-%m-%d %H:%M"))
+        self.assertContains(r, localize(localtime(due)))
 
     def test_batch_action_buttons(self):
         self._login()

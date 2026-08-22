@@ -37,8 +37,6 @@ fieldset.aligned label.is-persistent-checkbox input[type="checkbox"] {
   margin: 0;
 }
 
-/* the schedule is entered in the browser timezone, so Django's server-time
-   warning does not apply */
 #schedule-row .timezonewarning {
   display: none;
 }

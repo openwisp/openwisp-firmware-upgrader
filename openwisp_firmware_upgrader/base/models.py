@@ -1338,7 +1338,9 @@ class AbstractBatchUpgradeOperation(
             if not claimed:
                 continue
             try:
-                batch_upgrade_operation.delay(batch_id, batch.firmwareless)
+                transaction.on_commit(
+                    partial(batch_upgrade_operation.delay, batch_id, batch.firmwareless)
+                )
             except Exception:
                 cls.objects.filter(pk=batch_id, status="in-progress").update(
                     status="scheduled"
