@@ -84,6 +84,7 @@ The list of batch upgrade operations provides the following filters:
 
 - ``build`` (Firmware build ID)
 - ``status`` (One of: idle, in-progress, success, failed, cancelled)
+- ``is_persistent`` (true or false)
 
 Here's a few examples:
 
@@ -91,6 +92,7 @@ Here's a few examples:
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?build={build_id}
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status={status}
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?is_persistent=true
 
 Get Mass Upgrade Operation Detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -201,6 +203,8 @@ Download Firmware Image
 
     GET /api/v1/firmware-upgrader/build/{build_id}/image/{id}/download/
 
+.. _firmware_upgrader_perform_batch_upgrade:
+
 Perform Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -219,6 +223,9 @@ the request body:
   specific group
 - ``location`` (Location ID): limit the upgrade to devices at a specific
   geographic location
+- ``is_persistent`` (boolean, default ``true``): keep retrying offline
+  devices until they come back online or the operation is cancelled. See
+  :doc:`persistent-mass-upgrades`.
 
 Example with filters:
 
@@ -318,7 +325,8 @@ The list of upgrade operations provides the following filters:
 - ``device__organization_slug`` (Organization slug of the device)
 - ``device`` (Device ID)
 - ``image`` (Firmware image ID)
-- ``status`` (One of: in-progress, success, failed, aborted, cancelled)
+- ``status`` (One of: in-progress, pending, success, failed, aborted,
+  cancelled)
 
 Here's a few examples:
 
@@ -359,11 +367,13 @@ List Device Upgrade Operations
 **Available filters**
 
 The list of device upgrade operations can be filtered by ``status`` (one
-of: in-progress, success, failed, aborted, cancelled).
+of: in-progress, pending, success, failed, aborted, cancelled).
 
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/device/{device_id}/upgrade-operation/?status={status}
+
+.. _firmware_upgrader_create_device_firmware:
 
 Create Device Firmware
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -374,6 +384,11 @@ firmware if it does not already exist.
 .. code-block:: text
 
     PUT /api/v1/firmware-upgrader/device/{device_id}/firmware/
+
+The request body accepts an optional ``is_persistent`` (boolean, default
+``false``) flag; when enabled, the resulting upgrade keeps retrying the
+device until it comes back online or the operation is cancelled. See
+:doc:`persistent-mass-upgrades`.
 
 Get Device Firmware Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

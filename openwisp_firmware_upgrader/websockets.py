@@ -248,19 +248,16 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                 operations_data = await sync_to_async(
                     lambda: UpgradeOperationSerializer(operations_list, many=True).data
                 )()
-                # Calculate counts
-                total_operations = len(operations_list)
-                completed_operations = sum(
-                    1 for op in operations_list if op.status != "in-progress"
-                )
+                stats = await sync_to_async(batch_operation.get_status_stats)()
                 # Send everything in ONE message
                 await self.send_json(
                     {
                         "type": "batch_state",
                         "batch_status": {
                             "status": batch_operation.status,
-                            "completed": completed_operations,
-                            "total": total_operations,
+                            "completed": stats["completed"],
+                            "pending": stats["pending"],
+                            "total": stats["total_operations"],
                         },
                         "operations": operations_data,
                     }
@@ -327,6 +324,7 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                         device_id=self.pk_,
                         status__in=[
                             "in-progress",
+                            "pending",
                             "success",
                             "failed",
                             "aborted",
@@ -441,6 +439,8 @@ class UpgradeProgressPublisher:
                     getattr(instance, "progress", 0),
                     instance.modified,
                     device_info,
+                    instance.retry_count,
+                    instance.next_retry_at,
                 )
                 batch_publisher.update_batch_status(instance.batch)
         except (ConnectionError, TimeoutError):
@@ -476,7 +476,14 @@ class BatchUpgradeProgressPublisher:
         _run_coroutine_safely(_send_message)
 
     def publish_operation_progress(
-        self, operation_id, status, progress, modified=None, device_info=None
+        self,
+        operation_id,
+        status,
+        progress,
+        modified=None,
+        device_info=None,
+        retry_count=None,
+        next_retry_at=None,
     ):
         progress_data = {
             "type": "operation_progress",
@@ -484,6 +491,8 @@ class BatchUpgradeProgressPublisher:
             "status": status,
             "progress": progress,
             "modified": modified.isoformat() if modified else None,
+            "retry_count": retry_count,
+            "next_retry_at": next_retry_at.isoformat() if next_retry_at else None,
         }
         # Add device information if available
         if device_info:
@@ -496,12 +505,13 @@ class BatchUpgradeProgressPublisher:
             )
         self.publish_progress(progress_data)
 
-    def publish_batch_status(self, status, completed, total):
+    def publish_batch_status(self, status, completed, total, pending=0):
         self.publish_progress(
             {
                 "type": "batch_status",
                 "status": status,
                 "completed": completed,
+                "pending": pending,
                 "total": total,
             }
         )
@@ -514,6 +524,7 @@ class BatchUpgradeProgressPublisher:
             batch_status,
             stats["completed"],
             stats["total_operations"],
+            stats["pending"],
         )
 
     @classmethod
