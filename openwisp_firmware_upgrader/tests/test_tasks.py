@@ -82,7 +82,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         supported_board = fw_image.boards[0]
 
         # 1. Eligible device: matching OS, matching model, no existing firmware, active, same org
-        d_eligible = self._create_device(
+        d_eligible = self._create_device_with_connection(
             name="Eligible Device",
             mac_address="00:11:22:33:44:01",
             organization=org1,
@@ -115,7 +115,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         d_deactivated.deactivate()
         # 5. Ineligible: device already has a DeviceFirmware
-        d_existing_fw = self._create_device(
+        d_existing_fw = self._create_device_with_connection(
             name="Existing FW Device",
             mac_address="00:11:22:33:44:05",
             organization=org1,
@@ -174,14 +174,14 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         supported_board = fw_image.boards[0]
 
-        d_org1 = self._create_device(
+        d_org1 = self._create_device_with_connection(
             name="Org1 Device",
             mac_address="00:11:22:33:44:11",
             organization=org1,
             model=supported_board,
             os=os_version,
         )
-        d_org2 = self._create_device(
+        d_org2 = self._create_device_with_connection(
             name="Org2 Device",
             mac_address="00:11:22:33:44:12",
             organization=org2,
@@ -202,7 +202,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         fw_image = self._create_firmware_image(
             build=build, type=self.TPLINK_4300_IMAGE
         )
-        d = self._create_device(
+        d = self._create_device_with_connection(
             name="Device",
             organization=org,
             model=fw_image.boards[0],
