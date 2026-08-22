@@ -24,6 +24,30 @@ RETRY_OPTIONS = getattr(
 
 TASK_TIMEOUT = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT", 1500)
 
+PERSISTENT_RETRY_OPTIONS = dict(
+    base_delay=600,
+    multiplier=2,
+    jitter=0.25,
+    max_delay=43200,
+    dispatch_jitter=300,
+    signal_jitter=120,
+    claim_timeout=3600,
+)
+PERSISTENT_RETRY_OPTIONS.update(
+    getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS", {})
+)
+if PERSISTENT_RETRY_OPTIONS["claim_timeout"] <= TASK_TIMEOUT + RETRY_OPTIONS.get(
+    "retry_backoff_max", 600
+):
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS['claim_timeout'] "
+        "must be greater than OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT plus the "
+        "retry_backoff_max of OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS"
+    )
+PERSISTENT_REMINDER_PERIOD = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD", 5184000
+)
+
 FIRMWARE_UPGRADER_API = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_API", True)
 FIRMWARE_API_BASEURL = getattr(settings, "OPENWISP_FIRMWARE_API_BASEURL", "/")
 OPENWRT_SETTINGS = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS", {})

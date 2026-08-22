@@ -103,6 +103,12 @@
         <th>{% trans "Device" %}</th>
         <th>{% trans "Status" %}</th>
         <th>{% trans "Image" %}</th>
+        {% if is_persistent %}
+        <th>{% trans "Retry Count" %}</th>
+        {% endif %}
+        {% if show_next_retry %}
+        <th>{% trans "Next Retry" %}</th>
+        {% endif %}
         <th>{% trans "Last Updated" %}</th>
       </tr>
     </thead>
@@ -115,7 +121,8 @@
             {{ operation.device.name }}
           </a>
         </td>
-        <td class="status-cell" data-operation-id="{{ operation.id }}" data-operation-status="{{ operation.status }}">
+        <td class="status-cell" data-operation-id="{{ operation.id }}"
+          data-operation-status="{{ operation.status }}">
           <div class="status-content">{{ operation.get_status_display }}</div>
         </td>
         <td>
@@ -125,11 +132,25 @@
           {% trans "None" %}
           {% endif %}
         </td>
-        <td>{{ operation.modified|date }}</td>
+        {% if is_persistent %}
+        <td class="retry-count-cell">{{ operation.retry_count }}</td>
+        {% endif %}
+        {% if show_next_retry %}
+        <td class="next-retry-cell">
+          {% if operation.status == 'pending' %}
+          {{ operation.next_retry_at|date:"DATETIME_FORMAT" }}
+          {% endif %}
+        </td>
+        {% endif %}
+        <td class="last-updated-cell">{{ operation.modified|date:"DATETIME_FORMAT" }}</td>
       </tr>
       {% empty %}
       <tr>
-        <td colspan="4" class="empty-results">{% trans "No device upgrades found." %}</td>
+        <td
+          colspan="{% if show_next_retry %}6{% elif is_persistent %}5{% else %}4{% endif %}"
+          class="empty-results">
+          {% trans "No device upgrades found." %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

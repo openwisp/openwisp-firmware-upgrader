@@ -50,6 +50,11 @@
 .results-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.results-table th {
+  text-align: left;
 }
 
 #main #content .device-link {
@@ -122,16 +127,12 @@
   position: relative;
 }
 
-.status-cell {
-  width: 200px;
-  min-width: 200px;
-}
-
 .upgrade-status-container {
   display: flex;
   flex-direction: column;
   gap: 4px;
   align-items: flex-start;
+  max-width: 200px;
 }
 
 .upgrade-status-container .upgrade-progress-bar {

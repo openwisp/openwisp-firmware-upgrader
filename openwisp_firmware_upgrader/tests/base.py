@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from unittest import mock
 
 import swapper
@@ -7,6 +8,7 @@ from django.contrib.auth import get_permission_codename
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 
 from openwisp_controller.connection.tests.utils import CreateConnectionsMixin
 from openwisp_utils.tests.selenium import SeleniumTestMixin
@@ -20,6 +22,14 @@ DeviceFirmware = load_model("DeviceFirmware")
 Credentials = swapper.load_model("connection", "Credentials")
 DeviceGroup = swapper.load_model("config", "DeviceGroup")
 OrganizationUser = swapper.load_model("openwisp_users", "OrganizationUser")
+
+
+@contextmanager
+def time_travel(moment):
+    """Freeze ``timezone.now()`` at ``moment`` so backoff, the Beat scan
+    window and reminder cadence are deterministic."""
+    with mock.patch.object(timezone, "now", return_value=moment):
+        yield moment
 
 
 class TestUpgraderMixin(CreateConnectionsMixin):

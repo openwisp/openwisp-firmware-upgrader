@@ -22,6 +22,7 @@ from openwisp_firmware_upgrader.admin import (
     DeviceFirmwareInline,
     DeviceUpgradeOperationInline,
     FirmwareImageInline,
+    UpgradeOperationAdmin,
     admin,
 )
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
@@ -204,6 +205,225 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         r = self.client.get(url)
         self.assertContains(r, str(device_fw.image_id))
+
+    def test_confirmation_persistence(self):
+        self._login()
+        env = self._create_upgrade_env()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(r, 'name="is_persistent"')
+        self.assertTrue(r.context["form"].fields["is_persistent"].initial)
+
+    def test_upgrade_operation_filter_by_persistence(self):
+        self._login()
+        env = self._create_upgrade_env()
+        persistent_op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="in-progress",
+            is_persistent=True,
+        )
+        non_persistent_op = UpgradeOperation.objects.create(
+            device=env["d2"],
+            image=env["image1b"],
+            status="in-progress",
+            is_persistent=False,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        r = self.client.get(url, {"is_persistent__exact": "1"})
+        self.assertContains(r, str(persistent_op.pk))
+        self.assertNotContains(r, str(non_persistent_op.pk))
+
+    def test_upgrade_operation_filter_by_pending(self):
+        self._login()
+        env = self._create_upgrade_env()
+        pending_op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="pending",
+            is_persistent=True,
+        )
+        running_op = UpgradeOperation.objects.create(
+            device=env["d2"],
+            image=env["image1b"],
+            status="in-progress",
+            is_persistent=True,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        r = self.client.get(url, {"status__exact": "pending"})
+        self.assertContains(r, str(pending_op.pk))
+        self.assertNotContains(r, str(running_op.pk))
+
+    def test_upgrade_operation_detail_persistence(self):
+        self._login()
+        env = self._create_upgrade_env()
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="pending",
+            is_persistent=True,
+            retry_count=3,
+            next_retry_at=localtime() + timedelta(minutes=10),
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
+        r = self.client.get(url)
+        self.assertContains(r, "field-is_persistent")
+        self.assertContains(r, "field-retry_count")
+        self.assertContains(r, "field-next_retry_at")
+
+    def test_upgrade_operation_detail_empty_next_retry(self):
+        self._login()
+        env = self._create_upgrade_env()
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="in-progress",
+            is_persistent=True,
+            retry_count=1,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
+        r = self.client.get(url)
+        self.assertContains(r, "field-retry_count")
+        self.assertContains(r, "field-next_retry_at")
+
+    def test_upgrade_operation_detail_hides_retry_fields(self):
+        self._login()
+        env = self._create_upgrade_env()
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="failed",
+            is_persistent=False,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
+        r = self.client.get(url)
+        self.assertNotContains(r, "field-retry_count")
+        self.assertNotContains(r, "field-next_retry_at")
+
+    def test_upgrade_operation_retry_count_display(self):
+        model_admin = UpgradeOperationAdmin(UpgradeOperation, admin.site)
+        persistent = UpgradeOperation(is_persistent=True, retry_count=7)
+        non_persistent = UpgradeOperation(is_persistent=False, retry_count=0)
+        self.assertEqual(model_admin.retry_count_display(persistent), 7)
+        self.assertEqual(model_admin.retry_count_display(non_persistent), "")
+
+    def test_batch_list_persistence(self):
+        self._login()
+        env = self._create_upgrade_env()
+        BatchUpgradeOperation.objects.create(
+            build=env["build2"], status="in-progress", is_persistent=True
+        )
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        r = self.client.get(url)
+        self.assertContains(r, "column-is_persistent")
+
+    def test_batch_change_page_retry_columns(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, "Retry Count")
+        self.assertContains(r, "Next Retry")
+
+    def test_batch_change_page_retry_columns_without_pending(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="in-progress"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, "Retry Count")
+        self.assertContains(r, "Next Retry")
+
+    def test_batch_change_page_retry_columns_when_filtered(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="success"
+        )
+        UpgradeOperation.objects.create(
+            device=env["d2"], image=env["image1b"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url, {"status": "success"})
+        self.assertContains(r, "Retry Count")
+        self.assertContains(r, "Next Retry")
+
+    def test_batch_change_page_hides_retry_columns(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=False
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertNotContains(r, "Retry Count")
+        self.assertNotContains(r, "Next Retry")
+
+    def test_batch_change_page_tenant_isolation(self):
+        env = self._create_upgrade_env()
+        org1 = env["d1"].organization
+        org2 = self._create_org(name="org2", slug="org2")
+        org2_device = self._create_device(
+            name="org2dev",
+            organization=org2,
+            mac_address="00:22:bb:33:cc:99",
+            model=env["image1a"].boards[0],
+        )
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="success"
+        )
+        UpgradeOperation.objects.create(
+            device=org2_device, image=env["image1a"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+
+        with self.subTest("Org admin does not see pending op from another org"):
+            org1_admin = self._create_administrator(organizations=[org1])
+            self.client.force_login(org1_admin)
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            self.assertNotContains(r, org2_device.name)
+
+        with self.subTest("Superuser sees the pending op"):
+            self._login()
+            r = self.client.get(url)
+            self.assertContains(r, org2_device.name)
 
     def test_firmware_image_has_change_permission(self):
         request = MockRequest()
@@ -879,6 +1099,13 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertNotContains(response, delete_url)
 
+        with self.subTest("pending operation does not show delete button"):
+            operation.status = "pending"
+            operation.save(update_fields=["status"])
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, delete_url)
+
         with self.subTest("failed operation can be deleted"):
             operation.status = "failed"
             operation.save(update_fields=["status"])
@@ -893,6 +1120,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self._login()
         device = self._create_device_with_connection()
         operation = UpgradeOperation.objects.create(device=device)
+        pending_operation = UpgradeOperation.objects.create(
+            device=device, status="pending"
+        )
         failed_operation = UpgradeOperation.objects.create(
             device=device, status="failed"
         )
@@ -901,7 +1131,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
             url,
             data={
                 "action": "delete_selected",
-                ACTION_CHECKBOX_NAME: [str(operation.pk), str(failed_operation.pk)],
+                ACTION_CHECKBOX_NAME: [
+                    str(operation.pk),
+                    str(pending_operation.pk),
+                    str(failed_operation.pk),
+                ],
                 "post": "yes",
             },
             follow=True,
@@ -913,6 +1147,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
             "Remove them from the selection and try again.",
         )
         self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+        self.assertTrue(
+            UpgradeOperation.objects.filter(pk=pending_operation.pk).exists()
+        )
         self.assertTrue(
             UpgradeOperation.objects.filter(pk=failed_operation.pk).exists()
         )
@@ -1010,6 +1247,25 @@ class TestAdmin(BaseTestAdmin, TestCase):
         url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
 
         with self.subTest("in-progress operation cannot be deleted inline"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            delete_input = self._get_input_tag(
+                response.content.decode(), "upgradeoperation_set-0-DELETE"
+            )
+            self.assertIn("disabled", delete_input)
+            response = self.client.post(
+                url,
+                data=self._get_device_upgrade_operation_delete_params(
+                    device, device_conn, device_fw, operation
+                ),
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
+        with self.subTest("pending operation cannot be deleted inline"):
+            operation.status = "pending"
+            operation.save(update_fields=["status"])
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             delete_input = self._get_input_tag(
@@ -1815,7 +2071,7 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
+                with self.assertNumQueries(24 if django.VERSION < (5, 2) else 22):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")
@@ -1967,7 +2223,7 @@ class TestAdminTransaction(
             )
             with self.subTest("Test actual batch upgrade with location"):
                 with mock.patch(
-                    "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"
+                    "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async"
                 ):
                     response = self.client.post(url, data, follow=True)
                     self.assertEqual(response.status_code, 200)
@@ -2122,6 +2378,53 @@ class TestAdminTransaction(
             initial_total_upgrade_op_count,
             "Total UpgradeOperation count should remain unchanged",
         )
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_persistent_upgrade(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
+            self._login()
+            env = self._create_upgrade_env()
+            r = self.client.post(
+                self.build_list_url,
+                {
+                    "action": "upgrade_selected",
+                    "upgrade_related": "upgrade_related",
+                    "is_persistent": "on",
+                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(r, '<li class="success">')
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertTrue(batch.is_persistent)
+            child_flags = list(
+                batch.upgradeoperation_set.values_list("is_persistent", flat=True)
+            )
+            self.assertTrue(child_flags)
+            self.assertTrue(all(child_flags))
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_nonpersistent_upgrade(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
+            self._login()
+            env = self._create_upgrade_env()
+            r = self.client.post(
+                self.build_list_url,
+                {
+                    "action": "upgrade_selected",
+                    "upgrade_related": "upgrade_related",
+                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(r, '<li class="success">')
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertFalse(batch.is_persistent)
+            child_flags = list(
+                batch.upgradeoperation_set.values_list("is_persistent", flat=True)
+            )
+            self.assertTrue(child_flags)
+            self.assertFalse(any(child_flags))
 
 
 class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):
