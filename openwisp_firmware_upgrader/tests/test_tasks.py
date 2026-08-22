@@ -122,6 +122,14 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             model=supported_board,
             os=os_version,
         )
+        # 6. Ineligible: different OS
+        d_different_os = self._create_device(
+            name="Different OS Device",
+            mac_address="00:11:22:33:44:06",
+            organization=org1,
+            model=supported_board,
+            os="OpenWrt 21.02.0",
+        )
         old_build = self._create_build(
             organization=org1, version="0.0.1", os="OpenWrt 21.02"
         )
@@ -149,7 +157,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(d_existing_fw.devicefirmware.pk, existing_df.pk)
         self.assertEqual(d_existing_fw.devicefirmware.image, old_image)
 
-        for dev in [d_different_model, d_different_org, d_deactivated]:
+        for dev in [d_different_model, d_different_org, d_deactivated, d_different_os]:
             dev.refresh_from_db()
             self.assertFalse(hasattr(dev, "devicefirmware"))
 
