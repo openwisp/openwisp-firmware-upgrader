@@ -1031,7 +1031,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         r = self.client.post(
             url,
             {
-                "scheduled_at_0": due.strftime("%d/%m/%Y"),
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
                 "scheduled_at_1": due.strftime("%H:%M"),
             },
         )
