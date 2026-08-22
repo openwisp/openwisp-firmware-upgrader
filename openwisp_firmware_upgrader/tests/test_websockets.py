@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from swapper import load_model
 
 from ..websockets import (
@@ -741,12 +742,19 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         )()
         op.status = "pending"
         op.is_persistent = True
+        op.retry_count = 2
+        op.next_retry_at = timezone.now()
         await sync_to_async(op.save)()
         communicator = await self._get_device_upgrade_progress_communicator(device_id)
         await communicator.send_json_to({"type": "request_current_state"})
         response = await communicator.receive_json_from()
         self.assertEqual(response["type"], "operation_update")
         self.assertEqual(response["operation"]["status"], "pending")
+        self.assertEqual(response["operation"]["retry_count"], 2)
+        self.assertEqual(
+            parse_datetime(response["operation"]["next_retry_at"]),
+            op.next_retry_at,
+        )
         await communicator.disconnect()
 
     @patch(_mock_upgrade, return_value=True)
