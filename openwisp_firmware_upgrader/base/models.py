@@ -1,4 +1,6 @@
 import logging
+import random
+from datetime import timedelta
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
@@ -12,6 +14,8 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
+from openwisp_notifications.signals import notify
 from private_storage.fields import PrivateFileField
 
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
@@ -42,6 +46,7 @@ from ..tasks import (
     batch_upgrade_operation,
     create_all_device_firmwares,
     create_device_firmware,
+    retry_pending_upgrade,
     upgrade_firmware,
 )
 from ..utils import (
@@ -85,6 +90,15 @@ class UpgradeOptionsMixin(models.Model):
     def clean(self):
         super().clean()
         self.validate_upgrade_options()
+
+
+class StatusTrackingMixin:
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        if "status" in field_names:
+            instance._previous_status = instance.status
+        return instance
 
 
 class AbstractCategory(ShareableOrgMixin, TimeStampedEditableModel):
@@ -172,7 +186,12 @@ class AbstractBuild(TimeStampedEditableModel):
             )
 
     def batch_upgrade(
-        self, firmwareless, upgrade_options=None, group=None, location=None
+        self,
+        firmwareless,
+        upgrade_options=None,
+        group=None,
+        location=None,
+        is_persistent=True,
     ):
         upgrade_options = upgrade_options or {}
         # Check if there are any devices to upgrade with the given filters
@@ -191,7 +210,11 @@ class AbstractBuild(TimeStampedEditableModel):
                 )
             )
         batch = load_model("BatchUpgradeOperation")(
-            build=self, upgrade_options=upgrade_options, group=group, location=location
+            build=self,
+            upgrade_options=upgrade_options,
+            group=group,
+            location=location,
+            is_persistent=is_persistent,
         )
         batch.full_clean()
         batch.save()
@@ -443,13 +466,25 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def image_has_changed(self):
         return self._state.adding or self.image_id != self._old_image.id
 
-    def save(self, batch=None, upgrade=True, upgrade_options=None, *args, **kwargs):
+    def save(
+        self,
+        batch=None,
+        upgrade=True,
+        upgrade_options=None,
+        is_persistent=False,
+        *args,
+        **kwargs,
+    ):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
         if upgrade and (self.image_has_changed or not self.installed):
             self.installed = False
             super().save(*args, **kwargs)
-            self.create_upgrade_operation(batch, upgrade_options=upgrade_options or {})
+            self.create_upgrade_operation(
+                batch,
+                upgrade_options=upgrade_options or {},
+                is_persistent=is_persistent,
+            )
         else:
             super().save(*args, **kwargs)
         self._update_old_image()
@@ -458,18 +493,32 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if hasattr(self, "image"):
             self._old_image = self.image
 
-    def create_upgrade_operation(self, batch, upgrade_options=None):
+    def create_upgrade_operation(
+        self, batch, upgrade_options=None, is_persistent=False
+    ):
         uo_model = load_model("UpgradeOperation")
         operation = uo_model(
-            device=self.device, image=self.image, upgrade_options=upgrade_options
+            device=self.device,
+            image=self.image,
+            upgrade_options=upgrade_options,
+            is_persistent=is_persistent,
         )
         if batch:
             operation.batch = batch
+            operation.is_persistent = batch.is_persistent
+        dispatch_kwargs = {}
+        if operation.is_persistent:
+            operation.claimed_at = timezone.now()
+            dispatch_kwargs["expires"] = app_settings.PERSISTENT_RETRY_OPTIONS[
+                "claim_timeout"
+            ]
         operation.full_clean()
         operation.save()
         # launch ``upgrade_firmware`` in the background (celery)
         # once changes are committed to the database
-        transaction.on_commit(partial(upgrade_firmware.delay, operation.pk))
+        transaction.on_commit(
+            partial(upgrade_firmware.apply_async, (operation.pk,), **dispatch_kwargs)
+        )
         return operation
 
     @classmethod
@@ -548,7 +597,9 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         return qs
 
 
-class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
+class AbstractBatchUpgradeOperation(
+    StatusTrackingMixin, UpgradeOptionsMixin, TimeStampedEditableModel
+):
     build = models.ForeignKey(get_model_name("Build"), on_delete=models.CASCADE)
     group = models.ForeignKey(
         swapper.get_model_name("config", "DeviceGroup"),
@@ -573,6 +624,23 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     )
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
+    )
+    is_persistent = models.BooleanField(
+        default=True,
+        verbose_name=_("persistent"),
+        help_text=_(
+            "if enabled, the system will keep retrying upgrades "
+            "for offline devices until they succeed or are cancelled"
+        ),
+    )
+    last_reminder_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("last reminder at"),
+        help_text=_(
+            "timestamp of the last pending-upgrade reminder fired for "
+            "this batch, null if no reminder has been sent yet"
+        ),
     )
 
     class Meta:
@@ -611,13 +679,90 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                     )
                 }
             )
+        self._validate_is_persistent_immutable()
+
+    def _validate_is_persistent_immutable(self):
+        """
+        Reject changes to ``is_persistent`` once the batch has left ``idle``.
+        Idle batches haven't dispatched anything yet, so the flag can still
+        flip; after that the retry pipeline relies on it staying stable.
+        """
+        if self._state.adding:
+            return
+        stored_status, stored_is_persistent = (
+            load_model("BatchUpgradeOperation")
+            .objects.values_list("status", "is_persistent")
+            .get(pk=self.pk)
+        )
+        if stored_status == "idle":
+            return
+        if self.is_persistent != stored_is_persistent:
+            raise ValidationError(
+                {
+                    "is_persistent": _(
+                        "Persistent cannot be changed after the mass "
+                        "upgrade has started"
+                    )
+                }
+            )
 
     def upgrade(self, firmwareless):
         self.status = "in-progress"
         self.save()
-        self.upgrade_related_devices()
-        if firmwareless:
-            self.upgrade_firmwareless_devices()
+        with transaction.atomic():
+            self.upgrade_related_devices()
+            if firmwareless:
+                self.upgrade_firmwareless_devices()
+
+    @classmethod
+    def send_pending_reminders(cls):
+        """
+        Notifies organization admins about persistent batches that still have
+        pending children after the configured reminder period has elapsed.
+        """
+        period = app_settings.PERSISTENT_REMINDER_PERIOD
+        threshold = timezone.now() - timedelta(seconds=period)
+        due_condition = Q(last_reminder_at__lte=threshold) | Q(
+            last_reminder_at__isnull=True, created__lte=threshold
+        )
+        qs = (
+            cls.objects.filter(
+                status="in-progress",
+                is_persistent=True,
+                upgradeoperation__status="pending",
+            )
+            .filter(due_condition)
+            .distinct()
+        )
+        for batch in qs.iterator():
+            pending_count = batch.upgradeoperation_set.filter(status="pending").count()
+            if not pending_count:
+                continue
+            with transaction.atomic():
+                claimed = (
+                    cls.objects.filter(
+                        pk=batch.pk, status="in-progress", is_persistent=True
+                    )
+                    .filter(due_condition, upgradeoperation__status="pending")
+                    .update(last_reminder_at=timezone.now())
+                )
+                if not claimed:
+                    continue
+                description = ngettext(
+                    "%(count)d device is still pending in mass upgrade %(batch)s.",
+                    "%(count)d devices are still pending in mass upgrade %(batch)s.",
+                    pending_count,
+                ) % {"count": pending_count, "batch": batch}
+                transaction.on_commit(
+                    partial(
+                        notify.send,
+                        sender=batch,
+                        type="generic_message",
+                        target=batch,
+                        message=description,
+                        target_url_suffix="?status=pending",
+                    )
+                )
 
     @staticmethod
     def dry_run(build, group=None, location=None):
@@ -676,9 +821,30 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self.upgrade_operations.count()
 
     @property
+    def organization_id(self):
+        return self.build.category.organization_id
+
+    @property
+    def pending_count(self):
+        return self.upgrade_operations.filter(status="pending").count()
+
+    @property
     def progress_report(self):
-        completed = self.upgrade_operations.exclude(status="in-progress").count()
-        return _(f"{completed} out of {self.total_operations}")
+        stats = self.upgrade_operations.aggregate(
+            completed=models.Count(
+                "id", filter=~models.Q(status__in=("in-progress", "pending"))
+            ),
+            pending=models.Count("id", filter=models.Q(status="pending")),
+        )
+        if stats["pending"]:
+            return _("%(completed)s complete, %(pending)s pending") % {
+                "completed": stats["completed"],
+                "pending": stats["pending"],
+            }
+        return _("%(completed)s out of %(total)s") % {
+            "completed": stats["completed"],
+            "total": self.total_operations,
+        }
 
     @property
     def success_rate(self):
@@ -748,14 +914,42 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         Returns tuple of (status, stats_dict) for WebSocket publishing.
 
         Status determination rules:
-        - 'in-progress': If any operation is still in progress
+        - 'in-progress': If any operation is still in progress or pending
         - 'cancelled': If completed and any operation was cancelled
         - 'failed': If completed and any operation failed or aborted
         - 'success': If all operations completed successfully
         - Otherwise: Maintain current status
         """
-        operations = self.upgradeoperation_set
-        stats = operations.aggregate(
+        stats = self.get_status_stats()
+        # Determine overall batch status based on individual operation statuses
+        if stats["in_progress"] > 0 or stats["pending"] > 0:
+            new_status = "in-progress"
+        elif stats["failed"] > 0 or stats["aborted"] > 0:
+            new_status = "failed"
+        elif stats["cancelled"] > 0:
+            new_status = "cancelled"
+        elif (
+            stats["successful"] > 0
+            and stats["completed"] == stats["total_operations"]
+            and stats["total_operations"] > 0
+        ):
+            new_status = "success"
+        else:
+            new_status = self.status
+        if self.status != new_status:
+            with transaction.atomic():
+                claimed = self._meta.model.objects.filter(
+                    pk=self.pk, status=self.status
+                ).update(status=new_status)
+                if claimed:
+                    self.status = new_status
+                    self.save(update_fields=["status"])
+                else:
+                    self.refresh_from_db(fields=["status"])
+        return self.status, stats
+
+    def get_status_stats(self):
+        return self.upgradeoperation_set.aggregate(
             total_operations=models.Count("id"),
             in_progress=models.Count(
                 models.Case(
@@ -763,9 +957,17 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                     output_field=models.IntegerField(),
                 )
             ),
+            pending=models.Count(
+                models.Case(
+                    models.When(status="pending", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
             completed=models.Count(
                 models.Case(
-                    models.When(~models.Q(status="in-progress"), then=1),
+                    models.When(
+                        ~models.Q(status__in=("in-progress", "pending")), then=1
+                    ),
                     output_field=models.IntegerField(),
                 )
             ),
@@ -794,37 +996,44 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                 )
             ),
         )
-        # Determine overall batch status based on individual operation statuses
-        if stats["in_progress"] > 0:
-            new_status = "in-progress"
-        elif stats["failed"] > 0 or stats["aborted"] > 0:
-            new_status = "failed"
-        elif stats["cancelled"] > 0:
-            new_status = "cancelled"
-        elif (
-            stats["successful"] > 0
-            and stats["completed"] == stats["total_operations"]
-            and stats["total_operations"] > 0
-        ):
-            new_status = "success"
-        else:
-            new_status = self.status
-        # Update status only if it has changed
-        if self.status != new_status:
-            self.status = new_status
-            self.save(update_fields=["status"])
-        return new_status, stats
+
+    @classmethod
+    def notify_on_completion(cls, sender, instance, created, **kwargs):
+        """
+        Fires a notification when a mass upgrade reaches a terminal state.
+        """
+        if created or instance.status not in ("success", "failed"):
+            return
+        if getattr(instance, "_previous_status", None) == instance.status:
+            return
+        description = _("Mass upgrade %(batch)s %(status)s.") % {
+            "batch": instance,
+            "status": instance.get_status_display(),
+        }
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=instance,
+                type="generic_message",
+                target=instance,
+                message=description,
+            )
+        )
+        instance._previous_status = instance.status
 
 
-class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
+class AbstractUpgradeOperation(
+    StatusTrackingMixin, UpgradeOptionsMixin, TimeStampedEditableModel
+):
 
-    CANCELLABLE_STATUS = "in-progress"
+    CANCELLABLE_STATUS = ("in-progress", "pending")
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
         ("failed", _("failed")),  # failed at late stage or can't reconnect
         ("cancelled", _("cancelled")),  # cancelled by the user
         ("aborted", _("aborted")),  # aborted due to prerequisites not met
+        ("pending", _("pending")),  # offline device; waiting for periodic retry
     )
     device = models.ForeignKey(
         swapper.get_model_name("config", "Device"), on_delete=models.CASCADE
@@ -848,17 +1057,67 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         blank=True,
         null=True,
     )
+    is_persistent = models.BooleanField(
+        default=False,
+        verbose_name=_("persistent"),
+        help_text=_(
+            "if enabled, the system will keep retrying this upgrade "
+            "until it succeeds or is cancelled"
+        ),
+    )
+    retry_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_("retry count"),
+        help_text=_("number of retry attempts made for this upgrade"),
+    )
+    next_retry_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name=_("next retry at"),
+        help_text=_("date and time of the next retry attempt"),
+    )
+    claimed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("claimed at"),
+        help_text=_("time the persistent upgrade was claimed for dispatch"),
+    )
+
+    def clean(self):
+        super().clean()
+        if hasattr(self, "device") and self.device and self.device.is_deactivated():
+            raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
+        self._validate_is_persistent_immutable()
+
+    def _validate_is_persistent_immutable(self):
+        """
+        Reject changes to ``is_persistent`` after the operation is saved.
+        Flipping it on an existing row would orphan a pending retry chain
+        or silently re-arm a finished operation.
+        """
+        if self._state.adding:
+            return
+        stored_is_persistent = (
+            load_model("UpgradeOperation")
+            .objects.values_list("is_persistent", flat=True)
+            .get(pk=self.pk)
+        )
+        if self.is_persistent != stored_is_persistent:
+            raise ValidationError(
+                {
+                    "is_persistent": _(
+                        "Persistent cannot be changed after the "
+                        "upgrade operation has been saved"
+                    )
+                }
+            )
 
     def __str__(self):
         return f"{self.device} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
 
     class Meta:
         abstract = True
-
-    def clean(self):
-        super().clean()
-        if hasattr(self, "device") and self.device and self.device.is_deactivated():
-            raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
 
     def log_line(self, line, save=True):
         if self.log:
@@ -897,13 +1156,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             # By using an UPDATE query, we avoid such situation.
             updated = self._meta.model.objects.filter(
                 pk=self.pk,
-                status=self.CANCELLABLE_STATUS,
+                status__in=self.CANCELLABLE_STATUS,
                 progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
-            ).update(status="cancelled")
+            ).update(status="cancelled", next_retry_at=None)
             if not updated:
                 # The cancellation did not succeed, check why
                 self.refresh_from_db(fields=["status", "progress"])
-                if self.status != self.CANCELLABLE_STATUS:
+                if self.status not in self.CANCELLABLE_STATUS:
                     raise ValueError(
                         _("Cannot cancel operation with status: %(status)s")
                         % {"status": self.status}
@@ -923,33 +1182,246 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.refresh_from_db()
             self.log_line(_("Upgrade operation has been cancelled by user"))
 
+    def _calculate_next_retry(self):
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        exponent = max(self.retry_count - 1, 0)
+        delay = min(
+            options["base_delay"] * (options["multiplier"] ** exponent),
+            options["max_delay"],
+        )
+        jitter = options["jitter"]
+        jittered = delay * random.uniform(1 - jitter, 1 + jitter)
+        return timezone.now() + timedelta(seconds=jittered)
+
+    @classmethod
+    def handle_health_status_changed(cls, sender, instance, status, **kwargs):
+        """
+        Dispatches retries for pending upgrades when device health recovers.
+        """
+        if status != "ok":
+            return
+        pending_ops = list(
+            cls.objects.filter(device=instance.device, status="pending").values_list(
+                "pk", "retry_count"
+            )
+        )
+        if not pending_ops:
+            return
+        jitter = app_settings.PERSISTENT_RETRY_OPTIONS["signal_jitter"]
+        for pk, retry_count in pending_ops:
+            retry_pending_upgrade.apply_async(
+                args=[pk],
+                kwargs={"expected_retry_count": retry_count},
+                countdown=random.uniform(0, jitter),
+            )
+
+    @classmethod
+    def retry_pending(cls, operation_id, expected_retry_count=None):
+        """
+        Claims a pending operation and dispatches its upgrade, unless a
+        concurrent cancellation or a device deactivation intervened.
+        """
+        claim = dict(pk=operation_id, status="pending")
+        if expected_retry_count is not None:
+            claim["retry_count"] = expected_retry_count
+        updated = cls.objects.filter(**claim).update(
+            status="in-progress", next_retry_at=None, claimed_at=timezone.now()
+        )
+        if not updated:
+            return
+        try:
+            operation = cls.objects.select_related("device").get(pk=operation_id)
+        except ObjectDoesNotExist:
+            logger.warning(
+                f"The UpgradeOperation object with id {operation_id} has been deleted"
+            )
+            return
+        try:
+            if operation.device.is_deactivated():
+                aborted = cls.objects.filter(
+                    pk=operation_id, status="in-progress"
+                ).update(status="aborted")
+                if aborted:
+                    operation.status = "aborted"
+                    operation.log_line(
+                        _("Device has been deactivated; persistent retry aborted."),
+                        save=False,
+                    )
+                    operation.save(update_fields=["status", "log"])
+                return
+            if not cls.objects.filter(pk=operation_id, status="in-progress").exists():
+                return
+            operation.log_line(
+                _("Persistent retry #%(count)s starting.\n")
+                % {"count": operation.retry_count},
+                save=False,
+            )
+            operation.save(update_fields=["log"])
+            upgrade_firmware.apply_async(
+                (operation.pk,),
+                expires=app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"],
+            )
+        except BaseException:
+            cls.objects.filter(pk=operation_id, status="in-progress").update(
+                status="pending", next_retry_at=timezone.now(), claimed_at=None
+            )
+            raise
+
+    @classmethod
+    def dispatch_due_pending_retries(cls):
+        """
+        Claims every pending operation whose ``next_retry_at`` has elapsed and
+        dispatches it, spreading the dispatches over the configured jitter.
+        """
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        jitter = options["dispatch_jitter"]
+        now = timezone.now()
+        stale_claim = now - timedelta(seconds=options["claim_timeout"])
+        cls.objects.filter(
+            status="in-progress", is_persistent=True, claimed_at__lte=stale_claim
+        ).update(
+            status="pending",
+            next_retry_at=now + timedelta(seconds=options["base_delay"]),
+            claimed_at=None,
+        )
+        due_ops = (
+            cls.objects.filter(status="pending", next_retry_at__lte=now)
+            .values_list("pk", "retry_count")
+            .iterator()
+        )
+        for op_id, retry_count in due_ops:
+            claimed = cls.objects.filter(
+                pk=op_id,
+                status="pending",
+                retry_count=retry_count,
+                next_retry_at__lte=now,
+            ).update(next_retry_at=now + timedelta(seconds=jitter))
+            if claimed:
+                retry_pending_upgrade.apply_async(
+                    args=[op_id],
+                    kwargs={"expected_retry_count": retry_count},
+                    countdown=random.uniform(0, jitter),
+                )
+
+    @classmethod
+    def notify_on_failed_persistent_upgrade(cls, sender, instance, created, **kwargs):
+        """
+        Fires a notification when a persistent upgrade transitions to failed.
+        """
+        if created or not instance.is_persistent:
+            return
+        if instance.status != "failed":
+            return
+        if getattr(instance, "_previous_status", None) == "failed":
+            return
+        description = _("Persistent upgrade for device %(device)s failed.") % {
+            "device": instance.device
+        }
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=instance,
+                type="generic_message",
+                target=instance.device,
+                message=description,
+            )
+        )
+        instance._previous_status = instance.status
+
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
         if recoverable:
-            self.log_line(f"Detected a recoverable failure: {cause}.\n", save=False)
-            self.log_line("The upgrade operation will be retried soon.")
+            self.log_line(
+                _("Detected a recoverable failure: %(cause)s.\n") % {"cause": cause},
+                save=False,
+            )
+            self.log_line(_("The upgrade operation will be retried soon."), save=False)
+            self.save(update_fields=["log"])
             raise error
+        if self.is_persistent and isinstance(error, RecoverableFailure):
+            self.status = "pending"
+            self.retry_count += 1
+            self.next_retry_at = self._calculate_next_retry()
+            self.log_line(
+                _("All immediate retries exhausted: %(cause)s.\n") % {"cause": cause},
+                save=False,
+            )
+            retry_time = timezone.localtime(self.next_retry_at).strftime(
+                "%Y-%m-%d %H:%M:%S %Z"
+            )
+            self.log_line(
+                _("Scheduled persistent retry #%(count)s at %(time)s.\n")
+                % {"count": self.retry_count, "time": retry_time},
+                save=False,
+            )
+            return
         self.status = "failed"
-        self.log_line(f"Max retries exceeded. Upgrade failed: {cause}.", save=False)
+        self.log_line(
+            _("Max retries exceeded. Upgrade failed: %(cause)s.") % {"cause": cause},
+            save=False,
+        )
+
+    def _commit_result(self):
+        with transaction.atomic():
+            claimed = self._meta.model.objects.filter(
+                pk=self.pk, status="in-progress"
+            ).update(
+                status=self.status,
+                retry_count=self.retry_count,
+                next_retry_at=self.next_retry_at,
+                progress=self.progress,
+                log=self.log,
+                claimed_at=None,
+            )
+            if not claimed:
+                self.refresh_from_db()
+                return False
+            self.claimed_at = None
+            self.save(
+                update_fields=[
+                    "status",
+                    "retry_count",
+                    "next_retry_at",
+                    "progress",
+                    "log",
+                    "claimed_at",
+                ]
+            )
+            return True
 
     def upgrade(self, recoverable=True):
         # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
         if self.status != "in-progress":
             return
+        if self.claimed_at is not None:
+            now = timezone.now()
+            self._meta.model.objects.filter(pk=self.pk, status="in-progress").update(
+                claimed_at=now
+            )
+            self.claimed_at = now
         if self.device.is_deactivated():
             self.status = "aborted"
             self.log_line(
                 _("Upgrade aborted because the device has been deactivated."),
                 save=False,
             )
-            self.save()
+            self._commit_result()
             return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:
             conn = DeviceConnection.get_working_connection(self.device)
         except NoWorkingDeviceConnectionError as error:
             if error.connection is None:
-                self.log_line("No device connection available")
+                # a device with no usable connection can never be upgraded here
+                self.log_line(_("No device connection available"), save=False)
+                if self.is_persistent:
+                    self._recoverable_failure_handler(
+                        recoverable,
+                        RecoverableFailure("No device connection available"),
+                    )
+                else:
+                    self.status = "aborted"
+                self._commit_result()
                 return
 
             log_template = (
@@ -974,14 +1446,14 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                     )
                 ),
             )
-            self.save()
+            self._commit_result()
             return
         installed = False
         # prevent multiple upgrade operations for
         # the same device running at the same time
         qs = (
             load_model("UpgradeOperation")
-            .objects.filter(device=self.device, status="in-progress")
+            .objects.filter(device=self.device, status__in=("in-progress", "pending"))
             .exclude(pk=self.pk)
         )
         if qs.exists():
@@ -989,7 +1461,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             logger.warning(message)
             self.log_line(message, save=False)
             self.status = "aborted"
-            self.save()
+            self._commit_result()
             return
         upgrader_class = get_upgrader_class_from_device_connection(conn)
         if not upgrader_class:
@@ -1019,7 +1491,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # other unexpected exception will flag the upgrade as failed
         except (Exception, ReconnectionFailed) as e:
             cause = str(e)
-            self.log_line(cause)
+            self.log_line(cause, save=False)
             self.status = "failed"
             # if the reconnection failed we'll add some more info
             if isinstance(e, ReconnectionFailed):
@@ -1036,11 +1508,8 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             installed = True
             self.status = "success"
             self.update_progress(100, save=False)
-        self.save()
-        # if the firmware has been successfully installed,
-        # or if it was already installed
-        # set `instaleld` to `True` on the devicefirmware instance
-        if installed:
+        committed = self._commit_result()
+        if committed and installed:
             self.device.devicefirmware.installed = True
             self.device.devicefirmware.save(upgrade=False)
 

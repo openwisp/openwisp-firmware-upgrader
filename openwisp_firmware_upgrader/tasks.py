@@ -26,18 +26,34 @@ def upgrade_firmware(self, operation_id):
     Calls the ``upgrade()`` method of an
     ``UpgradeOperation`` instance in the background
     """
+    UpgradeOperation = load_model("UpgradeOperation")
     try:
-        operation = load_model("UpgradeOperation").objects.get(pk=operation_id)
-        recoverable = self.request.retries < self.max_retries
-        operation.upgrade(recoverable=recoverable)
-    except SoftTimeLimitExceeded:
-        operation.status = "failed"
-        operation.log_line(_("Operation timed out."))
-        logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
+        operation = UpgradeOperation.objects.get(pk=operation_id)
     except ObjectDoesNotExist:
         logger.warning(
             f"The UpgradeOperation object with id {operation_id} has been deleted"
         )
+        return
+    try:
+        recoverable = self.request.retries < self.max_retries
+        # re-read so a cancellation issued after dispatch is seen by upgrade()
+        operation.refresh_from_db()
+        operation.upgrade(recoverable=recoverable)
+    except ObjectDoesNotExist:
+        logger.warning(
+            f"The UpgradeOperation object with id {operation_id} "
+            "or a related object has been deleted"
+        )
+        return
+    except SoftTimeLimitExceeded:
+        claimed = UpgradeOperation.objects.filter(
+            pk=operation.pk, status="in-progress"
+        ).update(status="failed")
+        if claimed:
+            operation.status = "failed"
+            operation.log_line(_("Operation timed out."), save=False)
+            operation.save(update_fields=["status", "log"])
+        logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
 
 
 @shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
@@ -97,3 +113,18 @@ def delete_firmware_files(files_to_delete):
     FirmwareImage = load_model("FirmwareImage")
     for file_path in files_to_delete:
         FirmwareImage._remove_file(file_path)
+
+
+@shared_task(base=OpenwispCeleryTask)
+def retry_pending_upgrade(operation_id, expected_retry_count=None):
+    load_model("UpgradeOperation").retry_pending(operation_id, expected_retry_count)
+
+
+@shared_task(base=OpenwispCeleryTask)
+def check_pending_upgrades():
+    load_model("UpgradeOperation").dispatch_due_pending_retries()
+
+
+@shared_task(base=OpenwispCeleryTask)
+def send_pending_upgrade_reminders():
+    load_model("BatchUpgradeOperation").send_pending_reminders()

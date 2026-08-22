@@ -130,10 +130,18 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         help_text=_("Limit the upgrade to devices at this location"),
         widget=MassUpgradeSelect2Widget(placeholder=_("Select a location")),
     )
+    is_persistent = forms.BooleanField(
+        initial=True,
+        required=False,
+        label=_(
+            "Keep retrying offline devices in the background "
+            "until they come online or the operation is cancelled"
+        ),
+    )
 
     class Meta:
         model = BatchUpgradeOperation
-        fields = ("build", "group", "location", "upgrade_options")
+        fields = ("build", "group", "location", "upgrade_options", "is_persistent")
 
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop("user")
@@ -221,6 +229,7 @@ class BuildAdmin(BaseAdmin):
         upgrade_options = request.POST.get("upgrade_options")
         group_id = request.POST.get("group")
         location_id = request.POST.get("location")
+        is_persistent = request.POST.get("is_persistent")
         build = queryset.first()
         form = BatchUpgradeConfirmationForm(initial={"build": build}, user=request.user)
         # upgrade has been confirmed
@@ -231,6 +240,7 @@ class BuildAdmin(BaseAdmin):
                     "build": build,
                     "group": group_id,
                     "location": location_id,
+                    "is_persistent": is_persistent,
                 },
                 user=request.user,
             )
@@ -245,6 +255,7 @@ class BuildAdmin(BaseAdmin):
                         upgrade_options=upgrade_options,
                         group=group,
                         location=location,
+                        is_persistent=form.cleaned_data["is_persistent"],
                     )
                     # Success message for when batch upgrade starts successfully
                     text = _(
@@ -388,7 +399,7 @@ class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
         # be cancelled first or wait until resolved (success/failed).
         if not super(ReadOnlyAdmin, self).has_delete_permission(request, obj):
             return False
-        if obj and obj.status == IN_PROGRESS_STATUS:
+        if obj and obj.status in IN_PROGRESS_STATUS:
             if BlockDeleteAllowCascadeMixin.is_admin_cascade_delete_request(
                 self, request
             ):
@@ -413,7 +424,7 @@ class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
     @admin.action(description=delete_selected.short_description, permissions=["delete"])
     def delete_selected(self, request, queryset):
         """Overrides default delete_selected action of from Django admin"""
-        if queryset.filter(status=IN_PROGRESS_STATUS).exists():
+        if queryset.filter(status__in=IN_PROGRESS_STATUS).exists():
             self.message_user(request, IN_PROGRESS_DELETE_MESSAGE, messages.ERROR)
             return None
         return delete_selected(self, request, queryset)
@@ -422,15 +433,34 @@ class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
 @admin.register(UpgradeOperation)
 class UpgradeOperationAdmin(BaseUpgradeAdmin):
     form = UpgradeOperationForm
-    list_display = ["device", "status", "image", "modified"]
-    list_filter = ["status"]
+    list_display = [
+        "device",
+        "status",
+        "image",
+        "is_persistent",
+        "retry_count_display",
+        "modified",
+    ]
+    list_filter = ["status", "is_persistent"]
     search_fields = ["device__name"]
-    readonly_fields = ["device", "image", "status", "log", "modified"]
+    readonly_fields = [
+        "device",
+        "image",
+        "status",
+        "log",
+        "is_persistent",
+        "retry_count",
+        "next_retry_at",
+        "modified",
+    ]
     ordering = ["-modified"]
     fields = [
         "device",
         "image",
         "status",
+        "is_persistent",
+        "retry_count",
+        "next_retry_at",
         "log",
         "readonly_upgrade_options",
         "modified",
@@ -467,6 +497,10 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
         )
         extra_context["django_locale"] = get_language()
         obj = self.get_object(request, object_id)
+        extra_context["upgrade_operation_state"] = {
+            "retry_count": obj.retry_count if obj else 0,
+            "next_retry_at": obj.next_retry_at if obj else None,
+        }
         # for custom breadcrumbs
         if obj and obj.batch_id:
             batch_opts = BatchUpgradeOperation._meta
@@ -503,7 +537,15 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
         fields = super().get_fields(request, obj).copy()
         if self._should_display_batch(obj, fields):
             fields.insert(1, "batch")
-        return fields
+        if obj and not obj.is_persistent:
+            hidden = ("retry_count", "next_retry_at")
+        else:
+            hidden = ()
+        return [field for field in fields if field not in hidden]
+
+    @admin.display(description=_("retry count"), ordering="retry_count")
+    def retry_count_display(self, obj):
+        return obj.retry_count if obj.is_persistent else ""
 
     def has_add_permission(self, request):
         return False
@@ -511,10 +553,18 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
 
 @admin.register(BatchUpgradeOperation)
 class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
-    list_display = ["build", "organization", "status", "created", "modified"]
+    list_display = [
+        "build",
+        "organization",
+        "status",
+        "is_persistent",
+        "created",
+        "modified",
+    ]
     list_filter = [
         BuildCategoryOrganizationFilter,
         "status",
+        "is_persistent",
         BuildCategoryFilter,
         BuildFilter,
         GroupFilter,
@@ -528,6 +578,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
         "build",
         "group",
         "location",
+        "is_persistent",
         "status",
         "completed",
         "success_rate",
@@ -540,6 +591,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
     ]
     autocomplete_fields = ["build", "group", "location"]
     readonly_fields = [
+        "is_persistent",
         "completed",
         "success_rate",
         "failed_rate",
@@ -651,6 +703,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                 upgrades_qs = upgrades_qs.filter(status=current_status)
             if current_org:
                 upgrades_qs = upgrades_qs.filter(device__organization_id=current_org)
+            show_next_retry = obj.is_persistent
             # build filter specs and paginate results
             filter_specs = self._build_filter_specs(
                 request, obj, current_status, current_org
@@ -669,6 +722,8 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                         request.GET.get(param) for param in ["status", "organization"]
                     ),
                     "upgrade_operation_app_label": upgrade_operation_app_label,
+                    "is_persistent": obj.is_persistent,
+                    "show_next_retry": show_next_retry,
                 }
             )
         return super().change_view(request, object_id, extra_context=extra_context)
@@ -793,7 +848,7 @@ class DeviceUpgradeOperationFormSet(DeviceFormSet):
         super().add_fields(form, index)
         if (
             form.instance.pk
-            and form.instance.status == IN_PROGRESS_STATUS
+            and form.instance.status in IN_PROGRESS_STATUS
             and DELETION_FIELD_NAME in form.fields
         ):
             form.fields[DELETION_FIELD_NAME].disabled = True
