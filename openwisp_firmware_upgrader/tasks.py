@@ -4,7 +4,6 @@ import swapper
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.exceptions import ObjectDoesNotExist
-from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from openwisp_utils.tasks import OpenwispCeleryTask
@@ -128,60 +127,7 @@ def check_pending_upgrades():
 
 @shared_task(base=OpenwispCeleryTask)
 def execute_scheduled_upgrades():
-    BatchUpgradeOperation = load_model("BatchUpgradeOperation")
-    now = timezone.now()
-    due_ids = list(
-        BatchUpgradeOperation.objects.filter(
-            status="scheduled", scheduled_at__lte=now
-        ).values_list("pk", flat=True)
-    )
-    for batch_id in due_ids:
-        try:
-            batch = BatchUpgradeOperation.objects.select_related("build").get(
-                pk=batch_id
-            )
-        except ObjectDoesNotExist:
-            continue
-        if batch.status != "scheduled":
-            continue
-        result = BatchUpgradeOperation.dry_run(
-            build=batch.build, group=batch.group, location=batch.location
-        )
-        eligible = result["device_firmwares"].exists() or (
-            batch.firmwareless and result["devices"].exists()
-        )
-        # Re-check for conflicts at launch: a device may have gained an active
-        # operation since the batch was scheduled.
-        conflict = batch._find_conflict()
-        if not eligible or conflict:
-            failed = BatchUpgradeOperation.objects.filter(
-                pk=batch_id, status="scheduled", scheduled_at__lte=now
-            ).update(status="failed")
-            if failed:
-                # Re-save so post_save publishers see the scheduled->failed flip.
-                batch.status = "failed"
-                batch.save(update_fields=["status"])
-                batch._scheduled_validation_failed(reason=conflict)
-            continue
-        claimed = BatchUpgradeOperation.objects.filter(
-            pk=batch_id, status="scheduled", scheduled_at__lte=now
-        ).update(status="in-progress")
-        if not claimed:
-            continue
-        try:
-            batch_upgrade_operation.delay(batch_id, batch.firmwareless)
-        except Exception:
-            # Enqueue failed after the claim committed; revert so the next scan
-            # retries instead of orphaning the batch in-progress.
-            BatchUpgradeOperation.objects.filter(
-                pk=batch_id, status="in-progress"
-            ).update(status="scheduled")
-            logger.warning(
-                "Failed to dispatch scheduled mass upgrade %s, reverted to scheduled",
-                batch_id,
-            )
-            continue
-        batch._scheduled_started()
+    load_model("BatchUpgradeOperation").execute_due_scheduled()
 
 
 @shared_task(base=OpenwispCeleryTask)
