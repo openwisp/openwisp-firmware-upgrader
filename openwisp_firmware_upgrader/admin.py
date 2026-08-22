@@ -19,6 +19,7 @@ from django.templatetags.static import static
 from django.urls import resolve, reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
+from django.utils.formats import localize
 from django.utils.timezone import get_current_timezone, localtime, make_naive
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
@@ -899,7 +900,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
         if not obj.scheduled_at:
             return _("N/A")
         local = localtime(obj.scheduled_at)
-        return f"{local.strftime('%Y-%m-%d %H:%M')} ({local.tzinfo})"
+        return f"{localize(local)} ({local.tzinfo})"
 
     def __get_rate(self, value):
         if value:

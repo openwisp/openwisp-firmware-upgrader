@@ -579,12 +579,15 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.assertEqual(date_input.get_attribute("class"), "vDateField")
             self.assertEqual(time_input.get_attribute("class"), "vTimeField")
             self._assert_no_js_errors(ignore_websockets=True)
-            scheduled = timezone.localtime() + timedelta(days=1)
+            scheduled = (timezone.localtime() + timedelta(days=1)).replace(
+                second=0, microsecond=0
+            )
             date_input.send_keys(scheduled.strftime("%Y-%m-%d"))
             time_input.send_keys(scheduled.strftime("%H:%M"))
-            self.find_element(
+            submit = self.find_element(
                 by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
-            ).click()
+            )
+            self.web_driver.execute_script("arguments[0].click();", submit)
             WebDriverWait(self.web_driver, 5).until(
                 EC.url_contains("batchupgradeoperation")
             )

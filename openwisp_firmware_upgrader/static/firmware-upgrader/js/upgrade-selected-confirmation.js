@@ -19,16 +19,25 @@ django.jQuery(function ($) {
   const scheduleRow = $("#schedule-row");
   if (scheduleRow.length) {
     const form = scheduleRow.closest("form");
-    const offsetInput = $('<input type="hidden" name="scheduled_at_tz_offset">');
+    const offsetInput = $(
+      '<input type="hidden" name="scheduled_at_tz_offset">',
+    );
     form.append(offsetInput);
+    const dateInput = scheduleRow.find('input[name="scheduled_at_0"]');
+    const timeInput = scheduleRow.find('input[name="scheduled_at_1"]');
     form.on("submit", function () {
-      offsetInput.val(new Date().getTimezoneOffset());
+      const scheduled = new Date(dateInput.val() + "T" + timeInput.val());
+      offsetInput.val(
+        isNaN(scheduled.getTime())
+          ? new Date().getTimezoneOffset()
+          : scheduled.getTimezoneOffset(),
+      );
     });
-    labelScheduleTimezone($, scheduleRow);
+    labelScheduleTimezone(scheduleRow);
   }
 });
 
-function labelScheduleTimezone($, container) {
+function labelScheduleTimezone(container) {
   let browserTz = "";
   try {
     browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -36,7 +45,9 @@ function labelScheduleTimezone($, container) {
     browserTz = "";
   }
   const serverTz = container.data("server-tz") || "";
-  let text = interpolate(gettext("Entered in your timezone (%s)."), [browserTz]);
+  let text = interpolate(gettext("Entered in your timezone (%s)."), [
+    browserTz,
+  ]);
   if (serverTz) {
     text += " " + interpolate(gettext("The server runs in %s."), [serverTz]);
   }
