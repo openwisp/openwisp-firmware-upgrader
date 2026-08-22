@@ -1169,6 +1169,14 @@ class TestModels(TestUpgraderMixin, TestCase):
                 app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"], 2200
             )
 
+    def test_schedule_min_delay_below_horizon(self):
+        self.addCleanup(importlib.reload, app_settings)
+        with override_settings(
+            OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MIN_DELAY=600,
+            OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MAX_HORIZON=300,
+        ), self.assertRaises(ImproperlyConfigured):
+            importlib.reload(app_settings)
+
     def test_retry_schedule_with_zero_attempts(self):
         op = self._make_persistent_op(is_persistent=True)
         op.retry_count = 0

@@ -1300,15 +1300,69 @@ class AbstractBatchUpgradeOperation(
             % {"status": self.status}
         )
 
+    @classmethod
+    def execute_due_scheduled(cls):
+        now = timezone.now()
+        due_ids = list(
+            cls.objects.filter(status="scheduled", scheduled_at__lte=now).values_list(
+                "pk", flat=True
+            )
+        )
+        for batch_id in due_ids:
+            try:
+                batch = cls.objects.select_related("build").get(pk=batch_id)
+            except ObjectDoesNotExist:
+                continue
+            if batch.status != "scheduled":
+                continue
+            result = cls.dry_run(
+                build=batch.build, group=batch.group, location=batch.location
+            )
+            eligible = result["device_firmwares"].exists() or (
+                batch.firmwareless and result["devices"].exists()
+            )
+            conflict = batch._find_conflict()
+            if not eligible or conflict:
+                with transaction.atomic():
+                    failed = cls.objects.filter(
+                        pk=batch_id, status="scheduled", scheduled_at__lte=now
+                    ).update(status="failed")
+                    if failed:
+                        batch.status = "failed"
+                        batch.save(update_fields=["status"])
+                        batch._scheduled_validation_failed(reason=conflict)
+                continue
+            claimed = cls.objects.filter(
+                pk=batch_id, status="scheduled", scheduled_at__lte=now
+            ).update(status="in-progress")
+            if not claimed:
+                continue
+            try:
+                batch_upgrade_operation.delay(batch_id, batch.firmwareless)
+            except Exception:
+                cls.objects.filter(pk=batch_id, status="in-progress").update(
+                    status="scheduled"
+                )
+                logger.warning(
+                    "Failed to dispatch scheduled mass upgrade %s, reverted to "
+                    "scheduled",
+                    batch_id,
+                )
+                continue
+            batch._scheduled_started()
+
     def _scheduled_started(self):
         description = _("Scheduled mass upgrade %(batch)s has started.") % {
             "batch": self
         }
-        notify.send(
-            sender=self,
-            type="generic_message",
-            target=self,
-            message=description,
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=self,
+                type="generic_message",
+                target=self,
+                message=description,
+            )
         )
 
     def _scheduled_validation_failed(self, reason=None):
@@ -1321,11 +1375,14 @@ class AbstractBatchUpgradeOperation(
                 "Scheduled mass upgrade %(batch)s was not started: no eligible "
                 "devices remained at the scheduled time."
             ) % {"batch": self}
-        notify.send(
-            sender=self,
-            type="generic_message",
-            target=self,
-            message=description,
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=self,
+                type="generic_message",
+                target=self,
+                message=description,
+            )
         )
 
 

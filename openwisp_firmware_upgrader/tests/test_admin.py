@@ -223,7 +223,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, 'name="is_persistent"')
         self.assertTrue(r.context["form"].fields["is_persistent"].initial)
 
-    def test_confirmation_page_renders_scheduled_at_input(self):
+    def test_confirmation_schedule(self):
         self._login()
         env = self._create_upgrade_env()
         r = self.client.post(
@@ -239,7 +239,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, 'class="vDateField"')
         self.assertContains(r, 'class="vTimeField"')
 
-    def test_scheduled_upgrade_creates_scheduled_batch(self):
+    def test_scheduled_upgrade_creates_batch(self):
         self._login()
         env = self._create_upgrade_env()
         due = (timezone.localtime() + timedelta(days=1)).replace(
@@ -262,7 +262,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertTrue(batch.firmwareless)
         self.assertEqual(batch.scheduled_at, due)
 
-    def test_scheduled_upgrade_past_time_rejected_by_form(self):
+    def test_schedule_past_rejected(self):
         self._login()
         env = self._create_upgrade_env()
         past = timezone.localtime() - timedelta(hours=1)
@@ -303,7 +303,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertFalse(batch.firmwareless)
 
     @override_settings(TIME_ZONE="Asia/Kolkata")
-    def test_scheduled_at_interpreted_in_server_timezone(self):
+    def test_schedule_server_timezone(self):
         # The admin datetime widget submits a naive wall-clock; it must be read
         # in the server timezone, not as UTC. Kolkata's +05:30 offset makes a
         # UTC misinterpretation land on a different instant.
@@ -326,7 +326,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
         self.assertEqual(batch.scheduled_at, due)
 
-    def test_batch_admin_list_shows_schedule_and_filters(self):
+    def test_batch_list_schedule(self):
         self._login()
         env = self._create_upgrade_env()
         due = timezone.now() + timedelta(days=1)
@@ -343,7 +343,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, str(scheduled.pk))
         self.assertNotContains(r, str(idle.pk))
 
-    def test_batch_admin_detail_shows_schedule_readonly(self):
+    def test_batch_detail_schedule(self):
         self._login()
         build = self._create_build()
         due = timezone.now() + timedelta(days=1)
@@ -356,7 +356,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         r = self.client.get(url)
         self.assertContains(r, localtime(due).strftime("%Y-%m-%d %H:%M"))
 
-    def test_batch_admin_action_buttons(self):
+    def test_batch_action_buttons(self):
         self._login()
         build = self._create_build()
         due = timezone.now() + timedelta(days=1)

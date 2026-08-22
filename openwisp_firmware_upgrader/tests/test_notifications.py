@@ -385,6 +385,22 @@ class TestScheduledUpgradeNotifications(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(kwargs["type"], "generic_message")
         self.assertIn("no eligible devices remained", str(kwargs["message"]))
 
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_started_ignores_rollback(self, mocked_notify):
+        batch = self._scheduled_batch()
+        with transaction.atomic():
+            batch._scheduled_started()
+            transaction.set_rollback(True)
+        mocked_notify.assert_not_called()
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_validation_failed_ignores_rollback(self, mocked_notify):
+        batch = self._scheduled_batch()
+        with transaction.atomic():
+            batch._scheduled_validation_failed()
+            transaction.set_rollback(True)
+        mocked_notify.assert_not_called()
+
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
     @mock.patch("openwisp_notifications.signals.notify.send")
     def test_due_batch_fires_started_once(self, mocked_notify, mocked_delay):

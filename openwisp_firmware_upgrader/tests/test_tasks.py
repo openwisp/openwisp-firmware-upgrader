@@ -389,7 +389,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
 
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
-    def test_execute_scheduled_upgrades_dispatches_due_batch(self, mocked_dispatch):
+    def test_execute_dispatches_due_batch(self, mocked_dispatch):
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(env["build2"], firmwareless=True)
         tasks.execute_scheduled_upgrades.run()
@@ -398,7 +398,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         mocked_dispatch.assert_called_once_with(batch.pk, True)
 
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
-    def test_execute_scheduled_upgrades_skips_future_batch(self, mocked_dispatch):
+    def test_execute_skips_future_batch(self, mocked_dispatch):
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(
             env["build2"], when=timezone.now() + timedelta(hours=1)
@@ -409,7 +409,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         mocked_dispatch.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
-    def test_execute_scheduled_upgrades_does_not_relaunch(self, mocked_dispatch):
+    def test_execute_does_not_relaunch(self, mocked_dispatch):
         env = self._create_upgrade_env()
         self._create_scheduled_batch(env["build2"])
         tasks.execute_scheduled_upgrades.run()
@@ -417,9 +417,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(mocked_dispatch.call_count, 1)
 
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
-    def test_execute_scheduled_upgrades_fails_without_eligible_devices(
-        self, mocked_dispatch
-    ):
+    def test_execute_fails_without_eligible_devices(self, mocked_dispatch):
         batch = self._create_scheduled_batch(self._create_build())
         tasks.execute_scheduled_upgrades.run()
         batch.refresh_from_db()
@@ -427,9 +425,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         mocked_dispatch.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
-    def test_execute_scheduled_upgrades_passes_stored_firmwareless(
-        self, mocked_dispatch
-    ):
+    def test_execute_passes_stored_firmwareless(self, mocked_dispatch):
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(env["build2"], firmwareless=False)
         tasks.execute_scheduled_upgrades.run()
