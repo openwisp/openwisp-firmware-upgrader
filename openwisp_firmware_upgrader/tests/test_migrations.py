@@ -103,6 +103,22 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
             )
             self.assertEqual(image.extraction_log, first_log)
 
+    def test_build_status_recompute_failure_is_caught_and_logged_without_failing_migrate(
+        self,
+    ):
+        with mock.patch(_MOCK_EXTRACT_DELAY), mock.patch(_MOCK_NOTIFY), mock.patch(
+            "openwisp_firmware_upgrader.base.models.AbstractBuild._update_extraction_status",
+            side_effect=Exception("simulated build status recompute failure"),
+        ):
+            with self.assertLogs(level="ERROR") as cm:
+                call_command("migrate", self.app_label, self.migrate_to, verbosity=0)
+        self.assertTrue(
+            any(
+                "Failed to update extraction status for build" in msg
+                for msg in cm.output
+            )
+        )
+
 
 class TestQueueUnconfirmedExtractionsMigration(TransactionTestCase):
     app_label = "firmware_upgrader"

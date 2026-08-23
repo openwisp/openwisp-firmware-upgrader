@@ -70,7 +70,12 @@ def _send_multi_board_notifications(app_config, **kwargs):
         affected.values_list("build_id", flat=True)
     )
     for build in Build.objects.filter(pk__in=affected_build_ids):
-        build._update_extraction_status()
+        try:
+            build._update_extraction_status()
+        except Exception:
+            logger.exception(
+                "Failed to update extraction status for build %s", build.pk
+            )
     for image in affected:
         org = image.build.category.organization
         notify_sender = org if org is not None else image
@@ -127,9 +132,14 @@ def backfill_board_from_hardware_map(apps, schema_editor):
 
     custom_images = getattr(settings, "OPENWISP_CUSTOM_OPENWRT_IMAGES", None)
     if custom_images:
+        # accept a dict or a list of (image_type, info) pairs, the same
+        # shape as FIRMWARE_IMAGE_TYPE_CHOICES in 0001_initial.py
         if not isinstance(custom_images, dict):
             custom_images = dict(custom_images)
         for image_type, info in custom_images.items():
+            # unlike the hardware map, this comes from user config and may be
+            # incomplete, so a missing 'boards" key is treated as no boards
+            # rather than raising
             boards = info.get("boards", ())
             if len(boards) == 1:
                 _update_single_board(
