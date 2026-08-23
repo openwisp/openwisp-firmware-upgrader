@@ -1134,6 +1134,8 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.status_code, 200)
         op.refresh_from_db()
         self.assertEqual(op.status, "cancelled")
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "cancelled")
 
     def test_cancel_in_progress_leaves_reflashing_child(self):
         env = self._create_upgrade_env()
@@ -1152,6 +1154,8 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.status_code, 200)
         reflashing.refresh_from_db()
         self.assertEqual(reflashing.status, "in-progress")
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
 
     def test_list_scheduled_filter_and_ordering(self):
         env = self._create_upgrade_env()

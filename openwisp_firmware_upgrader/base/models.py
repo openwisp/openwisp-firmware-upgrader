@@ -705,12 +705,27 @@ class AbstractBatchUpgradeOperation(
                     )
                 }
             )
-        self._validate_schedule()
-        self._validate_is_persistent_immutable()
-        self._validate_scheduled_editability()
+        stored = None if self._state.adding else self._fetch_stored_row()
+        self._validate_schedule(stored)
+        self._validate_is_persistent_immutable(stored)
+        self._validate_scheduled_editability(stored)
         self._validate_no_conflict()
 
-    def _validate_schedule(self):
+    def _fetch_stored_row(self):
+        return (
+            load_model("BatchUpgradeOperation")
+            .objects.values(
+                "status",
+                "is_persistent",
+                "build_id",
+                "upgrade_options",
+                "scheduled_at",
+                "firmwareless",
+            )
+            .get(pk=self.pk)
+        )
+
+    def _validate_schedule(self, stored=None):
         """
         Enforce the min-delay/max-horizon bounds only when the schedule is set
         or changed; an unchanged stored time is left alone so a now-due batch
@@ -728,12 +743,9 @@ class AbstractBatchUpgradeOperation(
                 )
             return
         if not self._state.adding:
-            stored = (
-                load_model("BatchUpgradeOperation")
-                .objects.values_list("scheduled_at", flat=True)
-                .get(pk=self.pk)
-            )
-            if self.scheduled_at == stored:
+            if stored is None:
+                stored = self._fetch_stored_row()
+            if self.scheduled_at == stored["scheduled_at"]:
                 return
         now = timezone.now()
         min_delay = app_settings.SCHEDULE_MIN_DELAY
@@ -767,7 +779,7 @@ class AbstractBatchUpgradeOperation(
                 }
             )
 
-    def _validate_is_persistent_immutable(self):
+    def _validate_is_persistent_immutable(self, stored=None):
         """
         Reject changes to ``is_persistent`` once the batch has left the
         pre-launch states. ``idle`` and ``scheduled`` batches haven't
@@ -776,14 +788,11 @@ class AbstractBatchUpgradeOperation(
         """
         if self._state.adding:
             return
-        stored_status, stored_is_persistent = (
-            load_model("BatchUpgradeOperation")
-            .objects.values_list("status", "is_persistent")
-            .get(pk=self.pk)
-        )
-        if stored_status in ("idle", "scheduled"):
+        if stored is None:
+            stored = self._fetch_stored_row()
+        if stored["status"] in ("idle", "scheduled"):
             return
-        if self.is_persistent != stored_is_persistent:
+        if self.is_persistent != stored["is_persistent"]:
             raise ValidationError(
                 {
                     "is_persistent": _(
@@ -793,7 +802,7 @@ class AbstractBatchUpgradeOperation(
                 }
             )
 
-    def _validate_scheduled_editability(self):
+    def _validate_scheduled_editability(self, stored=None):
         """
         The build is frozen once a batch leaves ``idle`` and the schedule once
         it leaves ``scheduled``: re-targeting the firmware or the time after the
@@ -801,16 +810,11 @@ class AbstractBatchUpgradeOperation(
         """
         if self._state.adding:
             return
-        stored_status, build_id, upgrade_options, scheduled_at, firmwareless = (
-            load_model("BatchUpgradeOperation")
-            .objects.values_list(
-                "status", "build_id", "upgrade_options", "scheduled_at", "firmwareless"
-            )
-            .get(pk=self.pk)
-        )
-        if stored_status == "idle":
+        if stored is None:
+            stored = self._fetch_stored_row()
+        if stored["status"] == "idle":
             return
-        if self.build_id != build_id:
+        if self.build_id != stored["build_id"]:
             raise ValidationError(
                 {
                     "build": _(
@@ -819,7 +823,7 @@ class AbstractBatchUpgradeOperation(
                     )
                 }
             )
-        if self.upgrade_options != upgrade_options:
+        if self.upgrade_options != stored["upgrade_options"]:
             raise ValidationError(
                 {
                     "upgrade_options": _(
@@ -828,9 +832,9 @@ class AbstractBatchUpgradeOperation(
                     )
                 }
             )
-        if stored_status == "scheduled" and self.status == "scheduled":
+        if stored["status"] == "scheduled" and self.status == "scheduled":
             return
-        if self.scheduled_at != scheduled_at:
+        if self.scheduled_at != stored["scheduled_at"]:
             raise ValidationError(
                 {
                     "scheduled_at": _(
@@ -839,7 +843,7 @@ class AbstractBatchUpgradeOperation(
                     )
                 }
             )
-        if self.firmwareless != firmwareless:
+        if self.firmwareless != stored["firmwareless"]:
             raise ValidationError(
                 {
                     "firmwareless": _(
