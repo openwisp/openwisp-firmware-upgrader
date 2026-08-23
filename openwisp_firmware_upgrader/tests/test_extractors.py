@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from django.test import TestCase
+from django.test import SimpleTestCase
 
 from ..extractors.base import BaseMetadataExtractor
 from ..extractors.exceptions import (
@@ -49,7 +49,12 @@ class ConcreteDTBExtractor(ConcreteFailExtractor):
         }
 
 
-class TestBaseMetadataExtractor(TestCase):
+class ConcreteDTBErrorExtractor(ConcreteFailExtractor):
+    def extract_from_dtb(self):
+        raise ExtractionError("dtb parse failed")
+
+
+class TestBaseMetadataExtractor(SimpleTestCase):
     def test_extract_fast_path_success(self):
         extractor = ConcreteSuccessExtractor("/fake/path.bin")
         result = extractor.extract()
@@ -64,6 +69,11 @@ class TestBaseMetadataExtractor(TestCase):
     def test_extract_reraises_when_both_paths_fail(self):
         extractor = ConcreteFailExtractor("/fake/path.bin")
         with self.assertRaises(UnsupportedImageError):
+            extractor.extract()
+
+    def test_extract_propagates_dtb_extraction_error(self):
+        extractor = ConcreteDTBErrorExtractor("/fake/path.bin")
+        with self.assertRaises(ExtractionError):
             extractor.extract()
 
     def test_unsupported_image_error_not_caught_by_extract(self):
