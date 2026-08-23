@@ -78,10 +78,6 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         build = self._create_build(organization=org1, os=os_version)
         fw_image = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
         supported_board = fw_image.boards[0]
-        # Devices connected below share the same org1 credentials, otherwise
-        # each connection would try to create its own set of credentials
-        # with the same name, which is not allowed.
-        org1_credentials = self._create_credentials(organization=org1)
 
         # 1. Eligible device: matching OS, matching model, no existing firmware, active, same org
         # Patch the auto-create signal handler so that connecting the device
@@ -97,7 +93,6 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
                 organization=org1,
                 model=supported_board,
                 os=os_version,
-                credentials=org1_credentials,
             )
         # 2. Ineligible: different hardware model sharing same OS
         d_different_model = self._create_device(
@@ -125,17 +120,16 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         d_deactivated.deactivate()
         # 5. Ineligible: device already has a DeviceFirmware
-        with mock.patch(
-            "openwisp_firmware_upgrader.base.models.create_device_firmware.delay"
-        ):
-            d_existing_fw = self._create_device_with_connection(
-                name="existing-fw-device",
-                mac_address="00:11:22:33:44:05",
-                organization=org1,
-                model=supported_board,
-                os=os_version,
-                credentials=org1_credentials,
-            )
+        # No connection needed here: this device is excluded from the task
+        # by the devicefirmware__isnull filter, so create_for_device is
+        # never called on it.
+        d_existing_fw = self._create_device(
+            name="existing-fw-device",
+            mac_address="00:11:22:33:44:05",
+            organization=org1,
+            model=supported_board,
+            os=os_version,
+        )
         # 6. Ineligible: different OS
         d_different_os = self._create_device(
             name="different-os-device",
@@ -150,9 +144,10 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         old_image = self._create_firmware_image(
             build=old_build, type=self.TPLINK_4300_IMAGE
         )
-        existing_df = DeviceFirmware.objects.create(
+        existing_df = DeviceFirmware(
             device=d_existing_fw, image=old_image, installed=True
         )
+        existing_df.save(upgrade=False)
 
         with mock.patch.object(
             DeviceFirmware, "create_for_device", wraps=DeviceFirmware.create_for_device
