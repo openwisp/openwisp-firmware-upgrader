@@ -727,14 +727,18 @@ class TestModels(TestUpgraderMixin, TestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, "scheduled")
 
-    def test_scheduled_at_composite_index(self):
+    def test_scheduled_at_index(self):
+        field = BatchUpgradeOperation._meta.get_field("scheduled_at")
+        self.assertTrue(field.db_index)
+        self.assertTrue(field.null)
+        self.assertTrue(field.blank)
         with connection.cursor() as cursor:
             indexes = connection.introspection.get_constraints(
                 cursor, BatchUpgradeOperation._meta.db_table
             )
         self.assertTrue(
             any(
-                info["columns"] == ["status", "scheduled_at"] and info["index"]
+                info["columns"] == ["scheduled_at"] and info["index"]
                 for info in indexes.values()
             )
         )
@@ -851,6 +855,15 @@ class TestModels(TestUpgraderMixin, TestCase):
                 f"{app_settings.SCHEDULE_MAX_HORIZON // 86400} days",
                 str(ctx.exception.message_dict["scheduled_at"][0]),
             )
+        with self.subTest("a single-day horizon uses the singular form"):
+            with mock.patch.object(app_settings, "SCHEDULE_MAX_HORIZON", 86400):
+                batch.scheduled_at = now + timedelta(days=2)
+                with self.assertRaises(ValidationError) as ctx:
+                    batch._validate_schedule()
+                self.assertIn(
+                    "1 day in the future",
+                    str(ctx.exception.message_dict["scheduled_at"][0]),
+                )
         with self.subTest("a valid future time passes"):
             batch.scheduled_at = now + timedelta(hours=1)
             batch._validate_schedule()

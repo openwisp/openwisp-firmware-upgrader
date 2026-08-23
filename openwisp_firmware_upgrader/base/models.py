@@ -653,6 +653,7 @@ class AbstractBatchUpgradeOperation(
     scheduled_at = models.DateTimeField(
         null=True,
         blank=True,
+        db_index=True,
         verbose_name=_("scheduled at"),
         help_text=_(
             "future date and time at which this mass upgrade is "
@@ -672,9 +673,6 @@ class AbstractBatchUpgradeOperation(
         abstract = True
         verbose_name = _("Mass upgrade operation")
         verbose_name_plural = _("Mass upgrade operations")
-        indexes = [
-            models.Index(fields=["status", "scheduled_at"]),
-        ]
 
     def __str__(self):
         return f"{self.build} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
@@ -755,13 +753,17 @@ class AbstractBatchUpgradeOperation(
                 }
             )
         if self.scheduled_at > now + timedelta(seconds=max_horizon):
+            days = max(1, -(-max_horizon // 86400))
             raise ValidationError(
                 {
-                    "scheduled_at": _(
+                    "scheduled_at": ngettext(
                         "The scheduled time cannot be more than %(days)d "
-                        "days in the future."
+                        "day in the future.",
+                        "The scheduled time cannot be more than %(days)d "
+                        "days in the future.",
+                        days,
                     )
-                    % {"days": max(1, -(-max_horizon // 86400))}
+                    % {"days": days}
                 }
             )
 
@@ -1300,8 +1302,26 @@ class AbstractBatchUpgradeOperation(
             % {"status": self.status}
         )
 
+    def reschedule(self, **fields):
+        """Applies validated schedule changes under a row lock while scheduled."""
+        with transaction.atomic():
+            obj = self._meta.model.objects.select_for_update().get(pk=self.pk)
+            if obj.status != "scheduled":
+                raise ValueError(
+                    _("Cannot reschedule mass upgrade with status: %(status)s")
+                    % {"status": obj.status}
+                )
+            for field, value in fields.items():
+                setattr(obj, field, value)
+            obj.full_clean()
+            obj.save()
+
     @classmethod
     def execute_due_scheduled(cls):
+        """
+        Claims every scheduled mass upgrade whose ``scheduled_at`` has elapsed
+        and dispatches it, failing those no longer eligible or in conflict.
+        """
         now = timezone.now()
         due_ids = list(
             cls.objects.filter(status="scheduled", scheduled_at__lte=now).values_list(
@@ -1338,9 +1358,7 @@ class AbstractBatchUpgradeOperation(
             if not claimed:
                 continue
             try:
-                transaction.on_commit(
-                    partial(batch_upgrade_operation.delay, batch_id, batch.firmwareless)
-                )
+                batch_upgrade_operation.delay(batch_id, batch.firmwareless)
             except Exception:
                 cls.objects.filter(pk=batch_id, status="in-progress").update(
                     status="scheduled"

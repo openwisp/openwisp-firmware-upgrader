@@ -74,13 +74,10 @@ django.jQuery(function ($) {
     $("#ow-batch-cancel-modal .ow-dialog-close").on("click", function () {
       $("#ow-batch-cancel-modal").addClass("ow-hide");
     });
-    $("#ow-batch-cancel-modal .ow-batch-cancel-confirm").on(
-      "click",
-      function () {
-        $("#ow-batch-cancel-modal").addClass("ow-hide");
-        post(owBatchCancelUrl, {});
-      },
-    );
+    $("#ow-batch-cancel-modal .ow-batch-cancel-confirm").on("click", function () {
+      $("#ow-batch-cancel-modal").addClass("ow-hide");
+      post(owBatchCancelUrl, {});
+    });
     $(document).on("keyup", function (e) {
       if (e.keyCode === 27 && $("#ow-batch-cancel-modal").is(":visible")) {
         $("#ow-batch-cancel-modal").addClass("ow-hide");
@@ -133,9 +130,7 @@ django.jQuery(function ($) {
     browserTz = "";
   }
   const serverTz = form.data("server-tz") || "";
-  let tzText = interpolate(gettext("Entered in your timezone (%s)."), [
-    browserTz,
-  ]);
+  let tzText = interpolate(gettext("Entered in your timezone (%s)."), [browserTz]);
   if (serverTz) {
     tzText += " " + interpolate(gettext("The server runs in %s."), [serverTz]);
   }
@@ -157,13 +152,8 @@ django.jQuery(function ($) {
 
   $("#batch-reschedule-save").on("click", function () {
     const scheduled = new Date(dateInput.val() + "T" + timeInput.val());
-    const tzOffset = isNaN(scheduled.getTime())
-      ? new Date().getTimezoneOffset()
-      : scheduled.getTimezoneOffset();
     post(owBatchRescheduleUrl, {
-      scheduled_at_0: dateInput.val(),
-      scheduled_at_1: timeInput.val(),
-      scheduled_at_tz_offset: tzOffset,
+      scheduled_at: isNaN(scheduled.getTime()) ? null : scheduled.toISOString(),
       group: $("#batch-reschedule-group").val() || null,
       location: $("#batch-reschedule-location").val() || null,
       is_persistent: $("#batch-reschedule-persistent").is(":checked"),

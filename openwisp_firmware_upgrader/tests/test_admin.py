@@ -327,6 +327,26 @@ class TestAdmin(BaseTestAdmin, TestCase):
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
         self.assertEqual(batch.scheduled_at, due)
 
+    @override_settings(TIME_ZONE="Asia/Kolkata")
+    def test_schedule_browser_timezone(self):
+        # The browser posts a single UTC scheduled_at; the server stores that
+        # instant regardless of its timezone.
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.now() + timedelta(days=1)).replace(second=0, microsecond=0)
+        self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at": due.isoformat(),
+            },
+            follow=True,
+        )
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.scheduled_at, due)
+
     def test_batch_list_schedule(self):
         self._login()
         env = self._create_upgrade_env()

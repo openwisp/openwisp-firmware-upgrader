@@ -17,10 +17,11 @@ from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.templatetags.static import static
 from django.urls import resolve, reverse
+from django.utils.dateparse import parse_datetime
+from django.utils.formats import localize
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-from django.utils.formats import localize
-from django.utils.timezone import get_current_timezone, localtime, make_naive
+from django.utils.timezone import localtime
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
@@ -44,7 +45,7 @@ from .filters import (
     LocationFilter,
 )
 from .swapper import load_model
-from .utils import get_upgrader_schema_for_device, reanchor_wall_clock_to_utc
+from .utils import get_upgrader_schema_for_device
 from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
 
 logger = logging.getLogger(__name__)
@@ -186,17 +187,15 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        scheduled_at = cleaned_data.get("scheduled_at")
-        offset = self.data.get("scheduled_at_tz_offset")
-        if scheduled_at is not None and offset not in (None, ""):
-            try:
-                offset = int(offset)
-            except (TypeError, ValueError):
-                return cleaned_data
-            wall_clock = make_naive(scheduled_at, get_current_timezone())
-            cleaned_data["scheduled_at"] = reanchor_wall_clock_to_utc(
-                wall_clock, offset
-            )
+        # The browser posts a single UTC scheduled_at; parse it instead of the
+        # naive split-widget value.
+        scheduled_at = self.data.get("scheduled_at")
+        if scheduled_at:
+            parsed = parse_datetime(scheduled_at)
+            if parsed is None:
+                self.add_error("scheduled_at", _("Enter a valid date and time."))
+            else:
+                cleaned_data["scheduled_at"] = parsed
         return cleaned_data
 
     class Media:
@@ -335,9 +334,7 @@ class BuildAdmin(BaseAdmin):
                     "is_persistent": is_persistent,
                     "scheduled_at_0": scheduled_at_date,
                     "scheduled_at_1": scheduled_at_time,
-                    "scheduled_at_tz_offset": request.POST.get(
-                        "scheduled_at_tz_offset"
-                    ),
+                    "scheduled_at": request.POST.get("scheduled_at"),
                 },
                 user=request.user,
             )
