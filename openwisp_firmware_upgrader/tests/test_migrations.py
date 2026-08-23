@@ -114,9 +114,6 @@ class TestQueueUnconfirmedExtractionsMigration(TransactionTestCase):
         self.addCleanup(call_command, "migrate", self.app_label, verbosity=0)
         executor.migrate([(self.app_label, self.migrate_from)])
 
-    def tearDown(self):
-        super().tearDown()
-
     def test_broker_publish_failure_is_caught_and_logged_without_failing_migrate(self):
         with mock.patch(
             "openwisp_firmware_upgrader.tasks.queue_unconfirmed_extractions.delay",
