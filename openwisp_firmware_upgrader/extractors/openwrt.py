@@ -10,6 +10,7 @@ import zlib
 
 import fdt
 import lz4.frame as lz4frame
+from django.utils.translation import gettext_lazy as _
 
 from .. import settings as app_settings
 from .base import BaseMetadataExtractor
@@ -39,11 +40,15 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
 
     def _validate_image_type(self):
         name = os.path.basename(self.image_path).lower()
-        _, ext = os.path.splitext(name)
+        ext = os.path.splitext(name)[1]
         if ext in _VIRTUAL_DISK_IMAGES:
-            raise UnsupportedImageError(f"Virtual disk image type not supported: {ext}")
+            raise UnsupportedImageError(
+                _("Virtual disk image type not supported: {ext}").format(ext=ext)
+            )
         if "x86" in name or "armsr" in name:
-            raise UnsupportedImageError(f"Unsupported image type: {name}")
+            raise UnsupportedImageError(
+                _("Unsupported image type: {name}").format(name=name)
+            )
 
     def _extract_fwtool_metadata(self):
         with open(self.image_path, "rb") as f:
@@ -53,16 +58,20 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         # never match a genuine trailer's checksum
         if len(data) > app_settings.MAX_KERNEL_BYTES:
             raise DecompressionLimitExceeded(
-                f"Firmware file exceeds limit of "
-                f"{self._format_size(app_settings.MAX_KERNEL_BYTES)}."
+                _("Firmware file exceeds limit of {size}.").format(
+                    size=self._format_size(app_settings.MAX_KERNEL_BYTES)
+                )
             )
         file_size = len(data)
         magic_bytes = struct.pack(">I", FWIMAGE_MAGIC)
         view = memoryview(data)
         offset = file_size - TRAILER_SIZE
         probes = 0
+        crc_bytes_checked = 0
         while offset >= 0:
             if probes >= app_settings.MAX_TRAILER_PROBES:
+                break
+            if crc_bytes_checked >= app_settings.MAX_TRAILER_CRC_BYTES:
                 break
             probes += 1
             offset = data.rfind(magic_bytes, 0, offset + len(magic_bytes))
@@ -83,6 +92,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             if data_start < 0:
                 offset -= 1
                 continue
+            crc_bytes_checked += data_end
             if zlib.crc32(view[:data_end]) ^ 0xFFFFFFFF != crc32_val:
                 offset = data_start
                 continue
@@ -118,16 +128,18 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
     def _check_limits(self, decompressed, compressed):
         if decompressed > app_settings.MAX_DECOMPRESSED_BYTES:
             raise DecompressionLimitExceeded(
-                f"Decompressed size exceeded hard limit of "
-                f"{self._format_size(app_settings.MAX_DECOMPRESSED_BYTES)}."
+                _("Decompressed size exceeded hard limit of {size}.").format(
+                    size=self._format_size(app_settings.MAX_DECOMPRESSED_BYTES)
+                )
             )
         if (
             compressed > 0
             and (decompressed / compressed) > app_settings.MAX_DECOMPRESSED_RATIO
         ):
             raise DecompressionLimitExceeded(
-                f"Compression ratio exceeds limit of "
-                f"{app_settings.MAX_DECOMPRESSED_RATIO}:1."
+                _("Compression ratio exceeds limit of {ratio}:1.").format(
+                    ratio=app_settings.MAX_DECOMPRESSED_RATIO
+                )
             )
 
     def _try_gzip(self, data):
@@ -393,16 +405,16 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             data = f.read(app_settings.MAX_KERNEL_BYTES + 1)
         if len(data) > app_settings.MAX_KERNEL_BYTES:
             raise DecompressionLimitExceeded(
-                f"Kernel data exceeds limit of "
-                f"{self._format_size(app_settings.MAX_KERNEL_BYTES)}"
+                _("Kernel data exceeds limit of {size}").format(
+                    size=self._format_size(app_settings.MAX_KERNEL_BYTES)
+                )
             )
         return data
 
     def _read_kernel_from_tar(self):
-        with open(self.image_path, "rb") as f:
-            raw = f.read()
+        raw = self._read_kernel_bytes()
         decompressed = None
-        for _, decompress_fn in self._decompressors():
+        for _magic, decompress_fn in self._decompressors():
             decompressed = decompress_fn(raw)
             if decompressed is not None:
                 break
@@ -417,8 +429,11 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                             data = f.read(app_settings.MAX_KERNEL_BYTES + 1)
                             if len(data) > app_settings.MAX_KERNEL_BYTES:
                                 raise DecompressionLimitExceeded(
-                                    f"Kernel data exceeds limit of "
-                                    f"{self._format_size(app_settings.MAX_KERNEL_BYTES)}."
+                                    _("Kernel data exceeds limit of {size}.").format(
+                                        size=self._format_size(
+                                            app_settings.MAX_KERNEL_BYTES
+                                        )
+                                    )
                                 )
                             return data
         except tarfile.TarError:
@@ -429,7 +444,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         memlimit = app_settings.MAX_DECOMPRESSED_BYTES
         stripped = self._strip_uimage_header(kernel_data)
         decompressed = None
-        for _, decompress_fn in self._decompressors():
+        for _magic, decompress_fn in self._decompressors():
             decompressed = decompress_fn(stripped)
             if decompressed is not None:
                 break
@@ -466,7 +481,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             dtb = self._try_extract_dtb_from_kernel(tar_kernel)
             if dtb is not None:
                 return self._metadata_from_dtb(dtb)
-        raise UnsupportedImageError("No DTB found in image")
+        raise UnsupportedImageError(_("No DTB found in image"))
 
     def extract(self):
         try:

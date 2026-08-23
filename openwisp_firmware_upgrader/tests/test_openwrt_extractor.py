@@ -717,11 +717,26 @@ class TestReadKernelFromTar(TestCase):
             os.unlink(path)
         self.assertEqual(result, payload)
 
-    def test_oversized_tar_member_raises(self):
+    def test_oversized_raw_file_raises_before_tar_parsing(self):
         path = self._write_tar([("kernel.bin", b"\x00" * 128)])
         try:
             extractor = OpenWrtMetadataExtractor(path)
             with mock.patch("openwisp_firmware_upgrader.settings.MAX_KERNEL_BYTES", 64):
+                with self.assertRaises(DecompressionLimitExceeded):
+                    extractor._read_kernel_from_tar()
+        finally:
+            os.unlink(path)
+
+    def test_oversized_tar_member_raises_after_decompression(self):
+        # highly compressible content keeps the compressed rraw file small
+        # so it passes the raw file bound, while the decompressed member
+        # itself still exceeds MAX_KERNEL_BYTES
+        path = self._write_gzip_tar([("kernel.bin", b"\x00" * 2000)])
+        try:
+            extractor = OpenWrtMetadataExtractor(path)
+            with mock.patch(
+                "openwisp_firmware_upgrader.settings.MAX_KERNEL_BYTES", 1000
+            ):
                 with self.assertRaises(DecompressionLimitExceeded):
                     extractor._read_kernel_from_tar()
         finally:
