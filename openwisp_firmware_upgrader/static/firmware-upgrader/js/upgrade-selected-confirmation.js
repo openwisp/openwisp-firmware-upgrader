@@ -15,23 +15,17 @@ django.jQuery(function ($) {
   $("#ow-loading").hide();
 
   // Interpret the scheduled time in the browser timezone instead of the
-  // server's: post the browser UTC offset and relabel the picker note.
+  // server's: post a single UTC scheduled_at and relabel the picker note.
   const scheduleRow = $("#schedule-row");
   if (scheduleRow.length) {
     const form = scheduleRow.closest("form");
-    const offsetInput = $(
-      '<input type="hidden" name="scheduled_at_tz_offset">',
-    );
-    form.append(offsetInput);
+    const utcInput = $('<input type="hidden" name="scheduled_at">');
+    form.append(utcInput);
     const dateInput = scheduleRow.find('input[name="scheduled_at_0"]');
     const timeInput = scheduleRow.find('input[name="scheduled_at_1"]');
     form.on("submit", function () {
       const scheduled = new Date(dateInput.val() + "T" + timeInput.val());
-      offsetInput.val(
-        isNaN(scheduled.getTime())
-          ? new Date().getTimezoneOffset()
-          : scheduled.getTimezoneOffset(),
-      );
+      utcInput.val(isNaN(scheduled.getTime()) ? "" : scheduled.toISOString());
     });
     labelScheduleTimezone(scheduleRow);
   }
@@ -45,9 +39,7 @@ function labelScheduleTimezone(container) {
     browserTz = "";
   }
   const serverTz = container.data("server-tz") || "";
-  let text = interpolate(gettext("Entered in your timezone (%s)."), [
-    browserTz,
-  ]);
+  let text = interpolate(gettext("Entered in your timezone (%s)."), [browserTz]);
   if (serverTz) {
     text += " " + interpolate(gettext("The server runs in %s."), [serverTz]);
   }

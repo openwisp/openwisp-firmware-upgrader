@@ -1019,22 +1019,15 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
 
     @override_settings(TIME_ZONE="Asia/Kolkata")
     def test_reschedule_naive_scheduled_at_interpreted_in_server_timezone(self):
-        # The admin reschedule panel posts the two AdminSplitDateTime inputs
-        # (scheduled_at_0/scheduled_at_1) as a naive wall-clock; it must be read
-        # in the server timezone, matching the create form, not as UTC.
+        # A naive scheduled_at (no timezone offset) must be read in the server
+        # timezone, matching the create form, not as UTC.
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(env["build2"])
         due = (timezone.localtime() + timedelta(days=2)).replace(
             second=0, microsecond=0
         )
         url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
-        r = self.client.post(
-            url,
-            {
-                "scheduled_at_0": due.strftime("%Y-%m-%d"),
-                "scheduled_at_1": due.strftime("%H:%M"),
-            },
-        )
+        r = self.client.post(url, {"scheduled_at": due.strftime("%Y-%m-%dT%H:%M")})
         self.assertEqual(r.status_code, 200)
         batch.refresh_from_db()
         self.assertEqual(batch.scheduled_at, due)
@@ -1093,6 +1086,18 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
         r = self.client.post(url, {"scheduled_at": due})
         self.assertEqual(r.status_code, 409)
+        self.assertIn("in-progress", r.data["error"])
+
+    def test_reschedule_unexpected_error_returns_500(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        due = (timezone.now() + timedelta(days=2)).isoformat()
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        with mock.patch.object(
+            BatchUpgradeOperation, "reschedule", side_effect=Exception("boom")
+        ):
+            r = self.client.post(url, {"scheduled_at": due})
+        self.assertEqual(r.status_code, 500)
 
     def test_cancel_scheduled_batch(self):
         env = self._create_upgrade_env()
