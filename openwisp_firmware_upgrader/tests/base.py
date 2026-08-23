@@ -198,10 +198,13 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         )
         return d
 
-    def _create_device_with_connection(self, **kwargs):
+    def _create_device_with_connection(self, credentials=None, **kwargs):
         d1 = self._create_device(**kwargs)
         self._create_config(device=d1)
-        self._create_device_connection(device=d1)
+        connection_kwargs = {"device": d1}
+        if credentials is not None:
+            connection_kwargs["credentials"] = credentials
+        self._create_device_connection(**connection_kwargs)
         return d1
 
     def _create_device_group(self, **kwargs):
