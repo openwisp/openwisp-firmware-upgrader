@@ -55,6 +55,6 @@
   ws.addEventListener("error", function (e) {
     console.error("WebSocket error occurred", e);
   });
-
+  window.extractionStatusWebSocket = ws;
   ws.open();
 })();

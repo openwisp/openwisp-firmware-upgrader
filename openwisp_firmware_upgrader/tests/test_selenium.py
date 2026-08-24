@@ -20,6 +20,7 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 from openwisp_firmware_upgrader.tests.base import SeleniumTestMixin, TestUpgraderMixin
 from openwisp_firmware_upgrader.websockets import (
     BatchUpgradeProgressPublisher,
+    FirmwareExtractionPublisher,
     UpgradeProgressPublisher,
 )
 from openwisp_utils.tests import capture_any_output
@@ -30,6 +31,7 @@ from ..upgraders.openwisp import OpenWrt
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Build = load_model("Build")
+FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -1302,4 +1304,34 @@ class TestRealTimeProgress(
             By.CSS_SELECTOR, "#result_list .status-cell .upgrade-status-container"
         )
         self.assertEqual(len(status_containers), 2)
+        self._assert_no_js_errors()
+
+    def test_extraction_status_reload_on_terminal_status(self):
+        image = self.image1
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        self.login(username=self.admin.username, password=self.admin_password)
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_firmwareimage_change",
+                args=[image.pk],
+            )
+        )
+        self.hide_loading_overlay()
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: driver.execute_script(
+                "return window.extractionStatusWebSocket && "
+                "window.extractionStatusWebSocket.readyState === 1;"
+            )
+        )
+        marker = self.find_element(By.TAG_NAME, "body")
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        FirmwareExtractionPublisher(image.pk).publish_status(
+            FirmwareImage.STATUS_SUCCESS
+        )
+        WebDriverWait(self.web_driver, 10).until(EC.staleness_of(marker))
+        self.wait_for_presence(By.CSS_SELECTOR, ".ow-status-badge.ow-status-success")
         self._assert_no_js_errors()
