@@ -42,15 +42,15 @@ def _run_coroutine_safely(coro):
             task = asyncio.create_task(coro())
         _background_tasks.add(task)
 
-    def _on_done(finished_task):
-        _background_tasks.discard(finished_task)
-        if not finished_task.cancelled() and finished_task.exception():
-            logger.error(
-                "Background websocket task failed",
-                exc_info=finished_task.exception(),
-            )
+        def _on_done(finished_task):
+            _background_tasks.discard(finished_task)
+            if not finished_task.cancelled() and finished_task.exception():
+                logger.error(
+                    "Background websocket task failed",
+                    exc_info=finished_task.exception(),
+                )
 
-    task.add_done_callback(_on_done)
+        task.add_done_callback(_on_done)
 
 
 class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
