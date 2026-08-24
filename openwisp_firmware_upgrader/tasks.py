@@ -1,13 +1,14 @@
-import logging
 import os
 import shutil
 import tempfile
 from datetime import timedelta
 from functools import partial
+from itertools import islice
 
 import swapper
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
+from celery.utils.log import get_task_logger
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Q
@@ -26,7 +27,7 @@ from .swapper import load_model
 from .utils import compat_blocks_pairing
 from .websockets import FirmwareExtractionPublisher
 
-logger = logging.getLogger(__name__)
+logger = get_task_logger(__name__)
 
 
 @shared_task(
@@ -209,7 +210,7 @@ def extract_firmware_metadata(self, image_pk):
         image = FirmwareImage.objects.get(pk=image_pk)
     except FirmwareImage.DoesNotExist:
         logger.warning(
-            "extract_firmware_metadata: FirmwareImage pk=%s not found, skipping",
+            "FirmwareImage pk=%s not found, skipping",
             image_pk,
         )
         return
@@ -230,7 +231,7 @@ def extract_firmware_metadata(self, image_pk):
         image = FirmwareImage.objects.get(pk=image_pk, file=file_name)
     except FirmwareImage.DoesNotExist:
         logger.warning(
-            "extract_firmware_metadata: file changed concurrently for pk=%s, skipping",
+            "file changed concurrently for pk=%s, skipping",
             image_pk,
         )
         return
@@ -286,7 +287,7 @@ def extract_firmware_metadata(self, image_pk):
             "extraction_log": "\n".join(log_lines),
         }
         logger.warning(
-            "extract_firmware_metadata: soft time limit exceeded for pk=%s",
+            "soft time limit exceeded for pk=%s",
             image_pk,
         )
 
@@ -298,7 +299,7 @@ def extract_firmware_metadata(self, image_pk):
             "extraction_log": "\n".join(log_lines),
         }
         logger.warning(
-            "extract_firmware_metadata: decompression limit exceeded for pk=%s - %s",
+            "decompression limit exceeded for pk=%s - %s",
             image_pk,
             exc,
         )
@@ -312,7 +313,7 @@ def extract_firmware_metadata(self, image_pk):
             "extraction_log": "\n".join(log_lines),
         }
         logger.warning(
-            "extract_firmware_metadata: unsupported image pk=%s - %s",
+            "unsupported image pk=%s - %s",
             image_pk,
             exc,
         )
@@ -325,7 +326,7 @@ def extract_firmware_metadata(self, image_pk):
             "extraction_log": "\n".join(log_lines),
         }
         logger.exception(
-            "extract_firmware_metadata: unhandled exception for pk=%s",
+            "unhandled exception for pk=%s",
             image_pk,
         )
 
@@ -337,7 +338,7 @@ def extract_firmware_metadata(self, image_pk):
         ).update(**update)
     except Exception:
         logger.exception(
-            "extract_firmware_metadata: failed to persist result for pk=%s",
+            "failed to persist result for pk=%s",
             image_pk,
         )
         log_lines.append("[!] Failed to save extraction result. Manual input required.")
@@ -353,7 +354,7 @@ def extract_firmware_metadata(self, image_pk):
             image_pk,
             FirmwareImage.STATUS_INVALID,
             FirmwareImage.FAILURE_INVALID,
-            "extract_firmware_metadata: failed to update build status for pk=%s",
+            "failed to update build status for pk=%s",
         )
         return
 
@@ -437,16 +438,15 @@ def _dispatch_unconfirmed_extractions_chunk(pks):
 @shared_task(base=OpenwispCeleryTask)
 def queue_unconfirmed_extractions():
     FirmwareImage = load_model("FirmwareImage")
-    pks = list(
-        FirmwareImage.objects.filter(
-            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
-        ).values_list("pk", flat=True)
-    )
     # dispatch in chunks instead of one .delay() per pk, to avoid flooding
     # the broker on installs with a large backlog of unconfirmed images
     chunk_size = app_settings.QUEUE_UNCONFIRMED_CHUNK_SIZE
-    for i in range(0, len(pks), chunk_size):
-        chunk = pks[i : i + chunk_size]
+    pks_iterator = (
+        FirmwareImage.objects.filter(extraction_status=FirmwareImage.STATUS_UNCONFIRMED)
+        .values_list("pk", flat=True)
+        .iterator(chunk_size=chunk_size)
+    )
+    while chunk := list(islice(pks_iterator, chunk_size)):
         _dispatch_unconfirmed_extractions_chunk.delay(chunk)
 
 
@@ -478,5 +478,5 @@ def reclaim_stale_extractions():
             pk,
             FirmwareImage.STATUS_FAILED,
             FirmwareImage.FAILURE_TIMEOUT,
-            "reclaim_stale_extractions: failed to update build status for pk=%s",
+            "failed to update build status for pk=%s",
         )
