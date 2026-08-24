@@ -315,6 +315,12 @@ class AbstractBuild(TimeStampedEditableModel):
             Build.BUILD_STATUS_INVALID,
             Build.BUILD_STATUS_MANUALLY_CONFIRMED,
         }
+        analyzing = {
+            FirmwareImage.STATUS_UNCONFIRMED,
+            FirmwareImage.STATUS_IN_PROGRESS,
+        }
+        # retry if another process changes the status concurrently,
+        # give up after 5 attempts and log a warning
         for _attempt in range(5):
             current_status = (
                 Build.objects.filter(pk=self.pk)
@@ -330,10 +336,6 @@ class AbstractBuild(TimeStampedEditableModel):
             )
             if not statuses:
                 return
-            analyzing = {
-                FirmwareImage.STATUS_UNCONFIRMED,
-                FirmwareImage.STATUS_IN_PROGRESS,
-            }
             if statuses & analyzing and current_status in final_statuses:
                 self.status = current_status
                 return
