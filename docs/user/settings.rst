@@ -131,6 +131,104 @@ consuming all available memory, e.g.:
   (MAX_KERNEL_BYTES + MAX_DECOMPRESSED_BYTES)`` fits within the available
   memory.
 
+``OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_PROBES``
+-------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``64``
+============ =======
+
+Maximum number of candidate fwtool metadata trailers scanned when
+extracting firmware metadata. This limit prevents an image with many false
+trailer signatures from causing excessive CPU work, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_PROBES = 32
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_CRC_BYTES``
+----------------------------------------------------
+
+============ =============================
+**type**:    ``int``
+**default**: ``1024 * 1024 * 1024`` (1 GB)
+============ =============================
+
+Maximum total bytes checksummed across all trailer candidates during
+metadata extraction. This bounds the total CRC32 work even when several
+candidates are scanned, each covering a large portion of the file, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_CRC_BYTES = 256 * 1024 * 1024  # 256MB
+
+**Notes**:
+
+- The actual default is computed as 4x
+  ``OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES`` at settings-load time (1
+  GB with the default 256 MB ``MAX_KERNEL_BYTES``), so it changes if you
+  override that setting.
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_DEEP_SCAN_PROBES``
+---------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``64``
+============ =======
+
+Maximum number of DTB (Device Tree Blob) candidates scanned when falling
+back to DTB-based metadata extraction. This limit prevents an image with
+many false DTB signatures from causing excessive CPU work, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_DEEP_SCAN_PROBES = 32
+
+``OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_CHUNK_SIZE``
+-----------------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``100``
+============ =======
+
+Number of firmware images dispatched per Celery task when
+``queue_unconfirmed_extractions`` re-queues images stuck in the
+``unconfirmed`` extraction status. This avoids flooding the broker with
+one task per image on installs with a larger backlog, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_CHUNK_SIZE = 50
+
+``OPENWISP_FIRMWARE_UPGRADER_EXTRACTION_CLAIM_TIMEOUT``
+-------------------------------------------------------
+
+============ =====================
+**type**:    ``int``
+**default**: ``3000`` (50 minutes)
+============ =====================
+
+Maximum number of seconds a firmware image can stay in ``in_progress``
+extraction status before ``reclaim_stale_extractions`` considers it
+abandoned (e.g. due to a worker crash) and marks it as failed, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_EXTRACTION_CLAIM_TIMEOUT = 1800  # 30 minutes
+
+**Notes**:
+
+- The actual default is computed as 2x
+  ``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT`` at settings-load time (3000
+  seconds with the default 1500 second ``TASK_TIMEOUT``), so it changes if
+  you override that setting.
+- See :doc:`recovering-from-extraction-failures` for how this setting is
+  used together with ``reclaim_stale_extractions`` and
+  ``queue_unconfirmed_extractions``.
+
 .. _openwisp_firmware_upgrader_api:
 
 ``OPENWISP_FIRMWARE_UPGRADER_API``
