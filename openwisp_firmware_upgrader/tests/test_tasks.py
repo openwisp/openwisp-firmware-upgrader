@@ -225,6 +225,34 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         image.refresh_from_db()
         self.assertEqual(image.extraction_status, FirmwareImage.STATUS_IN_PROGRESS)
 
+    @capture_any_output()
+    def test_extract_firmware_metadata_releases_claim_on_concurrent_replace(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        original_get = QuerySet.get
+
+        def flaky_get(self, *args, **kwargs):
+            if (
+                self.model is FirmwareImage
+                and str(kwargs.get("pk")) == str(image.pk)
+                and "file" in kwargs
+            ):
+                # simulate the file being replaced concurrently, after the
+                # claim succeeded but before the re-fetch
+                FirmwareImage.objects.filter(pk=image.pk).update(
+                    file="firmware/replaced.bin"
+                )
+            return original_get(self, *args, **kwargs)
+
+        with mock.patch.object(QuerySet, "get", flaky_get):
+            tasks.extract_firmware_metadata.run(str(image.pk))
+
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertIsNone(image.extraction_claimed_at)
+
     @mock.patch(_MOCK_NOTIFY)
     @mock.patch(_MOCK_EXTRACTOR)
     @capture_any_output()

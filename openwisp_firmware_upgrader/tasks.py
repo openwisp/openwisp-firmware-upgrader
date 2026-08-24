@@ -230,6 +230,15 @@ def extract_firmware_metadata(self, image_pk):
     try:
         image = FirmwareImage.objects.get(pk=image_pk, file=file_name)
     except FirmwareImage.DoesNotExist:
+        # the file was replaced concurrently, release the claim so the
+        # extraction scheduled by the replacement can claim the row
+        FirmwareImage.objects.filter(
+            pk=image.pk,
+            extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+        ).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
+            extraction_claimed_at=None,
+        )
         logger.warning(
             "file changed concurrently for pk=%s, skipping",
             image_pk,
