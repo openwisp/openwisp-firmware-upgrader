@@ -362,7 +362,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             raise ExtractionError(f"Failed to parse DTB: {e}")
         root = dt.get_node("/")
         model, compatible = None, []
-        # model uses prop.value (singel string), compatible uses prop.data
+        # model uses prop.value (single string), compatible uses prop.data
         # (full list), don't swap these
         for prop in root.props:
             if prop.name == "model":

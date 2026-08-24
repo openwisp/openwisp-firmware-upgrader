@@ -774,7 +774,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         image = self._create_firmware_image(build=build)
         image.extraction_status = FirmwareImage.STATUS_SUCCESS
         image.save()
-        build._update_extraction_status()
+        build.update_extraction_status()
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_SUCCESS)
 
@@ -785,7 +785,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         image = self._create_firmware_image(build=build)
         image.extraction_status = FirmwareImage.STATUS_FAILED
         image.save()
-        build._update_extraction_status()
+        build.update_extraction_status()
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_FAILED)
 
@@ -801,7 +801,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         )
         image2.extraction_status = FirmwareImage.STATUS_IN_PROGRESS
         image2.save()
-        build._update_extraction_status()
+        build.update_extraction_status()
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_ANALYZING)
 
@@ -813,7 +813,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             extraction_status=FirmwareImage.STATUS_IN_PROGRESS
         )
         build.refresh_from_db()
-        build._update_extraction_status()
+        build.update_extraction_status()
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_SUCCESS)
 
@@ -848,7 +848,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             return original_update(self, *args, **kwargs)
 
         with mock.patch.object(QuerySet, "update", racy_update):
-            build._update_extraction_status()
+            build.update_extraction_status()
 
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_FAILED)

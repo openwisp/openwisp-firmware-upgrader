@@ -306,7 +306,7 @@ class AbstractBuild(TimeStampedEditableModel):
             qs = qs.filter(devicelocation__location=location)
         return qs.order_by("-created")
 
-    def _update_extraction_status(self):
+    def update_extraction_status(self):
         Build = load_model("Build")
         FirmwareImage = load_model("FirmwareImage")
         final_statuses = {

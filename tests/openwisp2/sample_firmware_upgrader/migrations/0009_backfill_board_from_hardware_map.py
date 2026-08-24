@@ -71,7 +71,7 @@ def _send_multi_board_notifications(app_config, **kwargs):
     )
     for build in Build.objects.filter(pk__in=affected_build_ids):
         try:
-            build._update_extraction_status()
+            build.update_extraction_status()
         except Exception:
             logger.exception(
                 "Failed to update extraction status for build %s", build.pk

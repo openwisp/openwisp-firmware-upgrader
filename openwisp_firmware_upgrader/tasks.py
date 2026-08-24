@@ -197,7 +197,7 @@ def _finalize_failed_extraction(
         reason=reason_display,
     )
     try:
-        fresh.build._update_extraction_status()
+        fresh.build.update_extraction_status()
     except Exception:
         logger.exception(update_status_log_message, image_pk)
 
@@ -419,7 +419,7 @@ def extract_firmware_metadata(self, image_pk):
         )
 
     try:
-        fresh.build._update_extraction_status()
+        fresh.build.update_extraction_status()
     except Exception:
         logger.exception(
             "Failed to update build extraction status for image %s", image_pk

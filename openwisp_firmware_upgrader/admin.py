@@ -382,7 +382,7 @@ class FirmwareImageAdmin(BaseAdmin):
                 update_build_status = True
         super().save_model(request, obj, form, change)
         if update_build_status:
-            obj.build._update_extraction_status()
+            obj.build.update_extraction_status()
 
     @admin.action(
         description=_("Re-extract metadata from selected images"),

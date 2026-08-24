@@ -107,7 +107,7 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
         self,
     ):
         with mock.patch(_MOCK_EXTRACT_DELAY), mock.patch(_MOCK_NOTIFY), mock.patch(
-            "openwisp_firmware_upgrader.base.models.AbstractBuild._update_extraction_status",
+            "openwisp_firmware_upgrader.base.models.AbstractBuild.update_extraction_status",
             side_effect=Exception("simulated build status recompute failure"),
         ):
             with self.assertLogs(level="ERROR") as cm:
