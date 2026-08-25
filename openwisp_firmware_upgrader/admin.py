@@ -72,6 +72,7 @@ _STATUS_CONFIG = {
     "unconfirmed": {"label": _("Unconfirmed"), "class": "ow-status-grey"},
     "in_progress": {"label": _("In Progress"), "class": "ow-status-warning"},
     "success": {"label": _("Success"), "class": "ow-status-success"},
+    "incomplete": {"label": _("Incomplete"), "class": "ow-status-warning"},
     "failed": {"label": _("Failed"), "class": "ow-status-error"},
     "manually_confirmed": {
         "label": _("Manually Confirmed"),
@@ -296,16 +297,15 @@ class FirmwareImageAdmin(BaseAdmin):
                     "target",
                     "fw_version",
                 ]
+            elif status == FirmwareImage.STATUS_INCOMPLETE:
+                readonly += ["board", "compatible"]
             elif status == FirmwareImage.STATUS_SUCCESS:
-                if obj.source == "dtb":
-                    readonly += ["board", "compatible"]
-                else:
-                    readonly += [
-                        "board",
-                        "compatible",
-                        "target",
-                        "fw_version",
-                    ]
+                readonly += [
+                    "board",
+                    "compatible",
+                    "target",
+                    "fw_version",
+                ]
         return readonly
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
@@ -371,12 +371,8 @@ class FirmwareImageAdmin(BaseAdmin):
                             _("Board is required to manually confirm this image."),
                             messages.WARNING,
                         )
-            elif (
-                obj.extraction_status == FirmwareImage.STATUS_SUCCESS
-                and obj.source == "dtb"
-                and any(
-                    field in form.changed_data for field in ["target", "fw_version"]
-                )
+            elif obj.extraction_status == FirmwareImage.STATUS_INCOMPLETE and any(
+                field in form.changed_data for field in ["target", "fw_version"]
             ):
                 obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
                 obj.failure_reason = ""
@@ -423,6 +419,22 @@ class FirmwareImageAdmin(BaseAdmin):
                 messages.WARNING,
             )
             queryset = queryset.exclude(pk__in=locked_pks)
+        incomplete_pks = list(
+            queryset.filter(
+                extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+            ).values_list("pk", flat=True)
+        )
+        if incomplete_pks:
+            self.message_user(
+                request,
+                _(
+                    "%(count)d image(s) were skipped because re-extraction would "
+                    "not recover the missing metadata, please enter it manually."
+                )
+                % {"count": len(incomplete_pks)},
+                messages.WARNING,
+            )
+            queryset = queryset.exclude(pk__in=incomplete_pks)
         referenced_pks = list(
             DeviceFirmware.objects.filter(image__in=queryset)
             .values_list("image_id", flat=True)
@@ -573,6 +585,16 @@ class BuildAdmin(BaseAdmin):
 
     def organization(self, obj):
         return obj.category.organization
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = list(super().get_fieldsets(request, obj))
+        if obj is not None:
+            return fieldsets
+        result = []
+        for title, opts in fieldsets:
+            fields = [f for f in opts["fields"] if f != "build_status_display"]
+            result.append((title, {**opts, "fields": fields}))
+        return result
 
     organization.short_description = _("organization")
 

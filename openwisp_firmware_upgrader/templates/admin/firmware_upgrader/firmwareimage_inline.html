@@ -26,7 +26,7 @@ to add a per-row DTB-fallback/failed-extraction metadata warning.
       </h3>
       {% comment %} DTB fallback / failed extraction metadata warning {% endcomment %}
       {% with obj=inline_admin_form.original %}
-        {% if obj and obj.extraction_status == "success" and obj.source == "dtb" %}
+        {% if obj and obj.extraction_status == "incomplete" %}
           <ul class="messagelist">
             <li class="warning ow-firmware-metadata-warning">
               {% blocktrans %}Target and firmware version could not be recovered from the device tree blob (DTB) fallback. Please enter them manually.{% endblocktrans %}

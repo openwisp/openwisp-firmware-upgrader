@@ -432,6 +432,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     STATUS_UNCONFIRMED = "unconfirmed"
     STATUS_IN_PROGRESS = "in_progress"
     STATUS_SUCCESS = "success"
+    STATUS_INCOMPLETE = "incomplete"
     STATUS_FAILED = "failed"
     STATUS_MANUALLY_CONFIRMED = "manually_confirmed"
     STATUS_INVALID = "invalid"
@@ -446,6 +447,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         (STATUS_UNCONFIRMED, _("Unconfirmed")),
         (STATUS_IN_PROGRESS, _("In Progress")),
         (STATUS_SUCCESS, _("Success")),
+        (STATUS_INCOMPLETE, _("Incomplete")),
         (STATUS_FAILED, _("Failed")),
         (STATUS_MANUALLY_CONFIRMED, _("Manually Confirmed")),
         (STATUS_INVALID, _("Invalid")),

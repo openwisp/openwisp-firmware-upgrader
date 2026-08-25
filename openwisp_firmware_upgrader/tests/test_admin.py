@@ -221,7 +221,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         build = self._create_build()
         image = self._create_firmware_image(build=build)
         FirmwareImage.objects.filter(pk=image.pk).update(
-            extraction_status=FirmwareImage.STATUS_SUCCESS, source="dtb"
+            extraction_status=FirmwareImage.STATUS_INCOMPLETE, source="dtb"
         )
         url = reverse(f"admin:{self.app_label}_build_change", args=[build.pk])
         response = self.client.get(url)
@@ -290,7 +290,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         FirmwareImage.objects.filter(pk=fw.pk).update(
             source="dtb",
             board="Orange Pi Zero",
-            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            extraction_status=FirmwareImage.STATUS_INCOMPLETE,
         )
         fw.refresh_from_db()
         request = MockRequest()
@@ -301,7 +301,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         with mock.patch("django.db.transaction.on_commit"):
             fw_admin.save_model(request, fw, form, change=True)
         fw.refresh_from_db()
-        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_INCOMPLETE)
 
     def test_re_extract_metadata_action(self):
         self._login()
@@ -549,6 +549,36 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 success_image.extraction_status, FirmwareImage.STATUS_SUCCESS
             )
             self.assertEqual(success_image.board, "TP-Link WDR4300")
+
+        with self.subTest("skips incomplete image and does not wipe its metadata"):
+            incomplete_image = self._create_firmware_image(
+                build=self._create_build(version="7.7")
+            )
+            FirmwareImage.objects.filter(pk=incomplete_image.pk).update(
+                extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+                board="Xunlong Orange Pi Zero",
+                source="dtb",
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(incomplete_image.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_not_called()
+            incomplete_image.refresh_from_db()
+            self.assertEqual(
+                incomplete_image.extraction_status,
+                FirmwareImage.STATUS_INCOMPLETE,
+            )
+            self.assertEqual(incomplete_image.board, "Xunlong Orange Pi Zero")
 
     def test_re_extract_metadata_action_skips_referenced_images(self):
         self._login()
@@ -1609,9 +1639,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
             with self.subTest(field=field):
                 self.assertIn(field, readonly)
 
-    def test_firmware_image_readonly_fields_success_dtb(self):
+    def test_firmware_image_readonly_fields_incomplete(self):
         fw = self._create_firmware_image()
-        fw.extraction_status = FirmwareImage.STATUS_SUCCESS
+        fw.extraction_status = FirmwareImage.STATUS_INCOMPLETE
         fw.source = "dtb"
         fw.save()
         request = MockRequest()
@@ -1669,6 +1699,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         for status in [
             FirmwareImage.STATUS_UNCONFIRMED,
             FirmwareImage.STATUS_IN_PROGRESS,
+            FirmwareImage.STATUS_INCOMPLETE,
             *FirmwareImage.LOCKED_STATUSES,
             FirmwareImage.STATUS_FAILED,
             FirmwareImage.STATUS_INVALID,
@@ -1875,7 +1906,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self, mock_task
     ):
         fw = self._create_firmware_image()
-        fw.extraction_status = FirmwareImage.STATUS_SUCCESS
+        fw.extraction_status = FirmwareImage.STATUS_INCOMPLETE
         fw.failure_reason = FirmwareImage.FAILURE_UNSUPPORTED
         fw.source = "dtb"
         fw.board = "Xunlong Orange Pi Zero"

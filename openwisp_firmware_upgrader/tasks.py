@@ -283,6 +283,9 @@ def extract_firmware_metadata(self, image_pk):
             )
             update["extraction_status"] = FirmwareImage.STATUS_FAILED
             update["failure_reason"] = FirmwareImage.FAILURE_UNSUPPORTED
+        elif meta.get("source") == "dtb":
+            log_lines.append("[+] extraction: incomplete, manual input required")
+            update["extraction_status"] = FirmwareImage.STATUS_INCOMPLETE
         else:
             log_lines.append("[+] extraction: success")
             update["extraction_status"] = FirmwareImage.STATUS_SUCCESS
@@ -372,6 +375,7 @@ def extract_firmware_metadata(self, image_pk):
 
     _terminal = {
         FirmwareImage.STATUS_SUCCESS,
+        FirmwareImage.STATUS_INCOMPLETE,
         FirmwareImage.STATUS_FAILED,
         FirmwareImage.STATUS_INVALID,
     }
@@ -414,10 +418,7 @@ def extract_firmware_metadata(self, image_pk):
             reason=reason_display,
         )
 
-    if (
-        update.get("extraction_status") == FirmwareImage.STATUS_SUCCESS
-        and update.get("source") == "dtb"
-    ):
+    if update.get("extraction_status") == FirmwareImage.STATUS_INCOMPLETE:
         _notify_image(
             fresh,
             "warning",

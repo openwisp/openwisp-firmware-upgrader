@@ -976,12 +976,12 @@ class TestModels(TestUpgraderMixin, TestCase):
         image.board = "Manually entered"
         image._validate_locked(original)
 
-    def test_validate_locked_allows_filling_empty_dtb_fields(self):
+    def test_validate_locked_allows_filling_empty_locked_fields(self):
         image = self._create_firmware_image()
-        image.extraction_status = FirmwareImage.STATUS_SUCCESS
+        image.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
         image.board = "Orange Pi Zero"
         image.target = ""
-        image.source = "dtb"
+        image.source = "manual"
         image.save()
         original = (
             FirmwareImage.objects.filter(pk=image.pk)
@@ -1062,6 +1062,15 @@ class TestModels(TestUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
         image.save()
+        with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
+            DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
+            mock_on_commit.assert_not_called()
+
+    def test_auto_create_device_firmwares_skips_incomplete(self):
+        image = self._create_firmware_image(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
+        )
+        image.extraction_status = FirmwareImage.STATUS_INCOMPLETE
         with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
             DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
             mock_on_commit.assert_not_called()

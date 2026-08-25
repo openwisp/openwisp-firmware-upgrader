@@ -127,7 +127,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         tasks.extract_firmware_metadata.run(str(image.pk))
         image.refresh_from_db()
-        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_INCOMPLETE)
         self.assertEqual(image.source, "dtb")
         self.assertEqual(image.board, "Xunlong Orange Pi Zero")
         self.assertEqual(image.target, "")
@@ -539,6 +539,29 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(len(dispatched_pks), 3)
         chunk_size = sorted(len(call.args[0]) for call in mock_delay.call_args_list)
         self.assertEqual(chunk_size, [1, 2])
+
+    @mock.patch(_MOCK_EXTRACTOR)
+    @mock.patch("openwisp_firmware_upgrader.tasks.create_all_device_firmwares")
+    @capture_any_output()
+    def test_extract_firmware_metadata_dtb_incomplete_does_not_trigger_pairing(
+        self, mock_create_firmwares, MockExtractor
+    ):
+        MockExtractor.return_value.extract.return_value = {
+            "model": "Xunlong Orange Pi Zero",
+            "compatible": ["xunlong,orangepi-zero"],
+            "target": "",
+            "version": "",
+            "compat_version": "1.0",
+            "source": "dtb",
+        }
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        tasks.extract_firmware_metadata.run(str(image.pk))
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_INCOMPLETE)
+        mock_create_firmwares.delay.assert_not_called()
 
     @capture_any_output()
     def test_extract_firmware_metadata_persist_failure_notifies_and_publishes(self):
