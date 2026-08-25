@@ -216,6 +216,55 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertIs(inline.has_change_permission(request), True)
         self.assertIs(inline.has_change_permission(request, obj=env["image1a"]), False)
 
+    def test_firmware_image_inline_dtb_warning_shown_for_dtb_success(self):
+        self._login()
+        build = self._create_build()
+        image = self._create_firmware_image(build=build)
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS, source="dtb"
+        )
+        url = reverse(f"admin:{self.app_label}_build_change", args=[build.pk])
+        response = self.client.get(url)
+        self.assertContains(
+            response,
+            "could not be recovered from the device tree blob (DTB) fallback",
+        )
+
+    def test_firmware_image_inline_dtb_warning_not_shown_for_fwtool_success(self):
+        self._login()
+        build = self._create_build()
+        image = self._create_firmware_image(build=build)
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            source="fwtool",
+        )
+        url = reverse(f"admin:{self.app_label}_build_change", args=[build.pk])
+        response = self.client.get(url)
+        self.assertNotContains(
+            response,
+            "could not be recovered from the device tree blob (DTB) fallback",
+        )
+        self.assertNotContains(
+            response, "Automatic metadata extraction failed for this image"
+        )
+
+    def test_firmware_image_inline_error_shown_for_failed_extraction(self):
+        self._login()
+        build = self._create_build()
+        image = self._create_firmware_image(build=build)
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+        )
+        url = reverse(f"admin:{self.app_label}_build_change", args=[build.pk])
+        response = self.client.get(url)
+        self.assertContains(
+            response, "Automatic metadata extraction failed for this image"
+        )
+        self.assertNotContains(
+            response,
+            "could not be recovered from the device tree blob (DTB) fallback",
+        )
+
     def test_firmware_image_save_model_clears_compat_version_on_file_change(self):
         fw = self._create_firmware_image()
         FirmwareImage.objects.filter(pk=fw.pk).update(

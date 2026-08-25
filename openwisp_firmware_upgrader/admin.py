@@ -143,15 +143,16 @@ class FirmwareImageInline(admin.StackedInline):
     model = FirmwareImage
     extra = 0
     show_change_link = True
+    template = "admin/firmware_upgrader/firmwareimage_inline.html"
     fields = [
         "file",
         "extraction_status_display",
         "extraction_log_display",
         "board",
         "compatible_display",
-        "source",
         "target",
         "fw_version",
+        "source",
     ]
     readonly_fields = [
         "board",
@@ -266,10 +267,10 @@ class FirmwareImageAdmin(BaseAdmin):
                 "fields": [
                     "board",
                     "compatible_display",
-                    "source",
-                    "compat_version",
                     "target",
+                    "compat_version",
                     "fw_version",
+                    "source",
                 ],
             },
         ),
