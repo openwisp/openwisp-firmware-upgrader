@@ -15,7 +15,7 @@ from selenium.common.exceptions import (
 )
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support.ui import Select
 
 from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.tests.base import SeleniumTestMixin, TestUpgraderMixin
@@ -69,7 +69,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
 
     def _get_device_firmware_dropdown_select(self):
         select_element = self.find_element(
-            By.ID, "id_devicefirmware-0-image", wait_for="presence", timeout=10
+            By.ID, "id_devicefirmware-0-image", wait_for="presence"
         )
         return Select(select_element)
 
@@ -98,7 +98,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             reverse(f"admin:{self.config_app_label}_device_delete", args=[device.id])
         )
         self.find_element(By.CSS_SELECTOR, '#content form input[type="submit"]').click()
-        self.wait_for_presence(By.CSS_SELECTOR, ".messagelist .success")
+        self.wait_for_admin_success_message()
         self.assertEqual(Device.objects.count(), 0)
         self.assertEqual(DeviceConnection.objects.count(), 0)
         self.assertEqual(DeviceFirmware.objects.count(), 0)
@@ -119,7 +119,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             device_changelist_url = self.live_server_url + reverse(
                 f"admin:{self.config_app_label}_device_changelist"
             )
-            WebDriverWait(self.web_driver, 5).until(EC.url_to_be(device_changelist_url))
+            self.wait_until(EC.url_to_be(device_changelist_url))
         except TimeoutException:
             self.fail("Deleted device was not restored")
 
@@ -241,9 +241,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
             ).click()
             try:
-                WebDriverWait(self.web_driver, 5).until(
-                    EC.url_contains("batchupgradeoperation")
-                )
+                self.wait_until(EC.url_contains("batchupgradeoperation"))
             except TimeoutException:
                 self.fail("User was not redirected to Mass upgrade operations page")
             self.assertEqual(
@@ -333,7 +331,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                     by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
                 ).click()
                 self.wait_for_presence(By.ID, "batchupgradeoperation_form")
-                self.wait_for_presence(By.CSS_SELECTOR, ".messagelist .success")
+                self.wait_for_admin_success_message()
                 self.assertEqual(
                     UpgradeOperation.objects.filter(upgrade_options={}).count(), 1
                 )
@@ -363,13 +361,13 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         # Wait for upgrade operations section to be present
         self.wait_for_presence(By.ID, "upgradeoperation_set-group")
         # Wait for progress bars and status containers to load
-        WebDriverWait(self.web_driver, 2).until(
+        self.wait_until(
             EC.presence_of_element_located(
                 (By.CSS_SELECTOR, ".upgrade-status-container")
             )
         )
         # Wait for cancel button to be present and clickable
-        cancel_button = WebDriverWait(self.web_driver, 2).until(
+        cancel_button = self.wait_until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
         )
         # Verify cancel button properties
@@ -378,13 +376,13 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         # Click cancel button to open modal
         self.web_driver.execute_script("arguments[0].click();", cancel_button)
         # Wait for modal to appear
-        WebDriverWait(self.web_driver, 2).until(
+        self.wait_until(
             EC.visibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
         # Verify modal is visible and not hidden
         modal = self.find_element(By.ID, "ow-cancel-confirmation-modal")
         self.assertTrue(modal.is_displayed())
-        title_element = WebDriverWait(self.web_driver, 2).until(
+        title_element = self.wait_until(
             EC.presence_of_element_located(
                 (
                     By.CSS_SELECTOR,
@@ -395,26 +393,25 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(title_element.text.strip(), "STOP UPGRADE OPERATION")
         self.assertTrue(title_element.is_displayed())
         # Test closing modal with No button
-        no_button = WebDriverWait(self.web_driver, 2).until(
+        no_button = self.wait_until(
             EC.element_to_be_clickable(
                 (By.CSS_SELECTOR, "#ow-cancel-confirmation-modal .ow-dialog-close-x")
             )
         )
         self.web_driver.execute_script("arguments[0].click();", no_button)
         # Wait for modal to close
-        WebDriverWait(self.web_driver, 2).until(
+        self.wait_until(
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
         # Open modal again and confirm (main UI flow)
-        cancel_button = WebDriverWait(self.web_driver, 10).until(
+        cancel_button = self.wait_until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
         )
         self.web_driver.execute_script("arguments[0].click();", cancel_button)
-
-        WebDriverWait(self.web_driver, 10).until(
+        self.wait_until(
             EC.visibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
-        yes_button = WebDriverWait(self.web_driver, 10).until(
+        yes_button = self.wait_until(
             EC.element_to_be_clickable(
                 (
                     By.CSS_SELECTOR,
@@ -424,7 +421,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         )
         self.web_driver.execute_script("arguments[0].click();", yes_button)
         # Modal should close after confirming
-        WebDriverWait(self.web_driver, 10).until(
+        self.wait_until(
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
 
@@ -439,9 +436,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             by=By.CSS_SELECTOR,
             value='.title-wrapper .object-tools form button[type="submit"]',
         ).click()
-        WebDriverWait(self.web_driver, 10).until(
-            EC.presence_of_element_located((By.ID, "id_group"))
-        )
+        self.wait_until(EC.presence_of_element_located((By.ID, "id_group")))
         self._assert_no_js_errors(ignore_websockets=True)
         self.find_element(By.CSS_SELECTOR, ".select2-container", wait_for="presence")
         self.assertTrue(
@@ -482,6 +477,12 @@ class TestRealTimeProgress(
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
     maxDiff = None
+
+    def _wait_for_realtime_update(self, condition):
+        return self.wait_until(condition, timeout=5)
+
+    def _wait_for_realtime_script(self, script):
+        return self.wait_for_script(script, timeout=5)
 
     def setUp(self):
         org = self._get_org()
@@ -552,20 +553,18 @@ class TestRealTimeProgress(
         self.open(f"{path}#upgradeoperation_set-group")
         self.hide_loading_overlay()
         self.wait_for_presence(By.ID, "upgradeoperation_set-group")
-        WebDriverWait(self.web_driver, 10).until(
-            lambda driver: driver.execute_script(
-                "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;"
-            )
+        self._wait_for_realtime_script(
+            "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;",
         )
 
     def _check_progress_text(self, expected_text):
         """Helper method to safely check progress text without stale element issues"""
         # Wait for websocket message to propagate and update DOM
-        WebDriverWait(self.web_driver, 10).until(
+        self._wait_for_realtime_update(
             EC.text_to_be_present_in_element(
                 (By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"),
                 expected_text,
-            )
+            ),
         )
 
     def _check_operation_progress(self, status_class, progress_width):
@@ -603,11 +602,9 @@ class TestRealTimeProgress(
         self.login(username=self.admin.username, password=self.admin_password)
         self.open(path)
         self.wait_for_visibility(By.ID, "result_list")
-        WebDriverWait(self.web_driver, 10).until(
-            lambda driver: driver.execute_script(
-                "return window.batchUpgradeProgressWebSocket && "
-                "window.batchUpgradeProgressWebSocket.readyState === 1;"
-            )
+        self._wait_for_realtime_script(
+            "return window.batchUpgradeProgressWebSocket && "
+            "window.batchUpgradeProgressWebSocket.readyState === 1;",
         )
 
     def test_progress_updates(self):
@@ -627,7 +624,7 @@ class TestRealTimeProgress(
             progress=25,
         )
         self._prepare()
-        WebDriverWait(self.web_driver, 2).until(
+        self.wait_until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
         # Test initial progress bar visibility and components
@@ -637,15 +634,15 @@ class TestRealTimeProgress(
         self.assertTrue(
             progress_container.is_displayed(), "Progress container should be visible"
         )
-        WebDriverWait(self.web_driver, 10).until(
+        self.wait_until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-bar"))
         )
-        WebDriverWait(self.web_driver, 10).until(
+        self.wait_until(
             EC.visibility_of_element_located(
                 (By.CSS_SELECTOR, ".upgrade-progress-fill[style*='width: 25%']")
             )
         )
-        progress_text = WebDriverWait(self.web_driver, 10).until(
+        progress_text = self.wait_until(
             EC.visibility_of_element_located(
                 (By.CSS_SELECTOR, ".upgrade-progress-text")
             )
@@ -677,18 +674,18 @@ class TestRealTimeProgress(
             }
         )
         # Verify real-time UI updates
-        WebDriverWait(self.web_driver, 5).until(
+        self._wait_for_realtime_update(
             EC.text_to_be_present_in_element(
                 (By.CSS_SELECTOR, ".upgrade-progress-text"), "75%"
-            )
+            ),
         )
-        WebDriverWait(self.web_driver, 5).until(
+        self._wait_for_realtime_update(
             EC.text_to_be_present_in_element_attribute(
                 (By.CSS_SELECTOR, ".upgrade-progress-fill"), "style", "width: 75%"
-            )
+            ),
         )
         # Verify log updates in real-time
-        WebDriverWait(self.web_driver, 5).until(
+        self._wait_for_realtime_update(
             lambda driver: all(
                 text
                 in driver.find_element(
@@ -699,7 +696,7 @@ class TestRealTimeProgress(
                     "Uploading firmware image",
                     "Upload progress: 75%",
                 ]
-            )
+            ),
         )
         self._assert_no_js_errors()
 
@@ -715,7 +712,7 @@ class TestRealTimeProgress(
         )
         self._prepare()
         # Wait for initial state
-        WebDriverWait(self.web_driver, 2).until(
+        self.wait_until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
         initial_progress_text = self.find_element(
@@ -753,8 +750,10 @@ class TestRealTimeProgress(
             }
         )
         # Verify real-time UI updates for success status
-        WebDriverWait(self.web_driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-status-success"))
+        self._wait_for_realtime_update(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, ".upgrade-status-success")
+            ),
         )
         status_element = self.find_element(By.CSS_SELECTOR, ".upgrade-status-success")
         self.assertEqual(status_element.text, "success")
@@ -786,7 +785,7 @@ class TestRealTimeProgress(
         )
         self._prepare()
         # Wait for initial state
-        WebDriverWait(self.web_driver, 5).until(
+        self.wait_until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".field-log .readonly"))
         )
         initial_log = self.find_element(
@@ -798,11 +797,11 @@ class TestRealTimeProgress(
         operation.log = f"{operation.log}\n{new_log_line}"
         operation.save()
         # Verify UI update
-        WebDriverWait(self.web_driver, 10).until(
+        self._wait_for_realtime_update(
             lambda driver: "Device identity verified successfully"
             in driver.find_element(
                 By.CSS_SELECTOR, ".field-log .readonly"
-            ).get_attribute("innerHTML")
+            ).get_attribute("innerHTML"),
         )
         self._assert_no_js_errors()
 
@@ -818,7 +817,7 @@ class TestRealTimeProgress(
         )
         self._prepare()
         # Wait for initial state
-        WebDriverWait(self.web_driver, 2).until(
+        self.wait_until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
         operation.status = "failed"
@@ -850,10 +849,10 @@ class TestRealTimeProgress(
                 "created": operation.created.isoformat(),
             }
         )
-        WebDriverWait(self.web_driver, 5).until(
+        self._wait_for_realtime_update(
             EC.presence_of_element_located(
                 (By.CSS_SELECTOR, ".upgrade-progress-fill.failed")
-            )
+            ),
         )
         progress_fill = self.find_element(
             By.CSS_SELECTOR, ".upgrade-progress-fill.failed"
@@ -881,7 +880,7 @@ class TestRealTimeProgress(
         )
         self._prepare()
         # Wait for initial state
-        WebDriverWait(self.web_driver, 2).until(
+        self.wait_until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".upgrade-progress-text"))
         )
         operation.status = "aborted"
@@ -911,7 +910,7 @@ class TestRealTimeProgress(
             }
         )
         # Wait for log updates with explicit waits
-        WebDriverWait(self.web_driver, 10).until(
+        self._wait_for_realtime_update(
             lambda driver: all(
                 text
                 in driver.find_element(
@@ -923,7 +922,7 @@ class TestRealTimeProgress(
                     "aborted for security reasons",
                     "aborting upgrade",
                 ]
-            )
+            ),
         )
         self._assert_no_js_errors()
 
@@ -947,7 +946,7 @@ class TestRealTimeProgress(
             progress=0,
         )
         self._prepare_batch(batch_operation)
-        WebDriverWait(self.web_driver, 10).until(
+        self.wait_until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         main_progress_element = self.find_element(
@@ -966,22 +965,22 @@ class TestRealTimeProgress(
         self.assertIn("width: 50%", style)
         publisher.publish_batch_status(status="success", completed=2, total=2)
         self._check_progress_text("100%")
-        WebDriverWait(self.web_driver, 10).until(
+        self._wait_for_realtime_update(
             EC.presence_of_element_located(
                 (
                     By.CSS_SELECTOR,
                     ".batch-main-progress .upgrade-progress-fill.completed-successfully",
                 )
-            )
+            ),
         )
-        WebDriverWait(self.web_driver, 10).until(
+        self._wait_for_realtime_update(
             EC.presence_of_element_located(
                 (
                     By.CSS_SELECTOR,
                     ".batch-main-progress"
                     " .upgrade-progress-fill.completed-successfully[style*='width: 100%']",
                 )
-            )
+            ),
         )
         progress_fill = self.find_element(
             By.CSS_SELECTOR,
@@ -1011,7 +1010,7 @@ class TestRealTimeProgress(
             progress=10,
         )
         self._prepare_batch(batch_operation)
-        status_containers = WebDriverWait(self.web_driver, 5).until(
+        status_containers = self.wait_until(
             EC.presence_of_all_elements_located(
                 (By.CSS_SELECTOR, "#result_list .status-cell .upgrade-status-container")
             )
@@ -1031,8 +1030,8 @@ class TestRealTimeProgress(
             device_info=device_info,
         )
         # Wait for websocket message to propagate and update individual operation progress
-        WebDriverWait(self.web_driver, 10).until(
-            lambda driver: self._check_operation_progress("in-progress", "width: 50%")
+        self._wait_for_realtime_update(
+            lambda driver: self._check_operation_progress("in-progress", "width: 50%"),
         )
         publisher.publish_operation_progress(
             operation_id=str(operation1.pk),
@@ -1041,8 +1040,8 @@ class TestRealTimeProgress(
             modified=operation1.modified,
             device_info=device_info,
         )
-        WebDriverWait(self.web_driver, 10).until(
-            lambda driver: self._check_operation_progress("success", "width: 100%")
+        self._wait_for_realtime_update(
+            lambda driver: self._check_operation_progress("success", "width: 100%"),
         )
         self._assert_no_js_errors()
 
@@ -1058,7 +1057,7 @@ class TestRealTimeProgress(
         self.wait_for_presence(
             By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-fill"
         )
-        WebDriverWait(self.web_driver, 5).until(
+        self.wait_until(
             EC.text_to_be_present_in_element_attribute(
                 (By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-fill"),
                 "style",
@@ -1074,7 +1073,7 @@ class TestRealTimeProgress(
             progress_fill = self.find_element(
                 By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-fill"
             )
-            WebDriverWait(self.web_driver, 5).until(
+            self._wait_for_realtime_update(
                 lambda d: "50%" in progress_fill.get_attribute("style")
             )
             progress_text = self.find_element(
@@ -1097,7 +1096,7 @@ class TestRealTimeProgress(
                 By.CSS_SELECTOR,
                 ".upgrade-status-container .upgrade-progress-fill.aborted",
             )
-            WebDriverWait(self.web_driver, 5).until(
+            self._wait_for_realtime_update(
                 lambda d: "100%" in progress_fill.get_attribute("style")
             )
             progress_text = self.web_driver.find_elements(
@@ -1119,7 +1118,7 @@ class TestRealTimeProgress(
                 By.CSS_SELECTOR,
                 ".upgrade-status-container .upgrade-progress-fill.cancelled",
             )
-            WebDriverWait(self.web_driver, 5).until(
+            self._wait_for_realtime_update(
                 lambda d: "100%" in progress_fill.get_attribute("style")
             )
             progress_text = self.web_driver.find_elements(
@@ -1141,7 +1140,7 @@ class TestRealTimeProgress(
                 By.CSS_SELECTOR,
                 ".upgrade-status-container .upgrade-progress-fill.failed",
             )
-            WebDriverWait(self.web_driver, 5).until(
+            self._wait_for_realtime_update(
                 lambda d: "100%" in progress_fill.get_attribute("style")
             )
             progress_text = self.web_driver.find_elements(
@@ -1163,7 +1162,7 @@ class TestRealTimeProgress(
                 By.CSS_SELECTOR,
                 ".upgrade-status-container .upgrade-progress-fill.success",
             )
-            WebDriverWait(self.web_driver, 5).until(
+            self._wait_for_realtime_update(
                 lambda d: "100%" in progress_fill.get_attribute("style")
             )
             progress_text = self.find_element(
@@ -1197,18 +1196,18 @@ class TestRealTimeProgress(
             progress=45,
         )
         self._prepare_batch(batch_operation)
-        WebDriverWait(self.web_driver, 10).until(
+        self.wait_until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
         publisher.publish_batch_status(status="failed", total=2, completed=2)
-        WebDriverWait(self.web_driver, 10).until(
+        self._wait_for_realtime_update(
             EC.visibility_of_element_located(
                 (
                     By.CSS_SELECTOR,
                     ".batch-main-progress .upgrade-progress-fill.partial-success[style*='width: 100%']",
                 )
-            )
+            ),
         )
         status_field = self.find_element(By.CSS_SELECTOR, ".field-status .readonly")
         status_text = status_field.get_attribute("textContent").strip()
@@ -1235,18 +1234,18 @@ class TestRealTimeProgress(
             progress=100,
         )
         self._prepare_batch(batch_operation)
-        WebDriverWait(self.web_driver, 10).until(
+        self.wait_until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
         publisher.publish_batch_status(status="success", total=2, completed=2)
-        WebDriverWait(self.web_driver, 10).until(
+        self._wait_for_realtime_update(
             EC.visibility_of_element_located(
                 (
                     By.CSS_SELECTOR,
                     ".batch-main-progress .upgrade-progress-fill.completed-successfully",
                 )
-            )
+            ),
         )
         progress_text = self.find_element(
             By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"
@@ -1270,7 +1269,7 @@ class TestRealTimeProgress(
             progress=50,
         )
         self._prepare_batch(batch_operation)
-        initial_rows = WebDriverWait(self.web_driver, 10).until(
+        initial_rows = self.wait_until(
             EC.presence_of_all_elements_located(
                 (By.CSS_SELECTOR, "#result_list tbody tr")
             )
@@ -1293,9 +1292,7 @@ class TestRealTimeProgress(
             str(operation2.pk), "in-progress", 0, operation2.modified, device_info_2
         )
         # Wait for websocket message to propagate and add new row
-        WebDriverWait(self.web_driver, 10).until(
-            lambda driver: self._check_row_count(2)
-        )
+        self._wait_for_realtime_update(lambda driver: self._check_row_count(2))
         device_links = self.find_elements(By.CSS_SELECTOR, "#result_list .device-link")
         device_names = [link.text for link in device_links]
         self.assertIn(self.device2.name, device_names)
