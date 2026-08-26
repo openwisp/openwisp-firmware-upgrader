@@ -17,6 +17,7 @@ from ..swapper import load_model
 from .base import TestUpgraderMixin
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+DeviceFirmware = load_model("DeviceFirmware")
 FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 Notification = load_notification_model("Notification")
@@ -497,6 +498,51 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         ]
         self.assertIn(org1_device, called_devices)
         self.assertIn(org2_device, called_devices)
+
+    @mock.patch(
+        "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_for_device"
+    )
+    @capture_any_output()
+    def test_create_all_device_firmwares_excludes_ineligible_devices(
+        self, mock_create_for_device
+    ):
+        Build = load_model("Build")
+        image = self._create_firmware_image()
+        Build.objects.filter(pk=image.build.pk).update(os="OpenWrt 23.05.5")
+        org = image.build.category.organization
+        already_paired_device = self._create_device_with_connection(
+            name="already-paired-device",
+            mac_address="00:11:22:33:44:01",
+            os="OpenWrt 23.05.5",
+            organization=org,
+            model=image.board,
+        )
+        self._create_device_firmware(
+            device=already_paired_device, image=image, device_connection=False
+        )
+        mock_create_for_device.reset_mock()
+        deactivated_device = self._create_device(
+            name="deactivated-device",
+            mac_address="00:11:22:33:44:02",
+            os="OpenWrt 23.05.5",
+            organization=org,
+            model=image.board,
+        )
+        deactivated_device.deactivate()
+        eligible_device = self._create_device(
+            name="eligible-device",
+            mac_address="00:11:22:33:44:03",
+            os="OpenWrt 23.05.5",
+            organization=org,
+            model=image.board,
+        )
+        tasks.create_all_device_firmwares.run(str(image.pk))
+        called_devices = [
+            call.args[0] for call in mock_create_for_device.call_args_list
+        ]
+        self.assertNotIn(already_paired_device, called_devices)
+        self.assertNotIn(deactivated_device, called_devices)
+        self.assertIn(eligible_device, called_devices)
 
     @mock.patch(_MOCK_EXTRACTOR)
     @mock.patch("openwisp_firmware_upgrader.tasks.create_all_device_firmwares")

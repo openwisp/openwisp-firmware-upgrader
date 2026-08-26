@@ -114,6 +114,8 @@ def create_all_device_firmwares(self, firmware_image_id):
 
     queryset = Device.objects.filter(os=fw_image.build.os)
     queryset = queryset.filter(model=fw_image.board)
+    queryset = queryset.filter(devicefirmware__isnull=True)
+    queryset = queryset.exclude(_is_deactivated=True)
     org_id = fw_image.build.category.organization_id
     if org_id:
         queryset = queryset.filter(organization_id=org_id)
