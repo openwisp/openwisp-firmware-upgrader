@@ -73,8 +73,10 @@ class TestBaseMetadataExtractor(SimpleTestCase):
 
     def test_extract_propagates_dtb_extraction_error(self):
         extractor = ConcreteDTBErrorExtractor("/fake/path.bin")
-        with self.assertRaises(ExtractionError):
+        with self.assertRaises(ExtractionError) as ctx:
             extractor.extract()
+        self.assertIs(type(ctx.exception), ExtractionError)
+        self.assertEqual(str(ctx.exception), "dtb parse failed")
 
     def test_unsupported_image_error_not_caught_by_extract(self):
         extractor = ConcreteUnsupportedExtractor("/fake/path.bin")

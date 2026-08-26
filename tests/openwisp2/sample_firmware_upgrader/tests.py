@@ -178,6 +178,10 @@ class TestMultiBoardReconciliationMigration(BaseTestMultiBoardReconciliationMigr
     migrate_from = "0004_alter_firmwareimage_file"
     migrate_to = "0010_firmwareimage_extraction_claimed_at"
     migrate_to_dependency = "0008_backfill_extraction_status"
+    reconciliation_migration = (
+        "openwisp2.sample_firmware_upgrader.migrations."
+        "0009_backfill_board_from_hardware_map"
+    )
 
 
 class TestQueueUnconfirmedExtractionsMigration(

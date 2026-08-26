@@ -767,27 +767,22 @@ class TestModels(TestUpgraderMixin, TestCase):
         batch = build.batch_upgrade(firmwareless=False)
         self.assertIsNotNone(batch)
 
-    def test_update_extraction_status_all_success(self):
-        build = self._create_build()
-        build.status = Build.BUILD_STATUS_ANALYZING
-        build.save()
-        image = self._create_firmware_image(build=build)
-        image.extraction_status = FirmwareImage.STATUS_SUCCESS
-        image.save()
-        build.update_extraction_status()
-        build.refresh_from_db()
-        self.assertEqual(build.status, Build.BUILD_STATUS_SUCCESS)
-
-    def test_update_extraction_status_with_failed(self):
-        build = self._create_build()
-        build.status = Build.BUILD_STATUS_ANALYZING
-        build.save()
-        image = self._create_firmware_image(build=build)
-        image.extraction_status = FirmwareImage.STATUS_FAILED
-        image.save()
-        build.update_extraction_status()
-        build.refresh_from_db()
-        self.assertEqual(build.status, Build.BUILD_STATUS_FAILED)
+    def test_update_extraction_status_single_image(self):
+        cases = (
+            (FirmwareImage.STATUS_SUCCESS, Build.BUILD_STATUS_SUCCESS),
+            (FirmwareImage.STATUS_FAILED, Build.BUILD_STATUS_FAILED),
+        )
+        for image_status, expected in cases:
+            with self.subTest(image_status=image_status):
+                build = self._create_build(version=f"0.1-{image_status}")
+                build.status = Build.BUILD_STATUS_ANALYZING
+                build.save()
+                image = self._create_firmware_image(build=build)
+                image.extraction_status = image_status
+                image.save()
+                build.update_extraction_status()
+                build.refresh_from_db()
+                self.assertEqual(build.status, expected)
 
     def test_update_extraction_status_analyzing_takes_priority(self):
         build = self._create_build()
@@ -1799,6 +1794,13 @@ class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
             fw = self._make_firmware_image(
                 b"\x00" * 16,
                 filename=f"openwrt-{self.TPLINK_4300_IMAGE}",
+            )
+            fw._validate_rootfs()  # must not raise
+
+        with self.subTest("rootfs as a non-final token passes"):
+            fw = self._make_firmware_image(
+                b"\x00" * 10,
+                filename="openwrt-ath79-generic-device-rootfs-squashfs-sysupgrade.bin",
             )
             fw._validate_rootfs()  # must not raise
 

@@ -20,6 +20,9 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
     migrate_from = "0017_alter_batchupgradeoperation_status"
     migrate_to = "0024_firmwareimage_extraction_claimed_at"
     migrate_to_dependency = "0022_alter_firmwareimage_compatible"
+    reconciliation_migration = (
+        "openwisp_firmware_upgrader.migrations." "0023_backfill_board_from_hardware_map"
+    )
 
     def setUp(self):
         boards = OPENWRT_FIRMWARE_IMAGE_MAP[_MULTI_BOARD_TYPE]["boards"]
@@ -48,9 +51,7 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
         self.assertFalse(hasattr(FirmwareImage(), "extraction_status"))
 
     def tearDown(self):
-        migration = import_module(
-            "openwisp_firmware_upgrader.migrations.0023_backfill_board_from_hardware_map"
-        )
+        migration = import_module(self.reconciliation_migration)
         post_migrate.disconnect(migration._send_multi_board_notifications)
         super().tearDown()
 
