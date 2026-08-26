@@ -344,7 +344,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(image.source, "")
         image.build.refresh_from_db()
         self.assertEqual(image.build.status, Build.BUILD_STATUS_ANALYZING)
-        mocked_delay.assert_called_once_with(image.pk)
+        mocked_delay.assert_called_once_with(str(image.pk))
 
     def test_re_extract_metadata_action_multiple(self):
         self._login()
@@ -372,7 +372,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 )
         self.assertEqual(mocked_delay.call_count, 2)
         called_pks = {call.args[0] for call in mocked_delay.call_args_list}
-        self.assertEqual(called_pks, {image1.pk, image2.pk})
+        self.assertEqual(called_pks, {str(image1.pk), str(image2.pk)})
         image1.refresh_from_db()
         image2.refresh_from_db()
         self.assertEqual(image1.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
@@ -418,7 +418,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
                     follow=True,
                 )
         self.assertEqual(r.status_code, 200)
-        mocked_delay.assert_called_once_with(image_safe.pk)
+        mocked_delay.assert_called_once_with(str(image_safe.pk))
         image_safe.refresh_from_db()
         self.assertEqual(image_safe.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
         image_flashed.refresh_from_db()
@@ -485,7 +485,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
                         },
                         follow=True,
                     )
-            mocked_delay.assert_called_once_with(image_extracting.pk)
+            mocked_delay.assert_called_once_with(str(image_extracting.pk))
             image_extracting.refresh_from_db()
             self.assertEqual(
                 image_extracting.extraction_status, FirmwareImage.STATUS_UNCONFIRMED

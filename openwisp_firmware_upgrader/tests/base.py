@@ -31,6 +31,7 @@ class TestUpgraderMixin(CreateConnectionsMixin):
     )
     _DEFAULT_BOARDS = {
         TPLINK_4300_IMAGE: "TP-Link TL-WDR4300 v1",
+        TPLINK_4300_IL_IMAGE: "TP-Link TL-WDR4300 v1 (IL)",
     }
 
     def tearDown(self):

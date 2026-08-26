@@ -109,7 +109,11 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
     def _parse_supported_devices(self, meta):
         if meta.get("compat_version", "1.0") != "1.0":
             return meta.get("new_supported_devices", [])
-        return meta.get("supported_devices", [])
+        else:
+            devices = meta.get("supported_devices", [])
+        if not isinstance(devices, list):
+            return []
+        return [d for d in devices if isinstance(d, str)]
 
     def _strip_uimage_header(self, data):
         if data[:4] == UIMAGE_MAGIC and len(data) >= UIMAGE_HEADER_SIZE:

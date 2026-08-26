@@ -451,7 +451,7 @@ class FirmwareImageAdmin(BaseAdmin):
                 messages.WARNING,
             )
             queryset = queryset.exclude(pk__in=referenced_pks)
-        image_pks = list(queryset.values_list("pk", flat=True))
+        image_pks = [str(pk) for pk in queryset.values_list("pk", flat=True)]
         if not image_pks:
             return
         build_ids = set(queryset.values_list("build_id", flat=True))
