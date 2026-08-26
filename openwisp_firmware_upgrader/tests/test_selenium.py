@@ -478,6 +478,12 @@ class TestRealTimeProgress(
     image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
     maxDiff = None
 
+    def _wait_for_realtime_update(self, condition):
+        return self.wait_until(condition, timeout=5)
+
+    def _wait_for_realtime_script(self, script):
+        return self.wait_for_script(script, timeout=5)
+
     def setUp(self):
         org = self._get_org()
         unique_suffix = str(uuid.uuid4())[:8]
@@ -547,20 +553,18 @@ class TestRealTimeProgress(
         self.open(f"{path}#upgradeoperation_set-group")
         self.hide_loading_overlay()
         self.wait_for_presence(By.ID, "upgradeoperation_set-group")
-        self.wait_for_script(
+        self._wait_for_realtime_script(
             "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;",
-            timeout=5,
         )
 
     def _check_progress_text(self, expected_text):
         """Helper method to safely check progress text without stale element issues"""
         # Wait for websocket message to propagate and update DOM
-        self.wait_until(
+        self._wait_for_realtime_update(
             EC.text_to_be_present_in_element(
                 (By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"),
                 expected_text,
             ),
-            timeout=5,
         )
 
     def _check_operation_progress(self, status_class, progress_width):
@@ -598,10 +602,9 @@ class TestRealTimeProgress(
         self.login(username=self.admin.username, password=self.admin_password)
         self.open(path)
         self.wait_for_visibility(By.ID, "result_list")
-        self.wait_for_script(
+        self._wait_for_realtime_script(
             "return window.batchUpgradeProgressWebSocket && "
             "window.batchUpgradeProgressWebSocket.readyState === 1;",
-            timeout=5,
         )
 
     def test_progress_updates(self):
@@ -671,20 +674,18 @@ class TestRealTimeProgress(
             }
         )
         # Verify real-time UI updates
-        self.wait_until(
+        self._wait_for_realtime_update(
             EC.text_to_be_present_in_element(
                 (By.CSS_SELECTOR, ".upgrade-progress-text"), "75%"
             ),
-            timeout=5,
         )
-        self.wait_until(
+        self._wait_for_realtime_update(
             EC.text_to_be_present_in_element_attribute(
                 (By.CSS_SELECTOR, ".upgrade-progress-fill"), "style", "width: 75%"
             ),
-            timeout=5,
         )
         # Verify log updates in real-time
-        self.wait_until(
+        self._wait_for_realtime_update(
             lambda driver: all(
                 text
                 in driver.find_element(
@@ -696,7 +697,6 @@ class TestRealTimeProgress(
                     "Upload progress: 75%",
                 ]
             ),
-            timeout=5,
         )
         self._assert_no_js_errors()
 
@@ -750,11 +750,10 @@ class TestRealTimeProgress(
             }
         )
         # Verify real-time UI updates for success status
-        self.wait_until(
+        self._wait_for_realtime_update(
             EC.presence_of_element_located(
                 (By.CSS_SELECTOR, ".upgrade-status-success")
             ),
-            timeout=5,
         )
         status_element = self.find_element(By.CSS_SELECTOR, ".upgrade-status-success")
         self.assertEqual(status_element.text, "success")
@@ -798,12 +797,11 @@ class TestRealTimeProgress(
         operation.log = f"{operation.log}\n{new_log_line}"
         operation.save()
         # Verify UI update
-        self.wait_until(
+        self._wait_for_realtime_update(
             lambda driver: "Device identity verified successfully"
             in driver.find_element(
                 By.CSS_SELECTOR, ".field-log .readonly"
             ).get_attribute("innerHTML"),
-            timeout=5,
         )
         self._assert_no_js_errors()
 
@@ -851,11 +849,10 @@ class TestRealTimeProgress(
                 "created": operation.created.isoformat(),
             }
         )
-        self.wait_until(
+        self._wait_for_realtime_update(
             EC.presence_of_element_located(
                 (By.CSS_SELECTOR, ".upgrade-progress-fill.failed")
             ),
-            timeout=5,
         )
         progress_fill = self.find_element(
             By.CSS_SELECTOR, ".upgrade-progress-fill.failed"
@@ -913,7 +910,7 @@ class TestRealTimeProgress(
             }
         )
         # Wait for log updates with explicit waits
-        self.wait_until(
+        self._wait_for_realtime_update(
             lambda driver: all(
                 text
                 in driver.find_element(
@@ -926,7 +923,6 @@ class TestRealTimeProgress(
                     "aborting upgrade",
                 ]
             ),
-            timeout=5,
         )
         self._assert_no_js_errors()
 
@@ -969,16 +965,15 @@ class TestRealTimeProgress(
         self.assertIn("width: 50%", style)
         publisher.publish_batch_status(status="success", completed=2, total=2)
         self._check_progress_text("100%")
-        self.wait_until(
+        self._wait_for_realtime_update(
             EC.presence_of_element_located(
                 (
                     By.CSS_SELECTOR,
                     ".batch-main-progress .upgrade-progress-fill.completed-successfully",
                 )
             ),
-            timeout=5,
         )
-        self.wait_until(
+        self._wait_for_realtime_update(
             EC.presence_of_element_located(
                 (
                     By.CSS_SELECTOR,
@@ -986,7 +981,6 @@ class TestRealTimeProgress(
                     " .upgrade-progress-fill.completed-successfully[style*='width: 100%']",
                 )
             ),
-            timeout=5,
         )
         progress_fill = self.find_element(
             By.CSS_SELECTOR,
@@ -1036,9 +1030,8 @@ class TestRealTimeProgress(
             device_info=device_info,
         )
         # Wait for websocket message to propagate and update individual operation progress
-        self.wait_until(
+        self._wait_for_realtime_update(
             lambda driver: self._check_operation_progress("in-progress", "width: 50%"),
-            timeout=5,
         )
         publisher.publish_operation_progress(
             operation_id=str(operation1.pk),
@@ -1047,9 +1040,8 @@ class TestRealTimeProgress(
             modified=operation1.modified,
             device_info=device_info,
         )
-        self.wait_until(
+        self._wait_for_realtime_update(
             lambda driver: self._check_operation_progress("success", "width: 100%"),
-            timeout=5,
         )
         self._assert_no_js_errors()
 
@@ -1081,8 +1073,8 @@ class TestRealTimeProgress(
             progress_fill = self.find_element(
                 By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-fill"
             )
-            self.wait_until(
-                lambda d: "50%" in progress_fill.get_attribute("style"), timeout=5
+            self._wait_for_realtime_update(
+                lambda d: "50%" in progress_fill.get_attribute("style")
             )
             progress_text = self.find_element(
                 By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-text"
@@ -1104,8 +1096,8 @@ class TestRealTimeProgress(
                 By.CSS_SELECTOR,
                 ".upgrade-status-container .upgrade-progress-fill.aborted",
             )
-            self.wait_until(
-                lambda d: "100%" in progress_fill.get_attribute("style"), timeout=5
+            self._wait_for_realtime_update(
+                lambda d: "100%" in progress_fill.get_attribute("style")
             )
             progress_text = self.web_driver.find_elements(
                 By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-text"
@@ -1126,8 +1118,8 @@ class TestRealTimeProgress(
                 By.CSS_SELECTOR,
                 ".upgrade-status-container .upgrade-progress-fill.cancelled",
             )
-            self.wait_until(
-                lambda d: "100%" in progress_fill.get_attribute("style"), timeout=5
+            self._wait_for_realtime_update(
+                lambda d: "100%" in progress_fill.get_attribute("style")
             )
             progress_text = self.web_driver.find_elements(
                 By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-text"
@@ -1148,8 +1140,8 @@ class TestRealTimeProgress(
                 By.CSS_SELECTOR,
                 ".upgrade-status-container .upgrade-progress-fill.failed",
             )
-            self.wait_until(
-                lambda d: "100%" in progress_fill.get_attribute("style"), timeout=5
+            self._wait_for_realtime_update(
+                lambda d: "100%" in progress_fill.get_attribute("style")
             )
             progress_text = self.web_driver.find_elements(
                 By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-text"
@@ -1170,8 +1162,8 @@ class TestRealTimeProgress(
                 By.CSS_SELECTOR,
                 ".upgrade-status-container .upgrade-progress-fill.success",
             )
-            self.wait_until(
-                lambda d: "100%" in progress_fill.get_attribute("style"), timeout=5
+            self._wait_for_realtime_update(
+                lambda d: "100%" in progress_fill.get_attribute("style")
             )
             progress_text = self.find_element(
                 By.CSS_SELECTOR, ".upgrade-status-container .upgrade-progress-text"
@@ -1209,14 +1201,13 @@ class TestRealTimeProgress(
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
         publisher.publish_batch_status(status="failed", total=2, completed=2)
-        self.wait_until(
+        self._wait_for_realtime_update(
             EC.visibility_of_element_located(
                 (
                     By.CSS_SELECTOR,
                     ".batch-main-progress .upgrade-progress-fill.partial-success[style*='width: 100%']",
                 )
             ),
-            timeout=5,
         )
         status_field = self.find_element(By.CSS_SELECTOR, ".field-status .readonly")
         status_text = status_field.get_attribute("textContent").strip()
@@ -1248,14 +1239,13 @@ class TestRealTimeProgress(
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
         publisher.publish_batch_status(status="success", total=2, completed=2)
-        self.wait_until(
+        self._wait_for_realtime_update(
             EC.visibility_of_element_located(
                 (
                     By.CSS_SELECTOR,
                     ".batch-main-progress .upgrade-progress-fill.completed-successfully",
                 )
             ),
-            timeout=5,
         )
         progress_text = self.find_element(
             By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"
@@ -1302,7 +1292,7 @@ class TestRealTimeProgress(
             str(operation2.pk), "in-progress", 0, operation2.modified, device_info_2
         )
         # Wait for websocket message to propagate and add new row
-        self.wait_until(lambda driver: self._check_row_count(2), timeout=5)
+        self._wait_for_realtime_update(lambda driver: self._check_row_count(2))
         device_links = self.find_elements(By.CSS_SELECTOR, "#result_list .device-link")
         device_names = [link.text for link in device_links]
         self.assertIn(self.device2.name, device_names)
