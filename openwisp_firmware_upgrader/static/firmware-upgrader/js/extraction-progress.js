@@ -1,7 +1,13 @@
 "use strict";
 
 (function () {
-  var TERMINAL_STATUSES = ["success", "failed", "manually_confirmed", "invalid"];
+  var TERMINAL_STATUSES = [
+    "success",
+    "incomplete",
+    "failed",
+    "manually_confirmed",
+    "invalid",
+  ];
 
   var imageId = typeof owFirmwareImageId !== "undefined" ? owFirmwareImageId : null;
   if (!imageId) {
