@@ -437,6 +437,7 @@ class TestTryExtractDtbFromKernel(TestCase):
         ), mock.patch("fdt.parse_dtb", wraps=fdt.parse_dtb) as mock_parse:
             result = self.extractor._try_extract_dtb_from_kernel(kernel)
         self.assertIsNone(result)
+        self.assertGreater(mock_parse.call_count, 0)
         self.assertLessEqual(mock_parse.call_count, 64)
 
 
@@ -558,6 +559,20 @@ class TestExtractOverride(TestCase):
     ):
         extractor = self._make_extractor("/path/to/openwrt-x86-64-generic.img")
         with self.assertRaises(UnsupportedImageError):
+            extractor.extract()
+        mock_dtb.assert_not_called()
+
+    @mock.patch.object(
+        OpenWrtMetadataExtractor,
+        "extract_from_image",
+        side_effect=DecompressionLimitExceeded("limit"),
+    )
+    @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_dtb")
+    def test_decompression_limit_propagates_without_dtb_attempt(
+        self, mock_dtb, _mock_image
+    ):
+        extractor = self._make_extractor()
+        with self.assertRaises(DecompressionLimitExceeded):
             extractor.extract()
         mock_dtb.assert_not_called()
 
@@ -692,6 +707,7 @@ class TestExtractFwtoolMetadata(TestCase):
             ) as mock_crc32:
                 result = OpenWrtMetadataExtractor(path)._extract_fwtool_metadata()
             self.assertIsNone(result)
+            self.assertGreater(mock_crc32.call_count, 0)
             self.assertLessEqual(mock_crc32.call_count, 10)
         finally:
             os.unlink(path)

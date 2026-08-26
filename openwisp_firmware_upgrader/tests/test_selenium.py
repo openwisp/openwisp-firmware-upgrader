@@ -1308,62 +1308,36 @@ class TestRealTimeProgress(
 
     def test_extraction_status_reload_on_terminal_status(self):
         image = self.image1
-        FirmwareImage.objects.filter(pk=image.pk).update(
-            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
-        )
         self.login(username=self.admin.username, password=self.admin_password)
-        self.open(
-            reverse(
-                f"admin:{self.firmware_app_label}_firmwareimage_change",
-                args=[image.pk],
-            )
+        change_url = reverse(
+            f"admin:{self.firmware_app_label}_firmwareimage_change",
+            args=[image.pk],
         )
-        self.hide_loading_overlay()
-        WebDriverWait(self.web_driver, 10).until(
-            lambda driver: driver.execute_script(
-                "return window.extractionStatusWebSocket && "
-                "window.extractionStatusWebSocket.readyState === 1;"
-            )
-        )
-        marker = self.find_element(By.TAG_NAME, "body")
-        FirmwareImage.objects.filter(pk=image.pk).update(
-            extraction_status=FirmwareImage.STATUS_SUCCESS
-        )
-        FirmwareExtractionPublisher(image.pk).publish_status(
-            FirmwareImage.STATUS_SUCCESS
-        )
-        WebDriverWait(self.web_driver, 10).until(EC.staleness_of(marker))
-        self.wait_for_presence(By.CSS_SELECTOR, ".ow-status-badge.ow-status-success")
-        self._assert_no_js_errors()
-
-    def test_extraction_status_reload_on_incomplete_status(self):
-        image = self.image1
-        FirmwareImage.objects.filter(pk=image.pk).update(
-            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
-        )
-        self.login(username=self.admin.username, password=self.admin_password)
-        self.open(
-            reverse(
-                f"admin:{self.firmware_app_label}_firmwareimage_change",
-                args=[image.pk],
-            )
-        )
-        self.hide_loading_overlay()
-        WebDriverWait(self.web_driver, 10).until(
-            lambda driver: driver.execute_script(
-                "return window.extractionStatusWebSocket && "
-                "window.extractionStatusWebSocket.readyState === 1;"
-            )
-        )
-        marker = self.find_element(By.TAG_NAME, "body")
-        FirmwareImage.objects.filter(pk=image.pk).update(
-            extraction_status=FirmwareImage.STATUS_INCOMPLETE
-        )
-        FirmwareExtractionPublisher(image.pk).publish_status(
-            FirmwareImage.STATUS_INCOMPLETE
-        )
-        WebDriverWait(self.web_driver, 10).until(EC.staleness_of(marker))
-        self.wait_for_presence(By.CSS_SELECTOR, ".ow-status-badge.ow-status-warning")
-        badge = self.find_element(By.CSS_SELECTOR, ".ow-status-badge.ow-status-warning")
-        self.assertEqual(badge.text.strip(), "Incomplete")
-        self._assert_no_js_errors()
+        cases = [
+            (FirmwareImage.STATUS_SUCCESS, "ow-status-success", "Success"),
+            (FirmwareImage.STATUS_INCOMPLETE, "ow-status-warning", "Incomplete"),
+        ]
+        for status, badge_class, badge_text in cases:
+            with self.subTest(status=status):
+                FirmwareImage.objects.filter(pk=image.pk).update(
+                    extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+                )
+                self.open(change_url)
+                self.hide_loading_overlay()
+                WebDriverWait(self.web_driver, 10).until(
+                    lambda driver: driver.execute_script(
+                        "return window.extractionStatusWebSocket && "
+                        "window.extractionStatusWebSocket.readyState === 1;"
+                    )
+                )
+                marker = self.find_element(By.TAG_NAME, "body")
+                FirmwareImage.objects.filter(pk=image.pk).update(
+                    extraction_status=status
+                )
+                FirmwareExtractionPublisher(image.pk).publish_status(status)
+                WebDriverWait(self.web_driver, 10).until(EC.staleness_of(marker))
+                selector = f".ow-status-badge.{badge_class}"
+                self.wait_for_presence(By.CSS_SELECTOR, selector)
+                badge = self.find_element(By.CSS_SELECTOR, selector)
+                self.assertEqual(badge.text.strip(), badge_text)
+                self._assert_no_js_errors()
