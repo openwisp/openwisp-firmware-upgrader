@@ -203,6 +203,8 @@ one task per image on installs with a larger backlog, e.g.:
 
     OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_CHUNK_SIZE = 50
 
+.. _openwisp_firmware_upgrader_extraction_claim_timeout:
+
 ``OPENWISP_FIRMWARE_UPGRADER_EXTRACTION_CLAIM_TIMEOUT``
 -------------------------------------------------------
 

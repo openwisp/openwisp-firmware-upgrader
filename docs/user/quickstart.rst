@@ -97,6 +97,9 @@ extraction status is shown as *Failed*. When the metadata is extracted
 only partially (for example through the DTB scan), the missing fields stay
 empty and editable, and must be filled in manually.
 
+A mass upgrade of a build is blocked until the metadata of every image in
+that build is confirmed, either automatically or manually.
+
 4. Perform a Firmware Upgrade to a Specific Device
 --------------------------------------------------
 
