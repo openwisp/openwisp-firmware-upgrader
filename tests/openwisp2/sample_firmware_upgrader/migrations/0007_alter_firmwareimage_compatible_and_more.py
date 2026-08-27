@@ -17,7 +17,14 @@ def convert_compatible_to_text(apps, schema_editor):
         except (json.JSONDecodeError, TypeError):
             continue
         if isinstance(value, list):
-            image.compatible = "\n".join(value)
+            string_items = [item for item in value if isinstance(item, str)]
+            if len(string_items) != len(value):
+                logger.warning(
+                    "convert_compatible_to_text: FirmwareImage pk=%s has "
+                    "non-string items in its compatible list, dropping them",
+                    image.pk,
+                )
+            image.compatible = "\n".join(string_items)
             batch.append(image)
             if len(batch) >= 500:
                 FirmwareImage.objects.bulk_update(batch, ["compatible"])
