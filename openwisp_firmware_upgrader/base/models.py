@@ -159,6 +159,7 @@ class AbstractBuild(TimeStampedEditableModel):
 
     BUILD_STATUS_ANALYZING = "analyzing"
     BUILD_STATUS_SUCCESS = "success"
+    BUILD_STATUS_INCOMPLETE = "incomplete"
     BUILD_STATUS_FAILED = "failed"
     BUILD_STATUS_INVALID = "invalid"
     BUILD_STATUS_MANUALLY_CONFIRMED = "manually_confirmed"
@@ -166,6 +167,7 @@ class AbstractBuild(TimeStampedEditableModel):
     BUILD_STATUS_CHOICES = [
         (BUILD_STATUS_ANALYZING, _("Analyzing")),
         (BUILD_STATUS_SUCCESS, _("Success")),
+        (BUILD_STATUS_INCOMPLETE, _("Incomplete")),
         (BUILD_STATUS_FAILED, _("Failed")),
         (BUILD_STATUS_INVALID, _("Invalid")),
         (BUILD_STATUS_MANUALLY_CONFIRMED, _("Manually Confirmed")),
@@ -225,7 +227,7 @@ class AbstractBuild(TimeStampedEditableModel):
         upgrade_options = upgrade_options or {}
         FirmwareImage = load_model("FirmwareImage")
         unconfirmed = self.firmwareimage_set.exclude(
-            extraction_status__in=FirmwareImage.LOCKED_STATUSES
+            extraction_status__in=FirmwareImage.PAIRING_ELIGIBLE_STATUSES
         )
         if unconfirmed.exists():
             raise ValidationError(
@@ -311,6 +313,7 @@ class AbstractBuild(TimeStampedEditableModel):
         FirmwareImage = load_model("FirmwareImage")
         final_statuses = {
             Build.BUILD_STATUS_SUCCESS,
+            Build.BUILD_STATUS_INCOMPLETE,
             Build.BUILD_STATUS_FAILED,
             Build.BUILD_STATUS_INVALID,
             Build.BUILD_STATUS_MANUALLY_CONFIRMED,
@@ -345,6 +348,8 @@ class AbstractBuild(TimeStampedEditableModel):
                 new_status = Build.BUILD_STATUS_INVALID
             elif FirmwareImage.STATUS_FAILED in statuses:
                 new_status = Build.BUILD_STATUS_FAILED
+            elif FirmwareImage.STATUS_INCOMPLETE in statuses:
+                new_status = Build.BUILD_STATUS_INCOMPLETE
             elif FirmwareImage.STATUS_MANUALLY_CONFIRMED in statuses:
                 new_status = self.BUILD_STATUS_MANUALLY_CONFIRMED
             else:
@@ -437,6 +442,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     STATUS_MANUALLY_CONFIRMED = "manually_confirmed"
     STATUS_INVALID = "invalid"
     LOCKED_STATUSES = (STATUS_SUCCESS, STATUS_MANUALLY_CONFIRMED)
+    PAIRING_ELIGIBLE_STATUSES = LOCKED_STATUSES + (STATUS_INCOMPLETE,)
 
     FAILURE_UNSUPPORTED = "unsupported_format"
     FAILURE_OOM = "out_of_memory"
@@ -789,7 +795,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             return
         if self.device.is_deactivated():
             raise ValidationError(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
-        if self.image.extraction_status not in self.image.LOCKED_STATUSES:
+        if self.image.extraction_status not in self.image.PAIRING_ELIGIBLE_STATUSES:
             raise ValidationError(
                 {
                     "image": _(
@@ -929,9 +935,9 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def auto_create_device_firmwares(cls, instance, created, **kwargs):
         if created:
             return
-        if instance.extraction_status not in instance.LOCKED_STATUSES:
+        if instance.extraction_status not in instance.PAIRING_ELIGIBLE_STATUSES:
             return
-        if instance._original_extraction_status in instance.LOCKED_STATUSES:
+        if instance._original_extraction_status in instance.PAIRING_ELIGIBLE_STATUSES:
             return
         transaction.on_commit(
             partial(create_all_device_firmwares.delay, str(instance.pk))
@@ -944,7 +950,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             FirmwareImage.objects.filter(
                 Q(build__category__organization_id=device.organization_id)
                 | Q(build__category__organization__isnull=True),
-                extraction_status__in=FirmwareImage.LOCKED_STATUSES,
+                extraction_status__in=FirmwareImage.PAIRING_ELIGIBLE_STATUSES,
             )
             .order_by("-created")
             .select_related("build", "build__category")

@@ -16,7 +16,9 @@ to automatically pair devices with the firmware image whose ``board``
 matches ``Device.model`` and whose build's **OS identifier** matches the
 device's ``os`` field.
 
-Pairing only happens once an image's metadata has been confirmed, either
-automatically after extraction or manually. Images that declare a
-compatibility version greater than ``1.0`` are not paired automatically
-and require manual confirmation.
+Pairing happens once an image's metadata extraction has completed: whether
+it succeeded fully, succeeded only partially (i.e. with status
+*Incomplete*), or was confirmed manually. Images still being processed, or
+for which extraction failed, are not paired automatically. Images that
+declare a compatibility version greater than ``1.0`` are not paired
+automatically and require manual confirmation.

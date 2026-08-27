@@ -1061,23 +1061,25 @@ class TestModels(TestUpgraderMixin, TestCase):
             DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
             mock_on_commit.assert_not_called()
 
-    def test_auto_create_device_firmwares_skips_incomplete(self):
-        image = self._create_firmware_image(
-            extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
-        )
-        image.extraction_status = FirmwareImage.STATUS_INCOMPLETE
-        with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
-            DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
-            mock_on_commit.assert_not_called()
-
-    def test_auto_create_device_firmwares_triggers_on_confirmed(self):
-        image = self._create_firmware_image(
-            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
-        )
-        image.extraction_status = FirmwareImage.STATUS_SUCCESS
-        with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
-            DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
-            mock_on_commit.assert_called_once()
+    def test_auto_create_device_firmwares_triggers_on_pairing_eligible_status(self):
+        for i, eligible_status in enumerate(
+            (
+                FirmwareImage.STATUS_SUCCESS,
+                FirmwareImage.STATUS_INCOMPLETE,
+                FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+            )
+        ):
+            with self.subTest(extraction_status=eligible_status):
+                image = self._create_firmware_image(
+                    extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
+                    type=f"pairing-eligible-{i}",
+                )
+                image.extraction_status = eligible_status
+                with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
+                    DeviceFirmware.auto_create_device_firmwares(
+                        instance=image, created=False
+                    )
+                    mock_on_commit.assert_called_once()
 
     def test_auto_create_device_firmwares_skips_already_confirmed_resave(self):
         image = self._create_firmware_image()

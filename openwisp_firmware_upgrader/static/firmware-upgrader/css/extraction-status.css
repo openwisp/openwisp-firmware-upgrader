@@ -23,3 +23,15 @@
 .ow-status-grey {
   background-color: var(--ow-color-fg-dark);
 }
+
+#main .ow-firmware-metadata-warning.warning {
+  padding: 15px 15px 15px 35px;
+  background-position: 17px 17px;
+  margin-bottom: 0;
+}
+
+#main .ow-firmware-metadata-error.error {
+  padding: 15px 15px 15px 40px;
+  background-position: 17px 17px;
+  margin-bottom: 0;
+}

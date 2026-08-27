@@ -425,8 +425,8 @@ def extract_firmware_metadata(self, image_pk):
             fresh,
             "warning",
             _(
-                'Partial metadata extracted via DTB scan for <a href="{url}">{image}</a>. '
-                "Manual input required."
+                'Partial metadata extracted for <a href="{url}">{image}</a>. '
+                "Enter missing metadata manually if needed."
             ),
         )
 
@@ -437,7 +437,10 @@ def extract_firmware_metadata(self, image_pk):
             "Failed to update build extraction status for image %s", image_pk
         )
 
-    if update.get("extraction_status") == FirmwareImage.STATUS_SUCCESS:
+    if update.get("extraction_status") in (
+        FirmwareImage.STATUS_SUCCESS,
+        FirmwareImage.STATUS_INCOMPLETE,
+    ):
         transaction.on_commit(partial(create_all_device_firmwares.delay, str(image.pk)))
 
 

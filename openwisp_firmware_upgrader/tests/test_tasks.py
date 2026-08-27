@@ -589,7 +589,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
     @mock.patch(_MOCK_EXTRACTOR)
     @mock.patch("openwisp_firmware_upgrader.tasks.create_all_device_firmwares")
     @capture_any_output()
-    def test_extract_firmware_metadata_dtb_incomplete_does_not_trigger_pairing(
+    def test_extract_firmware_metadata_dtb_incomplete_triggers_pairing(
         self, mock_create_firmwares, MockExtractor
     ):
         MockExtractor.return_value.extract.return_value = {
@@ -607,7 +607,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         tasks.extract_firmware_metadata.run(str(image.pk))
         image.refresh_from_db()
         self.assertEqual(image.extraction_status, FirmwareImage.STATUS_INCOMPLETE)
-        mock_create_firmwares.delay.assert_not_called()
+        mock_create_firmwares.delay.assert_called_once_with(str(image.pk))
 
     @capture_any_output()
     def test_extract_firmware_metadata_persist_failure_notifies_and_publishes(self):

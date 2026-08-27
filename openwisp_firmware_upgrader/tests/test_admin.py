@@ -218,7 +218,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
 
     def test_firmware_image_inline_extraction_messages(self):
         self._login()
-        dtb_message = "could not be recovered from the device tree blob (DTB) fallback"
+        dtb_message = "Target and Firmware version couldn't be extracted automatically"
         failed_message = "Automatic metadata extraction failed for this image"
         cases = (
             (

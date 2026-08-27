@@ -27,15 +27,23 @@ to add a per-row DTB-fallback/failed-extraction metadata warning.
       {% comment %} DTB fallback / failed extraction metadata warning {% endcomment %}
       {% with obj=inline_admin_form.original %}
         {% if obj and obj.extraction_status == "incomplete" %}
-          <ul class="messagelist">
+          {% url inline_admin_form.model_admin.opts|admin_urlname:'change' obj.pk|admin_urlquote as metadata_url %}
+          <ul class="messagelist map">
             <li class="warning ow-firmware-metadata-warning">
-              {% blocktrans %}Target and firmware version could not be recovered from the device tree blob (DTB) fallback. Please enter them manually.{% endblocktrans %}
+              {% blocktrans with anchor_open='<a href="'|add:metadata_url|add:'#device-metadata">'|safe anchor_close='</a>'|safe %}
+                Target and Firmware version couldn't be extracted automatically. Enter
+                them manually {{ anchor_open }}here{{ anchor_close }} (not mandatory).
+              {% endblocktrans %}
             </li>
           </ul>
         {% elif obj and obj.extraction_status == "failed" %}
+          {% url inline_admin_form.model_admin.opts|admin_urlname:'change' obj.pk|admin_urlquote as metadata_url %}
           <ul class="messagelist">
             <li class="error ow-firmware-metadata-error">
-              {% blocktrans %}Automatic metadata extraction failed for this image. Please enter the missing information manually.{% endblocktrans %}
+              {% blocktrans with anchor_open='<a href="'|add:metadata_url|add:'#device-metadata">'|safe anchor_close='</a>'|safe %}
+                Automatic metadata extraction failed for this image. Please enter
+                the missing information manually {{ anchor_open }}here{{ anchor_close }} (mandatory).
+              {% endblocktrans %}
             </li>
           </ul>
         {% endif %}

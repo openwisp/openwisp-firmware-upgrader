@@ -84,6 +84,7 @@ _STATUS_CONFIG = {
 _BUILD_STATUS_CONFIG = {
     "analyzing": {"label": _("Analyzing"), "class": "ow-status-warning"},
     "success": {"label": _("Success"), "class": "ow-status-success"},
+    "incomplete": {"label": _("Incomplete"), "class": "ow-status-warning"},
     "failed": {"label": _("Failed"), "class": "ow-status-error"},
     "invalid": {"label": _("Invalid"), "class": "ow-status-error"},
     "manually_confirmed": {
