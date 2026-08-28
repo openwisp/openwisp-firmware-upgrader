@@ -543,7 +543,10 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     def __str__(self):
         if hasattr(self, "build") and self.type:
-            return f"{self.build}: {self.type}"
+            label = f"{self.build}: {self.type}"
+            if self.fw_version and self.fw_version != self.build.version:
+                label += f" (fw {self.fw_version})"
+            return label
         return super().__str__()
 
     @property
@@ -903,7 +906,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     | Q(build__category__organization__isnull=True),
                     build__os=device.os,
                     board=device.model,
-                    extraction_status__in=FirmwareImage.LOCKED_STATUSES,
+                    extraction_status__in=FirmwareImage.PAIRING_ELIGIBLE_STATUSES,
                 )
                 .order_by("-build__created")
                 .first()

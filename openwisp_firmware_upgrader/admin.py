@@ -123,6 +123,13 @@ def _compatible_display_html(obj):
     )
 
 
+def _image_dropdown_label(image):
+    label = f"{image.build}: {image.board}"
+    if image.fw_version and image.fw_version != image.build.version:
+        label += f" (fw {image.fw_version})"
+    return label
+
+
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     save_on_top = True
 
@@ -1133,6 +1140,7 @@ class DeviceFirmwareForm(forms.ModelForm):
         self.fields["image"].queryset = DeviceFirmware.get_image_queryset_for_device(
             device, device_firmware=self.instance
         )
+        self.fields["image"].label_from_instance = _image_dropdown_label
 
     def _has_credentials_in_form(self):
         if not self.data:
@@ -1213,9 +1221,21 @@ class DeviceFirmwareInline(
     model = DeviceFirmware
     formset = DeviceFormSet
     form = DeviceFirmwareForm
-    exclude = ["created"]
+    fields = [
+        "image",
+        "image_target_display",
+        "image_fw_version_display",
+        "upgrade_options",
+        "installed",
+        "modified",
+    ]
     select_related = ["device", "image"]
-    readonly_fields = ["installed", "modified"]
+    readonly_fields = [
+        "image_target_display",
+        "image_fw_version_display",
+        "installed",
+        "modified",
+    ]
     verbose_name = _("Firmware")
     verbose_name_plural = verbose_name
     extra = 0
@@ -1225,6 +1245,18 @@ class DeviceFirmwareInline(
     # TODO: remove when this issue solved:
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
     sortable_options = {"disabled": True}
+
+    @admin.display(description=_("Target"))
+    def image_target_display(self, obj):
+        if not obj or not obj.image:
+            return "-"
+        return obj.image.target or "-"
+
+    @admin.display(description=_("Firmware version"))
+    def image_fw_version_display(self, obj):
+        if not obj or not obj.image:
+            return "-"
+        return obj.image.fw_version or "-"
 
     class Media:
         js = [

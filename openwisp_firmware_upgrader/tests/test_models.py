@@ -88,6 +88,23 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIn(str(fw.build), str(fw))
         self.assertIn(fw.build.category.name, str(fw))
 
+    def test_fw_str_appends_fw_version_when_it_differs_from_build_version(self):
+        build = self._create_build(version="1.0")
+        fw = self._create_firmware_image(build=build)
+
+        with self.subTest("fw_version blank: not appended"):
+            self.assertNotIn("(fw", str(fw))
+
+        with self.subTest("fw_version matches build version: not appended"):
+            FirmwareImage.objects.filter(pk=fw.pk).update(fw_version="1.0")
+            fw.refresh_from_db()
+            self.assertNotIn("(fw", str(fw))
+
+        with self.subTest("fw_version differs from build version: appended"):
+            FirmwareImage.objects.filter(pk=fw.pk).update(fw_version="23.05.5")
+            fw.refresh_from_db()
+            self.assertIn("(fw 23.05.5)", str(fw))
+
     def test_fw_str_new(self):
         fw = FirmwareImage()
         self.assertIsNotNone(str(fw))

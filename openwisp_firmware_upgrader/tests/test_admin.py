@@ -638,6 +638,31 @@ class TestAdmin(BaseTestAdmin, TestCase):
             DeviceFirmwareInline, deviceadmin.get_inlines(request, obj=device)
         )
 
+    def test_device_firmware_inline_target_and_fw_version_display(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        url = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[device_fw.device.pk]
+        )
+        with self.subTest("shows values when populated"):
+            FirmwareImage.objects.filter(pk=device_fw.image.pk).update(
+                extraction_status=FirmwareImage.STATUS_SUCCESS,
+                target="ath79/generic",
+                fw_version="23.05.5",
+            )
+            response = self.client.get(url)
+            self.assertContains(response, "ath79/generic")
+            self.assertContains(response, "23.05.5")
+
+        with self.subTest("shows dash when empty"):
+            FirmwareImage.objects.filter(pk=device_fw.image.pk).update(
+                target="", fw_version=""
+            )
+            response = self.client.get(url)
+            content = response.content.decode()
+            self.assertIn("Target:", content)
+            self.assertIn("Firmware version:", content)
+
     def _prepare_image_qs_test_env(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device
@@ -742,6 +767,15 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(form.fields["image"].queryset.count(), 3)
         self.assertIn(device_fw.image, form.fields["image"].queryset)
         self.assertIn(shared_image, form.fields["image"].queryset)
+
+    def test_device_firmware_form_image_dropdown_shows_board(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+        response = self.client.get(url)
+        expected_label = f"{device_fw.image.build}: {device_fw.image.board}"
+        self.assertContains(response, expected_label)
 
     def test_admin_menu_groups(self):
         # Test menu group (openwisp-utils menu group) for Build, Category,
