@@ -1965,6 +1965,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         device = self._create_config(organization=fw.build.category.organization).device
         UpgradeOperation.objects.create(device=device, image=fw, status="success")
+        device_fw = DeviceFirmware(device=device, image=fw, installed=True)
+        device_fw.save(upgrade=False)
         url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[fw.pk])
         data = {
             "build": str(fw.build.pk),
@@ -1991,6 +1993,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         device = self._create_config(organization=fw.build.category.organization).device
         UpgradeOperation.objects.create(device=device, image=fw, status="success")
+        device_fw = DeviceFirmware(device=device, image=fw, installed=True)
+        device_fw.save(upgrade=False)
         new_build = self._create_build(category=fw.build.category, version="99.0")
         url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[fw.pk])
         data = {

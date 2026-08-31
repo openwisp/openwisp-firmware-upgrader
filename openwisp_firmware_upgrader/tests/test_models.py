@@ -857,13 +857,12 @@ class TestModels(TestUpgraderMixin, TestCase):
             image._validate_locked(original)
         self.assertIn("read-only", str(ctx.exception))
 
-    def test_validate_file_replacement_blocks_in_progress_operation(self):
+    def test_validate_file_replacement_blocks_when_referenced_by_device_firmware(self):
         image = self._create_firmware_image()
         device = self._create_device(organization=image.build.category.organization)
         self._create_config(device=device)
-        UpgradeOperation.objects.create(
-            device=device, image=image, status="in-progress"
-        )
+        self._create_device_connection(device=device)
+        DeviceFirmware.objects.create(device=device, image=image, installed=True)
         original = FirmwareImage.objects.filter(pk=image.pk).values("file").first()
         image.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH)
         with self.assertRaises(ValidationError) as ctx:

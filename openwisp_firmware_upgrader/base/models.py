@@ -518,17 +518,25 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                     "compat_version",
                     "source",
                 }
-        super().save(*args, **kwargs)
-        self._original_extraction_status = self.extraction_status
-        if old_file_name is not None:
-            Build = load_model("Build")
+        if old_file_name is None:
+            super().save(*args, **kwargs)
+            self._original_extraction_status = self.extraction_status
+            return
+        # lock the buil row before writing this image row, matching the
+        # lock order used by Build.update_extraction_status(), so the two
+        # code paths cannot deadlock against each other
+        Build = load_model("Build")
+        with transaction.atomic():
+            Build.objects.select_for_update().get(pk=self.build_id)
+            super().save(*args, **kwargs)
+            self._original_extraction_status = self.extraction_status
             Build.objects.filter(pk=self.build_id).update(
                 status=Build.BUILD_STATUS_ANALYZING
             )
-            new_file_name = self.file.name
-            if old_file_name and old_file_name != new_file_name:
-                transaction.on_commit(partial(self._remove_file, old_file_name))
-            transaction.on_commit(lambda: extract_firmware_metadata.delay(str(self.pk)))
+        new_file_name = self.file.name
+        if old_file_name and old_file_name != new_file_name:
+            transaction.on_commit(partial(self._remove_file, old_file_name))
+        transaction.on_commit(lambda: extract_firmware_metadata.delay(str(self.pk)))
 
     class Meta:
         abstract = True
