@@ -322,20 +322,24 @@ class AbstractBuild(TimeStampedEditableModel):
             FirmwareImage.STATUS_UNCONFIRMED,
             FirmwareImage.STATUS_IN_PROGRESS,
         }
-        # retry if another process changes the status concurrently,
-        # give up after 5 attempts and log a warning
-        for _attempt in range(5):
-            current_status = (
-                Build.objects.filter(pk=self.pk)
-                .values_list("status", flat=True)
-                .first()
-            )
-            if current_status is None:
+        new_status = None
+        # lock the build row and its image rows for the whole
+        # read-compute-write cycle, so a concurrent file change
+        # (which reset's image status and forces the build back to "analyzing")
+        # cannot be silently overwritten by a stale aggregate computed here
+        with transaction.atomic():
+            try:
+                current_status = (
+                    Build.objects.select_for_update()
+                    .values_list("status", flat=True)
+                    .get(pk=self.pk)
+                )
+            except Build.DoesNotExist:
                 return
             statuses = set(
-                FirmwareImage.objects.filter(build_id=self.pk).values_list(
-                    "extraction_status", flat=True
-                )
+                FirmwareImage.objects.select_for_update()
+                .filter(build_id=self.pk)
+                .values_list("extraction_status", flat=True)
             )
             if not statuses:
                 return
@@ -357,18 +361,9 @@ class AbstractBuild(TimeStampedEditableModel):
             if current_status == new_status:
                 self.status = new_status
                 return
-            rows_updated = Build.objects.filter(
-                pk=self.pk, status=current_status
-            ).update(status=new_status)
-            if rows_updated:
-                self.status = new_status
-                self._notify_extraction_complete(new_status)
-                return
-        logger.warning(
-            "Could not update extraction status for build %s: "
-            "the status changed concurrently on every attempt",
-            self.pk,
-        )
+            Build.objects.filter(pk=self.pk).update(status=new_status)
+            self.status = new_status
+        self._notify_extraction_complete(new_status)
 
     def _notify_extraction_complete(self, new_status):
         if new_status == self.BUILD_STATUS_INVALID:
@@ -670,16 +665,13 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     def _validate_file_replacement(self, original):
         if not original or self.file.name == original["file"]:
             return
-        UpgradeOperation = load_model("UpgradeOperation")
-        if UpgradeOperation.objects.filter(
-            image=self.pk, status__in=["in-progress", "success"]
-        ).exists():
+        DeviceFirmware = load_model("DeviceFirmware")
+        if DeviceFirmware.objects.filter(image=self.pk).exists():
             raise ValidationError(
                 {
                     "file": _(
                         "The file cannot be replaced because this image is "
-                        "currently being flashed to one or more devices, or has "
-                        "already been flashed successfully."
+                        "currently assigned to one or more devices."
                     )
                 }
             )

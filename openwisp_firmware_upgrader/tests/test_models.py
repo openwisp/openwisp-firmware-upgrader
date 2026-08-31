@@ -1,4 +1,6 @@
 import io
+import threading
+import time
 import uuid
 from contextlib import redirect_stdout
 from unittest import mock
@@ -8,8 +10,9 @@ import swapper
 from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.db.models.query import QuerySet
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
 from django.utils import timezone
 
 from openwisp_utils.tests import capture_any_output
@@ -829,42 +832,6 @@ class TestModels(TestUpgraderMixin, TestCase):
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_SUCCESS)
 
-    def test_extraction_status_retries_when_status_changes_concurrently(self):
-        build = self._create_build()
-        image1 = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
-        image2 = self._create_firmware_image(
-            build=build, type=self.TPLINK_4300_IL_IMAGE
-        )
-        FirmwareImage.objects.filter(pk__in=[image1.pk, image2.pk]).update(
-            extraction_status=FirmwareImage.STATUS_SUCCESS
-        )
-        Build.objects.filter(pk=build.pk).update(status=Build.BUILD_STATUS_ANALYZING)
-        original_update = QuerySet.update
-        state = {"raced": False}
-
-        def racy_update(self, *args, **kwargs):
-            if (
-                not state["raced"]
-                and self.model is Build
-                and kwargs.get("status") == Build.BUILD_STATUS_SUCCESS
-            ):
-                state["raced"] = True
-                FirmwareImage.objects.filter(pk=image2.pk).update(
-                    extraction_status=FirmwareImage.STATUS_FAILED
-                )
-                original_update(
-                    Build.objects.filter(pk=build.pk),
-                    status=Build.BUILD_STATUS_FAILED,
-                )
-                return 0
-            return original_update(self, *args, **kwargs)
-
-        with mock.patch.object(QuerySet, "update", racy_update):
-            build.update_extraction_status()
-
-        build.refresh_from_db()
-        self.assertEqual(build.status, Build.BUILD_STATUS_FAILED)
-
     def test_validate_locked_blocks_field_change_on_success(self):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_SUCCESS
@@ -1664,6 +1631,47 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             "Upgrade operations are not allowed for deactivated devices.",
             str(cm.exception),
         )
+
+    @skipUnlessDBFeature("has_select_for_update")
+    def test_update_extraction_status_locks_against_concurrent_file_replacement(self):
+        build = self._create_build()
+        image1 = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
+        image2 = self._create_firmware_image(
+            build=build, type=self.TPLINK_4300_IL_IMAGE
+        )
+        FirmwareImage.objects.filter(pk__in=[image1.pk, image2.pk]).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        Build.objects.filter(pk=build.pk).update(status=Build.BUILD_STATUS_ANALYZING)
+
+        images_read = threading.Event()
+
+        def replace_file_concurrently():
+            images_read.wait(timeout=5)
+            FirmwareImage.objects.filter(pk=image1.pk).update(
+                extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+            )
+            Build.objects.filter(pk=build.pk).update(
+                status=Build.BUILD_STATUS_ANALYZING
+            )
+            connection.close()
+
+        original_fetch_all = QuerySet._fetch_all
+
+        def racy_fetch_all(self):
+            original_fetch_all(self)
+            if self.model is FirmwareImage and not images_read.is_set():
+                images_read.set()
+                time.sleep(0.3)
+
+        thread = threading.Thread(target=replace_file_concurrently)
+        thread.start()
+        with mock.patch.object(QuerySet, "_fetch_all", racy_fetch_all):
+            build.update_extraction_status()
+        thread.join(timeout=5)
+
+        build.refresh_from_db()
+        self.assertEqual(build.status, Build.BUILD_STATUS_ANALYZING)
 
 
 class TestFirmwareImageValidation(TestUpgraderMixin, TestCase):
