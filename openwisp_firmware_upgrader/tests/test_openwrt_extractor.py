@@ -23,6 +23,7 @@ from ..extractors.exceptions import (
     UnsupportedImageError,
 )
 from ..extractors.openwrt import (
+    _CHUNK_SIZE,
     DTB_MAGIC,
     DTB_MIN_SIZE,
     FWIMAGE_INFO,
@@ -209,13 +210,13 @@ class TestCheckLimits(TestCase):
         with mock.patch(
             "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_BYTES", 200
         ):
-            self.extractor._check_limits(100, 100)  # must not raise
+            self.extractor._track_cumulative_decompressed_bytes(100)  # must not raise
 
     def test_size_exactly_at_limit_does_not_raise(self):
         with mock.patch(
             "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_BYTES", 200
         ):
-            self.extractor._check_limits(200, 200)  # must not raise
+            self.extractor._track_cumulative_decompressed_bytes(200)  # must not raise
 
     def test_ratio_exactly_at_limit_does_not_raise(self):
         with mock.patch(
@@ -228,7 +229,7 @@ class TestCheckLimits(TestCase):
             "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_BYTES", 200
         ):
             with self.assertRaises(DecompressionLimitExceeded):
-                self.extractor._check_limits(300, 100)
+                self.extractor._track_cumulative_decompressed_bytes(300)
 
     def test_ratio_exceeded_raises(self):
         with mock.patch(
@@ -236,6 +237,29 @@ class TestCheckLimits(TestCase):
         ):
             with self.assertRaises(DecompressionLimitExceeded):
                 self.extractor._check_limits(1100, 100)
+
+    def test_cumulative_limit_acrross_multiple_decompression_calls(self):
+        with mock.patch(
+            "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_BYTES", 200
+        ):
+            self.extractor._track_cumulative_decompressed_bytes(150)  # must not raise
+            with self.assertRaises(DecompressionLimitExceeded):
+                self.extractor._track_cumulative_decompressed_bytes(100)
+
+    def test_xz_bomb_still_blocked_with_trailing_padding(self):
+        decompressed_size = 1_000_000
+        compressed = lzma.compress(b"\x00" * decompressed_size, format=lzma.FORMAT_XZ)
+        limit = decompressed_size / _CHUNK_SIZE / 2
+        padded = compressed + b"\xab" * (decompressed_size * 10)
+        with mock.patch(
+            "openwisp_firmware_upgrader.settings.MAX_DECOMPRESSED_RATIO", limit
+        ):
+            with self.assertRaises(DecompressionLimitExceeded):
+                self.extractor._try_decompress(
+                    padded,
+                    b"\xfd7zXZ\x00",
+                    lambda: lzma.LZMADecompressor(format=lzma.FORMAT_XZ),
+                )
 
 
 class TestStripUimageHeader(TestCase):
@@ -439,6 +463,22 @@ class TestTryExtractDtbFromKernel(TestCase):
         self.assertIsNone(result)
         self.assertGreater(mock_parse.call_count, 0)
         self.assertLessEqual(mock_parse.call_count, 64)
+
+    def test_deep_scan_shares_probe_budget_across_all_formats(self):
+        fake_gzip = b"\x1f\x8b" + b"\xff" * 20
+        fake_xz = b"\xfd7zXZ\x00" + b"\xff" * 20
+        data = (fake_gzip + fake_xz) * 20
+        with mock.patch(
+            "openwisp_firmware_upgrader.settings.MAX_DEEP_SCAN_PROBES", 5
+        ), mock.patch.object(
+            self.extractor, "_try_gzip", wraps=self.extractor._try_gzip
+        ) as mock_gzip, mock.patch.object(
+            self.extractor, "_try_decompress", wraps=self.extractor._try_decompress
+        ) as mock_decompress:
+            result = self.extractor._deep_scan_for_dtb(data)
+        self.assertIsNone(result)
+        total_attempts = mock_gzip.call_count + mock_decompress.call_count
+        self.assertLessEqual(total_attempts, 5)
 
 
 class TestExtractOverride(TestCase):
@@ -712,6 +752,32 @@ class TestExtractFwtoolMetadata(TestCase):
         finally:
             os.unlink(path)
 
+    def test_single_oversized_candidate_is_skipped_before_crc32(self):
+        prefix_size = 5000
+        data_block = b"\x00" * prefix_size
+        crc = zlib.crc32(data_block) ^ 0xFFFFFFFF
+        trailer = struct.pack(
+            TRAILER_FORMAT,
+            FWIMAGE_MAGIC,
+            crc,
+            FWIMAGE_INFO,
+            b"\x00\x00\x00",
+            prefix_size + TRAILER_SIZE,
+        )
+        path = self._write_image(data_block + trailer)
+        try:
+            with mock.patch(
+                "openwisp_firmware_upgrader.settings.MAX_TRAILER_CRC_BYTES", 1000
+            ), mock.patch(
+                "openwisp_firmware_upgrader.extractors.openwrt.zlib.crc32",
+                wraps=zlib.crc32,
+            ) as mock_crc32:
+                result = OpenWrtMetadataExtractor(path)._extract_fwtool_metadata()
+        finally:
+            os.unlink(path)
+        self.assertIsNone(result)
+        mock_crc32.assert_not_called()
+
 
 class TestReadKernelFromTar(TestCase):
     def _write_tar(self, members):
@@ -732,6 +798,17 @@ class TestReadKernelFromTar(TestCase):
         finally:
             os.unlink(path)
         self.assertEqual(result, payload)
+
+    def test_iterates_tar_members_without_materializing_full_list(self):
+        payload = DTB_MAGIC + b"\x00" * 60
+        path = self._write_tar([("sysupgrade-kernel", payload)])
+        try:
+            with mock.patch.object(tarfile.TarFile, "getmembers") as mock_getmembers:
+                result = OpenWrtMetadataExtractor(path)._read_kernel_from_tar()
+        finally:
+            os.unlink(path)
+        self.assertEqual(result, payload)
+        mock_getmembers.assert_not_called()
 
     def test_oversized_raw_file_raises_before_tar_parsing(self):
         path = self._write_tar([("kernel.bin", b"\x00" * 128)])

@@ -38,6 +38,12 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 class OpenWrtMetadataExtractor(BaseMetadataExtractor):
     """Extract OpenWrt firmware metadata from the fwtool trailer, falls back to DTB."""
 
+    def __init__(self, image_path):
+        super().__init__(image_path)
+        # track decompressed bytes across the whole extraction, so
+        # nested/repeated decompression attempts share one real ceiling
+        self._cumulative_decompressed_bytes = 0
+
     def _validate_image_type(self):
         name = os.path.basename(self.image_path).lower()
         ext = os.path.splitext(name)[1]
@@ -92,6 +98,8 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             if data_start < 0:
                 offset -= 1
                 continue
+            if crc_bytes_checked + data_end > app_settings.MAX_TRAILER_CRC_BYTES:
+                break
             crc_bytes_checked += data_end
             if zlib.crc32(view[:data_end]) ^ 0xFFFFFFFF != crc32_val:
                 offset = data_start
@@ -130,12 +138,6 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         return f"{size // (1024 * 1024)}MB"
 
     def _check_limits(self, decompressed, compressed):
-        if decompressed > app_settings.MAX_DECOMPRESSED_BYTES:
-            raise DecompressionLimitExceeded(
-                _("Decompressed size exceeded hard limit of {size}.").format(
-                    size=self._format_size(app_settings.MAX_DECOMPRESSED_BYTES)
-                )
-            )
         if (
             compressed > 0
             and (decompressed / compressed) > app_settings.MAX_DECOMPRESSED_RATIO
@@ -146,20 +148,30 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 )
             )
 
+    def _track_cumulative_decompressed_bytes(self, chunk_size):
+        self._cumulative_decompressed_bytes += chunk_size
+        if self._cumulative_decompressed_bytes > app_settings.MAX_DECOMPRESSED_BYTES:
+            raise DecompressionLimitExceeded(
+                _("Decompressed size exceeded hard limit of {size}.").format(
+                    size=self._format_size(app_settings.MAX_DECOMPRESSED_BYTES)
+                )
+            )
+
     def _try_gzip(self, data):
         if data[:2] != b"\x1f\x8b":
             return None
         buf, total = bytearray(), 0
-        compressed = len(data)
+        raw = io.BytesIO(data)
         try:
-            with gzip.GzipFile(fileobj=io.BytesIO(data)) as gz:
+            with gzip.GzipFile(fileobj=raw) as gz:
                 while True:
                     chunk = gz.read(_CHUNK_SIZE)
                     if not chunk:
                         break
                     buf.extend(chunk)
                     total += len(chunk)
-                    self._check_limits(total, compressed)
+                    self._track_cumulative_decompressed_bytes(len(chunk))
+                    self._check_limits(total, raw.tell())
         except DecompressionLimitExceeded:
             raise
         except Exception:
@@ -174,7 +186,6 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         if not data:
             return None
         buf, total = bytearray(), 0
-        compressed = len(data)
         try:
             dec = make_decompressor()
             offset = 0
@@ -188,7 +199,8 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 if chunk:
                     buf.extend(chunk)
                     total += len(chunk)
-                    self._check_limits(total, compressed)
+                    self._track_cumulative_decompressed_bytes(len(chunk))
+                    self._check_limits(total, min(offset, len(data)))
                 elif dec.needs_input and not chunk_in and offset >= len(data):
                     break
         except DecompressionLimitExceeded:
@@ -230,20 +242,16 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         if budget is None:
             budget = [app_settings.MAX_DEEP_SCAN_PROBES]
         memlimit = app_settings.MAX_DECOMPRESSED_BYTES
+        view = memoryview(data)
         for magic, decompress_fn in self._decompressors():
             offset = 0
-            probes = 0
             while True:
                 pos = data.find(magic, offset)
-                if (
-                    pos == -1
-                    or probes >= app_settings.MAX_DEEP_SCAN_PROBES
-                    or budget[0] <= 0
-                ):
+                if pos == -1 or budget[0] <= 0:
                     break
-                probes += 1
+                budget[0] -= 1
                 try:
-                    decompressed = decompress_fn(data[pos:])
+                    decompressed = decompress_fn(view[pos:])
                     if decompressed:
                         dtb = self._locate_dtb(decompressed, budget=budget)
                         if dtb is not None:
@@ -258,19 +266,14 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         # dictionary-size values, so rewind one byte from each match
         for dict_sig in (b"\x00\x00\x80\x00", b"\x00\x00\x40\x00", b"\x00\x00\x00\x01"):
             offset = 1
-            probes = 0
             while True:
                 pos = data.find(dict_sig, offset)
-                if (
-                    pos == -1
-                    or probes >= app_settings.MAX_DEEP_SCAN_PROBES
-                    or budget[0] <= 0
-                ):
+                if pos == -1 or budget[0] <= 0:
                     break
-                probes += 1
+                budget[0] -= 1
                 try:
                     decompressed = self._try_decompress(
-                        data[pos - 1 :],
+                        view[pos - 1 :],
                         None,
                         lambda: lzma.LZMADecompressor(
                             format=lzma.FORMAT_ALONE, memlimit=memlimit
@@ -425,7 +428,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         tar_bytes = decompressed if decompressed is not None else raw
         try:
             with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tf:
-                for member in tf.getmembers():
+                for member in tf:
                     name = member.name.lower()
                     if "kernel" in name or name.endswith(".bin"):
                         f = tf.extractfile(member)

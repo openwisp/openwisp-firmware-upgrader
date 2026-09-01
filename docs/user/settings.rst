@@ -97,9 +97,9 @@ extraction, e.g.:
 **default**: ``512 * 1024 * 1024`` (512 MB)
 ============ ==============================
 
-Maximum total bytes allowed when decompressing a firmware image during
-metadata extraction. This limit prevents excessively large or malformed
-images from consuming all available memory, e.g.:
+Maximum total bytes decompressed across the whole metadata extraction of
+an image. This bounds total memory usage even when decompression happens
+in multiple nested or repeated steps, e.g.:
 
 .. code-block:: python
 
@@ -125,11 +125,12 @@ consuming all available memory, e.g.:
 
 - ``OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES`` and
   ``OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES`` are per-task
-  memory ceilings, not global ones. Multiple metadata extraction tasks can
-  run concurrently within the same Celery worker. Size the worker
-  concurrency and the container memory limit so that ``concurrency *
-  (MAX_KERNEL_BYTES + MAX_DECOMPRESSED_BYTES)`` fits within the available
-  memory.
+  memory ceilings, not global ones. Each is tracked cumulatively forr the
+  whole task, not reset per decompression attempt. Multiple metadata
+  extraction tasks can run concurently within the same Celery worker. Size
+  the worker concurrency and the container memory limit so that
+  ``concurrency * (MAX_KERNEL_BYTES + MAX_DECOMPRESSED_BYTES)`` fits
+  within the available memory.
 
 ``OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_PROBES``
 -------------------------------------------------
