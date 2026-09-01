@@ -1,4 +1,5 @@
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -78,9 +79,22 @@ class BuildSerializer(BaseSerializer):
         fields = "__all__"
 
 
+class TimezoneAwareDateTimeField(serializers.DateTimeField):
+    def enforce_timezone(self, value):
+        if timezone.is_naive(value):
+            raise serializers.ValidationError(
+                _(
+                    "The scheduled time must include a timezone offset, "
+                    "e.g. '2026-08-25T09:00:00Z'."
+                )
+            )
+        return super().enforce_timezone(value)
+
+
 class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
     upgrade_all = serializers.BooleanField(required=False, default=False)
     is_persistent = serializers.BooleanField(required=False, default=True)
+    scheduled_at = TimezoneAwareDateTimeField(required=False, allow_null=True)
 
     class Meta:
         fields = (

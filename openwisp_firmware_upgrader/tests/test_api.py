@@ -329,7 +329,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
         with self.subTest("Existing build"):
             url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
-            with self.assertNumQueries(12):
+            with self.assertNumQueries(15):
                 r = self.client.post(url)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
             batch = BatchUpgradeOperation.objects.first()
@@ -375,6 +375,19 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         )
         self.assertEqual(r.status_code, 400)
         self.assertIn("at least", str(r.data))
+
+    def test_api_create_naive_scheduled_at_returns_400(self):
+        env = self._create_upgrade_env()
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
+        r = self.client.post(
+            url,
+            {"upgrade_all": True, "scheduled_at": due.strftime("%Y-%m-%dT%H:%M")},
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("timezone", str(r.data).lower())
 
     def test_build_upgradeable(self):
         env = self._create_upgrade_env()
@@ -479,7 +492,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest(
             "Test superuser can mass upgrade shared build with upgrade_all"
         ):
-            with self.assertNumQueries(10):
+            with self.assertNumQueries(16):
                 response = self.client.post(path, {"upgrade_all": True})
             self.assertEqual(response.status_code, 201)
             batch = BatchUpgradeOperation.objects.first()
@@ -1018,19 +1031,19 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(batch.scheduled_at, new_due)
 
     @override_settings(TIME_ZONE="Asia/Kolkata")
-    def test_reschedule_naive_scheduled_at_interpreted_in_server_timezone(self):
-        # A naive scheduled_at (no timezone offset) must be read in the server
-        # timezone, matching the create form, not as UTC.
+    def test_reschedule_naive_scheduled_at_returns_400(self):
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(env["build2"])
+        original = batch.scheduled_at
         due = (timezone.localtime() + timedelta(days=2)).replace(
             second=0, microsecond=0
         )
         url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
         r = self.client.post(url, {"scheduled_at": due.strftime("%Y-%m-%dT%H:%M")})
-        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("timezone", str(r.data).lower())
         batch.refresh_from_db()
-        self.assertEqual(batch.scheduled_at, due)
+        self.assertEqual(batch.scheduled_at, original)
 
     def test_reschedule_updates_editable_fields(self):
         env = self._create_upgrade_env()

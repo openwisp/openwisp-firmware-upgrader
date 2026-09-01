@@ -139,9 +139,10 @@ recipes for the snippet.
 
 Minimum delay, in seconds, between the moment a scheduled mass upgrade is
 created and its ``scheduled_at`` time. A schedule closer than this is
-rejected with *The scheduled time must be at least 10 minutes in the
-future.*; the floor keeps a schedule from slipping past before the scanner
-runs again.
+rejected; the floor keeps a schedule from slipping past before the scanner
+runs again. The validation bound and its error message are derived from
+the configured value: with the default of 600 seconds the message reads
+*The scheduled time must be at least 10 minutes in the future.*
 
 ``OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MAX_HORIZON``
 ---------------------------------------------------
@@ -152,8 +153,10 @@ runs again.
 ============ =======================
 
 Furthest into the future, in seconds, that a mass upgrade may be
-scheduled. A time beyond it is rejected with *The scheduled time cannot be
-more than 180 days in the future.*, catching dates entered by mistake.
+scheduled, catching dates entered by mistake. The validation bound and its
+error message are derived from the configured value: with the default of
+15552000 seconds the message reads *The scheduled time cannot be more than
+180 days in the future.*
 
 The Beat task that launches due scheduled upgrades
 (``execute_scheduled_upgrades``) is registered in the deployment's own

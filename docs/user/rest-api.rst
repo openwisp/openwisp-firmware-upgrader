@@ -297,7 +297,8 @@ Example scheduling the upgrade for later:
 
 The ``scheduled_at`` value must be a timezone-aware ISO 8601 timestamp in
 the future that satisfies the configured minimum delay and maximum
-scheduling horizon (see :doc:`scheduled-mass-upgrades`).
+scheduling horizon (see :doc:`scheduled-mass-upgrades`). Naive timestamps
+(without a UTC offset) are rejected with an HTTP 400 response.
 
 Dry-run Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~

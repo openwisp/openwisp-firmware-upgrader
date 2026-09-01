@@ -8,6 +8,9 @@ means reboots and short outages while people are relying on the network. A
 hours of the next maintenance window, and have the upgrade launch itself
 then.
 
+.. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-mass-upgrade.gif
+    :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/scheduled-mass-upgrade.gif
+
 .. contents:: **Table of contents**:
     :depth: 2
     :local:
@@ -106,8 +109,8 @@ organization's administrators and superusers:
 - a **not started** notification when a scheduled batch is skipped because
   no eligible device remained when its time arrived, and
 - a **completed** notification when a mass upgrade that has started
-  reaches a terminal state, reporting whether it succeeded, failed or was
-  cancelled.
+  reaches a terminal state, reporting whether it succeeded or failed.
+  Cancellation is user-initiated, so it does not trigger a notification.
 
 The completion notification fires for every mass upgrade, immediate ones
 included, not only scheduled batches.

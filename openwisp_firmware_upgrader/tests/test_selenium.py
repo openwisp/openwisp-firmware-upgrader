@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import swapper
@@ -584,6 +584,11 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
             date_input.send_keys(scheduled.strftime("%Y-%m-%d"))
             time_input.send_keys(scheduled.strftime("%H:%M"))
+            expected_iso = self.web_driver.execute_script(
+                "return new Date(arguments[0] + 'T' + arguments[1]).toISOString();",
+                scheduled.strftime("%Y-%m-%d"),
+                scheduled.strftime("%H:%M"),
+            )
             submit = self.find_element(
                 by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
             )
@@ -593,7 +598,10 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
             batch = BatchUpgradeOperation.objects.get(build=build2)
             self.assertEqual(batch.status, "scheduled")
-            self.assertIsNotNone(batch.scheduled_at)
+            self.assertEqual(
+                batch.scheduled_at,
+                datetime.fromisoformat(expected_iso.replace("Z", "+00:00")),
+            )
 
     def test_batch_reschedule_panel_widgets(self):
         """The reschedule panel on a scheduled batch initializes the Select2

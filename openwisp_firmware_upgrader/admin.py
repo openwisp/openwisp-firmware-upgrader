@@ -21,7 +21,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils.formats import localize
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-from django.utils.timezone import localtime
+from django.utils.timezone import is_naive, localtime
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
@@ -194,6 +194,11 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
             parsed = parse_datetime(scheduled_at)
             if parsed is None:
                 self.add_error("scheduled_at", _("Enter a valid date and time."))
+            elif is_naive(parsed):
+                self.add_error(
+                    "scheduled_at",
+                    _("The scheduled time must include a timezone offset."),
+                )
             else:
                 cleaned_data["scheduled_at"] = parsed
         return cleaned_data
@@ -246,6 +251,9 @@ class BatchRescheduleForm(forms.Form):
         )
         self.fields["group"].queryset = device_group_qs
         self.fields["location"].queryset = location_qs
+        date_widget, time_widget = self.fields["scheduled_at"].widget.widgets
+        date_widget.attrs["aria-label"] = _("Scheduled date")
+        time_widget.attrs["aria-label"] = _("Scheduled time")
 
     class Media:
         extra = "" if getattr(settings, "DEBUG", False) else ".min"

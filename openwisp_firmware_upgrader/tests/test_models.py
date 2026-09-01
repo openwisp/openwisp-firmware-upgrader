@@ -727,9 +727,9 @@ class TestModels(TestUpgraderMixin, TestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, "scheduled")
 
-    def test_scheduled_at_index(self):
+    def test_scheduled_at_composite_index(self):
         field = BatchUpgradeOperation._meta.get_field("scheduled_at")
-        self.assertTrue(field.db_index)
+        self.assertFalse(field.db_index)
         self.assertTrue(field.null)
         self.assertTrue(field.blank)
         with connection.cursor() as cursor:
@@ -738,7 +738,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             )
         self.assertTrue(
             any(
-                info["columns"] == ["scheduled_at"] and info["index"]
+                info["columns"] == ["status", "scheduled_at"] and info["index"]
                 for info in indexes.values()
             )
         )
@@ -1187,6 +1187,20 @@ class TestModels(TestUpgraderMixin, TestCase):
         with override_settings(
             OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MIN_DELAY=600,
             OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MAX_HORIZON=300,
+        ), self.assertRaises(ImproperlyConfigured):
+            importlib.reload(app_settings)
+
+    def test_schedule_min_delay_negative(self):
+        self.addCleanup(importlib.reload, app_settings)
+        with override_settings(
+            OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MIN_DELAY=-3600,
+        ), self.assertRaises(ImproperlyConfigured):
+            importlib.reload(app_settings)
+
+    def test_schedule_max_horizon_not_positive(self):
+        self.addCleanup(importlib.reload, app_settings)
+        with override_settings(
+            OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MAX_HORIZON=0,
         ), self.assertRaises(ImproperlyConfigured):
             importlib.reload(app_settings)
 

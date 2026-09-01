@@ -125,6 +125,36 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         started.assert_not_called()
         self.assertEqual(batch.upgradeoperation_set.count(), 0)
 
+    def test_recover_orphaned_launches(self):
+        Batch = BatchUpgradeOperation
+        due = timezone.now() - timedelta(minutes=5)
+        stale = timezone.now() - timedelta(hours=1)
+        build = self._create_build()
+        orphan = Batch.objects.create(
+            build=build, status="in-progress", scheduled_at=due
+        )
+        Batch.objects.filter(pk=orphan.pk).update(modified=stale)
+        fresh = Batch.objects.create(
+            build=build, status="in-progress", scheduled_at=due
+        )
+        started = Batch.objects.create(
+            build=build, status="in-progress", scheduled_at=due
+        )
+        device_fw = self._create_device_firmware()
+        UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, batch=started
+        )
+        Batch.objects.filter(pk=started.pk).update(modified=stale)
+
+        Batch._recover_orphaned_launches(timezone.now())
+
+        orphan.refresh_from_db()
+        fresh.refresh_from_db()
+        started.refresh_from_db()
+        self.assertEqual(orphan.status, "scheduled")
+        self.assertEqual(fresh.status, "in-progress")
+        self.assertEqual(started.status, "in-progress")
+
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
     def test_failed_cas_respects_reschedule_into_future(self, mocked_dispatch):
         # A reschedule committing between the due-scan and the failed CAS must

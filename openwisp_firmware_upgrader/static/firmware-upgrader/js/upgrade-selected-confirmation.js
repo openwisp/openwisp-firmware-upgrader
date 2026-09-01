@@ -18,6 +18,7 @@ django.jQuery(function ($) {
   // server's: post a single UTC scheduled_at and relabel the picker note.
   const scheduleRow = $("#schedule-row");
   if (scheduleRow.length) {
+    document.body.removeAttribute("data-admin-utc-offset");
     const form = scheduleRow.closest("form");
     const utcInput = $('<input type="hidden" name="scheduled_at">');
     form.append(utcInput);

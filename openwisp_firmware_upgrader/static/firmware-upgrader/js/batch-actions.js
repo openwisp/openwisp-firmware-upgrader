@@ -40,10 +40,21 @@ django.jQuery(function ($) {
     });
   }
 
+  let batchCancelLastFocused = null;
+
+  function hideBatchCancelModal() {
+    $("#ow-batch-cancel-modal").addClass("ow-hide");
+    if (batchCancelLastFocused) {
+      $(batchCancelLastFocused).trigger("focus");
+      batchCancelLastFocused = null;
+    }
+  }
+
   function showBatchCancelModal() {
     if ($("#ow-batch-cancel-modal").length === 0) {
       createBatchCancelModal();
     }
+    batchCancelLastFocused = document.activeElement;
     $("#ow-batch-cancel-modal").removeClass("ow-hide");
     $("#ow-batch-cancel-modal .ow-batch-cancel-confirm").trigger("focus");
   }
@@ -51,10 +62,10 @@ django.jQuery(function ($) {
   function createBatchCancelModal() {
     const modalHtml = `
       <div id="ow-batch-cancel-modal" class="ow-overlay ow-overlay-notification ow-overlay-inner ow-hide">
-        <div class="ow-dialog-notification ow-cancel-confirmation-dialog">
-          <span class="ow-dialog-close ow-dialog-close-x">&times;</span>
+        <div class="ow-dialog-notification ow-cancel-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="ow-batch-cancel-title">
+          <button type="button" class="ow-dialog-close ow-dialog-close-x" aria-label="${gettext("Close")}">&times;</button>
           <div class="ow-cancel-confirmation-header">
-            <h2 class="ow-cancel-confirmation-title">${gettext("Cancel mass upgrade")}</h2>
+            <h2 id="ow-batch-cancel-title" class="ow-cancel-confirmation-title">${gettext("Cancel mass upgrade")}</h2>
           </div>
           <div class="ow-cancel-confirmation-content">
             <p>${gettext("Are you sure you want to cancel this mass upgrade?")}</p>
@@ -72,20 +83,42 @@ django.jQuery(function ($) {
     `;
     $("body").append(modalHtml);
     $("#ow-batch-cancel-modal .ow-dialog-close").on("click", function () {
-      $("#ow-batch-cancel-modal").addClass("ow-hide");
+      hideBatchCancelModal();
     });
     $("#ow-batch-cancel-modal .ow-batch-cancel-confirm").on("click", function () {
-      $("#ow-batch-cancel-modal").addClass("ow-hide");
+      hideBatchCancelModal();
       post(owBatchCancelUrl, {});
     });
     $(document).on("keyup", function (e) {
       if (e.keyCode === 27 && $("#ow-batch-cancel-modal").is(":visible")) {
-        $("#ow-batch-cancel-modal").addClass("ow-hide");
+        hideBatchCancelModal();
+      }
+    });
+    $("#ow-batch-cancel-modal").on("keydown", function (e) {
+      if (e.key !== "Tab") {
+        return;
+      }
+      const focusable = $(this)
+        .find(
+          "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+        )
+        .filter(":visible");
+      if (!focusable.length) {
+        return;
+      }
+      const first = focusable.first()[0];
+      const last = focusable.last()[0];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
     });
     $("#ow-batch-cancel-modal").on("click", function (e) {
       if (e.target === this) {
-        $(this).addClass("ow-hide");
+        hideBatchCancelModal();
       }
     });
   }
@@ -98,6 +131,8 @@ django.jQuery(function ($) {
   if (!form.length) {
     return;
   }
+
+  document.body.removeAttribute("data-admin-utc-offset");
 
   const toggle = $("#batch-reschedule-btn");
   const dateInput = form.find('input[name="scheduled_at_0"]');
