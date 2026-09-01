@@ -378,6 +378,59 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         mocked_upgrade.assert_not_called()
 
+    def _create_scheduled_batch(self, build, when=None, firmwareless=False):
+        if when is None:
+            when = timezone.now() - timedelta(minutes=1)
+        return BatchUpgradeOperation.objects.create(
+            build=build,
+            status="scheduled",
+            scheduled_at=when,
+            firmwareless=firmwareless,
+        )
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_execute_dispatches_due_batch(self, mocked_dispatch):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"], firmwareless=True)
+        tasks.execute_scheduled_upgrades.run()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
+        mocked_dispatch.assert_called_once_with(batch.pk, True)
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_execute_skips_future_batch(self, mocked_dispatch):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(
+            env["build2"], when=timezone.now() + timedelta(hours=1)
+        )
+        tasks.execute_scheduled_upgrades.run()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "scheduled")
+        mocked_dispatch.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_execute_does_not_relaunch(self, mocked_dispatch):
+        env = self._create_upgrade_env()
+        self._create_scheduled_batch(env["build2"])
+        tasks.execute_scheduled_upgrades.run()
+        tasks.execute_scheduled_upgrades.run()
+        self.assertEqual(mocked_dispatch.call_count, 1)
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_execute_fails_without_eligible_devices(self, mocked_dispatch):
+        batch = self._create_scheduled_batch(self._create_build())
+        tasks.execute_scheduled_upgrades.run()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+        mocked_dispatch.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_execute_passes_stored_firmwareless(self, mocked_dispatch):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"], firmwareless=False)
+        tasks.execute_scheduled_upgrades.run()
+        mocked_dispatch.assert_called_once_with(batch.pk, False)
+
     def test_retry_lifecycle(self):
         """Retry an offline persistent upgrade until it succeeds after recovery."""
         # offline op pends, the Beat scan retries it only once due, it pends

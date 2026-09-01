@@ -48,6 +48,16 @@ urlpatterns = [
                     name="api_batchupgradeoperation_detail",
                 ),
                 path(
+                    "batch-upgrade-operation/<uuid:pk>/reschedule/",
+                    views.batch_upgrade_operation_reschedule,
+                    name="api_batchupgradeoperation_reschedule",
+                ),
+                path(
+                    "batch-upgrade-operation/<uuid:pk>/cancel/",
+                    views.batch_upgrade_operation_cancel,
+                    name="api_batchupgradeoperation_cancel",
+                ),
+                path(
                     "upgrade-operation/",
                     views.upgrade_operation_list,
                     name="api_upgradeoperation_list",

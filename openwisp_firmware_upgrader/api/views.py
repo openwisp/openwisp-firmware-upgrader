@@ -25,6 +25,7 @@ from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
     BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
+    BatchUpgradeRescheduleSerializer,
     BatchUpgradeSerializer,
     BuildSerializer,
     CategorySerializer,
@@ -43,6 +44,38 @@ Category = load_model("Category")
 FirmwareImage = load_model("FirmwareImage")
 DeviceFirmware = load_model("DeviceFirmware")
 Device = swapper.load_model("config", "Device")
+
+
+def _message_response(description):
+    return openapi.Response(
+        description=description,
+        schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "message": openapi.Schema(
+                    type=openapi.TYPE_STRING, description=_("Success message")
+                )
+            },
+        ),
+    )
+
+
+def _error_response_schema(description):
+    return openapi.Response(
+        description=description,
+        schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "error": openapi.Schema(
+                    type=openapi.TYPE_STRING, description=_("Error message")
+                )
+            },
+        ),
+    )
+
+
+def _error_response(message, status_code):
+    return Response({"error": message}, status=status_code)
 
 
 class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
@@ -123,12 +156,14 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         is_persistent = serializer.validated_data.get("is_persistent", True)
         group = serializer.validated_data.get("group")
         location = serializer.validated_data.get("location")
+        scheduled_at = serializer.validated_data.get("scheduled_at")
         try:
             batch = instance.batch_upgrade(
                 firmwareless=upgrade_all,
                 group=group,
                 location=location,
                 is_persistent=is_persistent,
+                scheduled_at=scheduled_at,
             )
         except ValidationError as e:
             return Response(
@@ -179,8 +214,8 @@ class BatchUpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     serializer_class = BatchUpgradeOperationListSerializer
     organization_field = "build__category__organization"
     filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
-    filterset_fields = ["build", "status", "is_persistent", "created"]
-    ordering_fields = ["created", "modified"]
+    filterset_fields = ["build", "status", "is_persistent", "created", "scheduled_at"]
+    ordering_fields = ["created", "modified", "scheduled_at"]
     ordering = ["-created"]
 
 
@@ -398,7 +433,7 @@ class DeviceFirmwareDetailView(
         return obj
 
 
-class UpgradeOperationCancelPermission(DjangoModelPermissions):
+class PostRequiresChangePermission(DjangoModelPermissions):
     perms_map = {
         **DjangoModelPermissions.perms_map,
         "POST": ["%(app_label)s.change_%(model_name)s"],
@@ -410,7 +445,7 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     serializer_class = serializers.Serializer
     permission_classes = (
         IsOrganizationManager,
-        UpgradeOperationCancelPermission,
+        PostRequiresChangePermission,
     )
     lookup_field = "pk"
     organization_field = "device__organization"
@@ -419,31 +454,9 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
         operation_description=_("Cancel an upgrade operation"),
         operation_summary=_("Cancel upgrade operation"),
         responses={
-            200: openapi.Response(
-                description=_("Upgrade operation cancelled successfully"),
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "message": openapi.Schema(
-                            type=openapi.TYPE_STRING, description=_("Success message")
-                        )
-                    },
-                ),
-            ),
-            409: openapi.Response(
-                description=_("Operation cannot be cancelled"),
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "error": openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description=_(
-                                "Error message explaining why cancellation is not allowed"
-                            ),
-                        )
-                    },
-                ),
-            ),
+            200: _message_response(_("Upgrade operation cancelled successfully")),
+            404: _error_response_schema(_("Upgrade operation not found")),
+            409: _error_response_schema(_("Operation cannot be cancelled")),
         },
     )
     def post(self, request, pk):
@@ -451,17 +464,17 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
         try:
             operation = self.get_object()
         except Http404:
-            return self._error_response(
-                "Upgrade operation not found", status.HTTP_404_NOT_FOUND
+            return _error_response(
+                _("Upgrade operation not found"), status.HTTP_404_NOT_FOUND
             )
         try:
             operation.cancel()
         except ValueError as e:
-            return self._error_response(str(e), status.HTTP_409_CONFLICT)
+            return _error_response(str(e), status.HTTP_409_CONFLICT)
         except Exception:
             logger.exception("Failed to cancel upgrade operation %s", pk)
-            return self._error_response(
-                "Failed to cancel upgrade operation",
+            return _error_response(
+                _("Failed to cancel upgrade operation"),
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         else:
@@ -469,13 +482,111 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
                 f"Upgrade operation {pk} cancelled successfully by user {request.user}"
             )
             return Response(
-                {"message": "Upgrade operation cancelled successfully"},
+                {"message": _("Upgrade operation cancelled successfully")},
                 status=status.HTTP_200_OK,
             )
 
-    def _error_response(self, message, status_code):
-        """Helper method to create consistent error responses."""
-        return Response({"error": message}, status=status_code)
+
+class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
+    queryset = BatchUpgradeOperation.objects.all()
+    serializer_class = BatchUpgradeRescheduleSerializer
+    permission_classes = (
+        IsOrganizationManager,
+        PostRequiresChangePermission,
+    )
+    lookup_field = "pk"
+    organization_field = "build__category__organization"
+
+    @swagger_auto_schema(
+        operation_description=_("Reschedule or edit a scheduled mass upgrade"),
+        operation_summary=_("Reschedule mass upgrade"),
+        responses={
+            200: _message_response(_("Mass upgrade rescheduled")),
+            400: _error_response_schema(_("Invalid schedule or field")),
+            404: _error_response_schema(_("Mass upgrade not found")),
+            409: _error_response_schema(_("Mass upgrade is no longer scheduled")),
+        },
+    )
+    def post(self, request, pk):
+        serializer = self.get_serializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data:
+            return _error_response(
+                _("No editable fields were provided."),
+                status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            batch = self.get_object()
+        except Http404:
+            return _error_response(
+                _("Mass upgrade not found"), status.HTTP_404_NOT_FOUND
+            )
+        try:
+            batch.reschedule(**serializer.validated_data)
+        except ValueError as e:
+            return _error_response(str(e), status.HTTP_409_CONFLICT)
+        except ValidationError as e:
+            return _error_response(str(e.messages[0]), status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("Failed to reschedule mass upgrade %s", pk)
+            return _error_response(
+                _("Failed to reschedule mass upgrade"),
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        else:
+            logger.info(
+                f"Mass upgrade {pk} rescheduled successfully by user {request.user}"
+            )
+            return Response(
+                {"message": _("Mass upgrade rescheduled successfully")},
+                status=status.HTTP_200_OK,
+            )
+
+
+class BatchUpgradeCancelView(ProtectedAPIMixin, generics.GenericAPIView):
+    queryset = BatchUpgradeOperation.objects.all()
+    serializer_class = serializers.Serializer
+    permission_classes = (
+        IsOrganizationManager,
+        PostRequiresChangePermission,
+    )
+    lookup_field = "pk"
+    organization_field = "build__category__organization"
+
+    @swagger_auto_schema(
+        operation_description=_("Cancel a mass upgrade"),
+        operation_summary=_("Cancel mass upgrade"),
+        responses={
+            200: _message_response(_("Mass upgrade cancelled")),
+            404: _error_response_schema(_("Mass upgrade not found")),
+            409: _error_response_schema(_("Mass upgrade cannot be cancelled")),
+        },
+    )
+    def post(self, request, pk):
+        try:
+            batch = self.get_object()
+        except Http404:
+            return _error_response(
+                _("Mass upgrade not found"), status.HTTP_404_NOT_FOUND
+            )
+        try:
+            batch.cancel()
+        except ValueError as e:
+            return _error_response(str(e), status.HTTP_409_CONFLICT)
+        except Exception:
+            logger.exception("Failed to cancel mass upgrade %s", pk)
+            return _error_response(
+                _("Failed to cancel mass upgrade"),
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        else:
+            logger.info(
+                f"Mass upgrade {pk} cancelled successfully by user {request.user}"
+            )
+            return Response(
+                {"message": _("Mass upgrade cancelled successfully")},
+                status=status.HTTP_200_OK,
+            )
 
 
 build_list = BuildListView.as_view()
@@ -485,6 +596,8 @@ category_list = CategoryListView.as_view()
 category_detail = CategoryDetailView.as_view()
 batch_upgrade_operation_list = BatchUpgradeOperationListView.as_view()
 batch_upgrade_operation_detail = BatchUpgradeOperationDetailView.as_view()
+batch_upgrade_operation_reschedule = BatchUpgradeRescheduleView.as_view()
+batch_upgrade_operation_cancel = BatchUpgradeCancelView.as_view()
 firmware_image_list = FirmwareImageListView.as_view()
 firmware_image_detail = FirmwareImageDetailView.as_view()
 firmware_image_download = FirmwareImageDownloadView.as_view()

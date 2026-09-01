@@ -36,3 +36,7 @@ fieldset.aligned label.is-persistent-checkbox input[type="checkbox"] {
   flex-shrink: 0;
   margin: 0;
 }
+
+#schedule-row .timezonewarning {
+  display: none;
+}

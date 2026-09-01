@@ -192,8 +192,10 @@ class AbstractBuild(TimeStampedEditableModel):
         group=None,
         location=None,
         is_persistent=True,
+        scheduled_at=None,
     ):
         upgrade_options = upgrade_options or {}
+        firmwareless = bool(firmwareless)
         # Check if there are any devices to upgrade with the given filters
         dry_run_result = load_model("BatchUpgradeOperation").dry_run(
             build=self, group=group, location=location
@@ -215,9 +217,17 @@ class AbstractBuild(TimeStampedEditableModel):
             group=group,
             location=location,
             is_persistent=is_persistent,
+            firmwareless=firmwareless,
+            scheduled_at=scheduled_at,
+            status="scheduled" if scheduled_at else "idle",
         )
-        batch.full_clean()
-        batch.save()
+        Category = load_model("Category")
+        with transaction.atomic():
+            Category.objects.select_for_update().filter(pk=self.category_id).first()
+            batch.full_clean()
+            batch.save()
+        if scheduled_at:
+            return batch
         transaction.on_commit(
             partial(batch_upgrade_operation.delay, batch.pk, firmwareless)
         )
@@ -617,6 +627,7 @@ class AbstractBatchUpgradeOperation(
     )
     STATUS_CHOICES = (
         ("idle", _("idle")),
+        ("scheduled", _("scheduled")),
         ("in-progress", _("in progress")),
         ("success", _("completed successfully")),
         ("failed", _("completed with some failures")),
@@ -642,11 +653,31 @@ class AbstractBatchUpgradeOperation(
             "this batch, null if no reminder has been sent yet"
         ),
     )
+    scheduled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("scheduled at"),
+        help_text=_(
+            "future date and time at which this mass upgrade is "
+            "launched, null for an immediate upgrade"
+        ),
+    )
+    firmwareless = models.BooleanField(
+        default=False,
+        verbose_name=_("firmwareless"),
+        help_text=_(
+            "whether to include devices that have no existing firmware "
+            "record when this mass upgrade launches"
+        ),
+    )
 
     class Meta:
         abstract = True
         verbose_name = _("Mass upgrade operation")
         verbose_name_plural = _("Mass upgrade operations")
+        indexes = [
+            models.Index(fields=["status", "scheduled_at"]),
+        ]
 
     def __str__(self):
         return f"{self.build} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
@@ -679,24 +710,94 @@ class AbstractBatchUpgradeOperation(
                     )
                 }
             )
-        self._validate_is_persistent_immutable()
+        stored = None if self._state.adding else self._fetch_stored_row()
+        self._validate_schedule(stored)
+        self._validate_is_persistent_immutable(stored)
+        self._validate_scheduled_editability(stored)
+        self._validate_no_conflict()
 
-    def _validate_is_persistent_immutable(self):
+    def _fetch_stored_row(self):
+        return (
+            load_model("BatchUpgradeOperation")
+            .objects.values(
+                "status",
+                "is_persistent",
+                "build_id",
+                "upgrade_options",
+                "scheduled_at",
+                "firmwareless",
+            )
+            .get(pk=self.pk)
+        )
+
+    def _validate_schedule(self, stored=None):
         """
-        Reject changes to ``is_persistent`` once the batch has left ``idle``.
-        Idle batches haven't dispatched anything yet, so the flag can still
-        flip; after that the retry pipeline relies on it staying stable.
+        Enforce the min-delay/max-horizon bounds only when the schedule is set
+        or changed; an unchanged stored time is left alone so a now-due batch
+        is not rejected at launch.
+        """
+        if self.scheduled_at is None:
+            if self.status == "scheduled":
+                raise ValidationError(
+                    {
+                        "scheduled_at": _(
+                            "A scheduled mass upgrade must have a scheduled time; "
+                            "cancel it instead of clearing the time."
+                        )
+                    }
+                )
+            return
+        if not self._state.adding:
+            if stored is None:
+                stored = self._fetch_stored_row()
+            if self.scheduled_at == stored["scheduled_at"]:
+                return
+        now = timezone.now()
+        min_delay = app_settings.SCHEDULE_MIN_DELAY
+        max_horizon = app_settings.SCHEDULE_MAX_HORIZON
+        if self.scheduled_at < now + timedelta(seconds=min_delay):
+            minutes = max(1, -(-min_delay // 60))
+            raise ValidationError(
+                {
+                    "scheduled_at": ngettext(
+                        "The scheduled time must be at least %(minutes)d "
+                        "minute in the future.",
+                        "The scheduled time must be at least %(minutes)d "
+                        "minutes in the future.",
+                        minutes,
+                    )
+                    % {"minutes": minutes}
+                }
+            )
+        if self.scheduled_at > now + timedelta(seconds=max_horizon):
+            days = max(1, -(-max_horizon // 86400))
+            raise ValidationError(
+                {
+                    "scheduled_at": ngettext(
+                        "The scheduled time cannot be more than %(days)d "
+                        "day in the future.",
+                        "The scheduled time cannot be more than %(days)d "
+                        "days in the future.",
+                        days,
+                    )
+                    % {"days": days}
+                }
+            )
+
+    def _validate_is_persistent_immutable(self, stored=None):
+        """
+        Reject changes to ``is_persistent`` once the batch has left the
+        pre-launch states. ``idle`` and ``scheduled`` batches haven't
+        dispatched anything yet, so the flag can still flip; after that
+        the retry pipeline relies on it staying stable.
         """
         if self._state.adding:
             return
-        stored_status, stored_is_persistent = (
-            load_model("BatchUpgradeOperation")
-            .objects.values_list("status", "is_persistent")
-            .get(pk=self.pk)
-        )
-        if stored_status == "idle":
+        if stored is None:
+            stored = self._fetch_stored_row()
+        if stored["status"] in ("idle", "scheduled"):
             return
-        if self.is_persistent != stored_is_persistent:
+        if self.is_persistent != stored["is_persistent"]:
             raise ValidationError(
                 {
                     "is_persistent": _(
@@ -706,10 +807,152 @@ class AbstractBatchUpgradeOperation(
                 }
             )
 
-    def upgrade(self, firmwareless):
-        self.status = "in-progress"
-        self.save()
+    def _validate_scheduled_editability(self, stored=None):
+        """
+        The build is frozen once a batch leaves ``idle`` and the schedule once
+        it leaves ``scheduled``: re-targeting the firmware or the time after the
+        device set was computed would invalidate the run.
+        """
+        if self._state.adding:
+            return
+        if stored is None:
+            stored = self._fetch_stored_row()
+        if stored["status"] == "idle":
+            return
+        if self.build_id != stored["build_id"]:
+            raise ValidationError(
+                {
+                    "build": _(
+                        "The build cannot be changed once the mass upgrade "
+                        "has been scheduled or started"
+                    )
+                }
+            )
+        if self.upgrade_options != stored["upgrade_options"]:
+            raise ValidationError(
+                {
+                    "upgrade_options": _(
+                        "The upgrade options cannot be changed once the mass "
+                        "upgrade has been scheduled or started"
+                    )
+                }
+            )
+        if stored["status"] == "scheduled" and self.status == "scheduled":
+            return
+        if self.scheduled_at != stored["scheduled_at"]:
+            raise ValidationError(
+                {
+                    "scheduled_at": _(
+                        "The scheduled time cannot be changed after the mass "
+                        "upgrade has started"
+                    )
+                }
+            )
+        if self.firmwareless != stored["firmwareless"]:
+            raise ValidationError(
+                {
+                    "firmwareless": _(
+                        "The firmwareless option cannot be changed after the "
+                        "mass upgrade has started"
+                    )
+                }
+            )
+
+    def _filters_overlap_with(self, other):
+        if self.build.category_id != other.build.category_id:
+            return False
+        group_overlaps = (
+            self.group_id is None
+            or other.group_id is None
+            or self.group_id == other.group_id
+        )
+        location_overlaps = (
+            self.location_id is None
+            or other.location_id is None
+            or self.location_id == other.location_id
+        )
+        return group_overlaps and location_overlaps
+
+    def _validate_no_conflict(self):
+        """
+        Reject creation or update (including reschedules and status edits)
+        when an active batch or an active per-device operation already covers
+        this batch's device population: launching a second upgrade over the
+        same devices would flash them twice and make progress reporting
+        meaningless.
+        """
+        conflict = self._find_conflict()
+        if conflict:
+            raise ValidationError(conflict)
+
+    def _find_conflict(self):
+        """
+        Return a message describing an active batch or per-device operation
+        that already covers this batch's device population, or ``None``. Run
+        both at create/edit time and again at launch, because the schedule
+        horizon is long enough for a clashing operation to appear in between.
+        """
+        Batch = load_model("BatchUpgradeOperation")
+        active = (
+            Batch.objects.filter(
+                status__in=("idle", "scheduled", "in-progress"),
+                build__category_id=self.build.category_id,
+            )
+            .exclude(pk=self.pk)
+            .select_related("build")
+        )
+        for existing in active:
+            if self._filters_overlap_with(existing):
+                if existing.scheduled_at:
+                    local = timezone.localtime(existing.scheduled_at)
+                    when = "%s (%s)" % (local.strftime("%Y-%m-%d %H:%M"), local.tzinfo)
+                else:
+                    when = _("immediate execution")
+                return _(
+                    "A conflicting mass upgrade already exists: operation "
+                    "%(pk)s (status: %(status)s, scheduled for %(when)s)."
+                ) % {
+                    "pk": existing.pk,
+                    "status": existing.get_status_display(),
+                    "when": when,
+                }
+        UpgradeOperation = load_model("UpgradeOperation")
+        device_ids = self.build._find_related_device_firmwares(
+            group=self.group, location=self.location
+        ).values_list("device_id", flat=True)
+        if self.firmwareless:
+            device_ids = list(device_ids) + list(
+                self.build._find_firmwareless_devices(
+                    group=self.group, location=self.location
+                ).values_list("pk", flat=True)
+            )
+        clashing = UpgradeOperation.objects.filter(
+            status__in=UpgradeOperation.CANCELLABLE_STATUS,
+            device_id__in=device_ids,
+        )
+        if self.pk is not None:
+            clashing = clashing.exclude(batch_id=self.pk)
+        clash = clashing.first()
+        if clash:
+            return _(
+                "A device in this upgrade already has an active operation "
+                "(device %(device)s, status: %(status)s)."
+            ) % {"device": clash.device_id, "status": clash.get_status_display()}
+        return None
+
+    def upgrade(self, firmwareless=None):
+        if firmwareless is None:
+            firmwareless = self.firmwareless
         with transaction.atomic():
+            locked = (
+                self._meta.model.objects.select_for_update()
+                .filter(pk=self.pk, status__in=("idle", "in-progress"))
+                .first()
+            )
+            if locked is None or locked.upgradeoperation_set.exists():
+                return
+            self.status = "in-progress"
+            self.save(update_fields=["status"])
             self.upgrade_related_devices()
             if firmwareless:
                 self.upgrade_firmwareless_devices()
@@ -1004,6 +1247,8 @@ class AbstractBatchUpgradeOperation(
         """
         if created or instance.status not in ("success", "failed"):
             return
+        if not instance.upgradeoperation_set.exists():
+            return
         if getattr(instance, "_previous_status", None) == instance.status:
             return
         description = _("Mass upgrade %(batch)s %(status)s.") % {
@@ -1020,6 +1265,187 @@ class AbstractBatchUpgradeOperation(
             )
         )
         instance._previous_status = instance.status
+
+    def cancel(self):
+        if self.status == "scheduled":
+            # Re-save the same status after the atomic claim so post_save fires.
+            updated = self._meta.model.objects.filter(
+                pk=self.pk, status="scheduled"
+            ).update(status="cancelled")
+            if not updated:
+                self.refresh_from_db(fields=["status"])
+                raise ValueError(
+                    _("Cannot cancel mass upgrade with status: %(status)s")
+                    % {"status": self.status}
+                )
+            self.status = "cancelled"
+            self.save(update_fields=["status"])
+            return
+        if self.status == "in-progress":
+            UpgradeOperation = load_model("UpgradeOperation")
+            with transaction.atomic():
+                locked = self._meta.model.objects.select_for_update().get(pk=self.pk)
+                if locked.status != "in-progress":
+                    self.refresh_from_db(fields=["status"])
+                    return
+                if not locked.upgradeoperation_set.exists():
+                    self.status = "cancelled"
+                    self.save(update_fields=["status"])
+                    return
+                operations = list(
+                    locked.upgradeoperation_set.filter(
+                        status__in=UpgradeOperation.CANCELLABLE_STATUS,
+                        progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
+                    )
+                )
+            for operation in operations:
+                try:
+                    operation.cancel()
+                except ValueError as error:
+                    logger.warning(
+                        "Could not cancel upgrade operation %s of batch %s: %s",
+                        operation.pk,
+                        self.pk,
+                        error,
+                    )
+                    continue
+            self.refresh_from_db()
+            return
+        raise ValueError(
+            _("Cannot cancel mass upgrade with status: %(status)s")
+            % {"status": self.status}
+        )
+
+    def reschedule(self, **fields):
+        """Applies validated schedule changes under a row lock while scheduled."""
+        Category = load_model("Category")
+        with transaction.atomic():
+            obj = self._meta.model.objects.select_for_update().get(pk=self.pk)
+            if obj.status != "scheduled":
+                raise ValueError(
+                    _("Cannot reschedule mass upgrade with status: %(status)s")
+                    % {"status": obj.status}
+                )
+            Category.objects.select_for_update().filter(
+                pk=obj.build.category_id
+            ).first()
+            for field, value in fields.items():
+                setattr(obj, field, value)
+            obj.full_clean()
+            obj.save()
+
+    @classmethod
+    def execute_due_scheduled(cls):
+        """
+        Claims every scheduled mass upgrade whose ``scheduled_at`` has elapsed
+        and dispatches it, failing those no longer eligible or in conflict.
+        """
+        now = timezone.now()
+        cls._recover_orphaned_launches(now)
+        due_ids = list(
+            cls.objects.filter(status="scheduled", scheduled_at__lte=now).values_list(
+                "pk", flat=True
+            )
+        )
+        for batch_id in due_ids:
+            with transaction.atomic():
+                try:
+                    batch = (
+                        cls.objects.select_for_update(of=("self",))
+                        .select_related("build")
+                        .get(pk=batch_id)
+                    )
+                except ObjectDoesNotExist:
+                    continue
+                if batch.status != "scheduled" or batch.scheduled_at > now:
+                    continue
+                load_model("Category").objects.select_for_update().filter(
+                    pk=batch.build.category_id
+                ).first()
+                result = cls.dry_run(
+                    build=batch.build, group=batch.group, location=batch.location
+                )
+                eligible = result["device_firmwares"].exists() or (
+                    batch.firmwareless and result["devices"].exists()
+                )
+                conflict = batch._find_conflict()
+                if not eligible or conflict:
+                    failed = cls.objects.filter(
+                        pk=batch_id, status="scheduled", scheduled_at__lte=now
+                    ).update(status="failed", modified=timezone.now())
+                    if failed:
+                        batch.status = "failed"
+                        batch.save(update_fields=["status", "modified"])
+                        batch._scheduled_validation_failed(reason=conflict)
+                    continue
+                claimed = cls.objects.filter(
+                    pk=batch_id, status="scheduled", scheduled_at__lte=now
+                ).update(status="in-progress", modified=timezone.now())
+                if not claimed:
+                    continue
+                batch.status = "in-progress"
+                firmwareless = batch.firmwareless
+            try:
+                batch_upgrade_operation.delay(batch_id, firmwareless)
+            except Exception:
+                cls.objects.filter(pk=batch_id, status="in-progress").update(
+                    status="scheduled"
+                )
+                logger.warning(
+                    "Failed to dispatch scheduled mass upgrade %s, reverted to "
+                    "scheduled",
+                    batch_id,
+                )
+                continue
+            batch._scheduled_started()
+
+    @classmethod
+    def _recover_orphaned_launches(cls, now):
+        """
+        Reverts scheduled batches stuck ``in-progress`` with no children past
+        the launch timeout back to ``scheduled`` for a later scan to redispatch.
+        """
+        stale = now - timedelta(seconds=app_settings.SCHEDULE_LAUNCH_TIMEOUT)
+        cls.objects.filter(
+            status="in-progress",
+            scheduled_at__isnull=False,
+            modified__lte=stale,
+            upgradeoperation__isnull=True,
+        ).update(status="scheduled")
+
+    def _scheduled_started(self):
+        description = _("Scheduled mass upgrade %(batch)s has started.") % {
+            "batch": self
+        }
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=self,
+                type="generic_message",
+                target=self,
+                message=description,
+            )
+        )
+
+    def _scheduled_validation_failed(self, reason=None):
+        if reason:
+            description = _(
+                "Scheduled mass upgrade %(batch)s was not started: %(reason)s"
+            ) % {"batch": self, "reason": reason}
+        else:
+            description = _(
+                "Scheduled mass upgrade %(batch)s was not started: no eligible "
+                "devices remained at the scheduled time."
+            ) % {"batch": self}
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=self,
+                type="generic_message",
+                target=self,
+                message=description,
+            )
+        )
 
 
 class AbstractUpgradeOperation(

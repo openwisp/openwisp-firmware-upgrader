@@ -83,8 +83,11 @@ List Mass Upgrade Operations
 The list of batch upgrade operations provides the following filters:
 
 - ``build`` (Firmware build ID)
-- ``status`` (One of: idle, in-progress, success, failed, cancelled)
+- ``status`` (One of: idle, scheduled, in-progress, success, failed,
+  cancelled)
 - ``is_persistent`` (true or false)
+- ``scheduled_at`` (launch time of a scheduled batch)
+- ``created`` (creation timestamp of the batch)
 
 Here's a few examples:
 
@@ -93,6 +96,8 @@ Here's a few examples:
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?build={build_id}
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status={status}
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?is_persistent=true
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status=scheduled
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?ordering=scheduled_at
 
 Get Mass Upgrade Operation Detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -100,6 +105,45 @@ Get Mass Upgrade Operation Detail
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/
+
+The response exposes ``scheduled_at`` and the ``status`` field, so a
+client can poll a scheduled batch as it moves from ``scheduled`` to
+``in-progress`` (or to ``failed`` if the execution-time re-validation
+finds no eligible devices).
+
+Reschedule a Mass Upgrade
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/reschedule/
+
+Edits a batch while it is in the ``scheduled`` status. The editable fields
+are ``scheduled_at``, ``group``, ``location``, ``is_persistent`` and
+``upgrade_all`` (the firmwareless option); ``build`` and
+``upgrade_options`` cannot be changed. A body with only ``scheduled_at``
+just moves the launch time.
+
+.. note::
+
+    This endpoint returns a 409 status code if the batch has already left
+    the ``scheduled`` status.
+
+Cancel a Mass Upgrade
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/cancel/
+
+Cancels a batch while it is ``scheduled`` or ``in-progress``. A scheduled
+batch is marked ``cancelled`` and never runs; an in-progress batch cancels
+the operations that have not yet started reflashing.
+
+.. note::
+
+    This endpoint returns a 409 status code if the batch is already in a
+    terminal state.
 
 List Firmware Builds
 ~~~~~~~~~~~~~~~~~~~~
@@ -226,6 +270,13 @@ the request body:
 - ``is_persistent`` (boolean, default ``true``): keep retrying offline
   devices until they come back online or the operation is cancelled. See
   :doc:`persistent-mass-upgrades`.
+- ``upgrade_all`` (boolean, default ``false``): also upgrade devices that
+  have no firmware image on record, letting the system pick an image from
+  the hardware model
+- ``scheduled_at`` (ISO 8601 datetime with timezone offset): run the
+  upgrade at this time instead of immediately. The batch is created in the
+  ``scheduled`` status and launched when the time arrives. Omit it to
+  upgrade now.
 
 Example with filters:
 
@@ -235,6 +286,19 @@ Example with filters:
         "group": "{group_id}",
         "location": "{location_id}"
     }
+
+Example scheduling the upgrade for later:
+
+.. code-block:: json
+
+    {
+        "scheduled_at": "{future_iso8601_datetime}"
+    }
+
+The ``scheduled_at`` value must be a timezone-aware ISO 8601 timestamp in
+the future that satisfies the configured minimum delay and maximum
+scheduling horizon (see :doc:`scheduled-mass-upgrades`). Naive timestamps
+(without a UTC offset) are rejected with an HTTP 400 response.
 
 Dry-run Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~

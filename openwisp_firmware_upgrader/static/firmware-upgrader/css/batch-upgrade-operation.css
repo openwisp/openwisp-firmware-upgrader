@@ -276,3 +276,99 @@
 #main #content .filters-top {
   margin-bottom: 0.5rem;
 }
+
+/* -------------------------------------------------------------------------
+   Batch actions: reschedule + cancel panel (batch-detail page)
+   ------------------------------------------------------------------------- */
+.batch-actions.module {
+  margin: 20px 0;
+  padding-bottom: 12px;
+}
+
+.batch-actions .batch-actions-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 14px 4px;
+}
+
+.batch-actions .batch-reschedule-form {
+  padding: 6px 14px 4px;
+  border-top: 1px solid var(--hairline-color);
+}
+.batch-actions .batch-reschedule-form.ow-hide {
+  display: none;
+}
+
+.batch-actions .batch-reschedule-form .form-row {
+  border: 0;
+  padding: 10px 0;
+  background: transparent;
+}
+
+.batch-actions .flex-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.batch-actions .flex-container > label {
+  min-width: 130px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.batch-actions select,
+.batch-actions .select2-container {
+  max-width: 320px;
+  min-width: 220px;
+}
+
+.batch-actions .help {
+  padding-left: 0;
+  margin-top: 4px;
+}
+
+.batch-actions .vCheckboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  margin: 0;
+}
+.batch-actions .vCheckboxLabel input[type="checkbox"] {
+  margin: 0;
+}
+
+.batch-actions .batch-reschedule-footer {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--hairline-color);
+}
+
+@media (max-width: 767px) {
+  .batch-actions .batch-actions-buttons .button {
+    flex: 1;
+    text-align: center;
+  }
+  .batch-actions .flex-container {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .batch-actions .flex-container > label {
+    min-width: 0;
+  }
+  .batch-actions select {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+/* the reschedule time is entered in the browser timezone, so Django's
+   server-time warning does not apply */
+#batch-reschedule-form .timezonewarning {
+  display: none;
+}

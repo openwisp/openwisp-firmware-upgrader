@@ -1,4 +1,5 @@
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -78,17 +79,44 @@ class BuildSerializer(BaseSerializer):
         fields = "__all__"
 
 
+class TimezoneAwareDateTimeField(serializers.DateTimeField):
+    def enforce_timezone(self, value):
+        if timezone.is_naive(value):
+            raise serializers.ValidationError(
+                _(
+                    "The scheduled time must include a timezone offset, "
+                    "e.g. '2026-08-25T09:00:00Z'."
+                )
+            )
+        return super().enforce_timezone(value)
+
+
 class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
     upgrade_all = serializers.BooleanField(required=False, default=False)
     is_persistent = serializers.BooleanField(required=False, default=True)
+    scheduled_at = TimezoneAwareDateTimeField(required=False, allow_null=True)
 
     class Meta:
-        fields = ("upgrade_all", "is_persistent", "group", "location")
+        fields = (
+            "upgrade_all",
+            "is_persistent",
+            "group",
+            "location",
+            "scheduled_at",
+        )
         model = BatchUpgradeOperation
         extra_kwargs = {
             "group": {"required": False, "allow_null": True},
             "location": {"required": False, "allow_null": True},
         }
+
+
+class BatchUpgradeRescheduleSerializer(BatchUpgradeSerializer):
+    upgrade_all = serializers.BooleanField(source="firmwareless", required=False)
+
+    class Meta(BatchUpgradeSerializer.Meta):
+        fields = BatchUpgradeSerializer.Meta.fields + ("build", "upgrade_options")
+        read_only_fields = ("build", "upgrade_options")
 
 
 class UpgradeOperationSerializer(serializers.ModelSerializer):
