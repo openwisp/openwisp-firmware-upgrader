@@ -37,7 +37,7 @@
     <div class="form-row">
       <div>
         <div class="flex-container">
-          <label class="required">{% trans "Scheduled time" %}:</label>
+          <label class="required" for="id_scheduled_at_0">{% trans "Scheduled time" %}:</label>
           {{ reschedule_form.scheduled_at }}
         </div>
         <div class="help ow-schedule-tz-note"></div>
@@ -97,6 +97,7 @@
 </section>
 {% endif %}
 
+{% if batch.status != "scheduled" %}
 <!-- Upgrade Operations Section -->
 <h1 class="upgrade-operations-title">{% trans "Upgrade Operations" %}</h1>
 
@@ -271,6 +272,7 @@
     </span>
   </div>
   {% endif %}
+{% endif %}
 </div>
 {% endblock %}
 

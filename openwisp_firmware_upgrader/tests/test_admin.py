@@ -347,6 +347,28 @@ class TestAdmin(BaseTestAdmin, TestCase):
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
         self.assertEqual(batch.scheduled_at, due)
 
+    def test_schedule_naive_datetime_rejected(self):
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.now() + timedelta(days=1)).replace(
+            second=0, microsecond=0, tzinfo=None
+        )
+        response = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at": due.isoformat(),
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "must include a timezone offset")
+        self.assertFalse(
+            BatchUpgradeOperation.objects.filter(build=env["build2"]).exists()
+        )
+
     def test_batch_list_schedule(self):
         self._login()
         env = self._create_upgrade_env()

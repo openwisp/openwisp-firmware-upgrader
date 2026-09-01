@@ -221,8 +221,11 @@ class AbstractBuild(TimeStampedEditableModel):
             scheduled_at=scheduled_at,
             status="scheduled" if scheduled_at else "idle",
         )
-        batch.full_clean()
-        batch.save()
+        Category = load_model("Category")
+        with transaction.atomic():
+            Category.objects.select_for_update().filter(pk=self.category_id).first()
+            batch.full_clean()
+            batch.save()
         if scheduled_at:
             return batch
         transaction.on_commit(
@@ -653,7 +656,6 @@ class AbstractBatchUpgradeOperation(
     scheduled_at = models.DateTimeField(
         null=True,
         blank=True,
-        db_index=True,
         verbose_name=_("scheduled at"),
         help_text=_(
             "future date and time at which this mass upgrade is "
@@ -673,6 +675,9 @@ class AbstractBatchUpgradeOperation(
         abstract = True
         verbose_name = _("Mass upgrade operation")
         verbose_name_plural = _("Mass upgrade operations")
+        indexes = [
+            models.Index(fields=["status", "scheduled_at"]),
+        ]
 
     def __str__(self):
         return f"{self.build} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
@@ -915,6 +920,12 @@ class AbstractBatchUpgradeOperation(
         device_ids = self.build._find_related_device_firmwares(
             group=self.group, location=self.location
         ).values_list("device_id", flat=True)
+        if self.firmwareless:
+            device_ids = list(device_ids) + list(
+                self.build._find_firmwareless_devices(
+                    group=self.group, location=self.location
+                ).values_list("pk", flat=True)
+            )
         clashing = UpgradeOperation.objects.filter(
             status__in=UpgradeOperation.CANCELLABLE_STATUS,
             device_id__in=device_ids,
@@ -932,16 +943,16 @@ class AbstractBatchUpgradeOperation(
     def upgrade(self, firmwareless=None):
         if firmwareless is None:
             firmwareless = self.firmwareless
-        # A cancel committed first moves the row out of these states, so the
-        # claim matches nothing and no operations are created.
-        claimed = self._meta.model.objects.filter(
-            pk=self.pk, status__in=("idle", "in-progress")
-        ).update(status="in-progress")
-        if not claimed:
-            return
-        self.status = "in-progress"
-        self.save(update_fields=["status"])
         with transaction.atomic():
+            locked = (
+                self._meta.model.objects.select_for_update()
+                .filter(pk=self.pk, status__in=("idle", "in-progress"))
+                .first()
+            )
+            if locked is None or locked.upgradeoperation_set.exists():
+                return
+            self.status = "in-progress"
+            self.save(update_fields=["status"])
             self.upgrade_related_devices()
             if firmwareless:
                 self.upgrade_firmwareless_devices()
@@ -1272,22 +1283,21 @@ class AbstractBatchUpgradeOperation(
             return
         if self.status == "in-progress":
             UpgradeOperation = load_model("UpgradeOperation")
-            if not self.upgradeoperation_set.exists():
-                # No children yet: claim the row so the dispatched worker's CAS
-                # fails and it flashes nothing.
-                updated = self._meta.model.objects.filter(
-                    pk=self.pk, status="in-progress"
-                ).update(status="cancelled")
-                if updated:
+            with transaction.atomic():
+                locked = self._meta.model.objects.select_for_update().get(pk=self.pk)
+                if locked.status != "in-progress":
+                    self.refresh_from_db(fields=["status"])
+                    return
+                if not locked.upgradeoperation_set.exists():
                     self.status = "cancelled"
                     self.save(update_fields=["status"])
-                else:
-                    self.refresh_from_db(fields=["status"])
-                return
-            operations = self.upgradeoperation_set.filter(
-                status__in=UpgradeOperation.CANCELLABLE_STATUS,
-                progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
-            )
+                    return
+                operations = list(
+                    locked.upgradeoperation_set.filter(
+                        status__in=UpgradeOperation.CANCELLABLE_STATUS,
+                        progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
+                    )
+                )
             for operation in operations:
                 try:
                     operation.cancel()
@@ -1308,6 +1318,7 @@ class AbstractBatchUpgradeOperation(
 
     def reschedule(self, **fields):
         """Applies validated schedule changes under a row lock while scheduled."""
+        Category = load_model("Category")
         with transaction.atomic():
             obj = self._meta.model.objects.select_for_update().get(pk=self.pk)
             if obj.status != "scheduled":
@@ -1315,6 +1326,9 @@ class AbstractBatchUpgradeOperation(
                     _("Cannot reschedule mass upgrade with status: %(status)s")
                     % {"status": obj.status}
                 )
+            Category.objects.select_for_update().filter(
+                pk=obj.build.category_id
+            ).first()
             for field, value in fields.items():
                 setattr(obj, field, value)
             obj.full_clean()
@@ -1327,42 +1341,52 @@ class AbstractBatchUpgradeOperation(
         and dispatches it, failing those no longer eligible or in conflict.
         """
         now = timezone.now()
+        cls._recover_orphaned_launches(now)
         due_ids = list(
             cls.objects.filter(status="scheduled", scheduled_at__lte=now).values_list(
                 "pk", flat=True
             )
         )
         for batch_id in due_ids:
-            try:
-                batch = cls.objects.select_related("build").get(pk=batch_id)
-            except ObjectDoesNotExist:
-                continue
-            if batch.status != "scheduled":
-                continue
-            result = cls.dry_run(
-                build=batch.build, group=batch.group, location=batch.location
-            )
-            eligible = result["device_firmwares"].exists() or (
-                batch.firmwareless and result["devices"].exists()
-            )
-            conflict = batch._find_conflict()
-            if not eligible or conflict:
-                with transaction.atomic():
+            with transaction.atomic():
+                try:
+                    batch = (
+                        cls.objects.select_for_update(of=("self",))
+                        .select_related("build")
+                        .get(pk=batch_id)
+                    )
+                except ObjectDoesNotExist:
+                    continue
+                if batch.status != "scheduled" or batch.scheduled_at > now:
+                    continue
+                load_model("Category").objects.select_for_update().filter(
+                    pk=batch.build.category_id
+                ).first()
+                result = cls.dry_run(
+                    build=batch.build, group=batch.group, location=batch.location
+                )
+                eligible = result["device_firmwares"].exists() or (
+                    batch.firmwareless and result["devices"].exists()
+                )
+                conflict = batch._find_conflict()
+                if not eligible or conflict:
                     failed = cls.objects.filter(
                         pk=batch_id, status="scheduled", scheduled_at__lte=now
-                    ).update(status="failed")
+                    ).update(status="failed", modified=timezone.now())
                     if failed:
                         batch.status = "failed"
-                        batch.save(update_fields=["status"])
+                        batch.save(update_fields=["status", "modified"])
                         batch._scheduled_validation_failed(reason=conflict)
-                continue
-            claimed = cls.objects.filter(
-                pk=batch_id, status="scheduled", scheduled_at__lte=now
-            ).update(status="in-progress")
-            if not claimed:
-                continue
+                    continue
+                claimed = cls.objects.filter(
+                    pk=batch_id, status="scheduled", scheduled_at__lte=now
+                ).update(status="in-progress", modified=timezone.now())
+                if not claimed:
+                    continue
+                batch.status = "in-progress"
+                firmwareless = batch.firmwareless
             try:
-                batch_upgrade_operation.delay(batch_id, batch.firmwareless)
+                batch_upgrade_operation.delay(batch_id, firmwareless)
             except Exception:
                 cls.objects.filter(pk=batch_id, status="in-progress").update(
                     status="scheduled"
@@ -1374,6 +1398,20 @@ class AbstractBatchUpgradeOperation(
                 )
                 continue
             batch._scheduled_started()
+
+    @classmethod
+    def _recover_orphaned_launches(cls, now):
+        """
+        Reverts scheduled batches stuck ``in-progress`` with no children past
+        the launch timeout back to ``scheduled`` for a later scan to redispatch.
+        """
+        stale = now - timedelta(seconds=app_settings.SCHEDULE_LAUNCH_TIMEOUT)
+        cls.objects.filter(
+            status="in-progress",
+            scheduled_at__isnull=False,
+            modified__lte=stale,
+            upgradeoperation__isnull=True,
+        ).update(status="scheduled")
 
     def _scheduled_started(self):
         description = _("Scheduled mass upgrade %(batch)s has started.") % {
