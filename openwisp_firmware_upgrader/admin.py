@@ -306,7 +306,11 @@ class FirmwareImageAdmin(BaseAdmin):
                     "fw_version",
                 ]
             elif status == FirmwareImage.STATUS_INCOMPLETE:
-                readonly += ["board", "compatible"]
+                if obj.source == "dtb":
+                    # board/compatible came confidently from a DTB scan
+                    readonly += ["board", "compatible"]
+                # a fwtool-sourced incomplete image has an unconfirmed
+                # board, so board/compatible stay editable for correction
             elif status == FirmwareImage.STATUS_SUCCESS:
                 readonly += [
                     "board",
@@ -379,12 +383,23 @@ class FirmwareImageAdmin(BaseAdmin):
                             _("Board is required to manually confirm this image."),
                             messages.WARNING,
                         )
-            elif obj.extraction_status == FirmwareImage.STATUS_INCOMPLETE and any(
-                field in form.changed_data for field in ["target", "fw_version"]
-            ):
-                obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
-                obj.failure_reason = ""
-                update_build_status = True
+            elif obj.extraction_status == FirmwareImage.STATUS_INCOMPLETE:
+                trigger_fields = (
+                    ["target", "fw_version"]
+                    if obj.source == "dtb"
+                    else ["target", "fw_version", "board"]
+                )
+                if any(field in form.changed_data for field in trigger_fields):
+                    if obj.board:
+                        obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
+                        obj.failure_reason = ""
+                        update_build_status = True
+                    else:
+                        self.message_user(
+                            request,
+                            _("Board is required to manually confirm this image."),
+                            messages.WARNING,
+                        )
         super().save_model(request, obj, form, change)
         if update_build_status:
             obj.build.update_extraction_status()

@@ -1,5 +1,4 @@
 import os
-import shutil
 import tempfile
 from datetime import timedelta
 from functools import partial
@@ -218,13 +217,14 @@ def extract_firmware_metadata(self, image_pk):
         return
 
     file_name = image.file.name
+    claimed_at = timezone.now()
     updated = FirmwareImage.objects.filter(
         pk=image_pk,
         file=file_name,
         extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
     ).update(
         extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
-        extraction_claimed_at=timezone.now(),
+        extraction_claimed_at=claimed_at,
     )
     if not updated:
         return
@@ -237,6 +237,7 @@ def extract_firmware_metadata(self, image_pk):
         FirmwareImage.objects.filter(
             pk=image.pk,
             extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+            extraction_claimed_at=claimed_at,
         ).update(
             extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
             extraction_claimed_at=None,
@@ -254,11 +255,26 @@ def extract_firmware_metadata(self, image_pk):
         with tempfile.NamedTemporaryFile(
             suffix=f"-{os.path.basename(image.file.name)}"
         ) as tmp:
+            max_bytes = app_settings.MAX_KERNEL_BYTES
+            copy_chunk_size = 64 * 1024
+            copied = 0
             with image.file.open("rb") as file_obj:
-                shutil.copyfileobj(file_obj, tmp)
+                while True:
+                    chunk = file_obj.read(copy_chunk_size)
+                    if not chunk:
+                        break
+                    copied += len(chunk)
+                    if copied > max_bytes:
+                        raise DecompressionLimitExceeded(
+                            _("Firmware file exceeds limit of {size} bytes.").format(
+                                size=max_bytes
+                            )
+                        )
+                    tmp.write(chunk)
             tmp.flush()
             meta = extractor_class(tmp.name).extract()
         board = meta.get("model") or ""
+        model_confirmed = meta.get("model_confirmed", False)
         if meta.get("source") == "dtb":
             log_lines.append(
                 "[-] fwtool: no metadata trailer found, fell back to DTB scan"
@@ -287,6 +303,12 @@ def extract_firmware_metadata(self, image_pk):
             update["failure_reason"] = FirmwareImage.FAILURE_UNSUPPORTED
         elif meta.get("source") == "dtb":
             log_lines.append("[+] extraction: incomplete, manual input required")
+            update["extraction_status"] = FirmwareImage.STATUS_INCOMPLETE
+        elif not model_confirmed:
+            log_lines.append(
+                "[!] Board could not be confirmed against a real device "
+                "model. Manual input is required."
+            )
             update["extraction_status"] = FirmwareImage.STATUS_INCOMPLETE
         else:
             log_lines.append("[+] extraction: success")
@@ -349,6 +371,7 @@ def extract_firmware_metadata(self, image_pk):
             pk=image_pk,
             file=file_name,
             extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+            extraction_claimed_at=claimed_at,
         ).update(**update)
     except Exception:
         logger.exception(
@@ -356,14 +379,19 @@ def extract_firmware_metadata(self, image_pk):
             image_pk,
         )
         log_lines.append("[!] Failed to save extraction result. Manual input required.")
-        FirmwareImage.objects.filter(
+        # extraction_claimed_at must match, otherwise this could invalidate
+        # a newer, unrelated claim that reused this same pk
+        rows_updated = FirmwareImage.objects.filter(
             pk=image_pk,
             extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+            extraction_claimed_at=claimed_at,
         ).update(
             extraction_status=FirmwareImage.STATUS_INVALID,
             failure_reason=FirmwareImage.FAILURE_INVALID,
             extraction_log="\n".join(log_lines),
         )
+        if not rows_updated:
+            return
         _finalize_failed_extraction(
             image_pk,
             FirmwareImage.STATUS_INVALID,
@@ -469,16 +497,21 @@ def queue_unconfirmed_extractions():
 def reclaim_stale_extractions():
     FirmwareImage = load_model("FirmwareImage")
     cutoff = timezone.now() - timedelta(seconds=app_settings.EXTRACTION_CLAIM_TIMEOUT)
-    stale_pks = list(
+    stale_claims = list(
         FirmwareImage.objects.filter(extraction_status=FirmwareImage.STATUS_IN_PROGRESS)
         .filter(
             Q(extraction_claimed_at__lt=cutoff) | Q(extraction_claimed_at__isnull=True)
         )
-        .values_list("pk", flat=True)
+        .values_list("pk", "extraction_claimed_at")
     )
-    for pk in stale_pks:
+    for pk, claimed_at in stale_claims:
+        # extraction_claimed_at must match, otherwise a row already
+        # re-claimed fresh by a new worker between the query above and
+        # this update could be reclaimed a second time by mistake
         rows_updated = FirmwareImage.objects.filter(
-            pk=pk, extraction_status=FirmwareImage.STATUS_IN_PROGRESS
+            pk=pk,
+            extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+            extraction_claimed_at=claimed_at,
         ).update(
             extraction_status=FirmwareImage.STATUS_FAILED,
             failure_reason=FirmwareImage.FAILURE_TIMEOUT,

@@ -563,6 +563,7 @@ class TestExtractOverride(TestCase):
         result = extractor.extract()
         self.assertIn("enriched,compat", result["compatible"])
         self.assertEqual(result["source"], "fwtool")
+        self.assertFalse(result["model_confirmed"])
 
     @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_image")
     @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_dtb")
@@ -587,6 +588,7 @@ class TestExtractOverride(TestCase):
         result = extractor.extract()
         self.assertEqual(result["model"], "TP-Link Archer C6 v3")
         self.assertEqual(result["source"], "fwtool")
+        self.assertTrue(result["model_confirmed"])
 
     @mock.patch.object(
         OpenWrtMetadataExtractor,

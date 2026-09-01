@@ -499,10 +499,15 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             return self.extract_from_dtb()
         # DTB overrides fwtool model with human-readable label; compatible is
         # backfilled only if missing
+        fwtool_result["model_confirmed"] = False
+        # model_confirmed tells the caller whether board is a DTB-verified
+        # device-compatible label, or still just the raw fwtool identifier
+        # e.g. tplink_archer-c6-v3 instead of "TP-Link Archer C6 v3")
         try:
             dtb_result = self.extract_from_dtb()
             if dtb_result.get("model"):
                 fwtool_result["model"] = dtb_result["model"]
+                fwtool_result["model_confirmed"] = True
             if not fwtool_result.get("compatible") and dtb_result.get("compatible"):
                 fwtool_result["compatible"] = dtb_result["compatible"]
         except ExtractionError:

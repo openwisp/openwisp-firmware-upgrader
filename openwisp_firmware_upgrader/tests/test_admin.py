@@ -1808,6 +1808,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             "version": "23.05.5",
             "compat_version": "1.0",
             "source": "fwtool",
+            "model_confirmed": True,
         }
         fw = self._create_firmware_image()
         FirmwareImage.objects.filter(pk=fw.pk).update(

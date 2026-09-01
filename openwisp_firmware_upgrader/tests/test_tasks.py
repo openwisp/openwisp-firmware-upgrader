@@ -93,6 +93,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             "version": "23.05.5",
             "compat_version": "1.0",
             "source": "fwtool",
+            "model_confirmed": True,
         }
         image = self._create_firmware_image()
         FirmwareImage.objects.filter(pk=image.pk).update(
@@ -109,6 +110,28 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(image.fw_version, "23.05.5")
         self.assertEqual(image.compat_version, "1.0")
         self.assertEqual(image.compatible, "tplink,tl-wdr4300-v1")
+
+    @mock.patch(_MOCK_EXTRACTOR)
+    @capture_any_output()
+    def test_extract_firmware_metadata_unconfirmed_board_stays_incomplete(self, *args):
+        MockExtractor = args[0]
+        MockExtractor.return_value.extract.return_value = {
+            "model": "tplink_archer-c6-v3",
+            "compatible": ["tplink,archer-c6-v3"],
+            "target": "ath79/generic",
+            "version": "23.05.5",
+            "compat_version": "1.0",
+            "source": "fwtool",
+            "model_confirmed": False,
+        }
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        tasks.extract_firmware_metadata.run(str(image.pk))
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_INCOMPLETE)
+        self.assertEqual(image.board, "tplink_archer-c6-v3")
 
     @mock.patch(_MOCK_EXTRACTOR)
     @capture_any_output()
@@ -356,6 +379,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             "version": "23.05.5",
             "compat_version": "1.0",
             "source": "fwtool",
+            "model_confirmed": True,
         }
         image = self._create_firmware_image()
         FirmwareImage.objects.filter(pk=image.pk).update(
@@ -648,6 +672,46 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         )
         mock_notify.assert_called_once()
         self.assertEqual(mock_notify.call_args.kwargs["level"], "error")
+
+    @capture_any_output()
+    def test_extract_firmware_metadata_persist_failure_does_not_clobber_newer_claim(
+        self,
+    ):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        original_update = QuerySet.update
+        newer_claimed_at = timezone.now() + timedelta(minutes=5)
+
+        def flaky_update(self, *args, **kwargs):
+            if self.model is FirmwareImage and "board" in kwargs:
+                # simulate a newer worker claiming this same row (e.g. after
+                # a concurrent file replacement) while this stale worker is
+                # still trying, and about to fail, to persist its results
+                FirmwareImage.objects.filter(pk=image.pk).update(
+                    extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+                    extraction_claimed_at=newer_claimed_at,
+                )
+                raise Exception("simulated persist failure")
+            return original_update(self, *args, **kwargs)
+
+        with mock.patch(_MOCK_EXTRACTOR) as MockExtractor, mock.patch.object(
+            QuerySet, "update", flaky_update
+        ):
+            MockExtractor.return_value.extract.return_value = {
+                "model": "TP-Link WDR4300",
+                "compatible": ["tplink,tl-wdr4300-v1"],
+                "target": "ath79/generic",
+                "version": "23.05.5",
+                "compat_version": "1.0",
+                "source": "fwtool",
+            }
+            tasks.extract_firmware_metadata.run(str(image.pk))
+
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_IN_PROGRESS)
+        self.assertEqual(image.extraction_claimed_at, newer_claimed_at)
 
     @capture_any_output()
     def test_reclaim_stale_extractions_recovers_stuck_image(self):
