@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from openwisp_utils.tests import capture_any_output
 
+from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..tasks import upgrade_firmware
 from .base import TestUpgraderMixin
@@ -137,6 +138,33 @@ class TestModels(TestUpgraderMixin, TestCase):
         )
         self.assertEqual(fw23.type, fw24.type)
         self.assertEqual(fw23.type, self.TPLINK_4300_IMAGE)
+
+    def test_reverse_firmware_image_map_unifi_6_boards(self):
+        cases = (
+            (
+                "Ubiquiti UniFi 6 Plus",
+                "mediatek-filogic-ubnt_unifi-6-plus-squashfs-sysupgrade.bin",
+            ),
+            (
+                "Ubiquiti UniFi 6 Lite",
+                "ramips-mt7621-ubnt_unifi-6-lite-squashfs-sysupgrade.bin",
+            ),
+            (
+                "Ubiquiti UniFi 6 LR v1",
+                "mediatek-mt7622-ubnt_unifi-6-lr-v1-squashfs-sysupgrade.bin",
+            ),
+            (
+                "Ubiquiti UniFi 6 LR v2",
+                "mediatek-mt7622-ubnt_unifi-6-lr-v2-squashfs-sysupgrade.bin",
+            ),
+            (
+                "Ubiquiti UniFi 6 LR v3",
+                "mediatek-mt7622-ubnt_unifi-6-lr-v3-squashfs-sysupgrade.bin",
+            ),
+        )
+        for board, expected_type in cases:
+            with self.subTest(board=board):
+                self.assertEqual(REVERSE_FIRMWARE_IMAGE_MAP[board], expected_type)
 
     def test_clean_type_strips_directory_from_persisted_path(self):
         fw = self._create_firmware_image()
