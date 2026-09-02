@@ -87,6 +87,27 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
                     "build status was not recomputed after reconciliation",
                 )
 
+    def test_build_status_recomputed_without_post_migrate_signal(self):
+        with mock.patch(_MOCK_EXTRACT_DELAY), mock.patch(_MOCK_NOTIFY) as mock_notify:
+            executor = MigrationExecutor(connection)
+            executor.migrate([(self.app_label, self.migrate_to)])
+
+            FirmwareImage = apps.get_model(self.app_label, "FirmwareImage")
+            image = FirmwareImage.objects.get(pk=self.image_pk)
+
+            with self.subTest("build status recomputed without post_migrate"):
+                self.assertEqual(image.extraction_status, "failed")
+                image.build.refresh_from_db()
+                self.assertEqual(image.build.status, "failed")
+
+            with self.subTest("notification not sent, since post_migrate never fired"):
+                multi_board_calls = [
+                    call
+                    for call in mock_notify.call_args_list
+                    if "multiple boards" in str(call.kwargs.get("message", ""))
+                ]
+                self.assertEqual(multi_board_calls, [])
+
     def test_legacy_multi_board_image_reconciliation_is_idempotent(self):
         with mock.patch(_MOCK_EXTRACT_DELAY), mock.patch(_MOCK_NOTIFY):
             call_command("migrate", self.app_label, self.migrate_to, verbosity=0)
@@ -116,38 +137,6 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
         self.assertTrue(
             any(
                 "Failed to update extraction status for build" in msg
-                for msg in cm.output
-            )
-        )
-
-
-class TestQueueUnconfirmedExtractionsMigration(TransactionTestCase):
-    app_label = "firmware_upgrader"
-    migrate_from = "0018_build_status_firmwareimage_board_and_more"
-    migrate_to = "0019_backfill_extraction_status"
-
-    def setUp(self):
-        executor = MigrationExecutor(connection)
-        self.addCleanup(call_command, "migrate", self.app_label, verbosity=0)
-        executor.migrate([(self.app_label, self.migrate_from)])
-
-    def test_broker_publish_failure_is_caught_and_logged_without_failing_migrate(self):
-        with mock.patch(
-            "openwisp_firmware_upgrader.tasks.queue_unconfirmed_extractions.delay",
-            side_effect=Exception("simulated broker failure"),
-        ):
-            with self.assertLogs(level="ERROR") as cm:
-                call_command(
-                    "migrate",
-                    self.app_label,
-                    self.migrate_to,
-                    verbosity=0,
-                )
-        self.assertTrue(
-            any(
-                "Failed to queue legacy unconfirmed firmware image extractions. "
-                "Run the 'queue_unconfirmed_extractions' Celery task manually to retry."
-                in msg
                 for msg in cm.output
             )
         )

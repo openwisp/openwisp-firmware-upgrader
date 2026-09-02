@@ -1,3 +1,4 @@
+from celery.signals import worker_ready
 from django.db.models.signals import post_save, pre_delete
 from django.utils.translation import gettext_lazy as _
 from swapper import get_model_name, load_model
@@ -30,6 +31,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         self.connect_upgrade_signals()
         self.connect_delete_signals()
         self.connect_metadata_signals()
+        self.connect_worker_ready_signal()
 
     def register_menu_groups(self):
         register_menu_group(
@@ -131,6 +133,20 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             sender=FirmwareImage,
             dispatch_uid="firmware_image.trigger_metadata_extraction",
         )
+
+    def connect_worker_ready_signal(self):
+        worker_ready.connect(
+            self.queue_unconfirmed_extractions_on_worker_ready,
+            dispatch_uid="firmware_upgrader.queue_unconfirmed_extractions_on_worker_ready",
+        )
+
+    @staticmethod
+    def queue_unconfirmed_extractions_on_worker_ready(sender=None, **kwargs):
+        if not app_settings.QUEUE_UNCONFIRMED_ON_WORKER_READY:
+            return
+        from .tasks import queue_unconfirmed_extractions
+
+        queue_unconfirmed_extractions.delay()
 
 
 del ApiAppConfig

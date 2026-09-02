@@ -23,6 +23,15 @@ these situations:
   finds firmware images which are still ``unconfirmed`` and queues
   metadata extraction for them.
 
+Additionally, ``queue_unconfirmed_extractions`` is automatically triggered
+every time a Celery worker starts up (via Celery's ``worker_ready``
+signal), so any firmware images left ``unconfirmed`` after an upgrade or a
+worker restart are queued for extraction without requiring any manual
+steps. Restarting a worker is itself enough to retry it on demand. This
+can be disabled with
+:ref:`OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_ON_WORKER_READY
+<openwisp_firmware_upgrader_queue_unconfirmed_on_worker_ready>`.
+
 Both tasks are idempotent and safe to run at any time, including
 concurrently with themselves. To ensure firmware images automatically
 recover from the situations described above without requiring manual

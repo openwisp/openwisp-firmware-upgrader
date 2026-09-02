@@ -204,6 +204,29 @@ one task per image on installs with a larger backlog, e.g.:
 
     OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_CHUNK_SIZE = 50
 
+.. _openwisp_firmware_upgrader_queue_unconfirmed_on_worker_ready:
+
+``OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_ON_WORKER_READY``
+----------------------------------------------------------------
+
+============ ========
+**type**:    ``bool``
+**default**: ``True``
+============ ========
+
+Whether ``queue_unconfirmed_extractions`` is automatically triggered every
+time a Celery worker starts up, so firmware images left ``unconfirmed``
+(e.g. after an upgrade) are queued for extraction without requiring manual
+intervention e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_ON_WORKER_READY = False
+
+**Notes**:
+
+- See :doc:`recovering-from-extraction-failures` for more information.
+
 .. _openwisp_firmware_upgrader_extraction_claim_timeout:
 
 ``OPENWISP_FIRMWARE_UPGRADER_EXTRACTION_CLAIM_TIMEOUT``

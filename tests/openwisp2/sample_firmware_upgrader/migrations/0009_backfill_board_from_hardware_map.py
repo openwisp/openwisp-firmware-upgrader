@@ -62,20 +62,9 @@ def _send_multi_board_notifications(app_config, **kwargs):
         return
     post_migrate.disconnect(_send_multi_board_notifications)
     FirmwareImage = load_model("FirmwareImage")
-    Build = load_model("Build")
     affected = FirmwareImage.objects.filter(pk__in=_affected_pks).select_related(
         "build__category__organization"
     )
-    affected_build_ids = set(_recompute_build_ids) | set(
-        affected.values_list("build_id", flat=True)
-    )
-    for build in Build.objects.filter(pk__in=affected_build_ids):
-        try:
-            build.update_extraction_status()
-        except Exception:
-            logger.exception(
-                "Failed to update extraction status for build %s", build.pk
-            )
     for image in affected:
         org = image.build.category.organization
         notify_sender = org if org is not None else image
@@ -148,7 +137,25 @@ def backfill_board_from_hardware_map(apps, schema_editor):
             elif len(boards) > 1:
                 if _write_multi_board_log(FirmwareImage, image_type, list(boards)):
                     has_multi_board_images = True
-    if has_multi_board_images or _recompute_build_ids:
+
+    # build status recomputed here, not in post_migrate below:
+    # MigrationExecutor.migrate() never emits post_migrate, which would leave builds stuck stale
+    affected_build_ids = set(_recompute_build_ids) | set(
+        FirmwareImage.objects.filter(pk__in=_affected_pks).values_list(
+            "build_id", flat=True
+        )
+    )
+    if affected_build_ids:
+        Build = load_model("Build")
+        for build in Build.objects.filter(pk__in=affected_build_ids):
+            try:
+                build.update_extraction_status()
+            except Exception:
+                logger.exception(
+                    "Failed to update extraction status for build %s", build.pk
+                )
+
+    if has_multi_board_images:
         post_migrate.connect(_send_multi_board_notifications)
 
 
