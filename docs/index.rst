@@ -44,6 +44,7 @@ within the OpenWISP architecture.
     ./user/rest-api.rst
     ./user/websocket-api.rst
     ./user/settings.rst
+    ./user/recovering-from-extraction-failures.rst
 
 .. toctree::
     :caption: Firmware Upgrader Developer Docs
