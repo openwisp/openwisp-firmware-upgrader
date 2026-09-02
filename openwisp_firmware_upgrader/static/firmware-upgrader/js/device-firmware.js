@@ -1,14 +1,28 @@
 "use strict";
 
 django.jQuery(function ($) {
+  function updateImageMetadataDisplay(imageId) {
+    var metadata = (window.owDeviceFirmwareImageMetadata || {})[imageId];
+    $("#devicefirmware-0 .field-image_target_display .readonly").text(
+      metadata ? metadata.target || "-" : "-",
+    );
+    $("#devicefirmware-0 .field-image_fw_version_display .readonly").text(
+      metadata ? metadata.fw_version || "-" : "-",
+    );
+  }
+
+  $("#devicefirmware-group").on(
+    "change",
+    "#id_devicefirmware-0-image",
+    function (event) {
+      updateImageMetadataDisplay($(event.target).val());
+    },
+  );
+
   if (firmwareUpgraderSchema === null) {
     return;
   }
   var firmwareImageChanged = false;
-  // Do not render JSONSchema form if the image field is not changed.
-  // The "change" event is also emitted when the form is rendered.
-  // The "firmwareImageChanged" variable is used as flag to prevent this
-  // behavior.
   if (
     $("#id_devicefirmware-0-upgrade_options").val() &&
     $("#id_devicefirmware-0-upgrade_options").val() !== "null"

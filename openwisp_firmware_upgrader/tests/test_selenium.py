@@ -202,6 +202,56 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
             save_device()
 
+    def test_device_firmware_target_and_fw_version_live_update(self):
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+        FirmwareImage.objects.filter(pk=image1.pk).update(
+            extraction_status=FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+            target="ath79/generic",
+            fw_version="23.05.5",
+        )
+        FirmwareImage.objects.filter(pk=image2.pk).update(
+            extraction_status=FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+            target="ramips/mt7621",
+            fw_version="24.10.6",
+        )
+        self.login()
+        self.open(
+            "{}#devicefirmware-group".format(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
+            )
+        )
+        self.hide_loading_overlay()
+        self.wait_for_visibility(
+            By.CSS_SELECTOR, ".field-image_target_display .readonly"
+        )
+        target_field = self.find_element(
+            By.CSS_SELECTOR, ".field-image_target_display .readonly"
+        )
+        fw_version_field = self.find_element(
+            By.CSS_SELECTOR, ".field-image_fw_version_display .readonly"
+        )
+        self.assertEqual(target_field.text.strip(), "ath79/generic")
+        self.assertEqual(fw_version_field.text.strip(), "23.05.5")
+
+        image_select = self._get_device_firmware_dropdown_select()
+        image_select.select_by_value(str(image2.pk))
+
+        WebDriverWait(self.web_driver, 5).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".field-image_target_display .readonly"),
+                "ramips/mt7621",
+            )
+        )
+        WebDriverWait(self.web_driver, 5).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".field-image_fw_version_display .readonly"),
+                "24.10.6",
+            )
+        )
+        self._assert_no_js_errors(ignore_websockets=True)
+
     @patch(_mock_upgrade, return_value=True)
     def test_batch_upgrade_upgrade_options(self, *args):
         with patch(self._mock_connect, return_value=True):

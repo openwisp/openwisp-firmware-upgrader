@@ -127,6 +127,7 @@ def _image_dropdown_label(image):
     label = f"{image.build}: {image.board}"
     if image.fw_version and image.fw_version != image.build.version:
         label += f" (fw {image.fw_version})"
+    label += f" [{image.type}]"
     return label
 
 
@@ -1305,6 +1306,20 @@ class DeviceFirmwareInline(
                 # We cannot retrieve the schema for upgrade options because this
                 # device does not have any related DeviceConnection object.
                 pass
+            device_firmware = getattr(obj, "devicefirmware", None)
+            image_qs = DeviceFirmware.get_image_queryset_for_device(
+                obj, device_firmware=device_firmware
+            )
+            formset.image_metadata = json.dumps(
+                {
+                    str(image.pk): {
+                        "target": image.target,
+                        "fw_version": image.fw_version,
+                    }
+                    for image in image_qs
+                },
+                cls=DjangoJSONEncoder,
+            )
         return formset
 
 

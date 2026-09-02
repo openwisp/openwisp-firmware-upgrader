@@ -777,6 +777,24 @@ class TestAdmin(BaseTestAdmin, TestCase):
         expected_label = f"{device_fw.image.build}: {device_fw.image.board}"
         self.assertContains(response, expected_label)
 
+    def test_device_firmware_form_image_dropdown_distinguishes_by_type(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        second_image = self._create_firmware_image(
+            build=device_fw.image.build,
+            type="ar71xx-generic-cpe210-220-v1-squashfs-factory.bin",
+        )
+        FirmwareImage.objects.filter(pk=second_image.pk).update(
+            board=device_fw.image.board,
+            fw_version=device_fw.image.fw_version,
+            extraction_status=FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+        )
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+        response = self.client.get(url)
+        self.assertContains(response, f"[{device_fw.image.type}]")
+        self.assertContains(response, f"[{second_image.type}]")
+
     def test_admin_menu_groups(self):
         # Test menu group (openwisp-utils menu group) for Build, Category,
         # BatchUpgradeOperation models

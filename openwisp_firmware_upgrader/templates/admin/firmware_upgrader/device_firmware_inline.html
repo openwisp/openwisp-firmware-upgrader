@@ -6,4 +6,5 @@ var owFirmwareUpgraderApiHost = {
     host: "{{ request.get_host|escapejs }}"
 };
 var owUpgradeOperationCancelUrl = "{{ inline_admin_formset.formset.upgrade_operation_cancel_url }}";
+var owDeviceFirmwareImageMetadata = {{ inline_admin_formset.formset.image_metadata | default:"{}" | safe }};
 </script>
