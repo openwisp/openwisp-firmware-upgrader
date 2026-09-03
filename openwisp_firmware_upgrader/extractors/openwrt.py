@@ -116,7 +116,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
 
     def _parse_supported_devices(self, meta):
         if meta.get("compat_version", "1.0") != "1.0":
-            return meta.get("new_supported_devices", [])
+            devices = meta.get("new_supported_devices", [])
         else:
             devices = meta.get("supported_devices", [])
         if not isinstance(devices, list):

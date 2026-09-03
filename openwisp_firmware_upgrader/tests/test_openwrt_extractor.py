@@ -92,6 +92,13 @@ class TestParseSupportedDevices(TestCase):
             self.extractor._parse_supported_devices(meta), ["tplink,tl-wdr4300-v1-new"]
         )
 
+    def test_compat_version_not_1_with_non_list_new_supported_devices(self):
+        meta = {
+            "compat_version": "2.0",
+            "new_supported_devices": "not-a-list",
+        }
+        self.assertEqual(self.extractor._parse_supported_devices(meta), [])
+
     def test_missing_compat_version_defaults_to_1(self):
         meta = {"supported_devices": ["tplink,tl-wdr4300-v1"]}
         self.assertEqual(
