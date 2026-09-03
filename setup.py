@@ -19,11 +19,8 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
-        (
-            "openwisp-controller @"
-            "https://github.com/openwisp/openwisp-controller/archive/refs/heads/1.3.tar.gz"
-        ),
-        "django-private-storage~=3.1.0",
+        "openwisp-controller~=1.3.0",
+        "django-private-storage~=3.1.3",
     ],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
