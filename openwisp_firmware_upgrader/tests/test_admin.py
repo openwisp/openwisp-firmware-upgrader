@@ -1790,6 +1790,34 @@ class TestAdmin(BaseTestAdmin, TestCase):
         all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
         self.assertIn("failure_reason_display", all_fields)
 
+    def test_firmware_image_fieldsets_exposes_compatible_for_incomplete_fwtool(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INCOMPLETE
+        fw.source = "fwtool"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertIn("compatible", all_fields)
+        self.assertNotIn("compatible_display", all_fields)
+
+    def test_firmware_image_fieldsets_keeps_compatible_readonly_for_incomplete_dtb(
+        self,
+    ):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INCOMPLETE
+        fw.source = "dtb"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertIn("compatible_display", all_fields)
+        self.assertNotIn("compatible", all_fields)
+
     @mock.patch("openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay")
     def test_firmware_image_save_model_file_change_triggers_extraction(
         self, mock_delay

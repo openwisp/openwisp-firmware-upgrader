@@ -332,12 +332,17 @@ class FirmwareImageAdmin(BaseAdmin):
         fieldsets = list(super().get_fieldsets(request, obj))
         has_failure_reason = obj and bool(obj.failure_reason)
         is_failed = obj and obj.extraction_status == FirmwareImage.STATUS_FAILED
+        is_incomplete_editable = (
+            obj
+            and obj.extraction_status == FirmwareImage.STATUS_INCOMPLETE
+            and obj.source != "dtb"
+        )
         result = []
         for title, opts in fieldsets:
             fields = list(opts["fields"])
             if not has_failure_reason:
                 fields = [f for f in fields if f != "failure_reason_display"]
-            if is_failed:
+            if is_failed or is_incomplete_editable:
                 fields = [
                     "compatible" if f == "compatible_display" else f for f in fields
                 ]
