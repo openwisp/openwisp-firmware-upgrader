@@ -139,8 +139,8 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         self.user = kwargs.pop("user")
         super().__init__(*args, **kwargs)
         build = self.initial.get("build")
-        device_group_qs = DeviceGroup.objects
-        location_qs = Location.objects
+        device_group_qs = DeviceGroup.objects.filter(organization__is_active=True)
+        location_qs = Location.objects.filter(organization__is_active=True)
         organization_id = None
         if build:
             organization_id = build.category.organization_id
@@ -216,12 +216,19 @@ class BuildAdmin(BaseAdmin):
             )
             # returning None will display the change list page again
             return None
+        build = queryset.first()
+        if build.category.organization_id and not build.category.organization.is_active:
+            self.message_user(
+                request,
+                _("Cannot start a mass upgrade for a disabled organization."),
+                messages.ERROR,
+            )
+            return None
         upgrade_all = request.POST.get("upgrade_all")
         upgrade_related = request.POST.get("upgrade_related")
         upgrade_options = request.POST.get("upgrade_options")
         group_id = request.POST.get("group")
         location_id = request.POST.get("location")
-        build = queryset.first()
         form = BatchUpgradeConfirmationForm(initial={"build": build}, user=request.user)
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
@@ -862,7 +869,9 @@ class DeviceUpgradeOperationForm(UpgradeOperationForm):
         super().__init__(*args, **kwargs)
 
 
-class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperationInline):
+class DeviceUpgradeOperationInline(
+    DeactivatedDeviceReadOnlyMixin, ReadonlyUpgradeOptionsMixin, UpgradeOperationInline
+):
     verbose_name = _("Recent Firmware Upgrades")
     verbose_name_plural = verbose_name
     formset = DeviceUpgradeOperationFormSet
