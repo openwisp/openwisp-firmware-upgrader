@@ -1672,16 +1672,23 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         Build.objects.filter(pk=build.pk).update(status=Build.BUILD_STATUS_ANALYZING)
 
         images_read = threading.Event()
+        concurrent_write_done = threading.Event()
+        errors = []
 
         def replace_file_concurrently():
-            images_read.wait(timeout=5)
-            FirmwareImage.objects.filter(pk=image1.pk).update(
-                extraction_status=FirmwareImage.STATUS_UNCONFIRMED
-            )
-            Build.objects.filter(pk=build.pk).update(
-                status=Build.BUILD_STATUS_ANALYZING
-            )
-            connection.close()
+            try:
+                images_read.wait(timeout=5)
+                FirmwareImage.objects.filter(pk=image1.pk).update(
+                    extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+                )
+                Build.objects.filter(pk=build.pk).update(
+                    status=Build.BUILD_STATUS_ANALYZING
+                )
+            except Exception as error:
+                errors.append(error)
+            finally:
+                concurrent_write_done.set()
+                connection.close()
 
         original_fetch_all = QuerySet._fetch_all
 
@@ -1696,7 +1703,12 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         with mock.patch.object(QuerySet, "_fetch_all", racy_fetch_all):
             build.update_extraction_status()
         thread.join(timeout=5)
-
+        self.assertFalse(thread.is_alive(), "concurrent thread did not finish in time")
+        self.assertTrue(
+            concurrent_write_done.is_set(),
+            "concurrent thread never completed its write",
+        )
+        self.assertEqual(errors, [])
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_ANALYZING)
 
