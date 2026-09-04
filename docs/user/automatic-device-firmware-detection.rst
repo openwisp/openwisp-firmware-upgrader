@@ -32,5 +32,6 @@ Pairing happens once an image's metadata extraction has completed: whether
 it succeeded fully, succeeded only partially (i.e. with status
 *Incomplete*), or was confirmed manually. Images still being processed, or
 for which extraction failed, are not paired automatically. Images that
-declare a compatibility version greater than ``1.0`` are not paired
-automatically and require manual confirmation.
+declare a compatibility version greater than ``1.0`` are never paired
+automatically, regardless of extraction status; assign them to a device
+manually from the device's *Firmware* tab instead.

@@ -806,7 +806,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         )
         with self.assertRaises(ValidationError) as ctx:
             build.batch_upgrade(firmwareless=False)
-        self.assertIn("confirmed metadata", str(ctx.exception))
+        self.assertIn("extracted or manually confirmed", str(ctx.exception))
 
     def test_batch_upgrade_allowed_when_all_images_confirmed(self):
         env = self._create_upgrade_env()

@@ -232,8 +232,8 @@ class AbstractBuild(TimeStampedEditableModel):
         if unconfirmed.exists():
             raise ValidationError(
                 _(
-                    "All firmware images must have confirmed metadata "
-                    "before a mass upgrade can be scheduled"
+                    "All firmware images must have their metadata extracted "
+                    "or manually confirmed before a mass upgrade can be scheduled"
                 )
             )
         # Check if there are any devices to upgrade with the given filters
