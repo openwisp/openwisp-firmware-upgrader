@@ -1,10 +1,75 @@
 Changelog
 =========
 
-Version 1.3.0 [unreleased]
+Version 1.3.0 [2026-09-04]
 --------------------------
 
-Work in progress.
+Features
+~~~~~~~~
+
+- Added `real-time progress updates for single and mass upgrade operations
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/224>`_.
+  Mass upgrade details now use a paginated table which can be filtered by
+  status and organization.
+- Added mass upgrades by `device group
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/213>`_ or
+  `location
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/225>`_.
+- Allowed `cancelling upgrade operations
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/208>`_.
+- Added the following firmwares to the default firmware image map:
+
+  - Google Wifi (Gale)
+  - EnGenius EWS2910P
+  - Extreme Networks WS-AP3825i
+  - TP-Link TL-MR6400
+
+Changes
+~~~~~~~
+
+Other changes
++++++++++++++
+
+- Allowed `deletion of completed upgrade operations
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/145>`_.
+  Single and batch upgrade operations can now be deleted when they are no
+  longer in progress.
+- Improved `cascade deletion of upgrade operations
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/256>`_,
+  allowing parent objects such as organizations to be deleted while still
+  preventing direct deletion of in-progress operations.
+- Improved `breadcrumbs and display names for upgrade operations
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/376>`_.
+- Improved compatibility with OpenWISP admin themes by using shared theme
+  color variables.
+
+Dependencies
+++++++++++++
+
+- Bumped ``openwisp-controller`` from ``~=1.2.0`` to `~=1.3.0
+  <https://github.com/openwisp/openwisp-controller/blob/master/CHANGES.rst>`_.
+- Bumped ``django-private-storage`` from ``~=3.1.0`` to `~=3.1.3
+  <https://github.com/edoburu/django-private-storage/releases/tag/v3.1.3>`_.
+- Dropped support for Django ``4.2``.
+- Dropped support for Python ``3.9``.
+
+Bugfixes
+~~~~~~~~
+
+- Fixed `errors when OPENWISP_FIRMWARE_UPGRADER_API is disabled
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/444>`_.
+  Upgrade operation pages no longer raise ``NoReverseMatch`` when the REST
+  API is disabled.
+- Fixed `upgrade operations being allowed on deactivated devices
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/382>`_.
+- Fixed `HTTP 500 errors when device credentials are missing
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/250>`_ by
+  reporting a validation error instead.
+- Fixed migration ``0002`` to correctly create permissions when using a
+  custom group model.
+- Fixed `HTTP 500 response in the device admin when submitting firmware
+  without selecting an image
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/338>`_.
 
 Version 1.2.1 [2025-12-30]
 --------------------------
