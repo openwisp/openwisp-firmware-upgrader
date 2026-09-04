@@ -21,6 +21,7 @@ from openwisp_firmware_upgrader.admin import (
     DeviceFirmwareForm,
     DeviceFirmwareInline,
     DeviceUpgradeOperationInline,
+    FirmwareImageAdmin,
     FirmwareImageInline,
     admin,
 )
@@ -28,7 +29,7 @@ from openwisp_users.tests.utils import TestMultitenantAdminMixin
 from openwisp_utils.tests import AdminActionPermTestMixin, capture_stderr
 
 from .. import settings as app_settings
-from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
+from .. import tasks
 from ..swapper import load_model
 from ..upgraders.openwisp import OpenWisp1
 from .base import TestUpgraderMixin
@@ -215,6 +216,401 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertIs(inline.has_change_permission(request), True)
         self.assertIs(inline.has_change_permission(request, obj=env["image1a"]), False)
 
+    def test_firmware_image_inline_extraction_messages(self):
+        self._login()
+        dtb_message = "Target and Firmware version couldn't be extracted automatically"
+        failed_message = "Automatic metadata extraction failed for this image"
+        cases = (
+            (
+                "dtb_incomplete",
+                FirmwareImage.STATUS_INCOMPLETE,
+                "dtb",
+                [dtb_message],
+                [],
+            ),
+            (
+                "fwtool_success",
+                FirmwareImage.STATUS_SUCCESS,
+                "fwtool",
+                [],
+                [dtb_message, failed_message],
+            ),
+            (
+                "failed_extraction",
+                FirmwareImage.STATUS_FAILED,
+                "",
+                [failed_message],
+                [dtb_message],
+            ),
+        )
+        for label, status, source, expected_present, expected_absent in cases:
+            with self.subTest(label):
+                build = self._create_build(version=f"0.1-{label}")
+                image = self._create_firmware_image(build=build)
+                update = {"extraction_status": status}
+                if source:
+                    update["source"] = source
+                FirmwareImage.objects.filter(pk=image.pk).update(**update)
+                url = reverse(f"admin:{self.app_label}_build_change", args=[build.pk])
+                response = self.client.get(url)
+                for message in expected_present:
+                    self.assertContains(response, message)
+                for message in expected_absent:
+                    self.assertNotContains(response, message)
+
+    def test_firmware_image_save_model_clears_compat_version_on_file_change(self):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            board="TP-Link WDR4300",
+            compat_version="21.09",
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+        )
+        fw.refresh_from_db()
+        fw.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2)
+        request = MockRequest()
+        request.user = User.objects.first()
+        form = mock.MagicMock()
+        form.changed_data = ["file"]
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        with mock.patch("django.db.transaction.on_commit"):
+            fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.board, "")
+        self.assertEqual(fw.compat_version, "")
+
+    def test_firmware_image_save_model_dtb_no_flip_without_changed_fields(self):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            source="dtb",
+            board="Orange Pi Zero",
+            extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+        )
+        fw.refresh_from_db()
+        request = MockRequest()
+        request.user = User.objects.first()
+        form = mock.MagicMock()
+        form.changed_data = ["board"]
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        with mock.patch("django.db.transaction.on_commit"):
+            fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_INCOMPLETE)
+
+    def test_re_extract_metadata_action(self):
+        self._login()
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            failure_reason=FirmwareImage.FAILURE_UNSUPPORTED,
+            extraction_log="log output",
+            board="TP-Link WDR4300",
+            compatible="tplink,tl-wdr4300-v1",
+            target="ath79/generic",
+            fw_version="23.05.5",
+            compat_version="1.0",
+            source="fwtool",
+        )
+        Build.objects.filter(pk=image.build_id).update(status=Build.BUILD_STATUS_FAILED)
+        url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+        ) as mocked_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                r = self.client.post(
+                    url,
+                    {
+                        "action": "re_extract_metadata",
+                        ACTION_CHECKBOX_NAME: (str(image.pk),),
+                    },
+                    follow=True,
+                )
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertEqual(image.extraction_log, "")
+        self.assertEqual(image.failure_reason, "")
+        self.assertEqual(image.board, "")
+        self.assertEqual(image.compatible, "")
+        self.assertEqual(image.target, "")
+        self.assertEqual(image.fw_version, "")
+        self.assertEqual(image.compat_version, "")
+        self.assertEqual(image.source, "")
+        image.build.refresh_from_db()
+        self.assertEqual(image.build.status, Build.BUILD_STATUS_ANALYZING)
+        mocked_delay.assert_called_once_with(str(image.pk))
+
+    def test_re_extract_metadata_action_multiple(self):
+        self._login()
+        build = self._create_build()
+        image1 = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
+        image2 = self._create_firmware_image(
+            build=build, type=self.TPLINK_4300_IL_IMAGE
+        )
+        FirmwareImage.objects.filter(pk__in=[image1.pk, image2.pk]).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+        )
+        Build.objects.filter(pk=build.pk).update(status=Build.BUILD_STATUS_FAILED)
+        url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+        ) as mocked_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(
+                    url,
+                    {
+                        "action": "re_extract_metadata",
+                        ACTION_CHECKBOX_NAME: (str(image1.pk), str(image2.pk)),
+                    },
+                    follow=True,
+                )
+        self.assertEqual(mocked_delay.call_count, 2)
+        called_pks = {call.args[0] for call in mocked_delay.call_args_list}
+        self.assertEqual(called_pks, {str(image1.pk), str(image2.pk)})
+        image1.refresh_from_db()
+        image2.refresh_from_db()
+        self.assertEqual(image1.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertEqual(image2.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        build.refresh_from_db()
+        self.assertEqual(build.status, Build.BUILD_STATUS_ANALYZING)
+
+    def test_re_extract_metadata_action_skips_flashed_images(self):
+        self._login()
+        build = self._create_build()
+        image_safe = self._create_firmware_image(
+            build=build, type=self.TPLINK_4300_IMAGE
+        )
+        image_flashed = self._create_firmware_image(
+            build=build, type=self.TPLINK_4300_IL_IMAGE
+        )
+        FirmwareImage.objects.filter(pk=image_safe.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+        )
+        FirmwareImage.objects.filter(pk=image_flashed.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS
+        )
+        device = self._create_config(
+            organization=image_flashed.build.category.organization
+        ).device
+        UpgradeOperation.objects.create(
+            device=device, image=image_flashed, status="success"
+        )
+        url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+        ) as mocked_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                r = self.client.post(
+                    url,
+                    {
+                        "action": "re_extract_metadata",
+                        ACTION_CHECKBOX_NAME: (
+                            str(image_safe.pk),
+                            str(image_flashed.pk),
+                        ),
+                    },
+                    follow=True,
+                )
+        self.assertEqual(r.status_code, 200)
+        mocked_delay.assert_called_once_with(str(image_safe.pk))
+        image_safe.refresh_from_db()
+        self.assertEqual(image_safe.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        image_flashed.refresh_from_db()
+        self.assertEqual(image_flashed.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertContains(r, "1 image(s) were skipped")
+
+    def test_re_extract_metadata_action_skips_state_machine_violations(self):
+        self._login()
+        build = self._create_build()
+
+        with self.subTest("skips image with in-progress upgrade operation"):
+            image_in_progress_upgrade = self._create_firmware_image(
+                build=build, type=self.TPLINK_4300_IMAGE
+            )
+            FirmwareImage.objects.filter(pk=image_in_progress_upgrade.pk).update(
+                extraction_status=FirmwareImage.STATUS_SUCCESS,
+                board="TP-Link WDR4300",
+            )
+            image_in_progress_upgrade.refresh_from_db()
+            device = self._create_config(
+                organization=image_in_progress_upgrade.build.category.organization
+            ).device
+            UpgradeOperation.objects.create(
+                device=device, image=image_in_progress_upgrade, status="in-progress"
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(image_in_progress_upgrade.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_not_called()
+            image_in_progress_upgrade.refresh_from_db()
+            self.assertEqual(
+                image_in_progress_upgrade.extraction_status,
+                FirmwareImage.STATUS_SUCCESS,
+            )
+            self.assertEqual(image_in_progress_upgrade.board, "TP-Link WDR4300")
+
+        with self.subTest("reclaims image stuck in progress"):
+            image_extracting = self._create_firmware_image(
+                build=build, type=self.TPLINK_4300_IL_IMAGE
+            )
+            FirmwareImage.objects.filter(pk=image_extracting.pk).update(
+                extraction_status=FirmwareImage.STATUS_IN_PROGRESS
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(image_extracting.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_called_once_with(str(image_extracting.pk))
+            image_extracting.refresh_from_db()
+            self.assertEqual(
+                image_extracting.extraction_status, FirmwareImage.STATUS_UNCONFIRMED
+            )
+
+        with self.subTest("skips confirmed image and does not wipe its metadata"):
+            confirmed_image = self._create_firmware_image(
+                build=self._create_build(version="9.9")
+            )
+            FirmwareImage.objects.filter(pk=confirmed_image.pk).update(
+                extraction_status=FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+                board="Generic x86",
+                source="manual",
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(confirmed_image.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_not_called()
+            confirmed_image.refresh_from_db()
+            self.assertEqual(
+                confirmed_image.extraction_status,
+                FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+            )
+            self.assertEqual(confirmed_image.board, "Generic x86")
+
+        with self.subTest("skips successfully-extracted image"):
+            success_image = self._create_firmware_image(
+                build=self._create_build(version="8.8")
+            )
+            FirmwareImage.objects.filter(pk=success_image.pk).update(
+                extraction_status=FirmwareImage.STATUS_SUCCESS,
+                board="TP-Link WDR4300",
+                source="fwtool",
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(success_image.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_not_called()
+            success_image.refresh_from_db()
+            self.assertEqual(
+                success_image.extraction_status, FirmwareImage.STATUS_SUCCESS
+            )
+            self.assertEqual(success_image.board, "TP-Link WDR4300")
+
+        with self.subTest("skips incomplete image and does not wipe its metadata"):
+            incomplete_image = self._create_firmware_image(
+                build=self._create_build(version="7.7")
+            )
+            FirmwareImage.objects.filter(pk=incomplete_image.pk).update(
+                extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+                board="Xunlong Orange Pi Zero",
+                source="dtb",
+            )
+            url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            with mock.patch(
+                "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+            ) as mocked_delay:
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.client.post(
+                        url,
+                        {
+                            "action": "re_extract_metadata",
+                            ACTION_CHECKBOX_NAME: (str(incomplete_image.pk),),
+                        },
+                        follow=True,
+                    )
+            mocked_delay.assert_not_called()
+            incomplete_image.refresh_from_db()
+            self.assertEqual(
+                incomplete_image.extraction_status,
+                FirmwareImage.STATUS_INCOMPLETE,
+            )
+            self.assertEqual(incomplete_image.board, "Xunlong Orange Pi Zero")
+
+    def test_re_extract_metadata_action_skips_referenced_images(self):
+        self._login()
+        build = self._create_build()
+        image = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="TP-Link WDR4300",
+            source="fwtool",
+        )
+        image.refresh_from_db()
+        device = self._create_device_with_connection(
+            organization=image.build.category.organization,
+            model=image.board,
+        )
+        device_fw = DeviceFirmware.create_for_device(device, image)
+        self.assertIsNotNone(device_fw)
+        self.assertFalse(UpgradeOperation.objects.filter(image=image).exists())
+
+        url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+        with mock.patch(
+            "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
+        ) as mocked_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                r = self.client.post(
+                    url,
+                    {
+                        "action": "re_extract_metadata",
+                        ACTION_CHECKBOX_NAME: (str(image.pk),),
+                    },
+                    follow=True,
+                )
+        self.assertEqual(r.status_code, 200)
+        mocked_delay.assert_not_called()
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertEqual(image.board, "TP-Link WDR4300")
+        self.assertContains(r, "1 image(s) were skipped")
+
     def test_device_firmware_inline_has_add_permission(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device
@@ -242,6 +638,36 @@ class TestAdmin(BaseTestAdmin, TestCase):
             DeviceFirmwareInline, deviceadmin.get_inlines(request, obj=device)
         )
 
+    def test_device_firmware_inline_target_and_fw_version_display(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        url = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[device_fw.device.pk]
+        )
+        with self.subTest("shows values when populated"):
+            FirmwareImage.objects.filter(pk=device_fw.image.pk).update(
+                extraction_status=FirmwareImage.STATUS_SUCCESS,
+                target="ath79/generic",
+                fw_version="23.05.5",
+            )
+            response = self.client.get(url)
+            self.assertContains(response, "ath79/generic")
+            self.assertContains(response, "23.05.5")
+
+        with self.subTest("shows dash when empty"):
+            FirmwareImage.objects.filter(pk=device_fw.image.pk).update(
+                target="", fw_version=""
+            )
+            response = self.client.get(url)
+            content = response.content.decode()
+            self.assertEqual(
+                self._get_readonly_field_value(content, "image_target_display"), "-"
+            )
+            self.assertEqual(
+                self._get_readonly_field_value(content, "image_fw_version_display"),
+                "-",
+            )
+
     def _prepare_image_qs_test_env(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device
@@ -253,7 +679,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         img_org2 = self._create_firmware_image(build=build_org2)
         yuncore = self._create_firmware_image(
             build=device_fw.image.build,
-            type=REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"],
+            type="ar71xx-generic-xd3200-squashfs.sysupgrade.bin",
         )
         mesh_category = self._create_category(
             name="mesh", organization=device.organization
@@ -346,6 +772,33 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(form.fields["image"].queryset.count(), 3)
         self.assertIn(device_fw.image, form.fields["image"].queryset)
         self.assertIn(shared_image, form.fields["image"].queryset)
+
+    def test_device_firmware_form_image_dropdown_shows_board(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+        response = self.client.get(url)
+        expected_label = f"{device_fw.image.build}: {device_fw.image.board}"
+        self.assertContains(response, expected_label)
+
+    def test_device_firmware_form_image_dropdown_distinguishes_by_type(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        second_image = self._create_firmware_image(
+            build=device_fw.image.build,
+            type="ar71xx-generic-cpe210-220-v1-squashfs-factory.bin",
+        )
+        FirmwareImage.objects.filter(pk=second_image.pk).update(
+            board=device_fw.image.board,
+            fw_version=device_fw.image.fw_version,
+            extraction_status=FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+        )
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+        response = self.client.get(url)
+        self.assertContains(response, f"[{device_fw.image.type}]")
+        self.assertContains(response, f"[{second_image.type}]")
 
     def test_admin_menu_groups(self):
         # Test menu group (openwisp-utils menu group) for Build, Category,
@@ -547,8 +1000,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         # is displayed as readonly in the admin interface.
         self.assertContains(
             response,
-            '<div class="readonly">Test Category v0.1:'
-            " TP-Link WDR4300 v1 (OpenWrt 19.07 and later)</div>",
+            f"Test Category v0.1: {self.TPLINK_4300_IMAGE}",
         )
         self.assertNotContains(
             response,
@@ -659,6 +1111,113 @@ class TestAdmin(BaseTestAdmin, TestCase):
             ],
             administrator=True,
         )
+
+    def test_firmware_image_build_readonly_for_organization_admin(self):
+        org = self._get_org()
+        image = self._create_firmware_image(organization=org)
+        original_build_id = image.build_id
+        other_build = self._create_build(category=image.build.category, version="99.0")
+        administrator = self._create_administrator(organizations=[org])
+        self.client.force_login(administrator)
+        url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[image.pk])
+
+        with self.subTest("build field is rendered read-only"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, '<select name="build"')
+
+        with self.subTest("posting a different build is ignored"):
+            data = {"build": str(other_build.pk), "_save": "Save"}
+            response = self.client.post(url, data, follow=True)
+            self.assertNotContains(
+                response,
+                "errorlist",
+                msg_prefix="form should be valid so read-only handling is exercised",
+            )
+            image.refresh_from_db()
+            self.assertEqual(image.build_id, original_build_id)
+
+    def test_firmware_image_admin_multitenancy(self):
+        org1 = self._get_org()
+        org2 = self._create_org(name="Org 2", slug="org2")
+        image1 = self._create_firmware_image(organization=org1)
+        image2 = self._create_firmware_image(organization=org2)
+        administrator = self._create_administrator(organizations=[org1])
+        image1_url = reverse(
+            f"admin:{self.app_label}_firmwareimage_change", args=[image1.pk]
+        )
+        image2_url = reverse(
+            f"admin:{self.app_label}_firmwareimage_change", args=[image2.pk]
+        )
+        self.client.force_login(administrator)
+
+        with self.subTest("changelist only shows managed organization images"):
+            response = self.client.get(
+                reverse(f"admin:{self.app_label}_firmwareimage_changelist")
+            )
+            self.assertContains(
+                response,
+                image1_url,
+                msg_prefix="Firmware image multi-tenancy test failed",
+            )
+            self.assertNotContains(
+                response,
+                image2_url,
+                msg_prefix="Firmware image multi-tenancy test failed",
+            )
+
+        with self.subTest("change view denies another organization image"):
+            response = self.client.get(image2_url, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.request["PATH_INFO"],
+                reverse("admin:index"),
+                "Firmware image multi-tenancy test failed",
+            )
+
+        with self.subTest("add form build choices exclude other organization builds"):
+            org2_build = self._create_build(
+                category=self._create_category(
+                    name="Org2 Multitenancy Category", organization=org2
+                ),
+                version="1.0",
+            )
+            add_url = reverse(f"admin:{self.app_label}_firmwareimage_add")
+            response = self.client.get(add_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(
+                response,
+                f'<option value="{org2_build.pk}"',
+                msg_prefix="Firmware image multi-tenancy test failed",
+            )
+
+        with self.subTest("add form build choices exclude shared builds"):
+            shared_build = self._create_build(
+                category=self._create_category(
+                    name="Shared Multitenancy Category", organization=None
+                ),
+                version="2.0",
+            )
+            add_url = reverse(f"admin:{self.app_label}_firmwareimage_add")
+            response = self.client.get(add_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(
+                response,
+                f'<option value="{shared_build.pk}"',
+                msg_prefix="Firmware image multi-tenancy test failed",
+            )
+
+        with self.subTest("posting a shared build as non-superuser is rejected"):
+            data = {
+                "build": str(shared_build.pk),
+                "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+                "type": self.TPLINK_4300_IMAGE,
+                "_save": "Save",
+            }
+            response = self.client.post(add_url, data)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "errorlist")
+            self.assertFalse(FirmwareImage.objects.filter(build=shared_build).exists())
 
     def test_empty_device_firmware_image(self):
         self._login()
@@ -817,6 +1376,16 @@ class TestAdmin(BaseTestAdmin, TestCase):
         if not match:
             raise ValueError(f'Input with name="{name}" not found')
         return match.group(0)
+
+    def _get_readonly_field_value(self, content, field_name):
+        match = re.search(
+            rf"field-{re.escape(field_name)}\b[\s\S]*?"
+            r'<div class="readonly">([^<]*)</div>',
+            content,
+        )
+        if not match:
+            raise ValueError(f'Readonly field "{field_name}" not found')
+        return match.group(1)
 
     def test_device_bulk_delete_with_upgrade_operation(self):
         self._login()
@@ -1092,6 +1661,441 @@ class TestAdmin(BaseTestAdmin, TestCase):
             response = self.client.get(change_url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'var owUpgradeOperationCancelUrl = "";')
+
+    def test_firmware_image_readonly_fields_in_progress(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_IN_PROGRESS
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        readonly = fw_admin.get_readonly_fields(request, obj=fw)
+        for field in ["board", "compatible", "target", "fw_version"]:
+            with self.subTest(field=field):
+                self.assertIn(field, readonly)
+
+    def test_firmware_image_readonly_fields_unconfirmed(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        readonly = fw_admin.get_readonly_fields(request, obj=fw)
+        for field in ["board", "compatible", "target", "fw_version"]:
+            with self.subTest(field=field):
+                self.assertIn(field, readonly)
+
+    def test_firmware_image_readonly_fields_success_fwtool(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_SUCCESS
+        fw.source = "fwtool"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        readonly = fw_admin.get_readonly_fields(request, obj=fw)
+        for field in ["board", "compatible", "target", "fw_version"]:
+            with self.subTest(field=field):
+                self.assertIn(field, readonly)
+
+    def test_firmware_image_readonly_fields_incomplete(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INCOMPLETE
+        fw.source = "dtb"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        readonly = fw_admin.get_readonly_fields(request, obj=fw)
+        for field in ["board", "compatible"]:
+            with self.subTest(field=field):
+                self.assertIn(field, readonly)
+        for field in ["target", "fw_version"]:
+            with self.subTest(field=field):
+                self.assertNotIn(field, readonly)
+
+    def test_firmware_image_readonly_fields_failed(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        readonly = fw_admin.get_readonly_fields(request, obj=fw)
+        for field in ["board", "compatible", "target", "fw_version"]:
+            with self.subTest(field=field):
+                self.assertNotIn(field, readonly)
+
+    def test_firmware_image_readonly_fields_manually_confirmed(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        readonly = fw_admin.get_readonly_fields(request, obj=fw)
+        for field in ["board", "compatible", "target", "fw_version"]:
+            with self.subTest(field=field):
+                self.assertIn(field, readonly)
+
+    def test_firmware_image_readonly_fields_invalid(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INVALID
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        readonly = fw_admin.get_readonly_fields(request, obj=fw)
+        for field in ["board", "compatible", "target", "fw_version"]:
+            with self.subTest(field=field):
+                self.assertIn(field, readonly)
+
+    def test_firmware_image_compat_version_always_readonly(self):
+        fw = self._create_firmware_image()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        for status in [
+            FirmwareImage.STATUS_UNCONFIRMED,
+            FirmwareImage.STATUS_IN_PROGRESS,
+            FirmwareImage.STATUS_INCOMPLETE,
+            *FirmwareImage.LOCKED_STATUSES,
+            FirmwareImage.STATUS_FAILED,
+            FirmwareImage.STATUS_INVALID,
+        ]:
+            with self.subTest(status=status):
+                fw.extraction_status = status
+                fw.save()
+                readonly = fw_admin.get_readonly_fields(request, obj=fw)
+                self.assertIn("compat_version", readonly)
+
+    def test_firmware_image_fieldsets_hides_failure_reason_when_not_failed(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_SUCCESS
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertNotIn("failure_reason_display", all_fields)
+
+    def test_firmware_image_fieldsets_shows_failure_reason_when_failed(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.failure_reason = FirmwareImage.FAILURE_UNSUPPORTED
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertIn("failure_reason_display", all_fields)
+
+    def test_firmware_image_fieldsets_shows_failure_reason_when_invalid(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INVALID
+        fw.failure_reason = FirmwareImage.FAILURE_INVALID
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertIn("failure_reason_display", all_fields)
+
+    def test_firmware_image_fieldsets_exposes_compatible_for_incomplete_fwtool(self):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INCOMPLETE
+        fw.source = "fwtool"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertIn("compatible", all_fields)
+        self.assertNotIn("compatible_display", all_fields)
+
+    def test_firmware_image_fieldsets_keeps_compatible_readonly_for_incomplete_dtb(
+        self,
+    ):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INCOMPLETE
+        fw.source = "dtb"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        fieldsets = fw_admin.get_fieldsets(request, obj=fw)
+        all_fields = [f for _, opts in fieldsets for f in opts["fields"]]
+        self.assertIn("compatible_display", all_fields)
+        self.assertNotIn("compatible", all_fields)
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay")
+    def test_firmware_image_save_model_file_change_triggers_extraction(
+        self, mock_delay
+    ):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_SUCCESS
+        fw.board = "Old Board"
+        fw.save()
+        fw.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2)
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["file"]
+        with self.captureOnCommitCallbacks(execute=True):
+            fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertEqual(fw.board, "")
+        mock_delay.assert_called_once_with(str(fw.pk))
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    @mock.patch(
+        "openwisp_firmware_upgrader.base.models.AbstractCategory.metadata_extractor_class"
+    )
+    @mock.patch("openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay")
+    def test_firmware_image_file_replacement_build_status_through_completion(
+        self, mock_delay, MockExtractor, mock_notify
+    ):
+        MockExtractor.return_value.extract.return_value = {
+            "model": "TP-Link WDR4300",
+            "compatible": ["tplink,tl-wdr4300-v1"],
+            "target": "ath79/generic",
+            "version": "23.05.5",
+            "compat_version": "1.0",
+            "source": "fwtool",
+            "model_confirmed": True,
+        }
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="Old Board",
+        )
+        Build.objects.filter(pk=fw.build_id).update(status=Build.BUILD_STATUS_SUCCESS)
+        fw.refresh_from_db()
+        fw.file = self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2)
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["file"]
+        with self.captureOnCommitCallbacks(execute=True):
+            fw_admin.save_model(request, fw, form, change=True)
+        mock_delay.assert_called_once_with(str(fw.pk))
+
+        with self.subTest("build is set to analyzing immediately"):
+            fw.build.refresh_from_db()
+            self.assertEqual(fw.build.status, Build.BUILD_STATUS_ANALYZING)
+
+        with self.subTest("build status and notifications are correct on completion"):
+            tasks.extract_firmware_metadata.run(str(fw.pk))
+            fw.refresh_from_db()
+            self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
+            fw.build.refresh_from_db()
+            self.assertEqual(fw.build.status, Build.BUILD_STATUS_SUCCESS)
+            mock_notify.assert_called_once()
+            self.assertEqual(mock_notify.call_args.kwargs["level"], "info")
+
+    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    def test_firmware_image_save_model_failed_to_manually_confirmed(self, mock_task):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.failure_reason = FirmwareImage.FAILURE_UNSUPPORTED
+        fw.board = "Generic x86"
+        fw.target = "x86/64"
+        fw.fw_version = "23.05.5"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["board", "target"]
+        fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
+        self.assertEqual(fw.source, "manual")
+        self.assertEqual(fw.failure_reason, "")
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    def test_firmware_image_save_model_failed_board_required_warning(self, mock_task):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.board = ""
+        fw.target = "x86/64"
+        fw.fw_version = "23.05.5"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["target"]
+        with mock.patch.object(fw_admin, "message_user") as mock_message:
+            fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_FAILED)
+        mock_message.assert_called_once_with(
+            request,
+            "Board is required to manually confirm this image.",
+            30,
+        )
+
+    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    def test_firmware_image_save_model_failed_compatible_only_to_manually_confirmed(
+        self, mock_task
+    ):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_FAILED
+        fw.failure_reason = FirmwareImage.FAILURE_UNSUPPORTED
+        fw.compatible = "tplink,tl-wdr4300-v1"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["compatible"]
+        fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
+        self.assertEqual(fw.source, "manual")
+        self.assertEqual(fw.failure_reason, "")
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    def test_firmware_image_save_model_build_status_updated_after_manual_confirmation(
+        self, mock_task
+    ):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            board="Generic x86",
+            target="x86/64",
+        )
+        Build.objects.filter(pk=fw.build_id).update(status=Build.BUILD_STATUS_FAILED)
+        fw.refresh_from_db()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["board"]
+        fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
+        fw.build.refresh_from_db()
+        self.assertEqual(fw.build.status, Build.BUILD_STATUS_MANUALLY_CONFIRMED)
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    def test_firmware_image_save_model_dtb_success_to_manually_confirmed(
+        self, mock_task
+    ):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INCOMPLETE
+        fw.failure_reason = FirmwareImage.FAILURE_UNSUPPORTED
+        fw.source = "dtb"
+        fw.board = "Xunlong Orange Pi Zero"
+        fw.target = ""
+        fw.fw_version = ""
+        fw.save()
+        fw.target = "sunxi/cortexa7"
+        fw.fw_version = "23.05.5"
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["target", "fw_version"]
+        fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
+        self.assertEqual(fw.source, "dtb")
+        self.assertEqual(fw.failure_reason, "")
+        mock_task.delay.assert_not_called()
+
+    def test_firmware_image_file_replacement_blocked_after_successful_upgrade(self):
+        self._login()
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="TP-Link WDR4300",
+            source="fwtool",
+        )
+        fw.refresh_from_db()
+        device = self._create_config(organization=fw.build.category.organization).device
+        UpgradeOperation.objects.create(device=device, image=fw, status="success")
+        device_fw = DeviceFirmware(device=device, image=fw, installed=True)
+        device_fw.save(upgrade=False)
+        url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[fw.pk])
+        data = {
+            "build": str(fw.build.pk),
+            "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+            "type": fw.type,
+            "_save": "Save",
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "The file cannot be replaced")
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertEqual(fw.board, "TP-Link WDR4300")
+
+    def test_firmware_image_file_replacement_other_fields_not_lost(self):
+        self._login()
+        fw = self._create_firmware_image()
+        original_build_id = fw.build_id
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="TP-Link WDR4300",
+            source="fwtool",
+        )
+        fw.refresh_from_db()
+        device = self._create_config(organization=fw.build.category.organization).device
+        UpgradeOperation.objects.create(device=device, image=fw, status="success")
+        device_fw = DeviceFirmware(device=device, image=fw, installed=True)
+        device_fw.save(upgrade=False)
+        new_build = self._create_build(category=fw.build.category, version="99.0")
+        url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[fw.pk])
+        data = {
+            "build": str(new_build.pk),
+            "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+            "type": fw.type,
+            "_save": "Save",
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "The file cannot be replaced")
+        fw.refresh_from_db()
+        self.assertEqual(fw.build_id, original_build_id)
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
+
+    def test_firmware_image_file_replacement_deletes_old_file(self):
+        self._login()
+        fw = self._create_firmware_image()
+        storage = FirmwareImage.file.field.storage
+        old_file_name = fw.file.name
+        self.assertTrue(storage.exists(old_file_name))
+        url = reverse(f"admin:{self.app_label}_firmwareimage_change", args=[fw.pk])
+        data = {
+            "build": str(fw.build.pk),
+            "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+            "type": fw.type,
+            "_save": "Save",
+        }
+        with mock.patch(
+            "openwisp_firmware_upgrader.admin.extract_firmware_metadata.delay"
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(url, data, follow=True)
+        self.assertEqual(response.status_code, 200)
+        fw.refresh_from_db()
+        new_file_name = fw.file.name
+        self.assertNotEqual(old_file_name, new_file_name)
+        self.assertFalse(storage.exists(old_file_name))
+        self.assertTrue(storage.exists(new_file_name))
 
 
 class TestAdminTransaction(

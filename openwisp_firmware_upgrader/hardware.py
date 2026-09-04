@@ -1,8 +1,13 @@
 """
-Mapping between hardware models and firwmare image
-This if focused on OpenWrt only for now, but it should
+Mapping between hardware models and firmware image
+This is focused on OpenWrt only for now, but it should
 be possible to add support for different embedded
 systems in the future.
+
+.. deprecated::
+    This module and the ``OPENWISP_CUSTOM_OPENWRT_IMAGES`` setting are deprecated
+    and will be removed in openwisp-firmware-upgrader 1.5.
+    Firmware Image metadata is now extracted automatically from the uploaded file.
 """
 
 from collections import OrderedDict
@@ -471,7 +476,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 "mediatek-filogic-ubnt_unifi-6-plus-squashfs-sysupgrade.bin",
                 {
                     "label": "Ubiquiti UniFi 6 Plus",
-                    "boards": ("Ubiquiti UniFi 6 Plus"),
+                    "boards": ("Ubiquiti UniFi 6 Plus",),
                 },
             ),
             # Ubiquiti Unifi 6 Lite
@@ -479,7 +484,7 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 "ramips-mt7621-ubnt_unifi-6-lite-squashfs-sysupgrade.bin",
                 {
                     "label": "Ubiquiti UniFi 6 Lite",
-                    "boards": ("Ubiquiti UniFi 6 Lite"),
+                    "boards": ("Ubiquiti UniFi 6 Lite",),
                 },
             ),
             # Ubiquiti Unifi 6 LR
@@ -487,21 +492,21 @@ OPENWRT_FIRMWARE_IMAGE_MAP.update(
                 "mediatek-mt7622-ubnt_unifi-6-lr-v1-squashfs-sysupgrade.bin",
                 {
                     "label": "Ubiquiti Unifi 6 LR v1",
-                    "boards": ("Ubiquiti UniFi 6 LR v1"),
+                    "boards": ("Ubiquiti UniFi 6 LR v1",),
                 },
             ),
             (
                 "mediatek-mt7622-ubnt_unifi-6-lr-v2-squashfs-sysupgrade.bin",
                 {
                     "label": "Ubiquiti Unifi 6 LR v2",
-                    "boards": ("Ubiquiti UniFi 6 LR v2"),
+                    "boards": ("Ubiquiti UniFi 6 LR v2",),
                 },
             ),
             (
                 "mediatek-mt7622-ubnt_unifi-6-lr-v3-squashfs-sysupgrade.bin",
                 {
                     "label": "Ubiquiti Unifi 6 LR v3",
-                    "boards": ("Ubiquiti UniFi 6 LR v3"),
+                    "boards": ("Ubiquiti UniFi 6 LR v3",),
                 },
             ),
             # Ubiquiti Unifi AP

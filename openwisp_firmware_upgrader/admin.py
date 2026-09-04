@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import timedelta
+from functools import partial
 
 import reversion
 import swapper
@@ -12,6 +13,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import transaction
 from django.forms.formsets import DELETION_FIELD_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -43,6 +45,7 @@ from .filters import (
     LocationFilter,
 )
 from .swapper import load_model
+from .tasks import extract_firmware_metadata
 from .utils import get_upgrader_schema_for_device
 from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
 
@@ -65,6 +68,68 @@ IN_PROGRESS_DELETE_MESSAGE = _(
 )
 IN_PROGRESS_STATUS = UpgradeOperation.CANCELLABLE_STATUS
 
+_STATUS_CONFIG = {
+    "unconfirmed": {"label": _("Unconfirmed"), "class": "ow-status-grey"},
+    "in_progress": {"label": _("In Progress"), "class": "ow-status-warning"},
+    "success": {"label": _("Success"), "class": "ow-status-success"},
+    "incomplete": {"label": _("Incomplete"), "class": "ow-status-warning"},
+    "failed": {"label": _("Failed"), "class": "ow-status-error"},
+    "manually_confirmed": {
+        "label": _("Manually Confirmed"),
+        "class": "ow-status-success",
+    },
+    "invalid": {"label": _("Invalid"), "class": "ow-status-error"},
+}
+
+_BUILD_STATUS_CONFIG = {
+    "analyzing": {"label": _("Analyzing"), "class": "ow-status-warning"},
+    "success": {"label": _("Success"), "class": "ow-status-success"},
+    "incomplete": {"label": _("Incomplete"), "class": "ow-status-warning"},
+    "failed": {"label": _("Failed"), "class": "ow-status-error"},
+    "invalid": {"label": _("Invalid"), "class": "ow-status-error"},
+    "manually_confirmed": {
+        "label": _("Manually Confirmed"),
+        "class": "ow-status-success",
+    },
+}
+
+_FAILURE_REASON_TEXT = {
+    "unsupported_format": _(
+        "Both fwtool and DTB scan were unable to extract metadata. "
+        "Fill in the Device Metadata fields below manually."
+    ),
+    "out_of_memory": _("Decompression exceeded the configured size or ratio limit."),
+    "invalid_file": _("This file was rejected as an invalid firmware image."),
+    "timeout": _("Metadata extraction timed out. Re-upload the image to try again."),
+}
+
+
+def _status_badge(status, config):
+    cfg = config.get(status, {"label": status, "class": "ow-status-grey"})
+    return format_html(
+        '<span class="ow-status-badge {}">{}</span>', cfg["class"], cfg["label"]
+    )
+
+
+def _extraction_status_badge(status):
+    return _status_badge(status, _STATUS_CONFIG)
+
+
+def _compatible_display_html(obj):
+    if not obj.compatible:
+        return "-"
+    return mark_safe(
+        "<br>".join(format_html("{}", item) for item in obj.compatible.splitlines())
+    )
+
+
+def _image_dropdown_label(image):
+    label = f"{image.build}: {image.board}"
+    if image.fw_version and image.fw_version != image.build.version:
+        label += f" (fw {image.fw_version})"
+    label += f" [{image.type}]"
+    return label
+
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     save_on_top = True
@@ -84,9 +149,46 @@ class CategoryAdmin(BaseVersionAdmin):
     ordering = ["-name", "-created"]
 
 
-class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
+class FirmwareImageInline(admin.StackedInline):
     model = FirmwareImage
     extra = 0
+    show_change_link = True
+    template = "admin/firmware_upgrader/firmwareimage_inline.html"
+    fields = [
+        "file",
+        "extraction_status_display",
+        "extraction_log_display",
+        "board",
+        "compatible_display",
+        "target",
+        "fw_version",
+        "source",
+    ]
+    readonly_fields = [
+        "board",
+        "compatible_display",
+        "target",
+        "fw_version",
+        "source",
+        "extraction_status_display",
+        "extraction_log_display",
+    ]
+
+    @admin.display(description=_("Extraction Status"))
+    def extraction_status_display(self, obj):
+        return _extraction_status_badge(obj.extraction_status)
+
+    @admin.display(description=_("Extraction Log"))
+    def extraction_log_display(self, obj):
+        if not obj.extraction_log:
+            return "-"
+        return format_html(
+            '<pre style="white-space: pre-wrap;">{}</pre>', obj.extraction_log
+        )
+
+    @admin.display(description=_("Compatible"))
+    def compatible_display(self, obj):
+        return _compatible_display_html(obj)
 
     class Media:
         extra = "" if getattr(settings, "DEBUG", False) else ".min"
@@ -104,13 +206,306 @@ class FirmwareImageInline(TimeReadonlyAdminMixin, admin.StackedInline):
         )
 
         css = {
-            "screen": ("admin/css/vendor/select2/select2%s.css" % extra,),
+            "screen": (
+                "admin/css/vendor/select2/select2%s.css" % extra,
+                "firmware-upgrader/css/extraction-status.css",
+            ),
         }
 
     def has_change_permission(self, request, obj=None):
         if obj:
             return False
         return True
+
+
+@admin.register(FirmwareImage)
+class FirmwareImageAdmin(BaseAdmin):
+    change_form_template = "admin/firmware_upgrader/firmwareimage_change_form.html"
+    list_display = [
+        "__str__",
+        "build",
+        "extraction_status_display",
+        "created",
+        "modified",
+    ]
+    list_select_related = ["build", "build__category", "build__category__organization"]
+    list_filter = [
+        BuildCategoryOrganizationFilter,
+        "extraction_status",
+        BuildCategoryFilter,
+    ]
+    search_fields = ["board", "target"]
+    ordering = ["-created"]
+    multitenant_parent = "build__category"
+    actions = ["re_extract_metadata"]
+    readonly_fields = [
+        "created",
+        "modified",
+        "extraction_status_display",
+        "failure_reason_display",
+        "extraction_log_display",
+        "compatible_display",
+        "source",
+        "compat_version",
+    ]
+    fieldsets = [
+        (
+            None,
+            {
+                "fields": ["build", "file", "created", "modified"],
+            },
+        ),
+        (
+            _("Extraction Status"),
+            {
+                "fields": [
+                    "extraction_status_display",
+                    "failure_reason_display",
+                    "extraction_log_display",
+                ],
+                "description": _(
+                    "Metadata is extracted automatically on upload using fwtool "
+                    "(primary) and DTB scan (fallback). "
+                    "If both fail, fill in the Device Metadata fields below manually."
+                ),
+            },
+        ),
+        (
+            _("Device Metadata"),
+            {
+                "classes": ["device-metadata"],
+                "fields": [
+                    "board",
+                    "compatible_display",
+                    "target",
+                    "compat_version",
+                    "fw_version",
+                    "source",
+                ],
+            },
+        ),
+    ]
+
+    class Media:
+        css = {"all": ["firmware-upgrader/css/extraction-status.css"]}
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(self.readonly_fields)
+        if obj:
+            readonly.append("build")
+            status = obj.extraction_status
+            if status in (
+                FirmwareImage.STATUS_UNCONFIRMED,
+                FirmwareImage.STATUS_IN_PROGRESS,
+                FirmwareImage.STATUS_INVALID,
+                FirmwareImage.STATUS_MANUALLY_CONFIRMED,
+            ):
+                readonly += [
+                    "board",
+                    "compatible",
+                    "target",
+                    "fw_version",
+                ]
+            elif status == FirmwareImage.STATUS_INCOMPLETE:
+                if obj.source == "dtb":
+                    # board/compatible came confidently from a DTB scan
+                    readonly += ["board", "compatible"]
+                # a fwtool-sourced incomplete image has an unconfirmed
+                # board, so board/compatible stay editable for correction
+            elif status == FirmwareImage.STATUS_SUCCESS:
+                readonly += [
+                    "board",
+                    "compatible",
+                    "target",
+                    "fw_version",
+                ]
+        return readonly
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "build" and not request.user.is_superuser:
+            kwargs["queryset"] = Build.objects.filter(
+                category__organization__in=request.user.organizations_managed
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = list(super().get_fieldsets(request, obj))
+        has_failure_reason = obj and bool(obj.failure_reason)
+        is_failed = obj and obj.extraction_status == FirmwareImage.STATUS_FAILED
+        is_incomplete_editable = (
+            obj
+            and obj.extraction_status == FirmwareImage.STATUS_INCOMPLETE
+            and obj.source != "dtb"
+        )
+        result = []
+        for title, opts in fieldsets:
+            fields = list(opts["fields"])
+            if not has_failure_reason:
+                fields = [f for f in fields if f != "failure_reason_display"]
+            if is_failed or is_incomplete_editable:
+                fields = [
+                    "compatible" if f == "compatible_display" else f for f in fields
+                ]
+            result.append((title, {**opts, "fields": fields}))
+        return result
+
+    @admin.display(description=_("Extraction Status"))
+    def extraction_status_display(self, obj):
+        return _extraction_status_badge(obj.extraction_status)
+
+    @admin.display(description=_("Compatible"))
+    def compatible_display(self, obj):
+        return _compatible_display_html(obj)
+
+    @admin.display(description=_("Failure Reason"))
+    def failure_reason_display(self, obj):
+        if not obj.failure_reason:
+            return "-"
+        return _FAILURE_REASON_TEXT.get(obj.failure_reason, obj.failure_reason)
+
+    @admin.display(description=_("Extraction Log"))
+    def extraction_log_display(self, obj):
+        if not obj.extraction_log:
+            return "-"
+        return format_html(
+            '<pre style="white-space: pre-wrap;">{}</pre>',
+            obj.extraction_log,
+        )
+
+    def save_model(self, request, obj, form, change):
+        update_build_status = False
+        if change:
+            if obj.extraction_status == FirmwareImage.STATUS_FAILED:
+                metadata_fields = ["board", "compatible", "target", "fw_version"]
+                if any(f in form.changed_data for f in metadata_fields):
+                    if obj.board:
+                        obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
+                        obj.source = "manual"
+                        obj.failure_reason = ""
+                        update_build_status = True
+                    else:
+                        self.message_user(
+                            request,
+                            _("Board is required to manually confirm this image."),
+                            messages.WARNING,
+                        )
+            elif obj.extraction_status == FirmwareImage.STATUS_INCOMPLETE:
+                trigger_fields = (
+                    ["target", "fw_version"]
+                    if obj.source == "dtb"
+                    else ["target", "fw_version", "board"]
+                )
+                if any(field in form.changed_data for field in trigger_fields):
+                    if obj.board:
+                        obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
+                        obj.failure_reason = ""
+                        update_build_status = True
+                    else:
+                        self.message_user(
+                            request,
+                            _("Board is required to manually confirm this image."),
+                            messages.WARNING,
+                        )
+        super().save_model(request, obj, form, change)
+        if update_build_status:
+            obj.build.update_extraction_status()
+
+    @admin.action(
+        description=_("Re-extract metadata from selected images"),
+        permissions=["change"],
+    )
+    def re_extract_metadata(self, request, queryset):
+        blocked_pks = list(
+            queryset.filter(upgradeoperation__status__in=["in-progress", "success"])
+            .values_list("pk", flat=True)
+            .distinct()
+        )
+        if blocked_pks:
+            self.message_user(
+                request,
+                _(
+                    "%(count)d image(s) were skipped because they are currently "
+                    "being flashed to one or more devices, or have already been "
+                    "flashed successfully."
+                )
+                % {"count": len(blocked_pks)},
+                messages.WARNING,
+            )
+            queryset = queryset.exclude(pk__in=blocked_pks)
+        locked_pks = list(
+            queryset.filter(
+                extraction_status__in=FirmwareImage.LOCKED_STATUSES,
+            ).values_list("pk", flat=True)
+        )
+        if locked_pks:
+            self.message_user(
+                request,
+                _(
+                    "%(count)d image(s) were skipped because their metadata is "
+                    "already confirmed."
+                )
+                % {"count": len(locked_pks)},
+                messages.WARNING,
+            )
+            queryset = queryset.exclude(pk__in=locked_pks)
+        incomplete_pks = list(
+            queryset.filter(
+                extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+            ).values_list("pk", flat=True)
+        )
+        if incomplete_pks:
+            self.message_user(
+                request,
+                _(
+                    "%(count)d image(s) were skipped because re-extraction would "
+                    "not recover the missing metadata, please enter it manually."
+                )
+                % {"count": len(incomplete_pks)},
+                messages.WARNING,
+            )
+            queryset = queryset.exclude(pk__in=incomplete_pks)
+        referenced_pks = list(
+            DeviceFirmware.objects.filter(image__in=queryset)
+            .values_list("image_id", flat=True)
+            .distinct()
+        )
+        if referenced_pks:
+            self.message_user(
+                request,
+                _(
+                    "%(count)d image(s) were skipped because they are currently "
+                    "assigned to one or more devices."
+                )
+                % {"count": len(referenced_pks)},
+                messages.WARNING,
+            )
+            queryset = queryset.exclude(pk__in=referenced_pks)
+        image_pks = [str(pk) for pk in queryset.values_list("pk", flat=True)]
+        if not image_pks:
+            return
+        build_ids = set(queryset.values_list("build_id", flat=True))
+        queryset.update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
+            extraction_log="",
+            failure_reason="",
+            board="",
+            compatible="",
+            target="",
+            fw_version="",
+            compat_version="",
+            source="",
+        )
+        Build.objects.filter(pk__in=build_ids).update(
+            status=Build.BUILD_STATUS_ANALYZING
+        )
+        for pk in image_pks:
+            transaction.on_commit(partial(extract_firmware_metadata.delay, pk))
+        self.message_user(
+            request,
+            _("Metadata re-extraction scheduled for %(count)d image(s).")
+            % {"count": len(image_pks)},
+            messages.SUCCESS,
+        )
 
 
 class BatchUpgradeConfirmationForm(forms.ModelForm):
@@ -177,7 +572,14 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
 @admin.register(load_model("Build"))
 class BuildAdmin(BaseAdmin):
-    list_display = ["__str__", "organization", "category", "created", "modified"]
+    list_display = [
+        "__str__",
+        "organization",
+        "category",
+        "build_status_display",
+        "created",
+        "modified",
+    ]
     list_filter = [CategoryOrganizationFilter, CategoryFilter]
     list_select_related = ["category", "category__organization"]
     search_fields = ["category__name", "version", "os"]
@@ -186,14 +588,48 @@ class BuildAdmin(BaseAdmin):
     actions = ["upgrade_selected"]
     multitenant_parent = "category"
     autocomplete_fields = ["category"]
+    readonly_fields = ["build_status_display", "created", "modified"]
+    fieldsets = [
+        (
+            None,
+            {
+                "fields": [
+                    "category",
+                    "version",
+                    "os",
+                    "changelog",
+                    "build_status_display",
+                    "created",
+                    "modified",
+                ],
+            },
+        ),
+    ]
 
     # Allows apps that extend this modules to use this template with less hacks
     change_form_template = "admin/firmware_upgrader/change_form.html"
 
+    class Media:
+        css = {"all": ["firmware-upgrader/css/extraction-status.css"]}
+
     def organization(self, obj):
         return obj.category.organization
 
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = list(super().get_fieldsets(request, obj))
+        if obj is not None:
+            return fieldsets
+        result = []
+        for title, opts in fieldsets:
+            fields = [f for f in opts["fields"] if f != "build_status_display"]
+            result.append((title, {**opts, "fields": fields}))
+        return result
+
     organization.short_description = _("organization")
+
+    @admin.display(description=_("Extraction status"))
+    def build_status_display(self, obj):
+        return _status_badge(obj.status, _BUILD_STATUS_CONFIG)
 
     @admin.action(
         description=_("Mass-upgrade devices related to the selected build"),
@@ -725,6 +1161,7 @@ class DeviceFirmwareForm(forms.ModelForm):
         self.fields["image"].queryset = DeviceFirmware.get_image_queryset_for_device(
             device, device_firmware=self.instance
         )
+        self.fields["image"].label_from_instance = _image_dropdown_label
 
     def _has_credentials_in_form(self):
         if not self.data:
@@ -805,9 +1242,21 @@ class DeviceFirmwareInline(
     model = DeviceFirmware
     formset = DeviceFormSet
     form = DeviceFirmwareForm
-    exclude = ["created"]
+    fields = [
+        "image",
+        "image_target_display",
+        "image_fw_version_display",
+        "upgrade_options",
+        "installed",
+        "modified",
+    ]
     select_related = ["device", "image"]
-    readonly_fields = ["installed", "modified"]
+    readonly_fields = [
+        "image_target_display",
+        "image_fw_version_display",
+        "installed",
+        "modified",
+    ]
     verbose_name = _("Firmware")
     verbose_name_plural = verbose_name
     extra = 0
@@ -817,6 +1266,18 @@ class DeviceFirmwareInline(
     # TODO: remove when this issue solved:
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
     sortable_options = {"disabled": True}
+
+    @admin.display(description=_("Target"))
+    def image_target_display(self, obj):
+        if not obj or not obj.image:
+            return "-"
+        return obj.image.target or "-"
+
+    @admin.display(description=_("Firmware version"))
+    def image_fw_version_display(self, obj):
+        if not obj or not obj.image:
+            return "-"
+        return obj.image.fw_version or "-"
 
     class Media:
         js = [
@@ -850,6 +1311,20 @@ class DeviceFirmwareInline(
                 # We cannot retrieve the schema for upgrade options because this
                 # device does not have any related DeviceConnection object.
                 pass
+            device_firmware = getattr(obj, "devicefirmware", None)
+            image_qs = DeviceFirmware.get_image_queryset_for_device(
+                obj, device_firmware=device_firmware
+            )
+            formset.image_metadata = json.dumps(
+                {
+                    str(image.pk): {
+                        "target": image.target,
+                        "fw_version": image.fw_version,
+                    }
+                    for image in image_qs
+                },
+                cls=DjangoJSONEncoder,
+            )
         return formset
 
 

@@ -4,6 +4,9 @@ from django.utils.module_loading import import_string
 
 from openwisp_controller.connection import settings as conn_settings
 
+# The openwisp_firmware_upgrader.hardware module and the
+# OPENWISP_CUSTOM_OPENWRT_IMAGES setting are deprecated and will be removed
+# in a future release
 CUSTOM_OPENWRT_IMAGES = getattr(settings, "OPENWISP_CUSTOM_OPENWRT_IMAGES", None)
 # fmt: off
 UPGRADERS_MAP = getattr(settings, 'OPENWISP_FIRMWARE_UPGRADERS_MAP', {
@@ -30,6 +33,36 @@ OPENWRT_SETTINGS = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTING
 
 # Path of urls that need to be refered in migrations files.
 IMAGE_URL_PATH = "firmware/"
+
+MAX_KERNEL_BYTES = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES", 256 * 1024 * 1024
+)
+MAX_DECOMPRESSED_BYTES = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES", 512 * 1024 * 1024
+)
+MAX_DECOMPRESSED_RATIO = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_RATIO", 100
+)
+MAX_TRAILER_PROBES = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_PROBES", 64
+)
+MAX_TRAILER_CRC_BYTES = getattr(
+    settings,
+    "OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_CRC_BYTES",
+    MAX_KERNEL_BYTES * 4,
+)
+MAX_DEEP_SCAN_PROBES = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_MAX_DEEP_SCAN_PROBES", 64
+)
+QUEUE_UNCONFIRMED_CHUNK_SIZE = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_CHUNK_SIZE", 100
+)
+QUEUE_UNCONFIRMED_ON_WORKER_READY = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_ON_WORKER_READY", True
+)
+EXTRACTION_CLAIM_TIMEOUT = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_EXTRACTION_CLAIM_TIMEOUT", TASK_TIMEOUT * 2
+)
 
 try:
     PRIVATE_STORAGE_INSTANCE = import_string(

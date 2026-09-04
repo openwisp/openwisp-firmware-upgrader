@@ -173,6 +173,14 @@ Once you have created the models, add the following to your
 
 Substitute ``myupgrader`` with the name you chose in step 1.
 
+.. note::
+
+    If you swap ``CONFIG_DEVICEGROUP_MODEL`` (the device group model from
+    *OpenWISP Controller*) for a custom app, that app's migrations must
+    include one named exactly ``0036_device_group``, since
+    ``openwisp_firmware_upgrader``'s migration ``0015`` depends on it
+    directly.
+
 9. Create Database Migrations
 -----------------------------
 
@@ -374,6 +382,47 @@ Step 3: add an URL route pointing to your custom view in ``urls.py`` file:
 For more information regarding django views, please refer to the `"Class
 based views" section in the django documentation
 <https://docs.djangoproject.com/en/5.2/topics/class-based-views/>`_.
+
+Metadata Extractors
+~~~~~~~~~~~~~~~~~~~
+
+Firmware metadata (board, compatible strings, target, firmware version) is
+extracted by a pluggable extractor class, configured via the
+``metadata_extractor_class`` attribute on the ``Category`` model. By
+default this is
+``openwisp_firmware_upgrader.extractors.openwrt.OpenWrtMetadataExtracto``
+
+To write your own, subclass ``BaseMetadataExtractor``
+(``openwisp_firmware_upgrader.extractors.base.BaseMetadataExtractor``),
+implement ``extract()``, and set ``metadata_extractor_class`` to your
+class on your custom ``Category`` model:
+
+.. code-block:: python
+
+    # myupgrader/extractors.py
+    from openwisp_firmware_upgrader.extractors.base import BaseMetadataExtractor
+
+
+    class MyMetadataExtractor(BaseMetadataExtractor):
+        def extract(self):
+            return {
+                "model": "...",  # board identifier, stored in the "board" field
+                "compatible": ["..."],  # list of compatible strings
+                "target": "...",
+                "version": "...",  # stored in the "fw_version" field
+                "compat_version": "1.0",
+                "source": "...",
+                "model_confirmed": True,
+            }
+
+``model_confirmed`` is optional and defaults to ``False`` when omitted. It
+tells the extraction task whether the returned ``model`` has been verified
+against a real device model identifier, the way the built-in extractor
+cross-checks the DTB scan against the fwtool trailer. If ``model`` is
+present but ``model_confirmed`` is not explicitly set to ``True`` (and
+``source`` is not ``"dtb"``), the image is stored with extraction status
+*Incomplete* rather than *Success*, and an operator has to confirm it
+manually before the image becomes eligible for automatic device pairing
 
 API Views
 ---------

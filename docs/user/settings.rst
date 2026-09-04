@@ -36,16 +36,17 @@ documentation regarding automatic retries for known errors
 ``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT``
 -------------------------------------------
 
-============ =======
+============ ========
 **type**:    ``int``
-**default**: ``600``
-============ =======
+**default**: ``1500``
+============ ========
 
-Timeout for the background tasks which perform firmware upgrades.
+Timeout for the background tasks which perform firmware upgrades and
+firmware metadata extraction.
 
-If for some unexpected reason an upgrade remains stuck for more than 10
-minutes, the upgrade operation will be flagged as failed and the task will
-be killed.
+If for some unexpected reason an upgrade or metadata extraction remains
+stuck for more than 25 minutes, the operation will be flagged as failed
+and the task will be killed.
 
 This should not happen, but a global task time out is a best practice when
 using background tasks because it prevents the situation in which an
@@ -53,41 +54,6 @@ unexpected bug causes a specific task to hang, which will quickly fill all
 the available slots in a background queue and prevent other tasks from
 being executed, which will end up affecting negatively the rest of the
 application.
-
-.. _openwisp_custom_openwrt_images:
-
-``OPENWISP_CUSTOM_OPENWRT_IMAGES``
-----------------------------------
-
-============ =========
-**type**:    ``tuple``
-**default**: ``None``
-============ =========
-
-This setting can be used to extend the list of firmware image types
-included in *OpenWISP Firmware Upgrader*. This setting is suited to add
-support for custom OpenWrt images.
-
-.. code-block:: python
-
-    OPENWISP_CUSTOM_OPENWRT_IMAGES = (
-        (
-            # Firmware image file name.
-            "customimage-squashfs-sysupgrade.bin",
-            {
-                # Human readable name of the model which is displayed on
-                # the UI
-                "label": "Custom WAP-1200",
-                # Tuple of board names with which the different versions of
-                # the hardware are identified on OpenWrt
-                "boards": ("CWAP1200",),
-            },
-        ),
-    )
-
-Kindly read :doc:`automatic-device-firmware-detection` section of this
-documentation to know how *OpenWISP Firmware Upgrader* uses this setting
-in upgrades.
 
 ``OPENWISP_FIRMWARE_UPGRADER_MAX_FILE_SIZE``
 --------------------------------------------
@@ -107,6 +73,187 @@ images, e.g.:
 **Notes**:
 
 - Value must be specified in bytes. ``None`` means unlimited.
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES``
+-----------------------------------------------
+
+============ ==============================
+**type**:    ``int``
+**default**: ``256 * 1024 * 1024`` (256 MB)
+============ ==============================
+
+Maximum number of bytes read from a firmware image during metadata
+extraction, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES = 512 * 1024 * 1024  # 512MB
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES``
+-----------------------------------------------------
+
+============ ==============================
+**type**:    ``int``
+**default**: ``512 * 1024 * 1024`` (512 MB)
+============ ==============================
+
+Maximum total bytes decompressed across the whole metadata extraction of
+an image. This bounds total memory usage even when decompression happens
+in multiple nested or repeated steps, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES = 768 * 1024 * 1024  # 768MB
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_RATIO``
+-----------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``100``
+============ =======
+
+Maximum allowed ratio of decompressed size to compressed input size during
+metadata extraction. This limit prevents malformed compressed images from
+consuming all available memory, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_RATIO = 150
+
+**Notes**:
+
+- ``OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES`` and
+  ``OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES`` are per-task
+  memory ceilings, not global ones. Each is tracked cumulatively for the
+  whole task, not reset per decompression attempt. Multiple metadata
+  extraction tasks can run concurently within the same Celery worker. Size
+  the worker concurrency and the container memory limit so that
+  ``concurrency * (MAX_KERNEL_BYTES + MAX_DECOMPRESSED_BYTES)`` fits
+  within the available memory.
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_PROBES``
+-------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``64``
+============ =======
+
+Maximum number of candidate fwtool metadata trailers scanned when
+extracting firmware metadata. This limit prevents an image with many false
+trailer signatures from causing excessive CPU work, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_PROBES = 32
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_CRC_BYTES``
+----------------------------------------------------
+
+============ =============================
+**type**:    ``int``
+**default**: ``1024 * 1024 * 1024`` (1 GB)
+============ =============================
+
+Maximum total bytes checksummed across all trailer candidates during
+metadata extraction. This bounds the total CRC32 work even when several
+candidates are scanned, each covering a large portion of the file, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_TRAILER_CRC_BYTES = 256 * 1024 * 1024  # 256MB
+
+**Notes**:
+
+- The actual default is computed as 4x
+  ``OPENWISP_FIRMWARE_UPGRADER_MAX_KERNEL_BYTES`` at settings-load time (1
+  GB with the default 256 MB ``MAX_KERNEL_BYTES``), so it changes if you
+  override that setting.
+
+``OPENWISP_FIRMWARE_UPGRADER_MAX_DEEP_SCAN_PROBES``
+---------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``64``
+============ =======
+
+Maximum number of DTB (Device Tree Blob) candidates scanned when falling
+back to DTB-based metadata extraction. This limit prevents an image with
+many false DTB signatures from causing excessive CPU work, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_MAX_DEEP_SCAN_PROBES = 32
+
+``OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_CHUNK_SIZE``
+-----------------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``100``
+============ =======
+
+Number of firmware images dispatched per Celery task when
+``queue_unconfirmed_extractions`` re-queues images stuck in the
+``unconfirmed`` extraction status. This avoids flooding the broker with
+one task per image on installs with a larger backlog, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_CHUNK_SIZE = 50
+
+.. _openwisp_firmware_upgrader_queue_unconfirmed_on_worker_ready:
+
+``OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_ON_WORKER_READY``
+----------------------------------------------------------------
+
+============ ========
+**type**:    ``bool``
+**default**: ``True``
+============ ========
+
+Whether ``queue_unconfirmed_extractions`` is automatically triggered every
+time a Celery worker starts up, so firmware images left ``unconfirmed``
+(e.g. after an upgrade) are queued for extraction without requiring manual
+intervention e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_ON_WORKER_READY = False
+
+**Notes**:
+
+- See :doc:`recovering-from-extraction-failures` for more information.
+
+.. _openwisp_firmware_upgrader_extraction_claim_timeout:
+
+``OPENWISP_FIRMWARE_UPGRADER_EXTRACTION_CLAIM_TIMEOUT``
+-------------------------------------------------------
+
+============ =====================
+**type**:    ``int``
+**default**: ``3000`` (50 minutes)
+============ =====================
+
+Maximum number of seconds a firmware image can stay in ``in_progress``
+extraction status before ``reclaim_stale_extractions`` considers it
+abandoned (e.g. due to a worker crash) and marks it as failed, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_EXTRACTION_CLAIM_TIMEOUT = 1800  # 30 minutes
+
+**Notes**:
+
+- The actual default is computed as 2x
+  ``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT`` at settings-load time (3000
+  seconds with the default 1500 second ``TASK_TIMEOUT``), so it changes if
+  you override that setting.
+- See :doc:`recovering-from-extraction-failures` for how this setting is
+  used together with ``reclaim_stale_extractions`` and
+  ``queue_unconfirmed_extractions``.
 
 .. _openwisp_firmware_upgrader_api:
 
@@ -204,3 +351,42 @@ This instance is used to store firmware image files.
 
 By default, an instance of
 ``private_storage.storage.files.PrivateFileSystemStorage`` is used.
+
+.. _openwisp_custom_openwrt_images:
+
+``OPENWISP_CUSTOM_OPENWRT_IMAGES``
+----------------------------------
+
+.. warning::
+
+    This setting is deprecated and retained only for backward
+    compatibility with the legacy static hardware map. It will be removed
+    in a future release. Firmware metadata (board, target, compatible
+    devices) is now detected automatically at upload time — see
+    :doc:`automatic-device-firmware-detection`.
+
+============ =========
+**type**:    ``tuple``
+**default**: ``None``
+============ =========
+
+This setting was historically used to extend the static list of firmware
+image types recognized by *OpenWISP Firmware Upgrader* before automatic
+metadata extraction was introduced.
+
+.. code-block:: python
+
+    OPENWISP_CUSTOM_OPENWRT_IMAGES = (
+        (
+            # Firmware image file name.
+            "customimage-squashfs-sysupgrade.bin",
+            {
+                # Human readable name of the model which is displayed on
+                # the UI
+                "label": "Custom WAP-1200",
+                # Tuple of board names with which the different versions of
+                # the hardware are identified on OpenWrt
+                "boards": ("CWAP1200",),
+            },
+        ),
+    )

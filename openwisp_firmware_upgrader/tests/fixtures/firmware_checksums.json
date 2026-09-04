@@ -1,0 +1,10 @@
+{
+  "sysupgrade": {
+    "url": "https://downloads.openwrt.org/releases/23.05.5/targets/ath79/generic/openwrt-23.05.5-ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin",
+    "sha256": "225ebab59eac14a0ddf0cd6b1526c51f0ad8e286aa20cdc9bb347021530a13c8"
+  },
+  "sunxi": {
+    "url": "https://downloads.openwrt.org/releases/23.05.5/targets/sunxi/cortexa7/openwrt-23.05.5-sunxi-cortexa7-xunlong_orangepi-zero-ext4-sdcard.img.gz",
+    "sha256": "7c4ef66af84440f391526f5bdb8f316803619e7d562fa7d1c758b3c5e8813fa7"
+  }
+}

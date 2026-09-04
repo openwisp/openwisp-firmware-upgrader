@@ -67,7 +67,18 @@ class FirmwareImageSerializer(BaseSerializer):
     class Meta(BaseMeta):
         model = FirmwareImage
         fields = "__all__"
-        read_only_fields = BaseMeta.read_only_fields + ["build"]
+        read_only_fields = BaseMeta.read_only_fields + [
+            "build",
+            "extraction_status",
+            "failure_reason",
+            "extraction_log",
+            "board",
+            "compatible",
+            "target",
+            "fw_version",
+            "compat_version",
+            "source",
+        ]
 
 
 class BuildSerializer(BaseSerializer):
@@ -76,6 +87,7 @@ class BuildSerializer(BaseSerializer):
     class Meta(BaseMeta):
         model = Build
         fields = "__all__"
+        read_only_fields = BaseMeta.read_only_fields + ["status"]
 
 
 class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
