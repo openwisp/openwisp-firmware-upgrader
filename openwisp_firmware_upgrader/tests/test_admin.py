@@ -660,8 +660,13 @@ class TestAdmin(BaseTestAdmin, TestCase):
             )
             response = self.client.get(url)
             content = response.content.decode()
-            self.assertIn("Target:", content)
-            self.assertIn("Firmware version:", content)
+            self.assertEqual(
+                self._get_readonly_field_value(content, "image_target_display"), "-"
+            )
+            self.assertEqual(
+                self._get_readonly_field_value(content, "image_fw_version_display"),
+                "-",
+            )
 
     def _prepare_image_qs_test_env(self):
         device_fw = self._create_device_firmware()
@@ -1371,6 +1376,16 @@ class TestAdmin(BaseTestAdmin, TestCase):
         if not match:
             raise ValueError(f'Input with name="{name}" not found')
         return match.group(0)
+
+    def _get_readonly_field_value(self, content, field_name):
+        match = re.search(
+            rf"field-{re.escape(field_name)}\b[\s\S]*?"
+            r'<div class="readonly">([^<]*)</div>',
+            content,
+        )
+        if not match:
+            raise ValueError(f'Readonly field "{field_name}" not found')
+        return match.group(1)
 
     def test_device_bulk_delete_with_upgrade_operation(self):
         self._login()

@@ -474,7 +474,9 @@ class TestTryExtractDtbFromKernel(TestCase):
     def test_deep_scan_shares_probe_budget_across_all_formats(self):
         fake_gzip = b"\x1f\x8b" + b"\xff" * 20
         fake_xz = b"\xfd7zXZ\x00" + b"\xff" * 20
-        data = (fake_gzip + fake_xz) * 20
+        # fewer gzip matches than the budget, so the gzip loop exhausts
+        # its own matches naturally and leaves budget for the xz loop
+        data = fake_gzip * 2 + fake_xz * 20
         with mock.patch(
             "openwisp_firmware_upgrader.settings.MAX_DEEP_SCAN_PROBES", 5
         ), mock.patch.object(
@@ -484,6 +486,8 @@ class TestTryExtractDtbFromKernel(TestCase):
         ) as mock_decompress:
             result = self.extractor._deep_scan_for_dtb(data)
         self.assertIsNone(result)
+        self.assertEqual(mock_gzip.call_count, 2)
+        self.assertEqual(mock_decompress.call_count, 3)
         total_attempts = mock_gzip.call_count + mock_decompress.call_count
         self.assertLessEqual(total_attempts, 5)
 
