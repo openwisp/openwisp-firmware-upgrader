@@ -1,5 +1,6 @@
 import io
 from contextlib import redirect_stderr, redirect_stdout
+from functools import partial
 from time import sleep
 from unittest.mock import patch
 
@@ -186,7 +187,11 @@ def mocked_exec_upgrade_memory_aborted(
 
 
 def mocked_exec_upgrade_success_false_positives(
-    command, exit_codes=None, timeout=None, raise_unexpected_exit=None
+    command,
+    exit_codes=None,
+    timeout=None,
+    raise_unexpected_exit=None,
+    options='"save_partitions": 1',
 ):
     if command.startswith(f"{OpenWrt._SYSUPGRADE} -v -c /tmp/openwrt-"):
         filename = command.split()[-1].split("/")[-1]
@@ -196,7 +201,7 @@ def mocked_exec_upgrade_success_false_positives(
             f'"path": "\/tmp\/{filename}", '
             '"backup": "\/tmp\/sysupgrade.tgz", '
             '"command": "\/lib\/upgrade\/do_stage2", '
-            '"options": { "save_partitions": 1 } } '
+            f'"options": {{ {options} }} }} '
             "(Connection failed)"
         )
     return mocked_exec_upgrade_success(
@@ -228,8 +233,11 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     def tearDownClass(cls):
         cls.mock_ssh_server.__exit__()
 
-    def _trigger_upgrade(self, upgrade=True, exception=None):
-        ckey = self._create_credentials_with_key(port=self.ssh_server.port)
+    def _trigger_upgrade(self, upgrade=True, exception=None, organization=None):
+        credentials_options = {"port": self.ssh_server.port}
+        if organization:
+            credentials_options["organization"] = organization
+        ckey = self._create_credentials_with_key(**credentials_options)
         device_conn = self._create_device_connection(credentials=ckey)
         build = self._create_build(organization=device_conn.device.organization)
         image = self._create_firmware_image(build=build)
@@ -851,31 +859,52 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
     @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
     @patch("billiard.Process.is_alive", return_value=True)
-    @patch.object(
-        OpenWrt,
-        "exec_command",
-        side_effect=mocked_exec_upgrade_success_false_positives,
-    )
-    def test_upgrade_success_false_positives(self, exec_command, is_alive, putfo):
-        device_fw, device_conn, upgrade_op, output, _ = self._trigger_upgrade()
-        self.assertTrue(device_conn.is_working)
-        # should be called 6 times but 1 time is
-        # executed in a subprocess and not caught by mock
-        self.assertEqual(upgrade_op.status, "success")
-        self.assertEqual(exec_command.call_count, 9)
-        self.assertEqual(putfo.call_count, 1)
-        self.assertEqual(is_alive.call_count, 1)
-        lines = [
-            "Image checksum file found",
-            "Checksum different, proceeding",
-            "Upgrade operation in progress",
-            "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
-            "Connected! Writing checksum",
-            "Upgrade completed successfully",
-        ]
-        for line in lines:
-            self.assertIn(line, upgrade_op.log)
-        self.assertTrue(device_fw.installed)
+    def test_upgrade_success_false_positives(self, is_alive, putfo):
+        for name, slug, options in (
+            (
+                "legacy sysupgrade response",
+                "legacy-sysupgrade",
+                '"save_partitions": 1',
+            ),
+            (
+                "newer sysupgrade response with additional options",
+                "newer-sysupgrade",
+                '"save_partitions": 1, "add_provisioning": 0, "future_option": 1',
+            ),
+        ):
+            with self.subTest(name):
+                putfo.reset_mock()
+                is_alive.reset_mock()
+                with patch.object(
+                    OpenWrt,
+                    "exec_command",
+                    side_effect=partial(
+                        mocked_exec_upgrade_success_false_positives,
+                        options=options,
+                    ),
+                ) as exec_command:
+                    device_fw, device_conn, upgrade_op, output, _ = (
+                        self._trigger_upgrade(
+                            organization=self._create_org(name=name, slug=slug)
+                        )
+                    )
+                self.assertTrue(device_conn.is_working)
+                # One command executes in a subprocess and is not caught by the mock.
+                self.assertEqual(upgrade_op.status, "success")
+                self.assertEqual(exec_command.call_count, 9)
+                self.assertEqual(putfo.call_count, 1)
+                self.assertEqual(is_alive.call_count, 1)
+                lines = [
+                    "Image checksum file found",
+                    "Checksum different, proceeding",
+                    "Upgrade operation in progress",
+                    "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
+                    "Connected! Writing checksum",
+                    "Upgrade completed successfully",
+                ]
+                for line in lines:
+                    self.assertIn(line, upgrade_op.log)
+                self.assertTrue(device_fw.installed)
 
     @patch("scp.SCPClient.putfo")
     def test_upgrade_cancellation_early_stage(self, _mock_putfo):
