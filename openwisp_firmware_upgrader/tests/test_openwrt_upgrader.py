@@ -192,6 +192,7 @@ def mocked_exec_upgrade_success_false_positives(
     timeout=None,
     raise_unexpected_exit=None,
     options='"save_partitions": 1',
+    error_suffix="",
 ):
     if command.startswith(f"{OpenWrt._SYSUPGRADE} -v -c /tmp/openwrt-"):
         filename = command.split()[-1].split("/")[-1]
@@ -203,6 +204,7 @@ def mocked_exec_upgrade_success_false_positives(
             '"command": "\/lib\/upgrade\/do_stage2", '
             f'"options": {{ {options} }} }} '
             "(Connection failed)"
+            f"{error_suffix}"
         )
     return mocked_exec_upgrade_success(
         command, exit_codes, timeout, raise_unexpected_exit
@@ -859,17 +861,28 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
     @patch.object(OpenWrt, "RECONNECT_DELAY", 0)
     @patch.object(OpenWrt, "RECONNECT_RETRY_DELAY", 0)
     @patch("billiard.Process.is_alive", return_value=True)
-    def test_upgrade_success_false_positives(self, is_alive, putfo):
-        for name, slug, options in (
+    def test_upgrade_false_positives(self, is_alive, putfo):
+        for name, slug, options, error_suffix, expected_status in (
             (
                 "legacy sysupgrade response",
                 "legacy-sysupgrade",
                 '"save_partitions": 1',
+                "",
+                "success",
             ),
             (
                 "newer sysupgrade response with additional options",
                 "newer-sysupgrade",
                 '"save_partitions": 1, "add_provisioning": 0, "future_option": 1',
+                "",
+                "success",
+            ),
+            (
+                "sysupgrade response with trailing diagnostics",
+                "sysupgrade-trailing-diagnostics",
+                '"save_partitions": 1',
+                " Additional reflash diagnostic",
+                "failed",
             ),
         ):
             with self.subTest(name):
@@ -881,6 +894,7 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                     side_effect=partial(
                         mocked_exec_upgrade_success_false_positives,
                         options=options,
+                        error_suffix=error_suffix,
                     ),
                 ) as exec_command:
                     device_fw, device_conn, upgrade_op, output, _ = (
@@ -890,21 +904,26 @@ class TestOpenwrtUpgrader(TestUpgraderMixin, TransactionTestCase):
                     )
                 self.assertTrue(device_conn.is_working)
                 # One command executes in a subprocess and is not caught by the mock.
-                self.assertEqual(upgrade_op.status, "success")
-                self.assertEqual(exec_command.call_count, 9)
+                self.assertEqual(upgrade_op.status, expected_status)
                 self.assertEqual(putfo.call_count, 1)
-                self.assertEqual(is_alive.call_count, 1)
-                lines = [
-                    "Image checksum file found",
-                    "Checksum different, proceeding",
-                    "Upgrade operation in progress",
-                    "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
-                    "Connected! Writing checksum",
-                    "Upgrade completed successfully",
-                ]
+                lines = ["Image checksum file found", "Upgrade operation in progress"]
+                if expected_status == "success":
+                    self.assertEqual(exec_command.call_count, 9)
+                    self.assertEqual(is_alive.call_count, 1)
+                    lines.extend(
+                        [
+                            "Checksum different, proceeding",
+                            "Trying to reconnect to device at 127.0.0.1 (attempt n.1)",
+                            "Connected! Writing checksum",
+                            "Upgrade completed successfully",
+                        ]
+                    )
+                else:
+                    self.assertEqual(is_alive.call_count, 0)
+                    self.assertIn(error_suffix, upgrade_op.log)
                 for line in lines:
                     self.assertIn(line, upgrade_op.log)
-                self.assertTrue(device_fw.installed)
+                self.assertEqual(device_fw.installed, expected_status == "success")
 
     @patch("scp.SCPClient.putfo")
     def test_upgrade_cancellation_early_stage(self, _mock_putfo):
