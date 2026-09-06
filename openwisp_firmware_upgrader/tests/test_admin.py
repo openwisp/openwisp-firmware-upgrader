@@ -668,6 +668,15 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 "-",
             )
 
+    def test_device_firmware_inline_select_related_avoids_extra_query(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        url = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[device_fw.device.pk]
+        )
+        with self.assertNumQueries(33):
+            self.client.get(url)
+
     def _prepare_image_qs_test_env(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device

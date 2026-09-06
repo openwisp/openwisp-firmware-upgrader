@@ -522,6 +522,11 @@ def reclaim_stale_extractions():
         )
         if not rows_updated:
             continue
+        logger.warning(
+            "reclaimed stale extraction claim for pk=%s (claimed at %s)",
+            pk,
+            claimed_at,
+        )
         _finalize_failed_extraction(
             pk,
             FirmwareImage.STATUS_FAILED,

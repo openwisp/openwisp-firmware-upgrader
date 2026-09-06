@@ -741,6 +741,26 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         image.build.refresh_from_db()
         self.assertEqual(image.build.status, image.build.BUILD_STATUS_FAILED)
 
+    @mock.patch("logging.Logger.warning")
+    @capture_any_output()
+    def test_reclaim_stale_extractions_logs_reclaimed_claim(self, mock_warning):
+        image = self._create_firmware_image()
+        stale_claim = timezone.now() - timedelta(
+            seconds=app_settings.EXTRACTION_CLAIM_TIMEOUT + 60
+        )
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
+            extraction_claimed_at=stale_claim,
+        )
+        tasks.reclaim_stale_extractions.run()
+        self.assertTrue(
+            any(
+                str(image.pk) in str(call.args) for call in mock_warning.call_args_list
+            ),
+            f"warning should reference the reclaimed image pk {image.pk}. "
+            f"got {mock_warning.call_args_list}",
+        )
+
     @capture_any_output()
     def test_reclaim_stale_extractions_ignores_fresh_claim(self):
         image = self._create_firmware_image()

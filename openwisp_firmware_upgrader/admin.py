@@ -1250,7 +1250,6 @@ class DeviceFirmwareInline(
         "installed",
         "modified",
     ]
-    select_related = ["device", "image"]
     readonly_fields = [
         "image_target_display",
         "image_fw_version_display",
@@ -1278,6 +1277,9 @@ class DeviceFirmwareInline(
         if not obj or not obj.image:
             return "-"
         return obj.image.fw_version or "-"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("image")
 
     class Media:
         js = [
