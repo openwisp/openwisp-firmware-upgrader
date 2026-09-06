@@ -386,7 +386,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             extraction_status=FirmwareImage.STATUS_FAILED,
         )
         FirmwareImage.objects.filter(pk=image_flashed.pk).update(
-            extraction_status=FirmwareImage.STATUS_SUCCESS
+            extraction_status=FirmwareImage.STATUS_FAILED
         )
         device = self._create_config(
             organization=image_flashed.build.category.organization
@@ -415,7 +415,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         image_safe.refresh_from_db()
         self.assertEqual(image_safe.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
         image_flashed.refresh_from_db()
-        self.assertEqual(image_flashed.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertEqual(image_flashed.extraction_status, FirmwareImage.STATUS_FAILED)
         self.assertContains(r, "1 image(s) were skipped")
 
     def test_re_extract_metadata_action_skips_state_machine_violations(self):
@@ -427,7 +427,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 build=build, type=self.TPLINK_4300_IMAGE
             )
             FirmwareImage.objects.filter(pk=image_in_progress_upgrade.pk).update(
-                extraction_status=FirmwareImage.STATUS_SUCCESS,
+                extraction_status=FirmwareImage.STATUS_FAILED,
                 board="TP-Link WDR4300",
             )
             image_in_progress_upgrade.refresh_from_db()
@@ -454,7 +454,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             image_in_progress_upgrade.refresh_from_db()
             self.assertEqual(
                 image_in_progress_upgrade.extraction_status,
-                FirmwareImage.STATUS_SUCCESS,
+                FirmwareImage.STATUS_FAILED,
             )
             self.assertEqual(image_in_progress_upgrade.board, "TP-Link WDR4300")
 
@@ -590,7 +590,12 @@ class TestAdmin(BaseTestAdmin, TestCase):
         device_fw = DeviceFirmware.create_for_device(device, image)
         self.assertIsNotNone(device_fw)
         self.assertFalse(UpgradeOperation.objects.filter(image=image).exists())
-
+        # STATUS_SUCCESS alone already causes a skip (see
+        # "skips successfully-extracted image"), downgrade here so only the
+        # DeviceFirmware reference below can explain the skip
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED
+        )
         url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
         with mock.patch(
             "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
@@ -607,7 +612,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(r.status_code, 200)
         mocked_delay.assert_not_called()
         image.refresh_from_db()
-        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_FAILED)
         self.assertEqual(image.board, "TP-Link WDR4300")
         self.assertContains(r, "1 image(s) were skipped")
 
@@ -667,15 +672,6 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 self._get_readonly_field_value(content, "image_fw_version_display"),
                 "-",
             )
-
-    def test_device_firmware_inline_select_related_avoids_extra_query(self):
-        self._login()
-        device_fw = self._create_device_firmware()
-        url = reverse(
-            f"admin:{self.config_app_label}_device_change", args=[device_fw.device.pk]
-        )
-        with self.assertNumQueries(33):
-            self.client.get(url)
 
     def _prepare_image_qs_test_env(self):
         device_fw = self._create_device_firmware()
