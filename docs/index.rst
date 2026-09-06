@@ -15,23 +15,6 @@ network failures, mass upgrades, and a REST API for integration.
 For a comprehensive overview of features, please refer to the
 :doc:`user/intro` page.
 
-The following diagram illustrates the role of the Firmware Upgrader module
-within the OpenWISP architecture.
-
-.. figure:: images/architecture-v2-openwisp-firmware-upgrader.png
-    :target: ../_images/architecture-v2-openwisp-firmware-upgrader.png
-    :align: center
-    :alt: OpenWISP Architecture: Firmware Upgrader module
-
-    **OpenWISP Architecture: highlighted firmware upgrader module**
-
-.. important::
-
-    For an enhanced viewing experience, open the image above in a new
-    browser tab.
-
-    Refer to :doc:`/general/architecture` for more information.
-
 .. toctree::
     :caption: Firmware Upgrader Usage Docs
     :maxdepth: 1
