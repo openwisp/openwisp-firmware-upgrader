@@ -390,7 +390,7 @@ Firmware metadata (board, compatible strings, target, firmware version) is
 extracted by a pluggable extractor class, configured via the
 ``metadata_extractor_class`` attribute on the ``Category`` model. By
 default this is
-``openwisp_firmware_upgrader.extractors.openwrt.OpenWrtMetadataExtracto``
+``openwisp_firmware_upgrader.extractors.openwrt.OpenWrtMetadataExtractor``
 
 To write your own, subclass ``BaseMetadataExtractor``
 (``openwisp_firmware_upgrader.extractors.base.BaseMetadataExtractor``),
@@ -421,8 +421,9 @@ against a real device model identifier, the way the built-in extractor
 cross-checks the DTB scan against the fwtool trailer. If ``model`` is
 present but ``model_confirmed`` is not explicitly set to ``True`` (and
 ``source`` is not ``"dtb"``), the image is stored with extraction status
-*Incomplete* rather than *Success*, and an operator has to confirm it
-manually before the image becomes eligible for automatic device pairing
+*Incomplete* rather than *Success*. Incomplete images are still paired
+with matching devices automatically, but the unverified board value is
+worth reviewing manually.
 
 API Views
 ---------
