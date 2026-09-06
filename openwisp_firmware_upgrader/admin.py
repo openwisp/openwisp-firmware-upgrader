@@ -1305,6 +1305,7 @@ class DeviceFirmwareInline(
             )
         else:
             formset.upgrade_operation_cancel_url = ""
+        formset.image_metadata = {}
         if obj:
             try:
                 schema = get_upgrader_schema_for_device(obj)
@@ -1317,16 +1318,13 @@ class DeviceFirmwareInline(
             image_qs = DeviceFirmware.get_image_queryset_for_device(
                 obj, device_firmware=device_firmware
             )
-            formset.image_metadata = json.dumps(
-                {
-                    str(image.pk): {
-                        "target": image.target,
-                        "fw_version": image.fw_version,
-                    }
-                    for image in image_qs
-                },
-                cls=DjangoJSONEncoder,
-            )
+            formset.image_metadata = {
+                str(image.pk): {
+                    "target": image.target,
+                    "fw_version": image.fw_version,
+                }
+                for image in image_qs
+            }
         return formset
 
 
