@@ -21,6 +21,31 @@
 {% endblock %}
 
 {% block content %}
+  {% if credentialless_count %}
+    <div class="errornote">
+      <p>
+        {% blocktrans count count=credentialless_count %}
+          The following device will be skipped because it has no SSH credentials assigned. The upgrade will proceed for the remaining devices. Assign credentials to include this device in future upgrades.
+        {% plural %}
+          The following {{ count }} devices will be skipped because they have no SSH credentials assigned. The upgrade will proceed for the remaining devices. Assign credentials to include them in future upgrades.
+        {% endblocktrans %}
+      </p>
+      <ul>
+        {% for device in credentialless_devices %}
+          <li><a href="{{ device.url }}">{{ device.name }}</a></li>
+        {% endfor %}
+      </ul>
+      {% if credentialless_more %}
+        <p>
+          {% blocktrans count count=credentialless_more %}
+            ... and {{ count }} more device without credentials (not shown).
+          {% plural %}
+            ... and {{ count }} more devices without credentials (not shown).
+          {% endblocktrans %}
+        </p>
+      {% endif %}
+    </div>
+  {% endif %}
   {% if related_count or firmwareless_count %}
     <p class="intro">
       {% blocktrans %}
