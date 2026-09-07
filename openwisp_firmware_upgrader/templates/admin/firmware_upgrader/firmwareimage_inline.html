@@ -30,9 +30,9 @@ to add a per-row DTB-fallback/failed-extraction metadata warning.
           {% url inline_admin_form.model_admin.opts|admin_urlname:'change' obj.pk|admin_urlquote as metadata_url %}
           <ul class="messagelist map">
             <li class="warning ow-firmware-metadata-warning">
-              {% blocktrans with anchor_open='<a href="'|add:metadata_url|add:'#device-metadata">'|safe anchor_close='</a>'|safe %}
-                Target and Firmware version couldn't be extracted automatically. Enter
-                them manually {{ anchor_open }}here{{ anchor_close }} (not mandatory).
+              {% blocktrans trimmed with anchor_open='<a href="'|add:metadata_url|add:'#device-metadata">'|safe anchor_close='</a>'|safe %}
+                Target and firmware version could not be extracted automatically
+                from this firmware image. You can {{ anchor_open }}fill in the missing information{{ anchor_close }} if needed.
               {% endblocktrans %}
             </li>
           </ul>
@@ -40,9 +40,9 @@ to add a per-row DTB-fallback/failed-extraction metadata warning.
           {% url inline_admin_form.model_admin.opts|admin_urlname:'change' obj.pk|admin_urlquote as metadata_url %}
           <ul class="messagelist">
             <li class="error ow-firmware-metadata-error">
-              {% blocktrans with anchor_open='<a href="'|add:metadata_url|add:'#device-metadata">'|safe anchor_close='</a>'|safe %}
-                Automatic metadata extraction failed for this image. Please enter
-                the missing information manually {{ anchor_open }}here{{ anchor_close }} (mandatory).
+              {% blocktrans trimmed with anchor_open='<a href="'|add:metadata_url|add:'#device-metadata">'|safe anchor_close='</a>'|safe %}
+                Metadata could not be extracted automatically from this firmware
+                image. Please {{ anchor_open }}fill in the missing information{{ anchor_close }}.
               {% endblocktrans %}
             </li>
           </ul>

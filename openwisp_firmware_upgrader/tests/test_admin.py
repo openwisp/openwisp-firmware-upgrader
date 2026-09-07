@@ -218,8 +218,10 @@ class TestAdmin(BaseTestAdmin, TestCase):
 
     def test_firmware_image_inline_extraction_messages(self):
         self._login()
-        dtb_message = "Target and Firmware version couldn't be extracted automatically"
-        failed_message = "Automatic metadata extraction failed for this image"
+        dtb_message = "Target and firmware version could not be extracted automatically"
+        failed_message = (
+            "Metadata could not be extracted automatically from this firmware image"
+        )
         cases = (
             (
                 "dtb_incomplete",
