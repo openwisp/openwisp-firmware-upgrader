@@ -390,6 +390,74 @@ The API code is stored in `openwisp_firmware_upgrader.api
 and is built using `django-rest-framework
 <http://openwisp.io/docs/developer/hacking-openwisp-python-django.html#why-django-rest-framework>`_
 
+The API URL helpers accept a custom views module: ``get_api_urls``
+(imported from ``openwisp_firmware_upgrader.api.urls``) and ``get_urls``
+(imported from ``openwisp_firmware_upgrader.urls``).
+
+The custom views module only needs to define the views you want to
+customize: whenever a view is missing, the helper falls back to the
+standard view, so there is no need to duplicate the full set of views. The
+default API URLs are already loaded automatically by the app with the
+standard views. The following URL configuration is only needed when
+customizing the API views: it must be used instead of the default
+configuration include, so the custom URLs take precedence:
+
+.. code-block:: python
+
+    from django.urls import include, path
+
+    from openwisp_firmware_upgrader.urls import get_urls
+    from myupgrader.api import views as api_views
+
+    urlpatterns = [
+        # ... other urls in your project ...
+        path("", include(get_urls(api_views))),
+    ]
+
+The views module may define only a subset of the views, for example:
+
+.. code-block:: python
+
+    # in myupgrader/api/views.py
+    from openwisp_firmware_upgrader.api.views import (
+        BuildListView as BaseBuildListView,
+    )
+
+
+    class BuildListView(BaseBuildListView):
+        pass
+
+
+    build_list = BuildListView.as_view()
+
+All other views (categories, firmware images, upgrade operations, etc.)
+fall back to the standard implementation. The custom views module must use
+the same attribute names used in ``openwisp_firmware_upgrader.api.views``.
+
+If you want to mount only the API URLs (without the private storage
+routes), use ``get_api_urls`` instead:
+
+.. code-block:: python
+
+    from django.urls import include, path
+
+    from openwisp_firmware_upgrader.api.urls import get_api_urls
+    from myupgrader.api import views as api_views
+
+    urlpatterns = [
+        path(
+            "api/v1/",
+            include(
+                (get_api_urls(api_views), "upgrader"),
+                namespace="upgrader",
+            ),
+        ),
+    ]
+
+``get_api_urls`` preserves URL paths, names and the ``upgrader``
+namespace. Use ``get_urls`` to also get the private storage routes and the
+``FIRMWARE_UPGRADER_API`` setting behavior.
+
 For more information regarding Django REST Framework API views, please
 refer to the `"Generic views" section in the Django REST Framework
 documentation
