@@ -273,6 +273,63 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 1,
             )
 
+    def test_batch_upgrade_operation_all_status_filter(self):
+        org, _, _, build2, _, image, device = self._set_up_env()
+        other_device = self._create_device(
+            os=self.os,
+            model=image.boards[0],
+            organization=org,
+            name="other-device",
+            mac_address="00:22:bb:cc:dd:ee",
+        )
+        batch = BatchUpgradeOperation.objects.create(build=build2)
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image,
+            batch=batch,
+            status="in-progress",
+        )
+        UpgradeOperation.objects.create(
+            device=other_device,
+            image=image,
+            batch=batch,
+            status="success",
+        )
+        path = reverse(
+            f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+            args=[batch.pk],
+        )
+        self.login()
+        self.open(f"{path}?status=in-progress&page=2")
+        self.wait_for_visibility(By.CSS_SELECTOR, "#result_list tbody tr")
+        self.assertEqual(
+            len(self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")), 1
+        )
+        filter_title = self.find_element(
+            By.CSS_SELECTOR, ".ow-filter.status .filter-title"
+        )
+        self.web_driver.execute_script("arguments[0].click();", filter_title)
+        all_choice = self.find_element(
+            By.CSS_SELECTOR, '.ow-filter.status .filter-options a[title="All"]'
+        )
+        self.web_driver.execute_script("arguments[0].click();", all_choice)
+        self.wait_until(EC.staleness_of(filter_title))
+        self.assertNotIn(
+            "status=",
+            self.web_driver.current_url,
+            "Selecting All should clear the active status filter from the URL.",
+        )
+        self.assertNotIn(
+            "page=",
+            self.web_driver.current_url,
+            "Selecting All should clear the active page from the URL.",
+        )
+        self.assertEqual(
+            len(self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")),
+            2,
+            "Selecting All should display every upgrade operation.",
+        )
+
     @patch(_mock_upgrade, return_value=True)
     @patch.object(OpenWrt, "SCHEMA", None)
     def test_upgrader_with_unsupported_upgrade_options(self, *args):
