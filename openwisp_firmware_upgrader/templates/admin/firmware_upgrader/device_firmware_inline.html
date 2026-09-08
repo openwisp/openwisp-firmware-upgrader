@@ -1,13 +1,9 @@
 {% include "admin/edit_inline/stacked.html" %}
 
-{{ inline_admin_formset.formset.image_metadata|json_script:"ow-device-firmware-image-metadata" }}
 <script>
 var firmwareUpgraderSchema = {{ inline_admin_formset.formset.extra_context | default:"null" | safe }}
 var owFirmwareUpgraderApiHost = {
     host: "{{ request.get_host|escapejs }}"
 };
 var owUpgradeOperationCancelUrl = "{{ inline_admin_formset.formset.upgrade_operation_cancel_url }}";
-var owDeviceFirmwareImageMetadata = JSON.parse(
-    document.getElementById("ow-device-firmware-image-metadata").textContent
-);
 </script>

@@ -645,36 +645,6 @@ class TestAdmin(BaseTestAdmin, TestCase):
             DeviceFirmwareInline, deviceadmin.get_inlines(request, obj=device)
         )
 
-    def test_device_firmware_inline_target_and_fw_version_display(self):
-        self._login()
-        device_fw = self._create_device_firmware()
-        url = reverse(
-            f"admin:{self.config_app_label}_device_change", args=[device_fw.device.pk]
-        )
-        with self.subTest("shows values when populated"):
-            FirmwareImage.objects.filter(pk=device_fw.image.pk).update(
-                extraction_status=FirmwareImage.STATUS_SUCCESS,
-                target="ath79/generic",
-                fw_version="23.05.5",
-            )
-            response = self.client.get(url)
-            self.assertContains(response, "ath79/generic")
-            self.assertContains(response, "23.05.5")
-
-        with self.subTest("shows dash when empty"):
-            FirmwareImage.objects.filter(pk=device_fw.image.pk).update(
-                target="", fw_version=""
-            )
-            response = self.client.get(url)
-            content = response.content.decode()
-            self.assertEqual(
-                self._get_readonly_field_value(content, "image_target_display"), "-"
-            )
-            self.assertEqual(
-                self._get_readonly_field_value(content, "image_fw_version_display"),
-                "-",
-            )
-
     def _prepare_image_qs_test_env(self):
         device_fw = self._create_device_firmware()
         device = device_fw.device
@@ -789,23 +759,25 @@ class TestAdmin(BaseTestAdmin, TestCase):
         expected_label = f"{device_fw.image.build}: {device_fw.image.board}"
         self.assertContains(response, expected_label)
 
-    def test_device_firmware_form_image_dropdown_distinguishes_by_type(self):
+    def test_device_firmware_form_image_dropdown_shows_target(self):
         self._login()
         device_fw = self._create_device_firmware()
+        FirmwareImage.objects.filter(pk=device_fw.image.pk).update(
+            target="ath79/generic"
+        )
         device = device_fw.device
-        second_image = self._create_firmware_image(
-            build=device_fw.image.build,
-            type="ar71xx-generic-cpe210-220-v1-squashfs-factory.bin",
-        )
-        FirmwareImage.objects.filter(pk=second_image.pk).update(
-            board=device_fw.image.board,
-            fw_version=device_fw.image.fw_version,
-            extraction_status=FirmwareImage.STATUS_MANUALLY_CONFIRMED,
-        )
         url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
         response = self.client.get(url)
-        self.assertContains(response, f"[{device_fw.image.type}]")
-        self.assertContains(response, f"[{second_image.type}]")
+        self.assertContains(response, "(target: ath79/generic)")
+
+    def test_device_firmware_form_image_dropdown_shows_fw_version(self):
+        self._login()
+        device_fw = self._create_device_firmware()
+        FirmwareImage.objects.filter(pk=device_fw.image.pk).update(fw_version="23.05.5")
+        device = device_fw.device
+        url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+        response = self.client.get(url)
+        self.assertContains(response, "(fw: 23.05.5)")
 
     def test_admin_menu_groups(self):
         # Test menu group (openwisp-utils menu group) for Build, Category,
@@ -1383,16 +1355,6 @@ class TestAdmin(BaseTestAdmin, TestCase):
         if not match:
             raise ValueError(f'Input with name="{name}" not found')
         return match.group(0)
-
-    def _get_readonly_field_value(self, content, field_name):
-        match = re.search(
-            rf"field-{re.escape(field_name)}\b[\s\S]*?"
-            r'<div class="readonly">([^<]*)</div>',
-            content,
-        )
-        if not match:
-            raise ValueError(f'Readonly field "{field_name}" not found')
-        return match.group(1)
 
     def test_device_bulk_delete_with_upgrade_operation(self):
         self._login()

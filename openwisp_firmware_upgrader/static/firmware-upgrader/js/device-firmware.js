@@ -1,24 +1,6 @@
 "use strict";
 
 django.jQuery(function ($) {
-  function updateImageMetadataDisplay(imageId) {
-    var metadata = (window.owDeviceFirmwareImageMetadata || {})[imageId];
-    $("#devicefirmware-0 .field-image_target_display .readonly").text(
-      metadata ? metadata.target || "-" : "-",
-    );
-    $("#devicefirmware-0 .field-image_fw_version_display .readonly").text(
-      metadata ? metadata.fw_version || "-" : "-",
-    );
-  }
-
-  $("#devicefirmware-group").on(
-    "change",
-    "#id_devicefirmware-0-image",
-    function (event) {
-      updateImageMetadataDisplay($(event.target).val());
-    },
-  );
-
   if (firmwareUpgraderSchema === null) {
     return;
   }

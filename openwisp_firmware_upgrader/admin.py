@@ -125,9 +125,10 @@ def _compatible_display_html(obj):
 
 def _image_dropdown_label(image):
     label = f"{image.build}: {image.board}"
+    if image.target:
+        label += f" (target: {image.target})"
     if image.fw_version and image.fw_version != image.build.version:
-        label += f" (fw {image.fw_version})"
-    label += f" [{image.type}]"
+        label += f" (fw: {image.fw_version})"
     return label
 
 
@@ -1244,15 +1245,11 @@ class DeviceFirmwareInline(
     form = DeviceFirmwareForm
     fields = [
         "image",
-        "image_target_display",
-        "image_fw_version_display",
         "upgrade_options",
         "installed",
         "modified",
     ]
     readonly_fields = [
-        "image_target_display",
-        "image_fw_version_display",
         "installed",
         "modified",
     ]
@@ -1265,18 +1262,6 @@ class DeviceFirmwareInline(
     # TODO: remove when this issue solved:
     # https://github.com/theatlantic/django-nested-admin/issues/128#issuecomment-665833142
     sortable_options = {"disabled": True}
-
-    @admin.display(description=_("Target"))
-    def image_target_display(self, obj):
-        if not obj or not obj.image:
-            return "-"
-        return obj.image.target or "-"
-
-    @admin.display(description=_("Firmware version"))
-    def image_fw_version_display(self, obj):
-        if not obj or not obj.image:
-            return "-"
-        return obj.image.fw_version or "-"
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("image")
@@ -1305,7 +1290,6 @@ class DeviceFirmwareInline(
             )
         else:
             formset.upgrade_operation_cancel_url = ""
-        formset.image_metadata = {}
         if obj:
             try:
                 schema = get_upgrader_schema_for_device(obj)
@@ -1314,17 +1298,6 @@ class DeviceFirmwareInline(
                 # We cannot retrieve the schema for upgrade options because this
                 # device does not have any related DeviceConnection object.
                 pass
-            device_firmware = getattr(obj, "devicefirmware", None)
-            image_qs = DeviceFirmware.get_image_queryset_for_device(
-                obj, device_firmware=device_firmware
-            )
-            formset.image_metadata = {
-                str(image.pk): {
-                    "target": image.target,
-                    "fw_version": image.fw_version,
-                }
-                for image in image_qs
-            }
         return formset
 
 
