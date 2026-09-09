@@ -75,6 +75,18 @@ class TestUrls(SimpleTestCase):
             "/api/v1/firmware-upgrader/build/",
         )
 
+    def test_get_urls_uses_overrides_and_default_fallbacks(self):
+        def custom_view():
+            return None
+
+        custom_views = SimpleNamespace(build_list=custom_view)
+        callbacks = {
+            pattern.name: pattern.callback
+            for pattern in get_urls(custom_views)[1].url_patterns[0].url_patterns
+        }
+        self.assertIs(callbacks["api_build_list"], custom_view)
+        self.assertIs(callbacks["api_firmware_list"], views.firmware_image_list)
+
     def test_get_urls_with_api_disabled(self):
         with patch.object(app_settings, "FIRMWARE_UPGRADER_API", False):
             urlpatterns = get_urls()
