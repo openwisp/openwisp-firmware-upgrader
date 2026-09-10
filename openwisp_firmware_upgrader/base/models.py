@@ -815,16 +815,28 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             return
         if self.device.is_deactivated():
             raise ValidationError(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
-        if self.image.extraction_status not in self.image.PAIRING_ELIGIBLE_STATUSES:
-            raise ValidationError(
-                {
-                    "image": _(
-                        "This firmware image's metadata has not been confirmed yet. "
-                        "Metadata extraction must complete successfully "
-                        "before it can be used for upgrades."
-                    )
-                }
-            )
+        if self.image_has_changed:
+            if self.image.extraction_status not in self.image.PAIRING_ELIGIBLE_STATUSES:
+                raise ValidationError(
+                    {
+                        "image": _(
+                            "This firmware image's metadata has not been confirmed yet. "
+                            "Metadata extraction must complete successfully "
+                            "before it can be used for upgrades."
+                        )
+                    }
+                )
+            if not self.image.board:
+                raise ValidationError(
+                    {
+                        "image": _(
+                            "This firmware image has no board value. "
+                            "Set the board field on the image before you use it."
+                        )
+                    }
+                )
+            if self.device.model != self.image.board:
+                raise ValidationError(_("Device model and image do not match"))
         if (
             self.image.build.category.organization is not None
             and self.image.build.category.organization != self.device.organization
@@ -857,17 +869,6 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     'please add one in the section named "Credentials"'
                 )
             )
-        if not self.image.board:
-            raise ValidationError(
-                {
-                    "image": _(
-                        "This firmware image has no board value. "
-                        "Set the board field on the image before you use it."
-                    )
-                }
-            )
-        if self.device.model != self.image.board:
-            raise ValidationError(_("Device model and image do not match"))
 
     @property
     def image_has_changed(self):
@@ -966,12 +967,14 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     @classmethod
     def get_image_queryset_for_device(cls, device, device_firmware=None):
         FirmwareImage = cls.image.field.related_model
+        org_or_shared = Q(build__category__organization_id=device.organization_id) | Q(
+            build__category__organization__isnull=True
+        )
+        status_filter = Q(extraction_status__in=FirmwareImage.PAIRING_ELIGIBLE_STATUSES)
+        if device_firmware and hasattr(device_firmware, "image"):
+            status_filter |= Q(pk=device_firmware.image_id)
         qs = (
-            FirmwareImage.objects.filter(
-                Q(build__category__organization_id=device.organization_id)
-                | Q(build__category__organization__isnull=True),
-                extraction_status__in=FirmwareImage.PAIRING_ELIGIBLE_STATUSES,
-            )
+            FirmwareImage.objects.filter(org_or_shared, status_filter)
             .order_by("-created")
             .select_related("build", "build__category")
         )

@@ -750,6 +750,15 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertIn(device_fw.image, form.fields["image"].queryset)
         self.assertIn(shared_image, form.fields["image"].queryset)
 
+    def test_image_queryset_includes_currently_assigned_ineligible_image(self):
+        device_fw = self._create_device_firmware()
+        FirmwareImage.objects.filter(pk=device_fw.image_id).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+        )
+        device_fw.refresh_from_db()
+        form = DeviceFirmwareForm(device=device_fw.device, instance=device_fw)
+        self.assertIn(device_fw.image, form.fields["image"].queryset)
+
     def test_device_firmware_form_image_dropdown_shows_board(self):
         self._login()
         device_fw = self._create_device_firmware()

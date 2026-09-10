@@ -1076,6 +1076,16 @@ class TestModels(TestUpgraderMixin, TestCase):
             device_fw.clean()
         self.assertIn("This firmware image has no board value.", str(ctx.exception))
 
+    def test_device_firmware_resave_allowed_with_unconfirmed_image(self):
+        device_fw = self._create_device_firmware()
+        FirmwareImage.objects.filter(pk=device_fw.image_id).update(
+            extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
+            board="",
+        )
+        device_fw.refresh_from_db()
+        device_fw.full_clean()
+        device_fw.save(upgrade=False)
+
     def test_auto_create_device_firmwares_skip_unconfirmed(self):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_UNCONFIRMED
