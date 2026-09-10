@@ -123,15 +123,6 @@ def _compatible_display_html(obj):
     )
 
 
-def _image_dropdown_label(image):
-    label = f"{image.build}: {image.board}"
-    if image.target:
-        label += f" (target: {image.target})"
-    if image.fw_version and image.fw_version != image.build.version:
-        label += f" (fw: {image.fw_version})"
-    return label
-
-
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
     save_on_top = True
 
@@ -272,7 +263,7 @@ class FirmwareImageAdmin(BaseAdmin):
             },
         ),
         (
-            _("Device Metadata"),
+            _("Firmware Metadata"),
             {
                 "classes": ["device-metadata"],
                 "fields": [
@@ -1162,7 +1153,6 @@ class DeviceFirmwareForm(forms.ModelForm):
         self.fields["image"].queryset = DeviceFirmware.get_image_queryset_for_device(
             device, device_firmware=self.instance
         )
-        self.fields["image"].label_from_instance = _image_dropdown_label
 
     def _has_credentials_in_form(self):
         if not self.data:

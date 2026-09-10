@@ -1185,7 +1185,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
             "type": self.TPLINK_4300_IMAGE,
         }
-        with self.assertNumQueries(10):
+        with self.assertNumQueries(11):
             r = self.client.post(url, data)
         self.assertEqual(r.status_code, 201)
         self.assertEqual(FirmwareImage.objects.count(), 1)

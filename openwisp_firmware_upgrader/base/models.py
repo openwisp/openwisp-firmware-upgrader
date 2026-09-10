@@ -545,10 +545,14 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         unique_together = ("build", "type")
 
     def __str__(self):
-        if hasattr(self, "build") and self.type:
-            label = f"{self.build}: {self.type}"
-            if self.fw_version and self.fw_version != self.build.version:
-                label += f" (fw {self.fw_version})"
+        if hasattr(self, "build"):
+            label = str(self.build)
+            if self.board:
+                label += f": {self.board}"
+                if self.target:
+                    label += f" ({self.target})"
+                if self.fw_version and self.fw_version != self.build.version:
+                    label += f" v{self.fw_version}"
             return label
         return super().__str__()
 
@@ -562,6 +566,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     def clean(self):
         self._clean_type()
+        self._validate_unique_type()
         original = None
         if not self._state.adding and self.pk:
             original = (
@@ -732,6 +737,18 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                         "Please upload a sysupgrade image instead."
                     )
                 }
+            )
+
+    def _validate_unique_type(self):
+        if not self.build_id or not self.type:
+            return
+        if (
+            self.__class__.objects.filter(build_id=self.build_id, type=self.type)
+            .exclude(pk=self.pk)
+            .exists()
+        ):
+            raise ValidationError(
+                {"file": _("An image of this type already exists for this build.")}
             )
 
     @classmethod

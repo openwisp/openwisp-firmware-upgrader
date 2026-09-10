@@ -768,7 +768,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         device = device_fw.device
         url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
         response = self.client.get(url)
-        self.assertContains(response, "(target: ath79/generic)")
+        self.assertContains(response, "(ath79/generic)")
 
     def test_device_firmware_form_image_dropdown_shows_fw_version(self):
         self._login()
@@ -777,7 +777,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         device = device_fw.device
         url = reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
         response = self.client.get(url)
-        self.assertContains(response, "(fw: 23.05.5)")
+        self.assertContains(response, "v23.05.5")
 
     def test_admin_menu_groups(self):
         # Test menu group (openwisp-utils menu group) for Build, Category,
@@ -963,7 +963,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_deactivated_firmware_image_inline(self):
         self._login()
         device = self._create_config(organization=self._get_org()).device
-        self._create_device_firmware(device=device)
+        device_fw = self._create_device_firmware(device=device)
         device.deactivate()
         response = self.client.get(
             reverse(f"admin:{self.config_app_label}_device_change", args=[device.id])
@@ -977,10 +977,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         # Ensure that a deactivated device's existing DeviceFirmwareImage
         # is displayed as readonly in the admin interface.
-        self.assertContains(
-            response,
-            f"Test Category v0.1: {self.TPLINK_4300_IMAGE}",
-        )
+        self.assertContains(response, str(device_fw.image))
         self.assertNotContains(
             response,
             '<select name="devicefirmware-0-image" id="id_devicefirmware-0-image">',

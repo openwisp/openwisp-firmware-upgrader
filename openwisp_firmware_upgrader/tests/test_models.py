@@ -107,7 +107,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         with self.subTest("fw_version differs from build version: appended"):
             FirmwareImage.objects.filter(pk=fw.pk).update(fw_version="23.05.5")
             fw.refresh_from_db()
-            self.assertIn("(fw 23.05.5)", str(fw))
+            self.assertIn("v23.05.5", str(fw))
 
     def test_fw_str_new(self):
         fw = FirmwareImage()
@@ -797,6 +797,18 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.assertIn("file", e.message_dict)
         else:
             self.fail("ValidationError not raised for rootfs image")
+
+    def test_firmware_image_rejects_duplicate_type_within_build(self):
+        build = self._get_build()
+        self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
+        duplicate = FirmwareImage(
+            build=build,
+            type=self.TPLINK_4300_IMAGE,
+            file=self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            duplicate.full_clean()
+        self.assertIn("file", ctx.exception.message_dict)
 
     def test_batch_upgrade_blocked_with_unconfirmed_images(self):
         env = self._create_upgrade_env()
