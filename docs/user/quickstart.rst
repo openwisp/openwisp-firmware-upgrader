@@ -12,6 +12,9 @@ Requirements
   versions of OpenWrt have not worked at all in our tests
 - Devices must have enough free RAM to be able to upload the new image to
   ``/tmp``
+- Devices must be active. They should not be :ref:`deactivated
+  <controller_deactivated_config_status>` or belong to a :ref:`disabled
+  organization <users_disabled_organization>`.
 
 1. Create a Category
 --------------------
