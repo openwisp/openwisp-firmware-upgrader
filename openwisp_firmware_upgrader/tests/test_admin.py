@@ -375,26 +375,29 @@ class TestAdmin(BaseTestAdmin, TestCase):
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_ANALYZING)
 
-    def test_re_extract_metadata_action_skips_flashed_images(self):
+    def test_re_extract_metadata_action_skips_in_progress_not_past_success(self):
         self._login()
         build = self._create_build()
-        image_safe = self._create_firmware_image(
+        image_in_progress = self._create_firmware_image(
             build=build, type=self.TPLINK_4300_IMAGE
         )
-        image_flashed = self._create_firmware_image(
+        image_past_success = self._create_firmware_image(
             build=build, type=self.TPLINK_4300_IL_IMAGE
         )
-        FirmwareImage.objects.filter(pk=image_safe.pk).update(
+        FirmwareImage.objects.filter(pk=image_in_progress.pk).update(
             extraction_status=FirmwareImage.STATUS_FAILED,
         )
-        FirmwareImage.objects.filter(pk=image_flashed.pk).update(
+        FirmwareImage.objects.filter(pk=image_past_success.pk).update(
             extraction_status=FirmwareImage.STATUS_FAILED
         )
         device = self._create_config(
-            organization=image_flashed.build.category.organization
+            organization=image_in_progress.build.category.organization
         ).device
         UpgradeOperation.objects.create(
-            device=device, image=image_flashed, status="success"
+            device=device, image=image_in_progress, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
+            device=device, image=image_past_success, status="success"
         )
         url = reverse(f"admin:{self.app_label}_firmwareimage_changelist")
         with mock.patch(
@@ -406,18 +409,22 @@ class TestAdmin(BaseTestAdmin, TestCase):
                     {
                         "action": "re_extract_metadata",
                         ACTION_CHECKBOX_NAME: (
-                            str(image_safe.pk),
-                            str(image_flashed.pk),
+                            str(image_in_progress.pk),
+                            str(image_past_success.pk),
                         ),
                     },
                     follow=True,
                 )
         self.assertEqual(r.status_code, 200)
-        mocked_delay.assert_called_once_with(str(image_safe.pk))
-        image_safe.refresh_from_db()
-        self.assertEqual(image_safe.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
-        image_flashed.refresh_from_db()
-        self.assertEqual(image_flashed.extraction_status, FirmwareImage.STATUS_FAILED)
+        mocked_delay.assert_called_once_with(str(image_past_success.pk))
+        image_in_progress.refresh_from_db()
+        self.assertEqual(
+            image_in_progress.extraction_status, FirmwareImage.STATUS_FAILED
+        )
+        image_past_success.refresh_from_db()
+        self.assertEqual(
+            image_past_success.extraction_status, FirmwareImage.STATUS_UNCONFIRMED
+        )
         self.assertContains(r, "1 image(s) were skipped")
 
     def test_re_extract_metadata_action_skips_state_machine_violations(self):

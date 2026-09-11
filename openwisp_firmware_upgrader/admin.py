@@ -395,7 +395,7 @@ class FirmwareImageAdmin(BaseAdmin):
     )
     def re_extract_metadata(self, request, queryset):
         blocked_pks = list(
-            queryset.filter(upgradeoperation__status__in=["in-progress", "success"])
+            queryset.filter(upgradeoperation__status=IN_PROGRESS_STATUS)
             .values_list("pk", flat=True)
             .distinct()
         )
@@ -404,8 +404,7 @@ class FirmwareImageAdmin(BaseAdmin):
                 request,
                 _(
                     "%(count)d image(s) were skipped because they are currently "
-                    "being flashed to one or more devices, or have already been "
-                    "flashed successfully."
+                    "being flashed to one or more devices."
                 )
                 % {"count": len(blocked_pks)},
                 messages.WARNING,
@@ -463,22 +462,23 @@ class FirmwareImageAdmin(BaseAdmin):
         if not image_pks:
             return
         build_ids = set(queryset.values_list("build_id", flat=True))
-        queryset.update(
-            extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
-            extraction_log="",
-            failure_reason="",
-            board="",
-            compatible="",
-            target="",
-            fw_version="",
-            compat_version="",
-            source="",
-        )
-        Build.objects.filter(pk__in=build_ids).update(
-            status=Build.BUILD_STATUS_ANALYZING
-        )
-        for pk in image_pks:
-            transaction.on_commit(partial(extract_firmware_metadata.delay, pk))
+        with transaction.atomic():
+            queryset.update(
+                extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
+                extraction_log="",
+                failure_reason="",
+                board="",
+                compatible="",
+                target="",
+                fw_version="",
+                compat_version="",
+                source="",
+            )
+            Build.objects.filter(pk__in=build_ids).update(
+                status=Build.BUILD_STATUS_ANALYZING
+            )
+            for pk in image_pks:
+                transaction.on_commit(partial(extract_firmware_metadata.delay, pk))
         self.message_user(
             request,
             _("Metadata re-extraction scheduled for %(count)d image(s).")
