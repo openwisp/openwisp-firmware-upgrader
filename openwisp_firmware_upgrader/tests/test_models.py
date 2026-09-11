@@ -973,6 +973,51 @@ class TestModels(TestUpgraderMixin, TestCase):
             image._validate_build_unchanged(original)
         self.assertIn("build", ctx.exception.message_dict)
 
+    def test_confirm_metadata_failed_sets_manual_source(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            failure_reason=FirmwareImage.FAILURE_UNSUPPORTED,
+            board="Generic x86",
+            source="",
+        )
+        image.refresh_from_db()
+        image.confirm_metadata(source="manual")
+        image.refresh_from_db()
+        self.assertEqual(
+            image.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED
+        )
+        self.assertEqual(image.source, "manual")
+        self.assertEqual(image.failure_reason, "")
+
+    def test_confirm_metadata_incomplete_preserves_source(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+            source="dtb",
+            board="Xunlong Orange Pi Zero",
+        )
+        image.refresh_from_db()
+        image.confirm_metadata()
+        image.refresh_from_db()
+        self.assertEqual(
+            image.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED
+        )
+        self.assertEqual(image.source, "dtb")
+
+    def test_confirm_metadata_requires_board(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            board="",
+        )
+        image.refresh_from_db()
+        with self.assertRaises(ValidationError) as ctx:
+            image.confirm_metadata(source="manual")
+        self.assertIn("board", ctx.exception.message_dict)
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_FAILED)
+
     def test_validate_locked_allows_change_when_failed(self):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_FAILED

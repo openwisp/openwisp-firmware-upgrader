@@ -590,6 +590,18 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         self._validate_file_header(original)
         self._validate_rootfs()
 
+    def confirm_metadata(self, source=None):
+        if not self.board:
+            raise ValidationError(
+                {"board": _("Board is required to manually confirm this image.")}
+            )
+        if source is not None:
+            self.source = source
+        self.extraction_status = self.STATUS_MANUALLY_CONFIRMED
+        self.failure_reason = ""
+        self.save()
+        self.build.update_extraction_status()
+
     def delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
         self._remove_file(self.file.name)

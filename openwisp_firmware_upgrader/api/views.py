@@ -221,7 +221,9 @@ class FirmwareImageListView(FirmwareImageMixin, generics.ListCreateAPIView):
     ordering = ["-created"]
 
 
-class FirmwareImageDetailView(FirmwareImageMixin, generics.RetrieveDestroyAPIView):
+class FirmwareImageDetailView(
+    FirmwareImageMixin, generics.RetrieveUpdateDestroyAPIView
+):
     queryset = FirmwareImage.objects.all()
     serializer_class = FirmwareImageSerializer
     lookup_fields = ["pk"]

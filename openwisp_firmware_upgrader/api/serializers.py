@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
@@ -43,9 +44,46 @@ class CategoryRelationSerializer(BaseSerializer):
 
 
 class FirmwareImageSerializer(BaseSerializer):
+    CONFIRMABLE_STATUSES = (
+        FirmwareImage.STATUS_FAILED,
+        FirmwareImage.STATUS_INCOMPLETE,
+    )
+    METADATA_FIELDS = ("board", "compatible", "target", "fw_version")
+
     def validate(self, data):
         data["build"] = self.context["view"].get_parent_queryset().get()
         return super().validate(data)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        status = getattr(self.instance, "extraction_status", None)
+        if status not in self.CONFIRMABLE_STATUSES:
+            for field in self.METADATA_FIELDS:
+                fields[field].read_only = True
+        return fields
+
+    def update(self, instance, validated_data):
+        should_confirm = (
+            instance.extraction_status in self.CONFIRMABLE_STATUSES
+            and any(field in validated_data for field in self.METADATA_FIELDS)
+        )
+        confirm_source = (
+            "manual"
+            if instance.extraction_status == FirmwareImage.STATUS_FAILED
+            else None
+        )
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if should_confirm:
+            try:
+                instance.confirm_metadata(source=confirm_source)
+            except DjangoValidationError as e:
+                raise serializers.ValidationError(
+                    detail=serializers.as_serializer_error(e)
+                )
+        else:
+            instance.save()
+        return instance
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
@@ -72,10 +110,6 @@ class FirmwareImageSerializer(BaseSerializer):
             "extraction_status",
             "failure_reason",
             "extraction_log",
-            "board",
-            "compatible",
-            "target",
-            "fw_version",
             "compat_version",
             "source",
         ]

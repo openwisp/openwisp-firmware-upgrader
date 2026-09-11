@@ -365,42 +365,29 @@ class FirmwareImageAdmin(BaseAdmin):
         )
 
     def save_model(self, request, obj, form, change):
-        update_build_status = False
+        should_confirm = False
+        confirm_source = None
         if change:
             if obj.extraction_status == FirmwareImage.STATUS_FAILED:
                 metadata_fields = ["board", "compatible", "target", "fw_version"]
-                if any(f in form.changed_data for f in metadata_fields):
-                    if obj.board:
-                        obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
-                        obj.source = "manual"
-                        obj.failure_reason = ""
-                        update_build_status = True
-                    else:
-                        self.message_user(
-                            request,
-                            _("Board is required to manually confirm this image."),
-                            messages.WARNING,
-                        )
+                should_confirm = any(f in form.changed_data for f in metadata_fields)
+                confirm_source = "manual"
             elif obj.extraction_status == FirmwareImage.STATUS_INCOMPLETE:
-                trigger_fields = (
-                    ["target", "fw_version"]
-                    if obj.source == "dtb"
-                    else ["target", "fw_version", "board"]
+                should_confirm = any(
+                    field in form.changed_data for field in ["target", "fw_version"]
                 )
-                if any(field in form.changed_data for field in trigger_fields):
-                    if obj.board:
-                        obj.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
-                        obj.failure_reason = ""
-                        update_build_status = True
-                    else:
-                        self.message_user(
-                            request,
-                            _("Board is required to manually confirm this image."),
-                            messages.WARNING,
-                        )
+        if should_confirm:
+            try:
+                obj.confirm_metadata(source=confirm_source)
+            except ValidationError:
+                self.message_user(
+                    request,
+                    _("Board is required to manually confirm this image."),
+                    messages.WARNING,
+                )
+                super().save_model(request, obj, form, change)
+            return
         super().save_model(request, obj, form, change)
-        if update_build_status:
-            obj.build.update_extraction_status()
 
     @admin.action(
         description=_("Re-extract metadata from selected images"),

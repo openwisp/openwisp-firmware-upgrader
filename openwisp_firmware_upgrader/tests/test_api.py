@@ -1269,22 +1269,80 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
                 response = self.client.get(url)
             self.assertEqual(response.getvalue(), content)
 
-    def test_firmware_no_update(self):
-        image = self._create_firmware_image()
-        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
-        data = {
-            "type": self.TPLINK_4300_IL_IMAGE,
-            "file": self._get_simpleuploadedfile(),
-        }
-        r = self.client.put(url, data, content_type="multipart/form-data")
-        self.assertEqual(r.status_code, 405)
-
-    def test_firmware_no_update_partial(self):
+    def test_firmware_update_partial_type(self):
         image = self._create_firmware_image()
         url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
         data = dict(type=self.TPLINK_4300_IL_IMAGE)
         r = self.client.patch(url, data, content_type="application/json")
-        self.assertEqual(r.status_code, 405)
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(image.type, self.TPLINK_4300_IL_IMAGE)
+
+    def test_firmware_patch_confirms_failed_metadata(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            failure_reason=FirmwareImage.FAILURE_UNSUPPORTED,
+            board="",
+            source="",
+        )
+        Build.objects.filter(pk=image.build.pk).update(status=Build.BUILD_STATUS_FAILED)
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {
+            "board": "Generic x86",
+            "compatible": "generic,x86-64",
+            "target": "x86/64",
+            "fw_version": "23.05.5",
+        }
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(
+            image.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED
+        )
+        self.assertEqual(image.source, "manual")
+        self.assertEqual(image.board, "Generic x86")
+        self.assertEqual(image.compatible, "generic,x86-64")
+        self.assertEqual(image.failure_reason, "")
+        image.build.refresh_from_db()
+        self.assertEqual(image.build.status, Build.BUILD_STATUS_MANUALLY_CONFIRMED)
+
+    def test_firmware_patch_confirms_incomplete_metadata_preserves_source(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+            source="dtb",
+        )
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {"target": "sunxi/cortexa7", "fw_version": "23.05.5"}
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(
+            image.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED
+        )
+        self.assertEqual(image.source, "dtb")
+
+    def test_firmware_patch_metadata_ignored_when_not_failed_or_incomplete(self):
+        image = self._create_firmware_image()
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {"board": "Should not apply"}
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertNotEqual(image.board, "Should not apply")
+
+    def test_firmware_patch_confirm_requires_board(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            board="",
+        )
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {"target": "x86/64"}
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("board", r.data)
 
 
 class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
