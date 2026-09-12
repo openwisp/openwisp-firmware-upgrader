@@ -1,6 +1,7 @@
 import uuid
 from datetime import timedelta
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 import swapper
 from django.contrib.auth import get_user_model
@@ -8,6 +9,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.formats import get_format
 from packaging.version import parse as parse_version
 from rest_framework import VERSION as REST_FRAMEWORK_VERSION
 
@@ -26,7 +28,7 @@ from openwisp_firmware_upgrader.tests.base import (
     TestUpgraderMixin,
 )
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
-from openwisp_utils.tests import AssertNumQueriesSubTestMixin
+from openwisp_utils.tests import AssertNumQueriesSubTestMixin, capture_any_output
 
 from ..swapper import load_model
 
@@ -1031,6 +1033,28 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(batch.scheduled_at, new_due)
 
     @override_settings(TIME_ZONE="Asia/Kolkata")
+    def test_reschedule_browser_timezone(self):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(env["build2"])
+        browser_tz = ZoneInfo("America/New_York")
+        new_due = (timezone.now().astimezone(browser_tz) + timedelta(days=2)).replace(
+            second=0, microsecond=0
+        )
+        date_format = get_format("DATE_INPUT_FORMATS")[0]
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        r = self.client.post(
+            url,
+            {
+                "scheduled_at_0": new_due.strftime(date_format),
+                "scheduled_at_1": new_due.strftime("%H:%M"),
+                "scheduled_at_tz": "America/New_York",
+            },
+        )
+        self.assertEqual(r.status_code, 200)
+        batch.refresh_from_db()
+        self.assertEqual(batch.scheduled_at, new_due)
+
+    @override_settings(TIME_ZONE="Asia/Kolkata")
     def test_reschedule_naive_scheduled_at_returns_400(self):
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(env["build2"])
@@ -1101,7 +1125,10 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(r.status_code, 409)
         self.assertIn("in-progress", r.data["error"])
 
-    def test_reschedule_unexpected_error_returns_500(self):
+    @capture_any_output()
+    def test_reschedule_unexpected_error_returns_500(
+        self, captured_stdout, captured_stderr
+    ):
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(env["build2"])
         due = (timezone.now() + timedelta(days=2)).isoformat()
@@ -1111,6 +1138,7 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         ):
             r = self.client.post(url, {"scheduled_at": due})
         self.assertEqual(r.status_code, 500)
+        self.assertIn("Failed to reschedule mass upgrade", captured_stderr.getvalue())
 
     def test_cancel_scheduled_batch(self):
         env = self._create_upgrade_env()
@@ -1164,7 +1192,8 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         )
         url = reverse("upgrader:api_batchupgradeoperation_cancel", args=[batch.pk])
         r = self.client.post(url)
-        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("could be cancelled", str(r.data["error"]))
         reflashing.refresh_from_db()
         self.assertEqual(reflashing.status, "in-progress")
         batch.refresh_from_db()
@@ -1186,6 +1215,25 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         r = self.client.get(url, {"status": "scheduled", "ordering": "scheduled_at"})
         ordered = [b["id"] for b in r.data["results"]]
         self.assertEqual(ordered, [str(soon.pk), str(later.pk)])
+
+    def test_list_scheduled_at_range_filter(self):
+        env = self._create_upgrade_env()
+        soon = self._create_scheduled_batch(
+            env["build2"], scheduled_at=timezone.now() + timedelta(days=1)
+        )
+        later = self._create_scheduled_batch(
+            env["build1"], scheduled_at=timezone.now() + timedelta(days=5)
+        )
+        url = reverse("upgrader:api_batchupgradeoperation_list")
+        boundary = (timezone.now() + timedelta(days=3)).isoformat()
+        r = self.client.get(url, {"scheduled_at__lte": boundary})
+        ids = [b["id"] for b in r.data["results"]]
+        self.assertIn(str(soon.pk), ids)
+        self.assertNotIn(str(later.pk), ids)
+        r = self.client.get(url, {"scheduled_at__gte": boundary})
+        ids = [b["id"] for b in r.data["results"]]
+        self.assertIn(str(later.pk), ids)
+        self.assertNotIn(str(soon.pk), ids)
 
     def test_reschedule_other_org_returns_404(self):
         org2 = self._create_org(name="org2-resched", slug="org2-resched")

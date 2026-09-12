@@ -2,6 +2,7 @@ import json
 import re
 from datetime import timedelta
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 import django
 import swapper
@@ -9,11 +10,10 @@ from django.conf import settings
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.contrib.contenttypes.models import ContentType
 from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.formats import localize
+from django.utils.formats import get_format, localize
 from django.utils.timezone import localtime
 
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
@@ -329,29 +329,33 @@ class TestAdmin(BaseTestAdmin, TestCase):
 
     @override_settings(TIME_ZONE="Asia/Kolkata")
     def test_schedule_browser_timezone(self):
-        # The browser posts a single UTC scheduled_at; the server stores that
-        # instant regardless of its timezone.
         self._login()
         env = self._create_upgrade_env()
-        due = (timezone.now() + timedelta(days=1)).replace(second=0, microsecond=0)
+        browser_tz = ZoneInfo("America/New_York")
+        due = (timezone.now().astimezone(browser_tz) + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        date_format = get_format("DATE_INPUT_FORMATS")[0]
         self.client.post(
             self.build_list_url,
             {
                 "action": "upgrade_selected",
                 ACTION_CHECKBOX_NAME: (env["build2"].pk,),
                 "upgrade_all": "on",
-                "scheduled_at": due.isoformat(),
+                "scheduled_at_0": due.strftime(date_format),
+                "scheduled_at_1": due.strftime("%H:%M"),
+                "scheduled_at_tz": "America/New_York",
             },
             follow=True,
         )
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
         self.assertEqual(batch.scheduled_at, due)
 
-    def test_schedule_naive_datetime_rejected(self):
+    def test_schedule_invalid_timezone_rejected(self):
         self._login()
         env = self._create_upgrade_env()
-        due = (timezone.now() + timedelta(days=1)).replace(
-            second=0, microsecond=0, tzinfo=None
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
         )
         response = self.client.post(
             self.build_list_url,
@@ -359,12 +363,14 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 "action": "upgrade_selected",
                 ACTION_CHECKBOX_NAME: (env["build2"].pk,),
                 "upgrade_all": "on",
-                "scheduled_at": due.isoformat(),
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+                "scheduled_at_tz": "Not/AZone",
             },
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "must include a timezone offset")
+        self.assertContains(response, "Invalid timezone")
         self.assertFalse(
             BatchUpgradeOperation.objects.filter(build=env["build2"]).exists()
         )
@@ -450,12 +456,6 @@ class TestAdmin(BaseTestAdmin, TestCase):
             scheduled_at=timezone.now() + timedelta(days=1),
         )
         operator = self._create_operator(organizations=[org])
-        content_type = ContentType.objects.get_for_model(BatchUpgradeOperation)
-        operator.user_permissions.add(
-            Permission.objects.get(
-                content_type=content_type, codename="view_batchupgradeoperation"
-            )
-        )
         self.client.force_login(operator)
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]

@@ -1,10 +1,11 @@
 import logging
 
 import swapper
+from django import forms
 from django.core.exceptions import ValidationError
 from django.http import Http404
 from django.utils.translation import gettext_lazy as _
-from django_filters.rest_framework import DjangoFilterBackend
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import filters, generics, serializers, status
@@ -21,6 +22,7 @@ from openwisp_users.api.permissions import DjangoModelPermissions
 from openwisp_utils.api.pagination import OpenWispPagination
 
 from ..swapper import load_model
+from ..utils import reinterpret_in_timezone
 from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
     BatchUpgradeOperationListSerializer,
@@ -207,6 +209,18 @@ class CategoryDetailView(ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIVie
     organization_field = "organization"
 
 
+class BatchUpgradeOperationFilter(FilterSet):
+    class Meta:
+        model = BatchUpgradeOperation
+        fields = {
+            "build": ["exact"],
+            "status": ["exact"],
+            "is_persistent": ["exact"],
+            "created": ["exact"],
+            "scheduled_at": ["exact", "gte", "lte"],
+        }
+
+
 class BatchUpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     queryset = BatchUpgradeOperation.objects.all().select_related(
         "build", "build__category"
@@ -214,7 +228,7 @@ class BatchUpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     serializer_class = BatchUpgradeOperationListSerializer
     organization_field = "build__category__organization"
     filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
-    filterset_fields = ["build", "status", "is_persistent", "created", "scheduled_at"]
+    filterset_class = BatchUpgradeOperationFilter
     ordering_fields = ["created", "modified", "scheduled_at"]
     ordering = ["-created"]
 
@@ -508,7 +522,26 @@ class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
         },
     )
     def post(self, request, pk):
-        serializer = self.get_serializer(data=request.data, partial=True)
+        data = request.data
+        tz_name = data.get("scheduled_at_tz")
+        if tz_name is not None:
+            field = forms.SplitDateTimeField(required=False)
+            try:
+                parsed = field.clean(
+                    [data.get("scheduled_at_0"), data.get("scheduled_at_1")]
+                )
+                scheduled_at = (
+                    reinterpret_in_timezone(parsed, tz_name) if parsed else None
+                )
+            except ValidationError as error:
+                return _error_response(error.messages[0], status.HTTP_400_BAD_REQUEST)
+            data = {
+                key: value
+                for key, value in data.items()
+                if key not in ("scheduled_at_0", "scheduled_at_1", "scheduled_at_tz")
+            }
+            data["scheduled_at"] = scheduled_at
+        serializer = self.get_serializer(data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         if not serializer.validated_data:
             return _error_response(

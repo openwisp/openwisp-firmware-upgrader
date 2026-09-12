@@ -11,6 +11,7 @@
 }
 
 .upgrade-operations-title {
+  clear: both;
   font-size: 22px;
   font-weight: 300;
   margin: 0;
@@ -281,6 +282,7 @@
    Batch actions: reschedule + cancel panel (batch-detail page)
    ------------------------------------------------------------------------- */
 .batch-actions.module {
+  clear: both;
   margin: 20px 0;
   padding-bottom: 12px;
 }

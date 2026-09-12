@@ -61,6 +61,10 @@ PROGRESS_MIN = 0
 PROGRESS_MAX = 100
 
 
+def lock_category(category_id):
+    load_model("Category").objects.select_for_update().filter(pk=category_id).first()
+
+
 class UpgradeOptionsMixin(models.Model):
     upgrade_options = models.JSONField(default=dict, blank=True)
 
@@ -221,9 +225,8 @@ class AbstractBuild(TimeStampedEditableModel):
             scheduled_at=scheduled_at,
             status="scheduled" if scheduled_at else "idle",
         )
-        Category = load_model("Category")
         with transaction.atomic():
-            Category.objects.select_for_update().filter(pk=self.category_id).first()
+            lock_category(self.category_id)
             batch.full_clean()
             batch.save()
         if scheduled_at:
@@ -1298,6 +1301,7 @@ class AbstractBatchUpgradeOperation(
                         progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
                     )
                 )
+            cancelled = 0
             for operation in operations:
                 try:
                     operation.cancel()
@@ -1309,8 +1313,13 @@ class AbstractBatchUpgradeOperation(
                         error,
                     )
                     continue
+                cancelled += 1
+            if not cancelled:
+                raise ValueError(
+                    _("No upgrade operation of this mass upgrade could be cancelled.")
+                )
             self.refresh_from_db()
-            return
+            return cancelled
         raise ValueError(
             _("Cannot cancel mass upgrade with status: %(status)s")
             % {"status": self.status}
@@ -1318,7 +1327,6 @@ class AbstractBatchUpgradeOperation(
 
     def reschedule(self, **fields):
         """Applies validated schedule changes under a row lock while scheduled."""
-        Category = load_model("Category")
         with transaction.atomic():
             obj = self._meta.model.objects.select_for_update().get(pk=self.pk)
             if obj.status != "scheduled":
@@ -1326,9 +1334,7 @@ class AbstractBatchUpgradeOperation(
                     _("Cannot reschedule mass upgrade with status: %(status)s")
                     % {"status": obj.status}
                 )
-            Category.objects.select_for_update().filter(
-                pk=obj.build.category_id
-            ).first()
+            lock_category(obj.build.category_id)
             for field, value in fields.items():
                 setattr(obj, field, value)
             obj.full_clean()
@@ -1359,9 +1365,7 @@ class AbstractBatchUpgradeOperation(
                     continue
                 if batch.status != "scheduled" or batch.scheduled_at > now:
                     continue
-                load_model("Category").objects.select_for_update().filter(
-                    pk=batch.build.category_id
-                ).first()
+                lock_category(batch.build.category_id)
                 result = cls.dry_run(
                     build=batch.build, group=batch.group, location=batch.location
                 )

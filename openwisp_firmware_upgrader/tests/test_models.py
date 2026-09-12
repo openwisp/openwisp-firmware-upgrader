@@ -1204,6 +1204,13 @@ class TestModels(TestUpgraderMixin, TestCase):
         ), self.assertRaises(ImproperlyConfigured):
             importlib.reload(app_settings)
 
+    def test_schedule_launch_timeout_not_positive(self):
+        self.addCleanup(importlib.reload, app_settings)
+        with override_settings(
+            OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_LAUNCH_TIMEOUT=0,
+        ), self.assertRaises(ImproperlyConfigured):
+            importlib.reload(app_settings)
+
     def test_retry_schedule_with_zero_attempts(self):
         op = self._make_persistent_op(is_persistent=True)
         op.retry_count = 0

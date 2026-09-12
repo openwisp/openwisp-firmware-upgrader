@@ -86,7 +86,8 @@ The list of batch upgrade operations provides the following filters:
 - ``status`` (One of: idle, scheduled, in-progress, success, failed,
   cancelled)
 - ``is_persistent`` (true or false)
-- ``scheduled_at`` (launch time of a scheduled batch)
+- ``scheduled_at`` (launch time of a scheduled batch); also accepts the
+  ``scheduled_at__gte`` and ``scheduled_at__lte`` range lookups
 - ``created`` (creation timestamp of the batch)
 
 Here's a few examples:
@@ -98,6 +99,7 @@ Here's a few examples:
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?is_persistent=true
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status=scheduled
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?ordering=scheduled_at
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?scheduled_at__gte={from_iso8601}&scheduled_at__lte={to_iso8601}
 
 Get Mass Upgrade Operation Detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

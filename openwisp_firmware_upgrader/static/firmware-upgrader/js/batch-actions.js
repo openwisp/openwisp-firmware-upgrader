@@ -127,6 +127,25 @@ django.jQuery(function ($) {
     showBatchCancelModal();
   });
 
+  let browserTz = "";
+  try {
+    browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch (error) {
+    browserTz = "";
+  }
+
+  const scheduledAt = $(".ow-scheduled-at");
+  const scheduledInstant = scheduledAt.length
+    ? new Date(scheduledAt.data("scheduled-utc"))
+    : null;
+  if (scheduledInstant && !isNaN(scheduledInstant.getTime())) {
+    const text = scheduledInstant.toLocaleString(window.djangoLocale || undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    scheduledAt.text(browserTz ? text + " (" + browserTz + ")" : text);
+  }
+
   const form = $("#batch-reschedule-form");
   if (!form.length) {
     return;
@@ -142,27 +161,30 @@ django.jQuery(function ($) {
     return String(value).padStart(2, "0");
   }
 
-  // Interpret the schedule in the browser timezone: show the stored UTC value
-  // as local time and relabel the picker note.
+  function formatDate(date) {
+    const isoDate =
+      date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
+    const pattern =
+      typeof get_format === "function" ? get_format("DATE_INPUT_FORMATS")[0] : null;
+    if (!pattern) {
+      return isoDate;
+    }
+    const tokens = {
+      "%d": pad(date.getDate()),
+      "%m": pad(date.getMonth() + 1),
+      "%Y": String(date.getFullYear()),
+      "%y": pad(date.getFullYear() % 100),
+    };
+    return pattern.replace(/%[dmYy]/g, (token) => tokens[token] || token);
+  }
+
   const scheduledUtc = form.data("scheduled-utc");
   if (scheduledUtc) {
     const local = new Date(scheduledUtc);
     if (!isNaN(local.getTime())) {
-      dateInput.val(
-        local.getFullYear() +
-          "-" +
-          pad(local.getMonth() + 1) +
-          "-" +
-          pad(local.getDate()),
-      );
+      dateInput.val(formatDate(local));
       timeInput.val(pad(local.getHours()) + ":" + pad(local.getMinutes()));
     }
-  }
-  let browserTz = "";
-  try {
-    browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch (error) {
-    browserTz = "";
   }
   const serverTz = form.data("server-tz") || "";
   let tzText = interpolate(gettext("Entered in your timezone (%s)."), [browserTz]);
@@ -186,9 +208,10 @@ django.jQuery(function ($) {
   });
 
   $("#batch-reschedule-save").on("click", function () {
-    const scheduled = new Date(dateInput.val() + "T" + timeInput.val());
     post(owBatchRescheduleUrl, {
-      scheduled_at: isNaN(scheduled.getTime()) ? null : scheduled.toISOString(),
+      scheduled_at_0: dateInput.val() || null,
+      scheduled_at_1: timeInput.val() || null,
+      scheduled_at_tz: browserTz,
       group: $("#batch-reschedule-group").val() || null,
       location: $("#batch-reschedule-location").val() || null,
       is_persistent: $("#batch-reschedule-persistent").is(":checked"),
