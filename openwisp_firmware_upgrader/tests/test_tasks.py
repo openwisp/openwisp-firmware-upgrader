@@ -14,6 +14,8 @@ from .. import settings as app_settings
 from .. import tasks, utils
 from ..extractors.exceptions import DecompressionLimitExceeded, UnsupportedImageError
 from ..swapper import load_model
+from ..upgraders.openwisp import OpenWisp1
+from ..upgraders.openwrt import OpenWrt
 from .base import TestUpgraderMixin
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -24,7 +26,7 @@ Notification = load_notification_model("Notification")
 NotificationSetting = load_notification_model("NotificationSetting")
 
 _MOCK_EXTRACTOR = (
-    "openwisp_firmware_upgrader.base.models.AbstractCategory.metadata_extractor_class"
+    "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.metadata_extractor_class"
 )
 _MOCK_NOTIFY = "openwisp_notifications.signals.notify.send"
 
@@ -444,12 +446,42 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
 
     def test_compat_blocks_pairing_at_or_below_1_0(self):
         self.assertFalse(utils.compat_blocks_pairing("1.0"))
-        self.assertFalse(tasks.compat_blocks_pairing("0.9"))
+        self.assertFalse(utils.compat_blocks_pairing("0.9"))
 
     def test_compat_blocks_pairing_invalid_values(self):
         self.assertFalse(utils.compat_blocks_pairing(""))
         self.assertFalse(utils.compat_blocks_pairing(None))
         self.assertFalse(utils.compat_blocks_pairing("bad"))
+
+    def test_get_extractor_class_for_os_matches_custom_upgrader(self):
+        class FakeExtractor:
+            pass
+
+        with mock.patch.object(
+            OpenWisp1, "SUPPORTED_OS", ("fakeos",)
+        ), mock.patch.object(OpenWisp1, "metadata_extractor_class", FakeExtractor):
+            extractor_class = tasks.get_extractor_class_for_os("FakeOS 1.0")
+        self.assertIs(extractor_class, FakeExtractor)
+
+    def test_get_extractor_class_for_os_blank_falls_back_to_default(self):
+        self.assertIs(
+            tasks.get_extractor_class_for_os(""), OpenWrt.metadata_extractor_class
+        )
+
+    def test_get_extractor_class_for_os_unmatched_falls_back_to_default(self):
+        self.assertIs(
+            tasks.get_extractor_class_for_os("SomeUnknownOS 1.0"),
+            OpenWrt.metadata_extractor_class,
+        )
+
+    def test_get_extractor_class_for_os_skips_unimportable_upgrader(self):
+        with mock.patch.object(
+            app_settings,
+            "UPGRADERS_MAP",
+            {"broken": "openwisp_firmware_upgrader.upgraders.invalid.DoesNotExist"},
+        ):
+            extractor_class = tasks.get_extractor_class_for_os("OpenWrt 21.03")
+        self.assertIs(extractor_class, OpenWrt.metadata_extractor_class)
 
     @mock.patch(
         "openwisp_firmware_upgrader.base.models.AbstractDeviceFirmware.create_for_device"

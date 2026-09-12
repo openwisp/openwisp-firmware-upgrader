@@ -1838,7 +1838,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     @mock.patch(
-        "openwisp_firmware_upgrader.base.models.AbstractCategory.metadata_extractor_class"
+        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.metadata_extractor_class"
     )
     @mock.patch("openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay")
     def test_firmware_image_file_replacement_build_status_through_completion(

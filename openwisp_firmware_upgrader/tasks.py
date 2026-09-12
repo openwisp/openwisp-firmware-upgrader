@@ -14,6 +14,7 @@ from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
+from django.utils.module_loading import import_string
 from django.utils.translation import gettext_lazy as _
 from openwisp_notifications.signals import notify
 
@@ -23,6 +24,7 @@ from . import settings as app_settings
 from .exceptions import RecoverableFailure
 from .extractors.exceptions import DecompressionLimitExceeded, UnsupportedImageError
 from .swapper import load_model
+from .upgraders.openwrt import OpenWrt
 from .utils import compat_blocks_pairing
 from .websockets import FirmwareExtractionPublisher
 
@@ -203,6 +205,23 @@ def _finalize_failed_extraction(
         logger.exception(update_status_log_message, image_pk)
 
 
+def get_extractor_class_for_os(os_identifier):
+    os_identifier = (os_identifier or "").lower()
+    seen = set()
+    for upgrader_path in app_settings.UPGRADERS_MAP.values():
+        if upgrader_path in seen:
+            continue
+        seen.add(upgrader_path)
+        try:
+            upgrader_class = import_string(upgrader_path)
+        except (ImportError, AttributeError):
+            continue
+        supported_os = getattr(upgrader_class, "SUPPORTED_OS", ())
+        if any(os_identifier.startswith(prefix) for prefix in supported_os):
+            return upgrader_class.metadata_extractor_class
+    return OpenWrt.metadata_extractor_class
+
+
 @shared_task(bind=True, soft_time_limit=app_settings.TASK_TIMEOUT)
 def extract_firmware_metadata(self, image_pk):
     FirmwareImage = load_model("FirmwareImage")
@@ -251,7 +270,7 @@ def extract_firmware_metadata(self, image_pk):
     update = {}
 
     try:
-        extractor_class = image.build.category.metadata_extractor_class
+        extractor_class = get_extractor_class_for_os(image.build.os)
         with tempfile.NamedTemporaryFile(
             suffix=f"-{os.path.basename(image.file.name)}"
         ) as tmp:

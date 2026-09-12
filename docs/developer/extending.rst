@@ -387,15 +387,20 @@ Metadata Extractors
 ~~~~~~~~~~~~~~~~~~~
 
 Firmware metadata (board, compatible strings, target, firmware version) is
-extracted by a pluggable extractor class, configured via the
-``metadata_extractor_class`` attribute on the ``Category`` model. By
-default this is
+extracted by a pluggable extractor class. The extractor used for a given
+build is resolved from its ``os`` field: each configured upgrader class
+(see :ref:`OPENWISP_FIRMWARE_UPGRADERS_MAP
+<openwisp_firmware_upgraders_map>`) declares which OS identifiers it
+supports via its ``SUPPORTED_OS`` attribute, and the matching upgrader
+class's ``metadata_extractor_class`` is used. If no upgrader class
+matches, the default
 ``openwisp_firmware_upgrader.extractors.openwrt.OpenWrtMetadataExtractor``
+(declared on ``openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt``) is
+used.
 
-To write your own, subclass ``BaseMetadataExtractor``
-(``openwisp_firmware_upgrader.extractors.base.BaseMetadataExtractor``),
-implement ``extract()``, and set ``metadata_extractor_class`` to your
-class on your custom ``Category`` model:
+To write your own extractor, subclass ``BaseMetadataExtractor``
+(``openwisp_firmware_upgrader.extractors.base.BaseMetadataExtractor``) and
+implement ``extract()``:
 
 .. code-block:: python
 
@@ -414,6 +419,41 @@ class on your custom ``Category`` model:
                 "source": "...",
                 "model_confirmed": True,
             }
+
+Then plug it in by writing a custom upgrader class that declares which OS
+identifiers it handles and which extractor to use for them:
+
+.. code-block:: python
+
+    # myupgrader/upgraders.py
+    from openwisp_firmware_upgrader.upgraders.openwrt import OpenWrt
+
+    from .extractors import MyMetadataExtractor
+
+
+    class MyUpgrader(OpenWrt):
+        SUPPORTED_OS = ("myos",)
+        metadata_extractor_class = MyMetadataExtractor
+
+and registering it in your ``settings.py``:
+
+.. code-block:: python
+
+    from openwisp_controller.connection import settings as conn_settings
+
+    OPENWISP_FIRMWARE_UPGRADERS_MAP = {
+        conn_settings.DEFAULT_UPDATE_STRATEGIES[0][
+            0
+        ]: "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt",
+        conn_settings.DEFAULT_UPDATE_STRATEGIES[1][
+            0
+        ]: "openwisp_firmware_upgrader.upgraders.openwisp.OpenWisp1",
+        "my_update_strategy": "myupgrader.upgraders.MyUpgrader",
+    }
+
+``SUPPORTED_OS`` is matched as a prefix against the lowercased ``os``
+field of a ``Build`` (e.g. ``"myos"`` matches a build with ``os="MyOS
+1.0"``).
 
 ``model_confirmed`` is optional and defaults to ``False`` when omitted. It
 tells the extraction task whether the returned ``model`` has been verified
