@@ -2,14 +2,18 @@ import json
 import re
 from datetime import timedelta
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 import django
 import swapper
+from django.conf import settings
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.formats import get_format, localize
 from django.utils.timezone import localtime
 
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
@@ -219,6 +223,267 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         self.assertContains(r, 'name="is_persistent"')
         self.assertTrue(r.context["form"].fields["is_persistent"].initial)
+
+    def test_confirmation_schedule(self):
+        self._login()
+        env = self._create_upgrade_env()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(r, 'name="scheduled_at_0"')
+        self.assertContains(r, 'name="scheduled_at_1"')
+        self.assertContains(r, 'class="vDateField"')
+        self.assertContains(r, 'class="vTimeField"')
+
+    def test_scheduled_upgrade_creates_batch(self):
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        self.assertContains(r, "This mass upgrade has been scheduled")
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.status, "scheduled")
+        self.assertTrue(batch.firmwareless)
+        self.assertEqual(batch.scheduled_at, due)
+
+    def test_schedule_past_rejected(self):
+        self._login()
+        env = self._create_upgrade_env()
+        past = timezone.localtime() - timedelta(hours=1)
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": past.strftime("%Y-%m-%d"),
+                "scheduled_at_1": past.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "in the future")
+        self.assertFalse(
+            BatchUpgradeOperation.objects.filter(build=env["build2"]).exists()
+        )
+
+    def test_scheduled_upgrade_related_persists_firmwareless_false(self):
+        self._login()
+        env = self._create_upgrade_env()
+        due = timezone.localtime() + timedelta(days=1)
+        self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_related": "on",
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.status, "scheduled")
+        self.assertFalse(batch.firmwareless)
+
+    @override_settings(TIME_ZONE="Asia/Kolkata")
+    def test_schedule_server_timezone(self):
+        # The admin datetime widget submits a naive wall-clock; it must be read
+        # in the server timezone, not as UTC. Kolkata's +05:30 offset makes a
+        # UTC misinterpretation land on a different instant.
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.scheduled_at, due)
+
+    @override_settings(TIME_ZONE="Asia/Kolkata")
+    def test_schedule_browser_timezone(self):
+        self._login()
+        env = self._create_upgrade_env()
+        browser_tz = ZoneInfo("America/New_York")
+        due = (timezone.now().astimezone(browser_tz) + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        date_format = get_format("DATE_INPUT_FORMATS")[0]
+        self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": due.strftime(date_format),
+                "scheduled_at_1": due.strftime("%H:%M"),
+                "scheduled_at_tz": "America/New_York",
+            },
+            follow=True,
+        )
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.scheduled_at, due)
+
+    def test_schedule_invalid_timezone_rejected(self):
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        response = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+                "scheduled_at_tz": "Not/AZone",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Invalid timezone")
+        self.assertFalse(
+            BatchUpgradeOperation.objects.filter(build=env["build2"]).exists()
+        )
+
+    def test_batch_list_schedule(self):
+        self._login()
+        env = self._create_upgrade_env()
+        due = timezone.now() + timedelta(days=1)
+        scheduled = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="scheduled", scheduled_at=due
+        )
+        idle = BatchUpgradeOperation.objects.create(build=env["build2"])
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        r = self.client.get(url)
+        self.assertContains(r, f"({settings.TIME_ZONE})")
+        self.assertContains(r, "field-firmwareless")
+        self.assertContains(r, "field-scheduled_at_display")
+        r = self.client.get(url, {"status__exact": "scheduled"})
+        self.assertContains(r, str(scheduled.pk))
+        self.assertNotContains(r, str(idle.pk))
+
+    def test_batch_detail_schedule(self):
+        self._login()
+        build = self._create_build()
+        due = timezone.now() + timedelta(days=1)
+        batch = BatchUpgradeOperation.objects.create(
+            build=build, status="scheduled", scheduled_at=due, firmwareless=True
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, localize(localtime(due)))
+
+    def test_batch_action_buttons(self):
+        self._login()
+        build = self._create_build()
+        due = timezone.now() + timedelta(days=1)
+
+        def get_change(batch):
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
+            return self.client.get(url)
+
+        with self.subTest("scheduled shows edit and cancel"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build, status="scheduled", scheduled_at=due
+            )
+            r = get_change(batch)
+            self.assertContains(r, 'id="batch-reschedule-btn"')
+            self.assertContains(r, 'id="batch-cancel-btn"')
+            self.assertContains(r, f"batch-upgrade-operation/{batch.pk}/reschedule/")
+            self.assertContains(r, 'id="batch-reschedule-group"')
+            self.assertContains(r, 'id="batch-reschedule-location"')
+            self.assertContains(r, 'id="batch-reschedule-persistent"')
+            self.assertContains(r, 'id="batch-reschedule-firmwareless"')
+            self.assertContains(r, "select2-input")
+            self.assertContains(r, "mass-upgrade-select2.js")
+            batch.delete()
+
+        with self.subTest("in-progress shows cancel only"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build, status="in-progress"
+            )
+            r = get_change(batch)
+            self.assertNotContains(r, 'id="batch-reschedule-btn"')
+            self.assertContains(r, 'id="batch-cancel-btn"')
+            batch.delete()
+
+        with self.subTest("terminal shows neither"):
+            batch = BatchUpgradeOperation.objects.create(build=build, status="success")
+            r = get_change(batch)
+            self.assertNotContains(r, 'id="batch-cancel-btn"')
+            self.assertNotContains(r, 'id="batch-reschedule-btn"')
+
+    def test_batch_actions_hidden_for_view_only_user(self):
+        org = self._get_org()
+        build = self._create_build(organization=org)
+        batch = BatchUpgradeOperation.objects.create(
+            build=build,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        operator = self._create_operator(organizations=[org])
+        self.client.force_login(operator)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'id="batch-cancel-btn"')
+        self.assertNotContains(r, 'id="batch-reschedule-btn"')
+        self.assertNotContains(r, "batch-actions.js")
+
+    def test_batch_change_page_renders_without_api(self):
+        self._login()
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(),
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        with mock.patch(
+            "openwisp_firmware_upgrader.admin.app_settings.FIRMWARE_UPGRADER_API",
+            False,
+        ):
+            r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'id="batch-cancel-btn"')
+        self.assertNotContains(r, "batch-actions.js")
 
     def test_upgrade_operation_filter_by_persistence(self):
         self._login()
