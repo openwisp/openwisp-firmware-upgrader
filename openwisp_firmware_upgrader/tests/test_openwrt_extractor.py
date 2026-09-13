@@ -791,6 +791,17 @@ class TestExtractFwtoolMetadata(TestCase):
         self.assertIsNone(result)
         mock_crc32.assert_not_called()
 
+    def test_raw_file_read_only_once_across_multiple_calls(self):
+        path = self._write_image(b"\x00" * 256)
+        try:
+            extractor = OpenWrtMetadataExtractor(path)
+            with mock.patch("builtins.open", wraps=open) as mock_open:
+                extractor._extract_fwtool_metadata()
+                extractor._read_kernel_bytes()
+            self.assertEqual(mock_open.call_count, 1)
+        finally:
+            os.unlink(path)
+
 
 class TestReadKernelFromTar(TestCase):
     def _write_tar(self, members):

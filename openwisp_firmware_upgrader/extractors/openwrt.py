@@ -43,6 +43,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         # track decompressed bytes across the whole extraction, so
         # nested/repeated decompression attempts share one real ceiling
         self._cumulative_decompressed_bytes = 0
+        self._raw_data = None
 
     def _validate_image_type(self):
         name = os.path.basename(self.image_path).lower()
@@ -56,18 +57,27 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 _("Unsupported image type: {name}").format(name=name)
             )
 
+    def _read_raw_data(self):
+        # the fwtool trailer scan and the DTB fallback scan both need
+        # the full raw file, cache it once so it's not read from disk
+        # more than once per extraction
+        if self._raw_data is None:
+            with open(self.image_path, "rb") as f:
+                data = f.read(app_settings.MAX_KERNEL_BYTES + 1)
+            if len(data) > app_settings.MAX_KERNEL_BYTES:
+                raise DecompressionLimitExceeded(
+                    _("Firmware file exceeds limit of {size}.").format(
+                        size=self._format_size(app_settings.MAX_KERNEL_BYTES)
+                    )
+                )
+            self._raw_data = data
+        return self._raw_data
+
     def _extract_fwtool_metadata(self):
-        with open(self.image_path, "rb") as f:
-            data = f.read(app_settings.MAX_KERNEL_BYTES + 1)
         # must read the full file, not just the tail, the trailer's CRC
         # covers the entire prefix from byte 0, so a partial read can
         # never match a genuine trailer's checksum
-        if len(data) > app_settings.MAX_KERNEL_BYTES:
-            raise DecompressionLimitExceeded(
-                _("Firmware file exceeds limit of {size}.").format(
-                    size=self._format_size(app_settings.MAX_KERNEL_BYTES)
-                )
-            )
+        data = self._read_raw_data()
         file_size = len(data)
         magic_bytes = struct.pack(">I", FWIMAGE_MAGIC)
         view = memoryview(data)
@@ -408,15 +418,7 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         return self._extract_from_fwtool()
 
     def _read_kernel_bytes(self):
-        with open(self.image_path, "rb") as f:
-            data = f.read(app_settings.MAX_KERNEL_BYTES + 1)
-        if len(data) > app_settings.MAX_KERNEL_BYTES:
-            raise DecompressionLimitExceeded(
-                _("Kernel data exceeds limit of {size}").format(
-                    size=self._format_size(app_settings.MAX_KERNEL_BYTES)
-                )
-            )
-        return data
+        return self._read_raw_data()
 
     def _read_kernel_from_tar(self):
         raw = self._read_kernel_bytes()
