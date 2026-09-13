@@ -227,6 +227,33 @@ intervention e.g.:
 
 - See :doc:`recovering-from-extraction-failures` for more information.
 
+.. _openwisp_firmware_upgrader_queue_unconfirmed_lock_timeout:
+
+``OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_LOCK_TIMEOUT``
+-------------------------------------------------------------
+
+============ =======
+**type**:    ``int``
+**default**: ``60``
+============ =======
+
+Number of seconds a cache lock is held to prevent every Celery worker
+process from re-queuing the entire ``unconfirmed`` backlog on the same
+restart. Only the first worker to start wins the lock; the rest skip
+queuing until it expires, e.g.:
+
+.. code-block:: python
+
+    OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_LOCK_TIMEOUT = 120  # 2 minutes
+
+**Notes**:
+
+- This only works as intended if ``CACHES`` is configured with a backend
+  shared across worker processes (e.g. Redis or Memcached). With a
+  pre-process backend such as Django's local-memory cache, each worker
+  will still queue the backlog independently.
+- See :doc:`recovering-from-extraction-failures` for more information.
+
 .. _openwisp_firmware_upgrader_extraction_claim_timeout:
 
 ``OPENWISP_FIRMWARE_UPGRADER_EXTRACTION_CLAIM_TIMEOUT``

@@ -1,4 +1,5 @@
 from celery.signals import worker_ready
+from django.core.cache import cache
 from django.db.models.signals import post_save, pre_delete
 from django.utils.translation import gettext_lazy as _
 from swapper import get_model_name, load_model
@@ -143,6 +144,16 @@ class FirmwareUpdaterConfig(ApiAppConfig):
     @staticmethod
     def queue_unconfirmed_extractions_on_worker_ready(sender=None, **kwargs):
         if not app_settings.QUEUE_UNCONFIRMED_ON_WORKER_READY:
+            return
+        # multiple worker processes each fire this on their own startup,
+        # this lock collpases a restart burst into a single enqueue
+        # instead of one per worker process
+        lock_acquired = cache.add(
+            "firmware_upgrader.queue_unconfirmed_lock",
+            True,
+            timeout=app_settings.QUEUE_UNCONFIRMED_LOCK_TIMEOUT,
+        )
+        if not lock_acquired:
             return
         from .tasks import queue_unconfirmed_extractions
 

@@ -1,14 +1,19 @@
 from unittest import mock
 
 from celery.signals import worker_ready
+from django.core.cache import cache
 from django.test import TestCase
 
 from openwisp_firmware_upgrader.apps import FirmwareUpdaterConfig
 
 _MOCK_DELAY = "openwisp_firmware_upgrader.tasks.queue_unconfirmed_extractions.delay"
+_LOCK_KEY = "firmware_upgrader.queue_unconfirmed_lock"
 
 
 class TestWorkerReadySignal(TestCase):
+    def setUp(self):
+        cache.delete(_LOCK_KEY)
+
     @mock.patch(_MOCK_DELAY)
     def test_queue_unconfirmed_extractions_on_worker_ready(self, mock_delay):
         FirmwareUpdaterConfig.queue_unconfirmed_extractions_on_worker_ready()
@@ -27,3 +32,9 @@ class TestWorkerReadySignal(TestCase):
         ):
             FirmwareUpdaterConfig.queue_unconfirmed_extractions_on_worker_ready()
         mock_delay.assert_not_called()
+
+    @mock.patch(_MOCK_DELAY)
+    def test_second_call_within_lock_timeout_is_skipped(self, mock_delay):
+        FirmwareUpdaterConfig.queue_unconfirmed_extractions_on_worker_ready()
+        FirmwareUpdaterConfig.queue_unconfirmed_extractions_on_worker_ready()
+        mock_delay.assert_called_once()

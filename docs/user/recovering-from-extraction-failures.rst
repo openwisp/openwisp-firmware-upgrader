@@ -32,6 +32,15 @@ can be disabled with
 :ref:`OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_ON_WORKER_READY
 <openwisp_firmware_upgrader_queue_unconfirmed_on_worker_ready>`.
 
+To avoid woker process re-queuing the entire backlog on the same restart,
+this is guarded by a short-lived cache lock (see
+:ref:`OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_LOCK_TIMEOUT
+<openwisp_firmware_upgrader_queue_unconfirmed_lock_timeout>`). This only
+works as intended if ``CACHES`` is configured with a backend shared across
+worker processes (e.g. Redis or Memcached); with a per-process backend
+such as Django's local-memory cache, each worker will still queue the
+backlog independently.
+
 Both tasks are idempotent and safe to run at any time, including
 concurrently with themselves. To ensure firmware images automatically
 recover from the situations described above without requiring manual
