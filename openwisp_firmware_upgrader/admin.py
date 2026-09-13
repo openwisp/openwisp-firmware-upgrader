@@ -1,7 +1,6 @@
 import json
 import logging
 from datetime import timedelta
-from functools import partial
 
 import reversion
 import swapper
@@ -13,7 +12,6 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import transaction
 from django.forms.formsets import DELETION_FIELD_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -45,7 +43,6 @@ from .filters import (
     LocationFilter,
 )
 from .swapper import load_model
-from .tasks import extract_firmware_metadata
 from .utils import get_upgrader_schema_for_device
 from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
 
@@ -458,31 +455,14 @@ class FirmwareImageAdmin(BaseAdmin):
                 messages.WARNING,
             )
             queryset = queryset.exclude(pk__in=referenced_pks)
-        image_pks = [str(pk) for pk in queryset.values_list("pk", flat=True)]
-        if not image_pks:
+        image_count = queryset.count()
+        if not image_count:
             return
-        build_ids = set(queryset.values_list("build_id", flat=True))
-        with transaction.atomic():
-            queryset.update(
-                extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
-                extraction_log="",
-                failure_reason="",
-                board="",
-                compatible="",
-                target="",
-                fw_version="",
-                compat_version="",
-                source="",
-            )
-            Build.objects.filter(pk__in=build_ids).update(
-                status=Build.BUILD_STATUS_ANALYZING
-            )
-            for pk in image_pks:
-                transaction.on_commit(partial(extract_firmware_metadata.delay, pk))
+        FirmwareImage.reset_metadata_and_schedule_extraction(queryset)
         self.message_user(
             request,
             _("Metadata re-extraction scheduled for %(count)d image(s).")
-            % {"count": len(image_pks)},
+            % {"count": image_count},
             messages.SUCCESS,
         )
 

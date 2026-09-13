@@ -1883,7 +1883,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             mock_notify.assert_called_once()
             self.assertEqual(mock_notify.call_args.kwargs["level"], "info")
 
-    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    @mock.patch("openwisp_firmware_upgrader.base.models.extract_firmware_metadata")
     def test_firmware_image_save_model_failed_to_manually_confirmed(self, mock_task):
         fw = self._create_firmware_image()
         fw.extraction_status = FirmwareImage.STATUS_FAILED
@@ -1904,7 +1904,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(fw.failure_reason, "")
         mock_task.delay.assert_not_called()
 
-    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    @mock.patch("openwisp_firmware_upgrader.base.models.extract_firmware_metadata")
     def test_firmware_image_save_model_failed_board_required_warning(self, mock_task):
         fw = self._create_firmware_image()
         fw.extraction_status = FirmwareImage.STATUS_FAILED
@@ -1927,7 +1927,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             30,
         )
 
-    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    @mock.patch("openwisp_firmware_upgrader.base.models.extract_firmware_metadata")
     def test_firmware_image_save_model_failed_compatible_only_to_manually_confirmed(
         self, mock_task
     ):
@@ -1948,7 +1948,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(fw.failure_reason, "")
         mock_task.delay.assert_not_called()
 
-    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    @mock.patch("openwisp_firmware_upgrader.base.models.extract_firmware_metadata")
     def test_firmware_image_save_model_build_status_updated_after_manual_confirmation(
         self, mock_task
     ):
@@ -1972,7 +1972,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(fw.build.status, Build.BUILD_STATUS_MANUALLY_CONFIRMED)
         mock_task.delay.assert_not_called()
 
-    @mock.patch("openwisp_firmware_upgrader.admin.extract_firmware_metadata")
+    @mock.patch("openwisp_firmware_upgrader.base.models.extract_firmware_metadata")
     def test_firmware_image_save_model_dtb_success_to_manually_confirmed(
         self, mock_task
     ):
@@ -2068,7 +2068,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             "_save": "Save",
         }
         with mock.patch(
-            "openwisp_firmware_upgrader.admin.extract_firmware_metadata.delay"
+            "openwisp_firmware_upgrader.base.models.extract_firmware_metadata.delay"
         ):
             with self.captureOnCommitCallbacks(execute=True):
                 response = self.client.post(url, data, follow=True)

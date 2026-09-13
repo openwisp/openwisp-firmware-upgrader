@@ -487,39 +487,20 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._original_extraction_status = self.extraction_status
+        self._original_file_name = self.file.name
 
     def save(self, *args, **kwargs):
-        old_file_name = None
-        if not self._state.adding and self.pk:
-            original = self.__class__.objects.filter(pk=self.pk).values("file").first()
-            if original and original["file"] != self.file.name:
-                old_file_name = original["file"]
-        if old_file_name is not None:
-            self.extraction_status = self.STATUS_UNCONFIRMED
-            self.extraction_log = ""
-            self.failure_reason = ""
-            self.board = ""
-            self.compatible = ""
-            self.target = ""
-            self.fw_version = ""
-            self.compat_version = ""
-            self.source = ""
-            if kwargs.get("update_fields") is not None:
-                kwargs["update_fields"] = set(kwargs["update_fields"]) | {
-                    "extraction_status",
-                    "extraction_log",
-                    "failure_reason",
-                    "board",
-                    "compatible",
-                    "target",
-                    "fw_version",
-                    "compat_version",
-                    "source",
-                }
-        if old_file_name is None:
+        file_changed = (
+            not self._state.adding
+            and self.pk
+            and self._original_file_name != self.file.name
+        )
+        if not file_changed:
             super().save(*args, **kwargs)
             self._original_extraction_status = self.extraction_status
+            self._original_file_name = self.file.name
             return
+        old_file_name = self._original_file_name
         # lock the buil row before writing this image row, matching the
         # lock order used by Build.update_extraction_status(), so the two
         # code paths cannot deadlock against each other
@@ -527,14 +508,22 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         with transaction.atomic():
             Build.objects.select_for_update().get(pk=self.build_id)
             super().save(*args, **kwargs)
-            self._original_extraction_status = self.extraction_status
-            Build.objects.filter(pk=self.build_id).update(
-                status=Build.BUILD_STATUS_ANALYZING
+            self.__class__.reset_metadata_and_schedule_extraction(
+                self.__class__.objects.filter(pk=self.pk)
             )
-        new_file_name = self.file.name
-        if old_file_name and old_file_name != new_file_name:
+        self.extraction_status = self.STATUS_UNCONFIRMED
+        self.extraction_log = ""
+        self.failure_reason = ""
+        self.board = ""
+        self.compatible = ""
+        self.target = ""
+        self.fw_version = ""
+        self.compat_version = ""
+        self.source = ""
+        self._original_extraction_status = self.extraction_status
+        self._original_file_name = self.file.name
+        if old_file_name and old_file_name != self.file.name:
             transaction.on_commit(partial(self._remove_file, old_file_name))
-        transaction.on_commit(lambda: extract_firmware_metadata.delay(str(self.pk)))
 
     class Meta:
         abstract = True
@@ -654,6 +643,31 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         self.type = "-".join(parts)
 
     @classmethod
+    def reset_metadata_and_schedule_extraction(cls, queryset):
+        pks = list(queryset.values_list("pk", flat=True))
+        if not pks:
+            return
+        build_ids = set(queryset.values_list("build_id", flat=True))
+        Build = load_model("Build")
+        with transaction.atomic():
+            queryset.update(
+                extraction_status=cls.STATUS_UNCONFIRMED,
+                extraction_log="",
+                failure_reason="",
+                board="",
+                compatible="",
+                target="",
+                fw_version="",
+                compat_version="",
+                source="",
+            )
+            Build.objects.filter(pk__in=build_ids).update(
+                status=Build.BUILD_STATUS_ANALYZING
+            )
+        for pk in pks:
+            transaction.on_commit(partial(extract_firmware_metadata.delay, str(pk)))
+
+    @classmethod
     def trigger_metadata_extraction(cls, instance, created, **kwargs):
         if not created:
             return
@@ -661,7 +675,9 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         Build.objects.filter(pk=instance.build_id).update(
             status=Build.BUILD_STATUS_ANALYZING
         )
-        transaction.on_commit(lambda: extract_firmware_metadata.delay(str(instance.pk)))
+        transaction.on_commit(
+            partial(extract_firmware_metadata.delay, str(instance.pk))
+        )
 
     def _validate_locked(self, original):
         if not original:

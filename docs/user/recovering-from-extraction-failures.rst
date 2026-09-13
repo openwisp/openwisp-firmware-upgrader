@@ -58,3 +58,19 @@ Celery Beat, e.g.:
 Please refer to the `"Periodic Tasks" section of Celery's documentation
 <https://docs.celeryq.dev/en/stable/userguide/periodic-tasks.html>`_ to
 learn more.
+
+Impact on Mass Upgrades
+-----------------------
+
+A build's mass upgrade can only be launched once every firmware image
+belonging to it has left the ``unconfirmed``/``in_progress`` extraction
+states and reached ``success``, ``incomplete``, or ``manually_confirmed``.
+If even a single image in the build is still ``unconfirmed``,
+``in_progress``, ``failed``, or ``invalid``, launching a mass upgrade for
+that build is blocked entirely with a validation error, regardless of how
+many other images in the same build are ready.
+
+This means a stuck extraction on a single image (see above) can hold up
+the mass upgrade of an entire build. Recovering the extraction promptly,
+or manually confirming/correcting the offending image's metadata, is
+required before the mass upgrade can proceed.
