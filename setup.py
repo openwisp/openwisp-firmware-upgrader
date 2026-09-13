@@ -21,6 +21,9 @@ setup(
     install_requires=[
         "openwisp-controller~=1.3.0",
         "django-private-storage~=3.1.3",
+        # for metadata extraction
+        "fdt~=0.3.3",
+        "lz4~=4.0",
     ],
     classifiers=[
         "Development Status :: 5 - Production/Stable",

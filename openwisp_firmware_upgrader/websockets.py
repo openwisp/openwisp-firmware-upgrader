@@ -26,12 +26,6 @@ def _run_coroutine_safely(coro):
     """
     try:
         asyncio.get_running_loop()
-        if asyncio.iscoroutine(coro):
-            task = asyncio.create_task(coro)
-        else:
-            task = asyncio.create_task(coro())
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
         if asyncio.iscoroutine(coro):
 
@@ -41,6 +35,22 @@ def _run_coroutine_safely(coro):
             async_to_sync(wrapper)()
         else:
             async_to_sync(coro)()
+    else:
+        if asyncio.iscoroutine(coro):
+            task = asyncio.create_task(coro)
+        else:
+            task = asyncio.create_task(coro())
+        _background_tasks.add(task)
+
+        def _on_done(finished_task):
+            _background_tasks.discard(finished_task)
+            if not finished_task.cancelled() and finished_task.exception():
+                logger.error(
+                    "Background websocket task failed",
+                    exc_info=finished_task.exception(),
+                )
+
+        task.add_done_callback(_on_done)
 
 
 class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
@@ -361,6 +371,71 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
         await self.send_json(event["data"])
 
 
+class FirmwareExtractionConsumer(AuthenticatedWebSocketConsumer):
+    """
+    WebSocket consumer that pushes extraction-status updates for a firmware image.
+    """
+
+    async def connect(self):
+        try:
+            auth_result = self._is_user_authenticated()
+            if not auth_result:
+                await self.close()
+                return
+            image_id = self.scope["url_route"]["kwargs"]["image_id"]
+            if not await self.is_user_authorized(
+                model=load_model("firmware_upgrader", "FirmwareImage"),
+                object_id=image_id,
+                organization_field="build__category__organization_id",
+            ):
+                await self.close()
+                return
+            self.image_id = image_id
+            self.group_name = f"firmware_extraction_{image_id}"
+        except KeyError:
+            logger.exception("Error in firmware extraction websocket connect")
+            await self.close()
+        else:
+            try:
+                await self.channel_layer.group_add(self.group_name, self.channel_name)
+            except (ConnectionError, TimeoutError):
+                logger.exception(f"Failed to add channel to group {self.group_name}")
+                await self.close()
+                return
+            except RuntimeError:
+                logger.exception(
+                    f"Channel layer error when joining group {self.group_name}"
+                )
+                await self.close()
+                return
+            await self.accept()
+
+    @sync_to_async
+    def _get_firmware_image(self):
+        FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
+        return FirmwareImage.objects.filter(pk=self.image_id).first()
+
+    async def _handle_current_state_request(self, content):
+        try:
+            image = await self._get_firmware_image()
+            if not image:
+                return
+            await self.send_json(
+                {
+                    "type": "extraction_status",
+                    "extraction_status": image.extraction_status,
+                    "timestamp": timezone.now().isoformat(),
+                }
+            )
+        except (ConnectionError, TimeoutError):
+            logger.exception(
+                "Failed to connect to channel layer during extraction state request"
+            )
+
+    async def extraction_status(self, event):
+        await self.send_json(event["data"])
+
+
 class UpgradeProgressPublisher:
     """
     Publisher for device-specific upgrade progress that publishes to
@@ -535,3 +610,29 @@ class BatchUpgradeProgressPublisher:
             logger.exception(
                 f"Runtime error in WebSocket publishing for batch upgrade operation {instance.pk}"
             )
+
+
+class FirmwareExtractionPublisher:
+    """
+    Publisher for firmware image extraction-status updates.
+    """
+
+    def __init__(self, image_id):
+        self.image_id = str(image_id)
+        self.group_name = f"firmware_extraction_{self.image_id}"
+        self.channel_layer = get_channel_layer()
+
+    def publish_status(self, extraction_status):
+        data = {
+            "type": "extraction_status",
+            "extraction_status": extraction_status,
+            "timestamp": timezone.now().isoformat(),
+        }
+
+        async def _send():
+            await self.channel_layer.group_send(
+                self.group_name,
+                {"type": "extraction_status", "data": data},
+            )
+
+        _run_coroutine_safely(_send)

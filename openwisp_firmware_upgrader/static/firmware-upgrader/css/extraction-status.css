@@ -1,0 +1,37 @@
+.ow-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+}
+
+.ow-status-success {
+  background-color: var(--ow-color-success);
+}
+
+.ow-status-error {
+  background-color: var(--ow-color-danger);
+}
+
+.ow-status-warning {
+  background-color: var(--ow-color-warning);
+  color: black;
+}
+
+.ow-status-grey {
+  background-color: var(--ow-color-fg-dark);
+}
+
+#main .ow-firmware-metadata-warning.warning {
+  padding: 15px 15px 15px 35px;
+  background-position: 17px 17px;
+  margin-bottom: 0;
+}
+
+#main .ow-firmware-metadata-error.error {
+  padding: 15px 15px 15px 40px;
+  background-position: 17px 17px;
+  margin-bottom: 0;
+}

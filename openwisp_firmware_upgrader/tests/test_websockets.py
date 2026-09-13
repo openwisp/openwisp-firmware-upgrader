@@ -16,6 +16,8 @@ from ..websockets import (
     BatchUpgradeProgressConsumer,
     BatchUpgradeProgressPublisher,
     DeviceUpgradeProgressConsumer,
+    FirmwareExtractionConsumer,
+    FirmwareExtractionPublisher,
     UpgradeProgressConsumer,
     UpgradeProgressPublisher,
 )
@@ -23,6 +25,7 @@ from .base import TestUpgraderMixin
 
 User = get_user_model()
 UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
 BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
 Device = load_model("config", "Device")
 
@@ -60,6 +63,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
                 codename__in=[
                     f"change_{Device._meta.model_name}",
                     f"change_{UpgradeOperation._meta.model_name}",
+                    f"change_{FirmwareImage._meta.model_name}",
                 ]
             ).values_list("pk", flat=True)
         )
@@ -700,3 +704,102 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         # Assert that we received exactly ONE log message (not duplicates)
         self.assertEqual(len(messages), 1)
         await communicator.disconnect()
+
+    async def _get_firmware_extraction_communicator(self, image_id, user=None):
+        if user is None:
+            user = self.superuser
+        communicator = WebsocketCommunicator(
+            FirmwareExtractionConsumer.as_asgi(),
+            f"/ws/firmware-upgrader/firmware-image/{image_id}/",
+        )
+        communicator.scope["url_route"] = {"kwargs": {"image_id": str(image_id)}}
+        communicator.scope["user"] = user
+        connected, _ = await communicator.connect()
+        assert connected is True
+        return communicator
+
+    async def test_firmware_extraction_consumer_unauthenticated(self):
+        image = await sync_to_async(self._create_firmware_image)()
+        communicator = WebsocketCommunicator(
+            FirmwareExtractionConsumer.as_asgi(),
+            f"/ws/firmware-upgrader/firmware-image/{image.pk}/",
+        )
+        communicator.scope["url_route"] = {"kwargs": {"image_id": str(image.pk)}}
+        communicator.scope["user"] = MagicMock(is_authenticated=False)
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
+
+    async def test_firmware_extraction_consumer_unauthorized(self):
+        image = await sync_to_async(self._create_firmware_image)()
+        communicator = WebsocketCommunicator(
+            FirmwareExtractionConsumer.as_asgi(),
+            f"/ws/firmware-upgrader/firmware-image/{image.pk}/",
+        )
+        communicator.scope["url_route"] = {"kwargs": {"image_id": str(image.pk)}}
+        communicator.scope["user"] = self.regular_user
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
+
+    async def test_firmware_extraction_consumer_other_organization(self):
+        org2 = await sync_to_async(self._create_org)(name="org2", slug="org2")
+        image = await sync_to_async(self._create_firmware_image)(organization=org2)
+        administrator = await self._create_administrator()
+        communicator = WebsocketCommunicator(
+            FirmwareExtractionConsumer.as_asgi(),
+            f"/ws/firmware-upgrader/firmware-image/{image.pk}/",
+        )
+        communicator.scope["url_route"] = {"kwargs": {"image_id": str(image.pk)}}
+        communicator.scope["user"] = administrator
+        connected, _ = await communicator.connect()
+        self.assertFalse(
+            connected,
+            "administrator of another organization must not connect",
+        )
+
+    async def test_firmware_extraction_consumer_terminal_update(self):
+        image = await sync_to_async(self._create_firmware_image)()
+        communicator = await self._get_firmware_extraction_communicator(image.pk)
+        channel_layer = get_channel_layer()
+        group_name = f"firmware_extraction_{image.pk}"
+        await channel_layer.group_send(
+            group_name,
+            {
+                "type": "extraction_status",
+                "data": {
+                    "type": "extraction_status",
+                    "extraction_status": "failed",
+                    "timestamp": timezone.now().isoformat(),
+                },
+            },
+        )
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "extraction_status")
+        self.assertEqual(response["extraction_status"], "failed")
+        self.assertIn("timestamp", response)
+        await communicator.disconnect()
+
+    async def test_firmware_extraction_consumer_current_state(self):
+        image = await sync_to_async(self._create_firmware_image)()
+        await sync_to_async(FirmwareImage.objects.filter(pk=image.pk).update)(
+            extraction_status=FirmwareImage.STATUS_FAILED
+        )
+        communicator = await self._get_firmware_extraction_communicator(image.pk)
+        await communicator.send_json_to({"type": "request_current_state"})
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "extraction_status")
+        self.assertEqual(response["extraction_status"], FirmwareImage.STATUS_FAILED)
+        await communicator.disconnect()
+
+    def test_firmware_extraction_publisher(self):
+        image_id = str(uuid4())
+        publisher = FirmwareExtractionPublisher(image_id)
+        with patch.object(
+            publisher.channel_layer, "group_send", new_callable=AsyncMock
+        ) as mock_group_send:
+            publisher.publish_status("failed")
+            call_args = mock_group_send.call_args[0]
+            self.assertEqual(call_args[0], f"firmware_extraction_{image_id}")
+            self.assertEqual(call_args[1]["type"], "extraction_status")
+            self.assertEqual(call_args[1]["data"]["type"], "extraction_status")
+            self.assertEqual(call_args[1]["data"]["extraction_status"], "failed")
+            self.assertIn("timestamp", call_args[1]["data"])

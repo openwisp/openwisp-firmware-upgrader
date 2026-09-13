@@ -173,6 +173,14 @@ Once you have created the models, add the following to your
 
 Substitute ``myupgrader`` with the name you chose in step 1.
 
+.. note::
+
+    If you swap ``CONFIG_DEVICEGROUP_MODEL`` (the device group model from
+    *OpenWISP Controller*) for a custom app, that app's migrations must
+    include one named exactly ``0036_device_group``, since
+    ``openwisp_firmware_upgrader``'s migration ``0015`` depends on it
+    directly.
+
 9. Create Database Migrations
 -----------------------------
 
@@ -374,6 +382,88 @@ Step 3: add an URL route pointing to your custom view in ``urls.py`` file:
 For more information regarding django views, please refer to the `"Class
 based views" section in the django documentation
 <https://docs.djangoproject.com/en/5.2/topics/class-based-views/>`_.
+
+Metadata Extractors
+~~~~~~~~~~~~~~~~~~~
+
+Firmware metadata (board, compatible strings, target, firmware version) is
+extracted by a pluggable extractor class. The extractor used for a given
+build is resolved from its ``os`` field: each configured upgrader class
+(see :ref:`OPENWISP_FIRMWARE_UPGRADERS_MAP
+<openwisp_firmware_upgraders_map>`) declares which OS identifiers it
+supports via its ``SUPPORTED_OS`` attribute, and the matching upgrader
+class's ``metadata_extractor_class`` is used. If no upgrader class
+matches, the default
+``openwisp_firmware_upgrader.extractors.openwrt.OpenWrtMetadataExtractor``
+(declared on ``openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt``) is
+used.
+
+To write your own extractor, subclass ``BaseMetadataExtractor``
+(``openwisp_firmware_upgrader.extractors.base.BaseMetadataExtractor``) and
+implement ``extract()``:
+
+.. code-block:: python
+
+    # myupgrader/extractors.py
+    from openwisp_firmware_upgrader.extractors.base import BaseMetadataExtractor
+
+
+    class MyMetadataExtractor(BaseMetadataExtractor):
+        def extract(self):
+            return {
+                "model": "...",  # board identifier, stored in the "board" field
+                "compatible": ["..."],  # list of compatible strings
+                "target": "...",
+                "version": "...",  # stored in the "fw_version" field
+                "compat_version": "1.0",
+                "source": "...",
+                "model_confirmed": True,
+            }
+
+Then plug it in by writing a custom upgrader class that declares which OS
+identifiers it handles and which extractor to use for them:
+
+.. code-block:: python
+
+    # myupgrader/upgraders.py
+    from openwisp_firmware_upgrader.upgraders.openwrt import OpenWrt
+
+    from .extractors import MyMetadataExtractor
+
+
+    class MyUpgrader(OpenWrt):
+        SUPPORTED_OS = ("myos",)
+        metadata_extractor_class = MyMetadataExtractor
+
+and registering it in your ``settings.py``:
+
+.. code-block:: python
+
+    from openwisp_controller.connection import settings as conn_settings
+
+    OPENWISP_FIRMWARE_UPGRADERS_MAP = {
+        conn_settings.DEFAULT_UPDATE_STRATEGIES[0][
+            0
+        ]: "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt",
+        conn_settings.DEFAULT_UPDATE_STRATEGIES[1][
+            0
+        ]: "openwisp_firmware_upgrader.upgraders.openwisp.OpenWisp1",
+        "my_update_strategy": "myupgrader.upgraders.MyUpgrader",
+    }
+
+``SUPPORTED_OS`` is matched as a prefix against the lowercased ``os``
+field of a ``Build`` (e.g. ``"myos"`` matches a build with ``os="MyOS
+1.0"``).
+
+``model_confirmed`` is optional and defaults to ``False`` when omitted. It
+tells the extraction task whether the returned ``model`` has been verified
+against a real device model identifier, the way the built-in extractor
+cross-checks the DTB scan against the fwtool trailer. If ``model`` is
+present but ``model_confirmed`` is not explicitly set to ``True`` (and
+``source`` is not ``"dtb"``), the image is stored with extraction status
+*Incomplete* rather than *Success*. Incomplete images are still paired
+with matching devices automatically, but the unverified board value is
+worth reviewing manually.
 
 API Views
 ---------

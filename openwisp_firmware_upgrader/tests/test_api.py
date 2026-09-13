@@ -326,7 +326,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
         with self.subTest("Existing build"):
             url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
-            with self.assertNumQueries(10):
+            with self.assertNumQueries(11):
                 r = self.client.post(url)
             self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
             batch = BatchUpgradeOperation.objects.first()
@@ -442,7 +442,7 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest(
             "Test superuser can mass upgrade shared build with upgrade_all"
         ):
-            with self.assertNumQueries(8):
+            with self.assertNumQueries(9):
                 response = self.client.post(path, {"upgrade_all": True})
             self.assertEqual(response.status_code, 201)
             batch = BatchUpgradeOperation.objects.first()
@@ -1185,13 +1185,42 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
             "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
             "type": self.TPLINK_4300_IMAGE,
         }
-        with self.assertNumQueries(9):
+        with self.assertNumQueries(11):
             r = self.client.post(url, data)
         self.assertEqual(r.status_code, 201)
         self.assertEqual(FirmwareImage.objects.count(), 1)
         image = FirmwareImage.objects.first()
         serialized = self._serialize_image(image)
         self.assertEqual(r.data, serialized)
+
+    def test_firmware_create_extraction_fields_are_ignored(self):
+        build = self._create_build()
+        url = reverse("upgrader:api_firmware_list", args=[build.pk])
+        data = {
+            "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+            "type": self.TPLINK_4300_IMAGE,
+            "extraction_status": FirmwareImage.STATUS_SUCCESS,
+            "failure_reason": FirmwareImage.FAILURE_UNSUPPORTED,
+            "extraction_log": "some log",
+            "board": "tplink,tl-wdr4300-v1",
+            "target": "ath79/generic",
+            "fw_version": "23.05.5",
+            "compat_version": "1.0",
+            "source": "fwtool",
+            "compatible": "tplink, tl-wdr4300-v1",
+        }
+        r = self.client.post(url, data)
+        self.assertEqual(r.status_code, 201)
+        image = FirmwareImage.objects.first()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
+        self.assertEqual(image.failure_reason, "")
+        self.assertEqual(image.extraction_log, "")
+        self.assertEqual(image.board, "")
+        self.assertEqual(image.target, "")
+        self.assertEqual(image.fw_version, "")
+        self.assertEqual(image.compat_version, "")
+        self.assertEqual(image.source, "")
+        self.assertEqual(image.compatible, "")
 
     def test_firmware_create_404(self):
         pk = uuid.uuid4()
@@ -1240,22 +1269,80 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
                 response = self.client.get(url)
             self.assertEqual(response.getvalue(), content)
 
-    def test_firmware_no_update(self):
-        image = self._create_firmware_image()
-        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
-        data = {
-            "type": self.TPLINK_4300_IL_IMAGE,
-            "file": self._get_simpleuploadedfile(),
-        }
-        r = self.client.put(url, data, content_type="multipart/form-data")
-        self.assertEqual(r.status_code, 405)
-
-    def test_firmware_no_update_partial(self):
+    def test_firmware_update_partial_type(self):
         image = self._create_firmware_image()
         url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
         data = dict(type=self.TPLINK_4300_IL_IMAGE)
         r = self.client.patch(url, data, content_type="application/json")
-        self.assertEqual(r.status_code, 405)
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(image.type, self.TPLINK_4300_IL_IMAGE)
+
+    def test_firmware_patch_confirms_failed_metadata(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            failure_reason=FirmwareImage.FAILURE_UNSUPPORTED,
+            board="",
+            source="",
+        )
+        Build.objects.filter(pk=image.build.pk).update(status=Build.BUILD_STATUS_FAILED)
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {
+            "board": "Generic x86",
+            "compatible": "generic,x86-64",
+            "target": "x86/64",
+            "fw_version": "23.05.5",
+        }
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(
+            image.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED
+        )
+        self.assertEqual(image.source, "manual")
+        self.assertEqual(image.board, "Generic x86")
+        self.assertEqual(image.compatible, "generic,x86-64")
+        self.assertEqual(image.failure_reason, "")
+        image.build.refresh_from_db()
+        self.assertEqual(image.build.status, Build.BUILD_STATUS_MANUALLY_CONFIRMED)
+
+    def test_firmware_patch_confirms_incomplete_metadata_preserves_source(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+            source="dtb",
+        )
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {"target": "sunxi/cortexa7", "fw_version": "23.05.5"}
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(
+            image.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED
+        )
+        self.assertEqual(image.source, "dtb")
+
+    def test_firmware_patch_metadata_ignored_when_not_failed_or_incomplete(self):
+        image = self._create_firmware_image()
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {"board": "Should not apply"}
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertNotEqual(image.board, "Should not apply")
+
+    def test_firmware_patch_confirm_requires_board(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_FAILED,
+            board="",
+        )
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {"target": "x86/64"}
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("board", r.data)
 
 
 class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
@@ -1333,16 +1420,15 @@ class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         device1.full_clean()
         device1.save()
 
-        with self.subTest("Test device and image model validation"):
+        with self.subTest("Test image with mismatched board is rejected as invalid pk"):
             url = reverse("upgrader:api_devicefirmware_detail", args=[device1.pk])
-            with self.assertNumQueries(13):
+            with self.assertNumQueries(8):
                 # Try to make a request when the
                 # device model does not match the image model
                 data = {"image": image1a.pk}
                 r = self.client.put(url, data, content_type="application/json")
             self.assertEqual(r.status_code, 400)
-            err = "Device model and image model do not match"
-            self.assertIn(err, r.json()["__all__"][0])
+            self.assertIn("Invalid pk", r.json()["image"][0])
 
         with self.subTest("Test image pk validation"):
             url = reverse("upgrader:api_devicefirmware_detail", args=[device2.pk])

@@ -1,0 +1,28 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static %}
+
+{% block content %}
+{{ block.super }}
+<script>
+  // Django fieldsets can only render CSS classes, not an id, so the
+  // "`#device-metadata`" anchor used by extraction failure notifications
+  // is attached client-side.
+    (function() {
+        var el = document.querySelector('.module.device-metadata');
+        if (el) { el.id = 'device-metadata'; }
+    }());
+</script>
+{% endblock %}
+
+{% block footer %}
+{{ block.super }}
+<script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
+<script>
+  var owFirmwareUpgraderApiHost = {
+    host: "{{ request.get_host|escapejs }}"
+  };
+  var owFirmwareImageId = "{{ original.pk|escapejs }}";
+  var owFirmwareExtractionStatus = "{{ original.extraction_status|escapejs }}";
+</script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/extraction-progress.js' %}"></script>
+{% endblock footer %}
