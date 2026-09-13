@@ -52,7 +52,7 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
 
     def tearDown(self):
         migration = import_module(self.reconciliation_migration)
-        post_migrate.disconnect(migration._send_multi_board_notifications)
+        post_migrate.disconnect(dispatch_uid=migration._DISPATCH_UID)
         super().tearDown()
 
     def test_legacy_multi_board_image_is_reconciled(self):
@@ -128,8 +128,12 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
     def test_build_status_recompute_failure_is_caught_and_logged_without_failing_migrate(
         self,
     ):
-        with mock.patch(_MOCK_EXTRACT_DELAY), mock.patch(_MOCK_NOTIFY), mock.patch(
-            "openwisp_firmware_upgrader.base.models.AbstractBuild.update_extraction_status",
+        migration = import_module(self.reconciliation_migration)
+        with mock.patch(_MOCK_EXTRACT_DELAY), mock.patch(
+            _MOCK_NOTIFY
+        ), mock.patch.object(
+            migration,
+            "_compute_build_status",
             side_effect=Exception("simulated build status recompute failure"),
         ):
             with self.assertLogs(level="ERROR") as cm:

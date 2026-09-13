@@ -1,3 +1,4 @@
+import functools
 import logging
 
 from django.conf import settings
@@ -15,8 +16,7 @@ from openwisp_firmware_upgrader.swapper import load_model
 
 logger = logging.getLogger(__name__)
 
-_affected_pks = []
-_recompute_build_ids = []
+_DISPATCH_UID = "sample_firmware_upgrader.0009_multi_board_notify"
 
 
 def _write_multi_board_log(FirmwareImage, image_type, boards):
@@ -32,14 +32,13 @@ def _write_multi_board_log(FirmwareImage, image_type, boards):
         ).values_list("pk", flat=True)
     )
     if not candidate_pks:
-        return 0
+        return []
     FirmwareImage.objects.filter(pk__in=candidate_pks).update(
         extraction_log=Concat("extraction_log", Value(log_suffix)),
         extraction_status="failed",
         failure_reason="unsupported_format",
     )
-    _affected_pks.extend(candidate_pks)
-    return len(candidate_pks)
+    return candidate_pks
 
 
 def _update_single_board(FirmwareImage, image_type, board, source):
@@ -48,21 +47,56 @@ def _update_single_board(FirmwareImage, image_type, board, source):
     )
     build_ids = list(qs.values_list("build_id", flat=True))
     if not build_ids:
-        return
+        return []
     qs.update(
         board=board,
         source=source,
         extraction_status="manually_confirmed",
     )
-    _recompute_build_ids.extend(build_ids)
+    return build_ids
 
 
-def _send_multi_board_notifications(app_config, **kwargs):
+def _compute_build_status(FirmwareImage, build_id, current_status):
+    analyzing = {"unconfirmed", "in_progress"}
+    final_statuses = {
+        "success",
+        "incomplete",
+        "failed",
+        "invalid",
+        "manually_confirmed",
+    }
+    statuses = set(
+        FirmwareImage.objects.filter(build_id=build_id).values_list(
+            "extraction_status", flat=True
+        )
+    )
+    if not statuses:
+        return None
+    # a leftover unrelated image still sitting at unconfirmed/in_progress
+    # must not downgrade a build that has already reached a final status
+    if statuses & analyzing and current_status in final_statuses:
+        return None
+    if statuses & analyzing:
+        return "analyzing"
+    if "invalid" in statuses:
+        return "invalid"
+    if "failed" in statuses:
+        return "failed"
+    if "incomplete" in statuses:
+        return "incomplete"
+    if "manually_confirmed" in statuses:
+        return "manually_confirmed"
+    return "success"
+
+
+def _send_multi_board_notifications(app_config, affected_pks, **kwargs):
     if app_config.name != "openwisp2.sample_firmware_upgrader":
         return
-    post_migrate.disconnect(_send_multi_board_notifications)
+    post_migrate.disconnect(dispatch_uid=_DISPATCH_UID)
+    # this handler runs after every migration has completed, so it's safe
+    # to use the live model here, unlike inside the migration function
     FirmwareImage = load_model("FirmwareImage")
-    affected = FirmwareImage.objects.filter(pk__in=_affected_pks).select_related(
+    affected = FirmwareImage.objects.filter(pk__in=affected_pks).select_related(
         "build__category__organization"
     )
     for image in affected:
@@ -107,17 +141,22 @@ def _send_multi_board_notifications(app_config, **kwargs):
 # migrate from zero will break.
 def backfill_board_from_hardware_map(apps, schema_editor):
     FirmwareImage = apps.get_model("sample_firmware_upgrader", "FirmwareImage")
-    has_multi_board_images = False
-    _affected_pks.clear()
-    _recompute_build_ids.clear()
+    Build = apps.get_model("sample_firmware_upgrader", "Build")
+    affected_pks = []
+    recompute_build_ids = []
 
     for image_type, info in OPENWRT_FIRMWARE_IMAGE_MAP.items():
         boards = info["boards"]
         if len(boards) == 1:
-            _update_single_board(FirmwareImage, image_type, boards[0], "hardware map")
+            recompute_build_ids.extend(
+                _update_single_board(
+                    FirmwareImage, image_type, boards[0], "hardware map"
+                )
+            )
         else:
-            if _write_multi_board_log(FirmwareImage, image_type, list(boards)):
-                has_multi_board_images = True
+            affected_pks.extend(
+                _write_multi_board_log(FirmwareImage, image_type, list(boards))
+            )
 
     custom_images = getattr(settings, "OPENWISP_CUSTOM_OPENWRT_IMAGES", None)
     if custom_images:
@@ -131,32 +170,44 @@ def backfill_board_from_hardware_map(apps, schema_editor):
             # rather than raising
             boards = info.get("boards", ())
             if len(boards) == 1:
-                _update_single_board(
-                    FirmwareImage, image_type, boards[0], "custom hardware map"
+                recompute_build_ids.extend(
+                    _update_single_board(
+                        FirmwareImage, image_type, boards[0], "custom hardware map"
+                    )
                 )
             elif len(boards) > 1:
-                if _write_multi_board_log(FirmwareImage, image_type, list(boards)):
-                    has_multi_board_images = True
-
-    # build status recomputed here, not in post_migrate below:
-    # MigrationExecutor.migrate() never emits post_migrate, which would leave builds stuck stale
-    affected_build_ids = set(_recompute_build_ids) | set(
-        FirmwareImage.objects.filter(pk__in=_affected_pks).values_list(
+                affected_pks.extend(
+                    _write_multi_board_log(FirmwareImage, image_type, list(boards))
+                )
+    # build status recomputed here, not in post_migrate below: MigrationExecutor.migrate()
+    # never emits post_migrate, which would leave builds stuck stale
+    affected_build_ids = set(recompute_build_ids) | set(
+        FirmwareImage.objects.filter(pk__in=affected_pks).values_list(
             "build_id", flat=True
         )
     )
-    if affected_build_ids:
-        Build = load_model("Build")
-        for build in Build.objects.filter(pk__in=affected_build_ids):
-            try:
-                build.update_extraction_status()
-            except Exception:
-                logger.exception(
-                    "Failed to update extraction status for build %s", build.pk
-                )
-
-    if has_multi_board_images:
-        post_migrate.connect(_send_multi_board_notifications)
+    build_statuses = dict(
+        Build.objects.filter(pk__in=affected_build_ids).values_list("pk", "status")
+    )
+    for build_id in affected_build_ids:
+        try:
+            new_status = _compute_build_status(
+                FirmwareImage, build_id, build_statuses.get(build_id)
+            )
+            if new_status:
+                Build.objects.filter(pk=build_id).update(status=new_status)
+        except Exception:
+            logger.exception(
+                "Failed to update extraction status for build %s", build_id
+            )
+    if affected_pks:
+        post_migrate.connect(
+            functools.partial(
+                _send_multi_board_notifications, affected_pks=affected_pks
+            ),
+            dispatch_uid=_DISPATCH_UID,
+            weak=False,
+        )
 
 
 class Migration(migrations.Migration):
