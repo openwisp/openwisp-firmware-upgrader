@@ -28,6 +28,15 @@ to automatically pair devices with the firmware image whose ``board``
 matches ``Device.model`` and whose build's **OS identifier** matches the
 device's ``os`` field.
 
+.. note::
+
+    Each image stores a single ``board`` value; one image can't auto-pair
+    with multiple device models. Upgrading marks any previously
+    multi-board image as *Failed* and notifies you to set its ``board``
+    field manually, which resolves it to one device model only. Matching a
+    different device model requires a separate image entry with its own
+    ``board`` value set to that model.
+
 Pairing happens once an image's metadata extraction has completed: whether
 it succeeded fully, succeeded only partially (i.e. with status
 *Incomplete*), or was confirmed manually. Images still being processed, or
