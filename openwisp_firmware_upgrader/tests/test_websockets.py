@@ -790,6 +790,14 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(response["extraction_status"], FirmwareImage.STATUS_FAILED)
         await communicator.disconnect()
 
+    async def test_firmware_extraction_consumer_shared_image(self):
+        image = await sync_to_async(self._create_firmware_image)(organization=None)
+        administrator = await self._create_administrator()
+        communicator = await self._get_firmware_extraction_communicator(
+            image.pk, user=administrator
+        )
+        await communicator.disconnect()
+
     def test_firmware_extraction_publisher(self):
         image_id = str(uuid4())
         publisher = FirmwareExtractionPublisher(image_id)

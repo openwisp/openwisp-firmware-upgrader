@@ -78,26 +78,27 @@ class AuthenticatedWebSocketConsumer(AsyncJsonWebsocketConsumer):
         user = self.scope["user"]
         if user.is_superuser:
             return True
-        return await sync_to_async(
-            lambda: (
-                user.is_staff
-                and (
-                    user.has_perm(
-                        f"{model._meta.app_label}.{get_permission_codename('change', model._meta)}"
-                    )
-                    or user.has_perm(
-                        f"{model._meta.app_label}.{get_permission_codename('view', model._meta)}"
-                    )
-                )
-                and user.is_manager(
-                    str(
-                        model.objects.filter(pk=object_id)
-                        .values_list(organization_field, flat=True)
-                        .first()
-                    )
-                )
+
+        def _check():
+            if not user.is_staff:
+                return False
+            has_perm = user.has_perm(
+                f"{model._meta.app_label}.{get_permission_codename('change', model._meta)}"
+            ) or user.has_perm(
+                f"{model._meta.app_label}.{get_permission_codename('view', model._meta)}"
             )
-        )()
+            if not has_perm:
+                return False
+            org_id = (
+                model.objects.filter(pk=object_id)
+                .values_list(organization_field, flat=True)
+                .first()
+            )
+            if org_id is None:
+                return True
+            return user.is_manager(str(org_id))
+
+        return await sync_to_async(_check)()
 
     async def receive_json(self, content):
         """Handle incoming messages from the client"""
