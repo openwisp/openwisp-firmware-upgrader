@@ -3,6 +3,7 @@
 
 {% block extrahead %}
   {{ block.super }}
+  <script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
   {{ media }}
   <script type="text/javascript" src="{% static 'admin/js/cancel.js' %}"></script>
 {% endblock %}
@@ -43,15 +44,31 @@
       <input type="hidden" name="{{ action_checkbox_name }}" value="{{ build.pk|unlocalize }}">
       <input type="hidden" name="action" value="upgrade_selected">
       {% if firmwareless_count or related_count %}
-        {% if form.errors %}
-          <div>{{ form.errors }}</div>
+        {% if form.non_field_errors %}
+          {{ form.non_field_errors }}
         {% endif %}
         {{ form.build }}
         <fieldset class="module aligned">
-          <label class="is-persistent-checkbox" for="{{ form.is_persistent.id_for_label }}">
-            {{ form.is_persistent }}
-            <span>{{ form.is_persistent.label }}</span>
-          </label>
+          <h2>{% trans "Persistence and scheduling" %}</h2>
+          <div class="form-row" id="persistence-row">
+            <label class="is-persistent-checkbox" for="{{ form.is_persistent.id_for_label }}">
+              {{ form.is_persistent }}
+              <span>{{ form.is_persistent.label }}</span>
+            </label>
+          </div>
+          <div class="form-row" id="schedule-row" data-server-tz="{{ server_timezone }}">
+            <div>
+              <div class="flex-container">
+                {{ form.scheduled_at.errors }}
+                {{ form.scheduled_at.label_tag }}
+                {{ form.scheduled_at }}
+              </div>
+              <div class="help" id="{{ form.scheduled_at.auto_id }}_helptext">
+                {{ form.scheduled_at.help_text|safe }}
+              </div>
+              <div class="help ow-schedule-tz-note"></div>
+            </div>
+          </div>
         </fieldset>
         <fieldset class="module aligned">
           <h2>{% trans "Upgrade Filters" %}</h2>
@@ -81,6 +98,7 @@
           </div>
           <div class="form-row">
             <div>
+              {{ form.upgrade_options.errors }}
               {{ form.upgrade_options.label_tag }}
               {{ form.upgrade_options }}
             </div>

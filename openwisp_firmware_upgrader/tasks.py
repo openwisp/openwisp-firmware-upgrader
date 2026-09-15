@@ -126,5 +126,10 @@ def check_pending_upgrades():
 
 
 @shared_task(base=OpenwispCeleryTask)
+def execute_scheduled_upgrades():
+    load_model("BatchUpgradeOperation").execute_due_scheduled()
+
+
+@shared_task(base=OpenwispCeleryTask)
 def send_pending_upgrade_reminders():
     load_model("BatchUpgradeOperation").send_pending_reminders()
