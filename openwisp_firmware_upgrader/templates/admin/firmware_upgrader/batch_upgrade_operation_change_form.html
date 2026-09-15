@@ -97,7 +97,7 @@
 </section>
 {% endif %}
 
-{% if batch.status != "scheduled" %}
+<div id="upgrade-operations-section"{% if batch.status == "scheduled" %} class="ow-hide"{% endif %}>
 <!-- Upgrade Operations Section -->
 <h1 class="upgrade-operations-title">{% trans "Upgrade Operations" %}</h1>
 
@@ -272,7 +272,7 @@
     </span>
   </div>
   {% endif %}
-{% endif %}
+</div>
 </div>
 {% endblock %}
 

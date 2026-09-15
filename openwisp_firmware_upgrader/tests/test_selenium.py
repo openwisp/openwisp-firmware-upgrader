@@ -632,7 +632,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             self.assertEqual(time_input.get_attribute("class"), "vTimeField")
             self._assert_no_js_errors(ignore_websockets=True)
             scheduled = (timezone.localtime() + timedelta(days=1)).replace(
-                second=0, microsecond=0
+                hour=12, minute=0, second=0, microsecond=0
             )
             date_input.send_keys(scheduled.strftime("%Y-%m-%d"))
             time_input.send_keys(scheduled.strftime("%H:%M"))
@@ -1242,6 +1242,57 @@ class TestRealTimeProgress(
         style = progress_fill.get_attribute("style")
         self.assertIn("width: 100%", style)
         self._assert_no_js_errors()
+
+    def test_scheduled_batch_reveals_operations_when_started(self):
+        """A scheduled batch keeps the operations table in the DOM but hidden.
+        When it leaves the scheduled state, the page reveals the table and pulls
+        the current-state snapshot over the websocket, so the device operations
+        appear live without a manual refresh."""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        self.login(username=self.admin.username, password=self.admin_password)
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                args=[batch_operation.pk],
+            )
+        )
+        self.hide_loading_overlay()
+        self._wait_for_realtime_script(
+            "return window.batchUpgradeProgressWebSocket && "
+            "window.batchUpgradeProgressWebSocket.readyState === 1;",
+        )
+        self.assertFalse(
+            self.find_element(By.ID, "upgrade-operations-section").is_displayed(),
+            "The operations table should be hidden while the batch is scheduled",
+        )
+        batch_operation.status = "in-progress"
+        batch_operation.save(update_fields=["status"])
+        UpgradeOperation.objects.create(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=0,
+        )
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        publisher.publish_batch_status(status="in-progress", completed=0, total=1)
+        self._wait_for_realtime_update(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "#result_list tbody tr.row1 .device-link")
+            )
+        )
+        self.assertTrue(
+            self.find_element(By.ID, "upgrade-operations-section").is_displayed()
+        )
+        self.assertEqual(
+            len(self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr.row1")),
+            1,
+        )
+        self._assert_no_js_errors(ignore_websockets=True)
 
     def test_pending_completion_text(self):
         """Check initial and WebSocket-updated completion text with pending operations."""

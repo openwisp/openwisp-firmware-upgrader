@@ -427,6 +427,19 @@ class TestModels(TestUpgraderMixin, TestCase):
         FirmwareImage.objects.get(pk=device_fw.image.pk).delete()
         self.assertEqual(UpgradeOperation.objects.get(pk=uo.pk).image, None)
 
+    def test_commit_result_updates_modified(self):
+        device_fw = self._create_device_firmware()
+        uo = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, status="in-progress"
+        )
+        stale = timezone.now() - timedelta(hours=1)
+        UpgradeOperation.objects.filter(pk=uo.pk).update(modified=stale)
+        uo.refresh_from_db()
+        uo.status = "success"
+        self.assertTrue(uo._commit_result())
+        uo.refresh_from_db()
+        self.assertGreater(uo.modified, stale)
+
     def test_delete_firmware_image_file(self):
         file_storage_backend = FirmwareImage.file.field.storage
 
@@ -782,7 +795,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             batch.refresh_from_db()
             batch.status = "in-progress"
             batch.save(update_fields=["status"])
-            batch.scheduled_at = timezone.now() + timedelta(days=1)
+            batch.scheduled_at = timezone.now() + timedelta(days=2)
             with self.assertRaises(ValidationError) as ctx:
                 batch.full_clean()
             self.assertIn("scheduled_at", ctx.exception.message_dict)
@@ -796,6 +809,25 @@ class TestModels(TestUpgraderMixin, TestCase):
             with self.assertRaises(ValidationError) as ctx:
                 batch.full_clean()
             self.assertIn("build", ctx.exception.message_dict)
+
+    def test_reschedule_unchanged_time_not_rejected_when_near_due(self):
+        build = self._create_build()
+        future = (
+            timezone.now() + timedelta(seconds=app_settings.SCHEDULE_MIN_DELAY + 120)
+        ).replace(second=45, microsecond=123456)
+        batch = BatchUpgradeOperation(
+            build=build, status="scheduled", scheduled_at=future
+        )
+        batch.full_clean()
+        batch.save()
+        near_due = batch.scheduled_at - timedelta(
+            seconds=app_settings.SCHEDULE_MIN_DELAY - 60
+        )
+        with time_travel(near_due):
+            batch.refresh_from_db()
+            batch.scheduled_at = batch.scheduled_at.replace(second=0, microsecond=0)
+            batch.full_clean()
+            self.assertEqual(batch.scheduled_at, future)
 
     def test_is_persistent_editable_while_scheduled(self):
         batch = BatchUpgradeOperation.objects.create(
@@ -1181,6 +1213,28 @@ class TestModels(TestUpgraderMixin, TestCase):
             self.assertEqual(
                 app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"], 2200
             )
+
+    def test_retry_options_invalid(self):
+        self.addCleanup(importlib.reload, app_settings)
+        for options in (
+            {"jitter": 1},
+            {"base_delay": 0},
+            {"max_delay": 0},
+            {"multiplier": 0.5},
+            {"dispatch_jitter": 0},
+            {"signal_jitter": -1},
+        ):
+            with self.subTest(options=options), override_settings(
+                OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS=options,
+            ), self.assertRaises(ImproperlyConfigured):
+                importlib.reload(app_settings)
+
+    def test_reminder_period_non_positive(self):
+        self.addCleanup(importlib.reload, app_settings)
+        with override_settings(
+            OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD=0,
+        ), self.assertRaises(ImproperlyConfigured):
+            importlib.reload(app_settings)
 
     def test_schedule_min_delay_below_horizon(self):
         self.addCleanup(importlib.reload, app_settings)

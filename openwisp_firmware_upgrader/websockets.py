@@ -242,12 +242,20 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             if batch_operation:
                 # Get operations list
                 operations_list = await sync_to_async(list)(
-                    batch_operation.upgrade_operations.all()
+                    batch_operation.upgrade_operations.select_related(
+                        "device", "image"
+                    ).all()
                 )
-                # Serialize operations using the existing serializer
-                operations_data = await sync_to_async(
-                    lambda: UpgradeOperationSerializer(operations_list, many=True).data
-                )()
+
+                def _serialize():
+                    data = UpgradeOperationSerializer(operations_list, many=True).data
+                    for op_data, op in zip(data, operations_list):
+                        op_data["device_id"] = str(op.device_id)
+                        op_data["device_name"] = op.device.name
+                        op_data["image_name"] = str(op.image) if op.image_id else None
+                    return data
+
+                operations_data = await sync_to_async(_serialize)()
                 stats = await sync_to_async(batch_operation.get_status_stats)()
                 # Send everything in ONE message
                 await self.send_json(

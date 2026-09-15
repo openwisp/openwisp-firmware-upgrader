@@ -51,8 +51,9 @@ behaviour where unreachable devices end as ``failed``.
 .. image:: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade-confirm.png
     :target: https://raw.githubusercontent.com/openwisp/openwisp-firmware-upgrader/docs/docs/images/1.4/persistent-upgrades/mass-upgrade-confirm.png
 
-The flag is locked in once the mass upgrade leaves the ``idle`` state, so
-it cannot be changed midway through a running batch.
+The flag is locked in once the mass upgrade starts, so it cannot be
+changed midway through a running batch. While the batch is still ``idle``
+or ``scheduled`` the flag can still be changed.
 
 Using the REST API
 ~~~~~~~~~~~~~~~~~~

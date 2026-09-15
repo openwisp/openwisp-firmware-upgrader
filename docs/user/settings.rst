@@ -163,6 +163,25 @@ The Beat task that launches due scheduled upgrades
 ``CELERY_BEAT_SCHEDULE`` on a short cadence (60 seconds in production);
 see the docker-openwisp and ansible-openwisp2 recipes for the snippet.
 
+``OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_LAUNCH_TIMEOUT``
+------------------------------------------------------
+
+============ ===================
+**type**:    ``int``
+**default**: ``300`` (5 minutes)
+============ ===================
+
+Grace period, in seconds, that a due scheduled upgrade may stay
+``in-progress`` without having created any upgrade operation before it is
+treated as a stalled launch and reset to ``scheduled`` for a later scan to
+dispatch again. This recovers batches whose launch task was lost, for
+example when a worker crashes between claiming the batch and running it.
+
+Keep it above the worst-case delay between dispatching the launch task and
+a worker picking it up. If it is shorter than that latency, a batch can be
+reset before its task runs, and every dispatch keeps timing out without
+ever launching.
+
 .. _openwisp_custom_openwrt_images:
 
 ``OPENWISP_CUSTOM_OPENWRT_IMAGES``

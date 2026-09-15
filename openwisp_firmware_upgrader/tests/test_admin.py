@@ -333,7 +333,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         env = self._create_upgrade_env()
         browser_tz = ZoneInfo("America/New_York")
         due = (timezone.now().astimezone(browser_tz) + timedelta(days=1)).replace(
-            second=0, microsecond=0
+            hour=12, minute=0, second=0, microsecond=0
         )
         date_format = get_format("DATE_INPUT_FORMATS")[0]
         self.client.post(
@@ -446,6 +446,37 @@ class TestAdmin(BaseTestAdmin, TestCase):
             r = get_change(batch)
             self.assertNotContains(r, 'id="batch-cancel-btn"')
             self.assertNotContains(r, 'id="batch-reschedule-btn"')
+
+    def test_scheduled_batch_renders_operations_table(self):
+        self._login()
+        build = self._create_build()
+
+        def get_change(batch):
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
+            return self.client.get(url)
+
+        with self.subTest("scheduled keeps the table in the DOM but hidden"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build,
+                status="scheduled",
+                scheduled_at=timezone.now() + timedelta(days=1),
+            )
+            r = get_change(batch)
+            self.assertContains(r, 'id="upgrade-operations-section" class="ow-hide"')
+            self.assertContains(r, 'id="result_list"')
+            batch.delete()
+
+        with self.subTest("in-progress shows the operations section"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build, status="in-progress"
+            )
+            r = get_change(batch)
+            self.assertContains(r, 'id="upgrade-operations-section"')
+            self.assertNotContains(r, 'id="upgrade-operations-section" class="ow-hide"')
+            self.assertContains(r, 'id="result_list"')
+            self.assertContains(r, 'class="search-section"')
 
     def test_batch_actions_hidden_for_view_only_user(self):
         org = self._get_org()

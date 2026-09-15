@@ -15,6 +15,7 @@ class TestUtils(TestUpgraderMixin, TestCase):
             result = reinterpret_in_timezone(
                 datetime(2026, 6, 15, 12, 0), "America/New_York"
             )
+            self.assertEqual(result.replace(tzinfo=None), datetime(2026, 6, 15, 12, 0))
             self.assertEqual(result.utcoffset(), timedelta(hours=-4))
 
         with self.subTest("invalid timezone is rejected"):

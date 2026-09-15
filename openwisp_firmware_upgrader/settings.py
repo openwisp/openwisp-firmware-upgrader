@@ -36,6 +36,19 @@ PERSISTENT_RETRY_OPTIONS = dict(
 PERSISTENT_RETRY_OPTIONS.update(
     getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS", {})
 )
+if (
+    PERSISTENT_RETRY_OPTIONS["base_delay"] <= 0
+    or PERSISTENT_RETRY_OPTIONS["max_delay"] <= 0
+    or PERSISTENT_RETRY_OPTIONS["multiplier"] < 1
+    or not 0 <= PERSISTENT_RETRY_OPTIONS["jitter"] < 1
+    or PERSISTENT_RETRY_OPTIONS["dispatch_jitter"] <= 0
+    or PERSISTENT_RETRY_OPTIONS["signal_jitter"] < 0
+):
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS requires "
+        "base_delay > 0, max_delay > 0, multiplier >= 1, 0 <= jitter < 1, "
+        "dispatch_jitter > 0 and signal_jitter >= 0"
+    )
 if PERSISTENT_RETRY_OPTIONS["claim_timeout"] <= TASK_TIMEOUT + RETRY_OPTIONS.get(
     "retry_backoff_max", 600
 ):
@@ -47,6 +60,10 @@ if PERSISTENT_RETRY_OPTIONS["claim_timeout"] <= TASK_TIMEOUT + RETRY_OPTIONS.get
 PERSISTENT_REMINDER_PERIOD = getattr(
     settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD", 5184000
 )
+if PERSISTENT_REMINDER_PERIOD <= 0:
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD must be positive"
+    )
 
 SCHEDULE_MIN_DELAY = getattr(
     settings, "OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MIN_DELAY", 600

@@ -73,10 +73,10 @@ Timezone handling
 The **Scheduled at** field is a browser-local time picker, and the page
 prints which timezone that is (for example, *Your timezone: Asia/Kolkata*)
 so there is nothing to guess. The time you pick is converted to UTC before
-it is sent, stored in UTC, and shown back to you in the server's timezone
-with the zone spelled out, for example ``2026-07-15 02:00 (Europe/Rome)``.
-The REST API accepts and returns timezone-aware ISO 8601 values and leaves
-the display to the client.
+it is sent, stored in UTC, and shown back to you in your own browser's
+timezone with the zone spelled out, for example ``2026-07-15 02:00
+(Asia/Kolkata)``. The REST API accepts and returns timezone-aware ISO 8601
+values and leaves the display to the client.
 
 The result is that the wall-clock time you enter is the time the upgrade
 runs in your timezone, so you never have to work an offset out by hand or

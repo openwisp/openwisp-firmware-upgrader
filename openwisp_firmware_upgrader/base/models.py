@@ -753,7 +753,11 @@ class AbstractBatchUpgradeOperation(
         if not self._state.adding:
             if stored is None:
                 stored = self._fetch_stored_row()
-            if self.scheduled_at == stored["scheduled_at"]:
+            stored_at = stored["scheduled_at"]
+            if stored_at is not None and self.scheduled_at.replace(
+                second=0, microsecond=0
+            ) == stored_at.replace(second=0, microsecond=0):
+                self.scheduled_at = stored_at
                 return
         now = timezone.now()
         min_delay = app_settings.SCHEDULE_MIN_DELAY
@@ -920,18 +924,19 @@ class AbstractBatchUpgradeOperation(
                     "when": when,
                 }
         UpgradeOperation = load_model("UpgradeOperation")
-        device_ids = self.build._find_related_device_firmwares(
-            group=self.group, location=self.location
-        ).values_list("device_id", flat=True)
+        device_filter = models.Q(
+            device_id__in=self.build._find_related_device_firmwares(
+                group=self.group, location=self.location
+            ).values_list("device_id", flat=True)
+        )
         if self.firmwareless:
-            device_ids = list(device_ids) + list(
-                self.build._find_firmwareless_devices(
+            device_filter |= models.Q(
+                device_id__in=self.build._find_firmwareless_devices(
                     group=self.group, location=self.location
                 ).values_list("pk", flat=True)
             )
         clashing = UpgradeOperation.objects.filter(
-            status__in=UpgradeOperation.CANCELLABLE_STATUS,
-            device_id__in=device_ids,
+            device_filter, status__in=UpgradeOperation.CANCELLABLE_STATUS
         )
         if self.pk is not None:
             clashing = clashing.exclude(batch_id=self.pk)
@@ -1295,20 +1300,24 @@ class AbstractBatchUpgradeOperation(
                     self.status = "cancelled"
                     self.save(update_fields=["status"])
                     return
-                operations = list(
-                    locked.upgradeoperation_set.filter(
-                        status__in=UpgradeOperation.CANCELLABLE_STATUS,
-                        progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
-                    )
-                )
             cancelled = 0
-            for operation in operations:
+            operation_ids = list(
+                self.upgradeoperation_set.filter(
+                    status__in=UpgradeOperation.CANCELLABLE_STATUS,
+                    progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
+                ).values_list("pk", flat=True)
+            )
+            for operation_id in operation_ids:
+                try:
+                    operation = UpgradeOperation.objects.get(pk=operation_id)
+                except UpgradeOperation.DoesNotExist:
+                    continue
                 try:
                     operation.cancel()
                 except ValueError as error:
                     logger.warning(
                         "Could not cancel upgrade operation %s of batch %s: %s",
-                        operation.pk,
+                        operation_id,
                         self.pk,
                         error,
                     )
@@ -1802,6 +1811,7 @@ class AbstractUpgradeOperation(
                 progress=self.progress,
                 log=self.log,
                 claimed_at=None,
+                modified=timezone.now(),
             )
             if not claimed:
                 self.refresh_from_db()
@@ -1815,6 +1825,7 @@ class AbstractUpgradeOperation(
                     "progress",
                     "log",
                     "claimed_at",
+                    "modified",
                 ]
             )
             return True

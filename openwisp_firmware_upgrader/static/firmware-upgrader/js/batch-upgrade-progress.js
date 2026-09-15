@@ -119,6 +119,9 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
               is_persistent: operation.is_persistent,
               retry_count: operation.retry_count,
               next_retry_at: operation.next_retry_at,
+              device_id: operation.device_id,
+              device_name: operation.device_name,
+              image_name: operation.image_name,
             });
           });
         }
@@ -150,6 +153,11 @@ function updateBatchProgress(data) {
     $(".batch-actions").remove();
   } else if (data.status && data.status !== "scheduled") {
     $("#batch-reschedule-btn, #batch-reschedule-form").remove();
+    let $section = $("#upgrade-operations-section");
+    if ($section.hasClass("ow-hide")) {
+      $section.removeClass("ow-hide");
+      requestCurrentBatchState(window.batchUpgradeProgressWebSocket);
+    }
   }
   let mainProgressElement = $(".batch-main-progress");
   if (mainProgressElement.length > 0) {
