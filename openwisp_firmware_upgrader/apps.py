@@ -33,6 +33,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         self.connect_delete_signals()
         self.connect_metadata_signals()
         self.connect_worker_ready_signal()
+        from . import checks  # noqa
 
     def register_menu_groups(self):
         register_menu_group(
@@ -146,7 +147,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         if not app_settings.QUEUE_UNCONFIRMED_ON_WORKER_READY:
             return
         # multiple worker processes each fire this on their own startup,
-        # this lock collpases a restart burst into a single enqueue
+        # this lock collapses a restart burst into a single enqueue
         # instead of one per worker process
         lock_acquired = cache.add(
             "firmware_upgrader.queue_unconfirmed_lock",
