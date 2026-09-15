@@ -487,21 +487,25 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._original_extraction_status = self.extraction_status
-        self._original_file_name = self.file.name
 
     def save(self, *args, **kwargs):
-        file_changed = (
-            not self._state.adding
-            and self.pk
-            and self._original_file_name != self.file.name
-        )
+        persisted_file = None
+        file_changed = False
+        if not self._state.adding and self.pk:
+            persisted_file = (
+                self.__class__.objects.filter(pk=self.pk)
+                .values_list("file", flat=True)
+                .first()
+            )
+            file_changed = (
+                persisted_file is not None and persisted_file != self.file.name
+            )
         if not file_changed:
             super().save(*args, **kwargs)
             self._original_extraction_status = self.extraction_status
-            self._original_file_name = self.file.name
             return
-        old_file_name = self._original_file_name
-        # lock the buil row before writing this image row, matching the
+        old_file_name = persisted_file
+        # lock the build row before writing this image row, matching the
         # lock order used by Build.update_extraction_status(), so the two
         # code paths cannot deadlock against each other
         Build = load_model("Build")
@@ -521,7 +525,6 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         self.compat_version = ""
         self.source = ""
         self._original_extraction_status = self.extraction_status
-        self._original_file_name = self.file.name
         if old_file_name and old_file_name != self.file.name:
             transaction.on_commit(partial(self._remove_file, old_file_name))
 

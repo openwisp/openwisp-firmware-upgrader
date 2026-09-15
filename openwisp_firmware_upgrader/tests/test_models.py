@@ -964,6 +964,34 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(fw.compat_version, "")
         self.assertEqual(fw.source, "")
 
+    @mock.patch("openwisp_firmware_upgrader.base.models.extract_firmware_metadata")
+    def test_firmware_image_save_after_refresh_from_db_does_not_reset_metadata(
+        self, mock_task
+    ):
+        fw = self._create_firmware_image()
+        replaced_file = f"{fw.build.pk}/openwrt-other-firmware-sysupgrade.bin"
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            file=replaced_file,
+            extraction_status=FirmwareImage.STATUS_SUCCESS,
+            board="TP-Link WDR4300",
+            compatible="tplink,tl-wdr4300-v1",
+            target="ath79/generic",
+            fw_version="23.05.5",
+            compat_version="1.0",
+            source="fwtool",
+        )
+        fw.refresh_from_db()
+        fw.save()
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
+        self.assertEqual(fw.board, "TP-Link WDR4300")
+        self.assertEqual(fw.compatible, "tplink,tl-wdr4300-v1")
+        self.assertEqual(fw.target, "ath79/generic")
+        self.assertEqual(fw.fw_version, "23.05.5")
+        self.assertEqual(fw.compat_version, "1.0")
+        self.assertEqual(fw.source, "fwtool")
+        mock_task.delay.assert_not_called()
+
     def test_validate_build_unchanged_blocks_persisted_change(self):
         image = self._create_firmware_image()
         other_build = self._create_build(category=image.build.category, version="99.0")
