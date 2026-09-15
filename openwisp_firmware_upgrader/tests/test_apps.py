@@ -38,6 +38,14 @@ class TestWorkerReadySignal(TestCase):
         mock_delay.assert_not_called()
 
     @mock.patch(_MOCK_DELAY)
+    def test_failed_call_releases_lock_for_retry(self, mock_delay):
+        mock_delay.side_effect = [Exception("broker down"), None]
+        FirmwareUpdaterConfig.queue_unconfirmed_extractions_on_worker_ready()
+        self.assertIsNone(cache.get(_LOCK_KEY))
+        FirmwareUpdaterConfig.queue_unconfirmed_extractions_on_worker_ready()
+        self.assertEqual(mock_delay.call_count, 2)
+
+    @mock.patch(_MOCK_DELAY)
     def test_second_call_within_lock_timeout_is_skipped(self, mock_delay):
         FirmwareUpdaterConfig.queue_unconfirmed_extractions_on_worker_ready()
         FirmwareUpdaterConfig.queue_unconfirmed_extractions_on_worker_ready()
@@ -58,7 +66,7 @@ class TestChecks(TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("EXTRACTION_CLAIM_TIMEOUT", errors[0].msg)
 
-    @override_settings(CELERY_BEAT_SCHEUDULE={})
+    @override_settings(CELERY_BEAT_SCHEDULE={})
     def test_check_reclaim_stale_extractions_scheduled_warns_when_missing(self):
         errors = check_reclaim_stale_extractions_scheduled(None)
         self.assertEqual(len(errors), 1)

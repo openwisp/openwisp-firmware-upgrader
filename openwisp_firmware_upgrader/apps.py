@@ -1,3 +1,5 @@
+import logging
+
 from celery.signals import worker_ready
 from django.core.cache import cache
 from django.db.models.signals import post_save, pre_delete
@@ -10,6 +12,8 @@ from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
 from .websockets import BatchUpgradeProgressPublisher, UpgradeProgressPublisher
+
+logger = logging.getLogger(__name__)
 
 
 class FirmwareUpdaterConfig(ApiAppConfig):
@@ -158,7 +162,17 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             return
         from .tasks import queue_unconfirmed_extractions
 
-        queue_unconfirmed_extractions.delay()
+        try:
+            queue_unconfirmed_extractions.delay()
+        except Exception:
+            # release the lock so a later worker restart isn't blocked by
+            # this attempt's failure
+            cache.delete("firmware_upgrader.queue_unconfirmed_lock")
+            logger.exception(
+                "Failed to queue unconfirmed firmware image extractions "
+                "on worker startup. Will be retried on a later worker "
+                "restart."
+            )
 
 
 del ApiAppConfig
