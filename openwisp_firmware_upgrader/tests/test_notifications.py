@@ -1,6 +1,7 @@
 from datetime import timedelta
 from unittest import mock
 
+import swapper
 from django.db import transaction
 from django.db.models.query import QuerySet
 from django.test import TransactionTestCase
@@ -351,3 +352,94 @@ class TestBatchCompletionNotification(TestUpgraderMixin, TransactionTestCase):
         mocked_notify.assert_not_called()
         batch.refresh_from_db()
         self.assertEqual(batch.status, "in-progress")
+
+
+class TestScheduledUpgradeNotifications(TestUpgraderMixin, TransactionTestCase):
+    def _scheduled_batch(self, build=None, **kwargs):
+        if build is None:
+            build = self._create_build()
+        opts = dict(
+            build=build,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        opts.update(kwargs)
+        return BatchUpgradeOperation.objects.create(**opts)
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_scheduled_started_hook(self, mocked_notify):
+        batch = self._scheduled_batch()
+        batch._scheduled_started()
+        self.assertEqual(mocked_notify.call_count, 1)
+        kwargs = mocked_notify.call_args.kwargs
+        self.assertEqual(kwargs["target"], batch)
+        self.assertEqual(kwargs["type"], "generic_message")
+        self.assertIn("has started", str(kwargs["message"]))
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_scheduled_validation_failed_hook(self, mocked_notify):
+        batch = self._scheduled_batch()
+        batch._scheduled_validation_failed()
+        self.assertEqual(mocked_notify.call_count, 1)
+        kwargs = mocked_notify.call_args.kwargs
+        self.assertEqual(kwargs["type"], "generic_message")
+        self.assertIn("no eligible devices remained", str(kwargs["message"]))
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_started_ignores_rollback(self, mocked_notify):
+        batch = self._scheduled_batch()
+        with transaction.atomic():
+            batch._scheduled_started()
+            transaction.set_rollback(True)
+        mocked_notify.assert_not_called()
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_validation_failed_ignores_rollback(self, mocked_notify):
+        batch = self._scheduled_batch()
+        with transaction.atomic():
+            batch._scheduled_validation_failed()
+            transaction.set_rollback(True)
+        mocked_notify.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_due_batch_fires_started_once(self, mocked_notify, mocked_delay):
+        env = self._create_upgrade_env()
+        self._scheduled_batch(
+            build=env["build2"], scheduled_at=timezone.now() - timedelta(minutes=1)
+        )
+        tasks.execute_scheduled_upgrades.run()
+        tasks.execute_scheduled_upgrades.run()
+        mocked_delay.assert_called_once()
+        starts = [
+            c
+            for c in mocked_notify.call_args_list
+            if "has started" in str(c.kwargs.get("message", ""))
+        ]
+        self.assertEqual(len(starts), 1)
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_ineligible_batch_fires_validation_failed_only(
+        self, mocked_notify, mocked_delay
+    ):
+        batch = self._scheduled_batch(
+            scheduled_at=timezone.now() - timedelta(minutes=1)
+        )
+        tasks.execute_scheduled_upgrades.run()
+        mocked_delay.assert_not_called()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+        self.assertEqual(mocked_notify.call_count, 1)
+        self.assertIn(
+            "no eligible devices remained",
+            str(mocked_notify.call_args.kwargs["message"]),
+        )
+
+    def test_started_notification_routes_to_org_admin(self):
+        Notification = swapper.load_model("openwisp_notifications", "Notification")
+        org = self._get_org()
+        admin = self._create_administrator(organizations=[org])
+        batch = self._scheduled_batch(build=self._create_build())
+        batch._scheduled_started()
+        self.assertTrue(Notification.objects.filter(recipient=admin).exists())

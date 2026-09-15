@@ -25,6 +25,7 @@ For a comprehensive overview of features, please refer to the
     ./user/quickstart.rst
     ./user/upgrade-status.rst
     ./user/persistent-mass-upgrades.rst
+    ./user/scheduled-mass-upgrades.rst
     ./user/automatic-device-firmware-detection.rst
     ./user/custom-firmware-upgrader.rst
     ./user/rest-api.rst
