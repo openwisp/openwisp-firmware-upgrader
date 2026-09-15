@@ -248,19 +248,21 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                 operations_data = await sync_to_async(
                     lambda: UpgradeOperationSerializer(operations_list, many=True).data
                 )()
-                # Calculate counts
-                total_operations = len(operations_list)
-                completed_operations = sum(
-                    1 for op in operations_list if op.status != "in-progress"
-                )
+                batch_status, stats = await sync_to_async(
+                    batch_operation.calculate_and_update_status
+                )()
                 # Send everything in ONE message
                 await self.send_json(
                     {
                         "type": "batch_state",
                         "batch_status": {
-                            "status": batch_operation.status,
-                            "completed": completed_operations,
-                            "total": total_operations,
+                            "status": batch_status,
+                            "completed": stats["completed"],
+                            "total": stats["total_operations"],
+                            "successful": stats["successful"],
+                            "failed": stats["failed"],
+                            "aborted": stats["aborted"],
+                            "cancelled": stats["cancelled"],
                         },
                         "operations": operations_data,
                     }
@@ -496,13 +498,26 @@ class BatchUpgradeProgressPublisher:
             )
         self.publish_progress(progress_data)
 
-    def publish_batch_status(self, status, completed, total):
+    def publish_batch_status(
+        self,
+        status,
+        completed,
+        total,
+        successful=0,
+        failed=0,
+        aborted=0,
+        cancelled=0,
+    ):
         self.publish_progress(
             {
                 "type": "batch_status",
                 "status": status,
                 "completed": completed,
                 "total": total,
+                "successful": successful,
+                "failed": failed,
+                "aborted": aborted,
+                "cancelled": cancelled,
             }
         )
 
@@ -514,6 +529,10 @@ class BatchUpgradeProgressPublisher:
             batch_status,
             stats["completed"],
             stats["total_operations"],
+            successful=stats["successful"],
+            failed=stats["failed"],
+            aborted=stats["aborted"],
+            cancelled=stats["cancelled"],
         )
 
     @classmethod
