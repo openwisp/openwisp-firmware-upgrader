@@ -1731,7 +1731,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         readonly = fw_admin.get_readonly_fields(request, obj=fw)
         for field in ["board", "compatible", "target", "fw_version"]:
             with self.subTest(field=field):
-                self.assertIn(field, readonly)
+                self.assertNotIn(field, readonly)
 
     def test_firmware_image_compat_version_always_readonly(self):
         fw = self._create_firmware_image()
@@ -1995,6 +1995,26 @@ class TestAdmin(BaseTestAdmin, TestCase):
         fw.refresh_from_db()
         self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
         self.assertEqual(fw.source, "dtb")
+        self.assertEqual(fw.failure_reason, "")
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.base.models.extract_firmware_metadata")
+    def test_firmware_image_save_model_invalid_to_manually_confirmed(self, mock_task):
+        fw = self._create_firmware_image()
+        fw.extraction_status = FirmwareImage.STATUS_INVALID
+        fw.failure_reason = FirmwareImage.FAILURE_INVALID
+        fw.board = "Generic x86"
+        fw.target = "x86/64"
+        fw.save()
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["board", "target"]
+        fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
+        self.assertEqual(fw.source, "manual")
         self.assertEqual(fw.failure_reason, "")
         mock_task.delay.assert_not_called()
 

@@ -46,6 +46,7 @@ class CategoryRelationSerializer(BaseSerializer):
 class FirmwareImageSerializer(BaseSerializer):
     CONFIRMABLE_STATUSES = (
         FirmwareImage.STATUS_FAILED,
+        FirmwareImage.STATUS_INVALID,
         FirmwareImage.STATUS_INCOMPLETE,
     )
     METADATA_FIELDS = ("board", "compatible", "target", "fw_version")
@@ -69,7 +70,8 @@ class FirmwareImageSerializer(BaseSerializer):
         )
         confirm_source = (
             "manual"
-            if instance.extraction_status == FirmwareImage.STATUS_FAILED
+            if instance.extraction_status
+            in (FirmwareImage.STATUS_FAILED, FirmwareImage.STATUS_INVALID)
             else None
         )
         for attr, value in validated_data.items():

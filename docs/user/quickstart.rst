@@ -91,16 +91,17 @@ this step.
 
 After uploading, the system will automatically extract metadata (board,
 compatible strings, target, firmware version) from the image. For image
-types where automatic extraction is not supported (e.g. x86), the metadata
-can be entered manually from the firmware image's detail page once the
-extraction status is shown as *Failed*. When the metadata is extracted
-only partially (for example through the DTB scan), the missing fields stay
-empty and editable. Filling them in is optional.
+types where automatic extraction is not supported (e.g. x86), or when
+extraction fails outright, the metadata can be entered manually from the
+firmware image's detail page once the extraction status is shown as
+*Failed* or *Invalid*. When the metadata is extracted only partially (for
+example through the DTB scan), the missing fields stay empty and editable.
+Filling them is optional.
 
 A mass upgrade of a build is blocked only while one of its images is
-unconfirmed, still being processed, or has failed extraction for any
-reason. Images with partial or manually entered metadata are still
-eligible for mass upgrade.
+unconfirmed, still being processed, or, for any reason, has extraction
+status *Failed* or *Invalid*. Images with partial or manually entered
+metadata are still eligible for mass upgrade.
 
 4. Perform a Firmware Upgrade to a Specific Device
 --------------------------------------------------

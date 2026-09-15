@@ -286,7 +286,6 @@ class FirmwareImageAdmin(BaseAdmin):
             if status in (
                 FirmwareImage.STATUS_UNCONFIRMED,
                 FirmwareImage.STATUS_IN_PROGRESS,
-                FirmwareImage.STATUS_INVALID,
                 FirmwareImage.STATUS_MANUALLY_CONFIRMED,
             ):
                 readonly += [
@@ -320,7 +319,10 @@ class FirmwareImageAdmin(BaseAdmin):
     def get_fieldsets(self, request, obj=None):
         fieldsets = list(super().get_fieldsets(request, obj))
         has_failure_reason = obj and bool(obj.failure_reason)
-        is_failed = obj and obj.extraction_status == FirmwareImage.STATUS_FAILED
+        is_failed = obj and obj.extraction_status in (
+            FirmwareImage.STATUS_FAILED,
+            FirmwareImage.STATUS_INVALID,
+        )
         is_incomplete_editable = (
             obj
             and obj.extraction_status == FirmwareImage.STATUS_INCOMPLETE
@@ -365,7 +367,10 @@ class FirmwareImageAdmin(BaseAdmin):
         should_confirm = False
         confirm_source = None
         if change:
-            if obj.extraction_status == FirmwareImage.STATUS_FAILED:
+            if obj.extraction_status in (
+                FirmwareImage.STATUS_FAILED,
+                FirmwareImage.STATUS_INVALID,
+            ):
                 metadata_fields = ["board", "compatible", "target", "fw_version"]
                 should_confirm = any(f in form.changed_data for f in metadata_fields)
                 confirm_source = "manual"

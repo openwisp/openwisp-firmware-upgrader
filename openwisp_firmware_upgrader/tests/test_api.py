@@ -1307,6 +1307,32 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image.build.refresh_from_db()
         self.assertEqual(image.build.status, Build.BUILD_STATUS_MANUALLY_CONFIRMED)
 
+    def test_firmware_patch_confirms_invalid_metadata(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_INVALID,
+            failure_reason=FirmwareImage.FAILURE_INVALID,
+            board="",
+            source="",
+        )
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {
+            "board": "Generic x86",
+            "compatible": "generic,x86-64",
+            "target": "x86/64",
+            "fw_version": "23.05.5",
+        }
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(
+            image.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED
+        )
+        self.assertEqual(image.source, "manual")
+        self.assertEqual(image.board, "Generic x86")
+        self.assertEqual(image.compatible, "generic,x86-64")
+        self.assertEqual(image.failure_reason, "")
+
     def test_firmware_patch_confirms_incomplete_metadata_preserves_source(self):
         image = self._create_firmware_image()
         FirmwareImage.objects.filter(pk=image.pk).update(
