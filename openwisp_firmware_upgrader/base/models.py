@@ -755,7 +755,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         if not (self.file and self.file.name):
             return
         # the OpenWrt image kind is the hyphen-separated token before the
-        # extension, for example "...-squashfs-rootf.tar.gz" -> "rootfs"
+        # extension, for example "...-squashfs-rootfs.tar.gz" -> "rootfs"
         filename = self.file.name.lower().rsplit("/", 1)[-1]
         image_type = filename.rsplit("-", 1)[-1].split(".", 1)[0]
         if image_type == "rootfs":

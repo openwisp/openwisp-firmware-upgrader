@@ -450,12 +450,13 @@ field of a ``Build`` (e.g. ``"myos"`` matches a build with ``os="MyOS
 ``model_confirmed`` is optional and defaults to ``False`` when omitted. It
 tells the extraction task whether the returned ``model`` has been verified
 against a real device model identifier, the way the built-in extractor
-cross-checks the DTB scan against the fwtool trailer. If ``model`` is
-present but ``model_confirmed`` is not explicitly set to ``True`` (and
-``source`` is not ``"dtb"``), the image is stored with extraction status
-*Incomplete* rather than *Success*. Incomplete images are still paired
-with matching devices automatically, but the unverified board value is
-worth reviewing manually.
+treats a model found by an independent DTB scan as confirmed, overriding
+the fwtool trailer's board value with it. If ``model`` is present but
+``model_confirmed`` is not explicitly set to ``True`` (and ``source`` is
+not ``"dtb"``), the image is stored with extraction status *Incomplete*
+rather than *Success*. Incomplete images are still paired with matching
+devices automatically, but the unverified board value is worth reviewing
+manually.
 
 API Views
 ---------

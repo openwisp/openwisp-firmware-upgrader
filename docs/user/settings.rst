@@ -250,7 +250,7 @@ queuing until it expires, e.g.:
 
 - This only works as intended if ``CACHES`` is configured with a backend
   shared across worker processes (e.g. Redis or Memcached). With a
-  pre-process backend such as Django's local-memory cache, each worker
+  per-process backend such as Django's local-memory cache, each worker
   will still queue the backlog independently.
 - See :doc:`recovering-from-extraction-failures` for more information.
 
