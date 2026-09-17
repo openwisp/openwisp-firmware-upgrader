@@ -61,6 +61,8 @@ class FirmwareImageSerializer(BaseSerializer):
         if status not in self.CONFIRMABLE_STATUSES:
             for field in self.METADATA_FIELDS:
                 fields[field].read_only = True
+        if self.instance is not None:
+            fields["type"].read_only = True
         return fields
 
     def update(self, instance, validated_data):

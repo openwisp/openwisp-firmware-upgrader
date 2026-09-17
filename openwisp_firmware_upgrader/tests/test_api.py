@@ -1269,14 +1269,15 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
                 response = self.client.get(url)
             self.assertEqual(response.getvalue(), content)
 
-    def test_firmware_update_partial_type(self):
+    def test_firmware_patch_type_is_read_only(self):
         image = self._create_firmware_image()
+        original_type = image.type
         url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
         data = dict(type=self.TPLINK_4300_IL_IMAGE)
         r = self.client.patch(url, data, content_type="application/json")
         self.assertEqual(r.status_code, 200)
         image.refresh_from_db()
-        self.assertEqual(image.type, self.TPLINK_4300_IL_IMAGE)
+        self.assertEqual(image.type, original_type)
 
     def test_firmware_patch_confirms_failed_metadata(self):
         image = self._create_firmware_image()
