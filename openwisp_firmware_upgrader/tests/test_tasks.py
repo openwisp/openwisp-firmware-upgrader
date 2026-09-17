@@ -600,6 +600,17 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertNotIn(deactivated_device, called_devices)
         self.assertIn(eligible_device, called_devices)
 
+    @mock.patch("logging.Logger.warning")
+    def test_create_all_device_firmwares_image_not_found(self, mock_warning):
+        fake_pk = str(uuid.uuid4())
+        tasks.create_all_device_firmwares.run(fake_pk)
+        mock_warning.assert_called_once()
+        self.assertTrue(
+            any(fake_pk in str(arg) for arg in mock_warning.call_args.args),
+            f"warning should reference the missing image pk {fake_pk}, "
+            f"got {mock_warning.call_args.args}",
+        )
+
     @mock.patch(_MOCK_EXTRACTOR)
     @mock.patch("openwisp_firmware_upgrader.tasks.create_all_device_firmwares")
     @capture_any_output()

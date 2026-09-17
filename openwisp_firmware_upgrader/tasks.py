@@ -94,9 +94,16 @@ def create_all_device_firmwares(self, firmware_image_id):
     FirmwareImage = load_model("FirmwareImage")
     Device = swapper.load_model("config", "Device")
 
-    fw_image = FirmwareImage.objects.select_related("build__category").get(
-        pk=firmware_image_id
-    )
+    try:
+        fw_image = FirmwareImage.objects.select_related("build__category").get(
+            pk=firmware_image_id
+        )
+    except FirmwareImage.DoesNotExist:
+        logger.warning(
+            "Auto-pairing skipped: image %s no longer exists",
+            firmware_image_id,
+        )
+        return
 
     if compat_blocks_pairing(fw_image.compat_version):
         logger.info(
