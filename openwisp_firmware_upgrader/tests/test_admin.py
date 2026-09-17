@@ -2018,6 +2018,28 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(fw.failure_reason, "")
         mock_task.delay.assert_not_called()
 
+    @mock.patch("openwisp_firmware_upgrader.base.models.extract_firmware_metadata")
+    def test_firmware_image_save_model_fwtool_incomplete_board_change_confirms(
+        self, mock_task
+    ):
+        fw = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=fw.pk).update(
+            extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+            source="fwtool",
+            board="tplink,archer-c7-v2",
+        )
+        fw.refresh_from_db()
+        fw.board = "TP-Link Archer C7 v2"
+        request = MockRequest()
+        request.user = User.objects.first()
+        fw_admin = FirmwareImageAdmin(FirmwareImage, admin.site)
+        form = mock.MagicMock()
+        form.changed_data = ["board"]
+        fw_admin.save_model(request, fw, form, change=True)
+        fw.refresh_from_db()
+        self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED)
+        mock_task.delay.assert_not_called()
+
     def test_firmware_image_file_replacement_blocked_after_successful_upgrade(self):
         self._login()
         fw = self._create_firmware_image()

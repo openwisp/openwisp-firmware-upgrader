@@ -375,8 +375,11 @@ class FirmwareImageAdmin(BaseAdmin):
                 should_confirm = any(f in form.changed_data for f in metadata_fields)
                 confirm_source = "manual"
             elif obj.extraction_status == FirmwareImage.STATUS_INCOMPLETE:
+                metadata_fields = ["target", "fw_version"]
+                if obj.source != "dtb":
+                    metadata_fields += ["board", "compatible"]
                 should_confirm = any(
-                    field in form.changed_data for field in ["target", "fw_version"]
+                    field in form.changed_data for field in metadata_fields
                 )
         if should_confirm:
             try:
