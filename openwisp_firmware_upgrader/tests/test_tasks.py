@@ -624,12 +624,15 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             "version": "23.05.5",
             "compat_version": "1.0",
             "source": "fwtool",
+            "model_confirmed": True,
         }
         image = self._create_firmware_image()
         FirmwareImage.objects.filter(pk=image.pk).update(
             extraction_status=FirmwareImage.STATUS_UNCONFIRMED
         )
         tasks.extract_firmware_metadata.run(str(image.pk))
+        image.refresh_from_db()
+        self.assertEqual(image.extraction_status, FirmwareImage.STATUS_SUCCESS)
         mock_create_firmwares.delay.assert_called_once_with(str(image.pk))
 
     @mock.patch(
