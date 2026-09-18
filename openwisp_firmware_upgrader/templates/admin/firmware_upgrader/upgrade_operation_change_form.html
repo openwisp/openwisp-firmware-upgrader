@@ -35,6 +35,7 @@
 
 {% block footer %}
 {{ block.super }}
+{{ upgrade_operation_state|json_script:"ow-upgrade-operation-state" }}
 <script type="text/javascript" src="{% static 'connection/js/lib/reconnecting-websocket.min.js' %}"></script>
 <script>
   // Configuration for WebSocket connection
