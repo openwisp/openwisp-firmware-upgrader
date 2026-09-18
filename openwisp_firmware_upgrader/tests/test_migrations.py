@@ -76,8 +76,8 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
             FirmwareImage = apps.get_model(self.app_label, "FirmwareImage")
             image = FirmwareImage.objects.get(pk=self.image_pk)
 
-            with self.subTest("final status is failed"):
-                self.assertEqual(image.extraction_status, "failed")
+            with self.subTest("final status is incomplete"):
+                self.assertEqual(image.extraction_status, "incomplete")
 
             with self.subTest("reconciliation log is retained"):
                 self.assertIn("compatible with multiple boards", image.extraction_log)
@@ -92,10 +92,10 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
                 self.assertEqual(call_kwargs["level"], "warning")
                 self.assertIn("multiple boards", str(call_kwargs["message"]))
 
-            with self.subTest("build status reflects the failed image"):
+            with self.subTest("build status reflects the incomplete image"):
                 self.assertEqual(
                     image.build.status,
-                    "failed",
+                    "incomplete",
                     "build status was not recomputed after reconciliation",
                 )
 
@@ -110,9 +110,9 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
             image = FirmwareImage.objects.get(pk=self.image_pk)
 
             with self.subTest("build status recomputed without post_migrate"):
-                self.assertEqual(image.extraction_status, "failed")
+                self.assertEqual(image.extraction_status, "incomplete")
                 image.build.refresh_from_db()
-                self.assertEqual(image.build.status, "failed")
+                self.assertEqual(image.build.status, "incomplete")
 
             with self.subTest("notification not sent, since post_migrate never fired"):
                 multi_board_calls = [
