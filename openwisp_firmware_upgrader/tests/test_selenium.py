@@ -15,12 +15,12 @@ from selenium.common.exceptions import (
 )
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
-from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.tests.base import SeleniumTestMixin, TestUpgraderMixin
 from openwisp_firmware_upgrader.websockets import (
     BatchUpgradeProgressPublisher,
+    FirmwareExtractionPublisher,
     UpgradeProgressPublisher,
 )
 from openwisp_utils.tests import capture_any_output
@@ -31,6 +31,7 @@ from ..upgraders.openwisp import OpenWrt
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Build = load_model("Build")
+FirmwareImage = load_model("FirmwareImage")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -42,7 +43,7 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
     config_app_label = Device._meta.app_label
     firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
-    image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
+    image_type = "ar71xx-generic-xd3200-squashfs-sysupgrade.bin"
     _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
@@ -475,7 +476,7 @@ class TestRealTimeProgress(
     config_app_label = Device._meta.app_label
     firmware_app_label = Build._meta.app_label
     os = "OpenWrt 19.07-SNAPSHOT r11061-6ffd4d8a4d"
-    image_type = REVERSE_FIRMWARE_IMAGE_MAP["YunCore XD3200"]
+    image_type = "ar71xx-generic-xd3200-squashfs-sysupgrade.bin"
     maxDiff = None
 
     def _wait_for_realtime_update(self, condition):
@@ -1301,3 +1302,39 @@ class TestRealTimeProgress(
         )
         self.assertEqual(len(status_containers), 2)
         self._assert_no_js_errors()
+
+    def test_extraction_status_reload_on_terminal_status(self):
+        image = self.image1
+        self.login(username=self.admin.username, password=self.admin_password)
+        change_url = reverse(
+            f"admin:{self.firmware_app_label}_firmwareimage_change",
+            args=[image.pk],
+        )
+        cases = [
+            (FirmwareImage.STATUS_SUCCESS, "ow-status-success", "Success"),
+            (FirmwareImage.STATUS_INCOMPLETE, "ow-status-warning", "Incomplete"),
+        ]
+        for status, badge_class, badge_text in cases:
+            with self.subTest(status=status):
+                FirmwareImage.objects.filter(pk=image.pk).update(
+                    extraction_status=FirmwareImage.STATUS_UNCONFIRMED
+                )
+                self.open(change_url)
+                self.hide_loading_overlay()
+                WebDriverWait(self.web_driver, 10).until(
+                    lambda driver: driver.execute_script(
+                        "return window.extractionStatusWebSocket && "
+                        "window.extractionStatusWebSocket.readyState === 1;"
+                    )
+                )
+                marker = self.find_element(By.TAG_NAME, "body")
+                FirmwareImage.objects.filter(pk=image.pk).update(
+                    extraction_status=status
+                )
+                FirmwareExtractionPublisher(image.pk).publish_status(status)
+                WebDriverWait(self.web_driver, 10).until(EC.staleness_of(marker))
+                selector = f".ow-status-badge.{badge_class}"
+                self.wait_for_presence(By.CSS_SELECTOR, selector)
+                badge = self.find_element(By.CSS_SELECTOR, selector)
+                self.assertEqual(badge.text.strip(), badge_text)
+                self._assert_no_js_errors()

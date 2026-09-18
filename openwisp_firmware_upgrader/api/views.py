@@ -215,14 +215,15 @@ class FirmwareImageMixin(ProtectedAPIMixin):
 class FirmwareImageListView(FirmwareImageMixin, generics.ListCreateAPIView):
     serializer_class = FirmwareImageSerializer
     organization_field = "build__category__organization"
-    ordering_fields = ["type", "created", "modified"]
     filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
     filterset_fields = ["type"]
     ordering_fields = ["type", "created", "modified"]
     ordering = ["-created"]
 
 
-class FirmwareImageDetailView(FirmwareImageMixin, generics.RetrieveDestroyAPIView):
+class FirmwareImageDetailView(
+    FirmwareImageMixin, generics.RetrieveUpdateDestroyAPIView
+):
     queryset = FirmwareImage.objects.all()
     serializer_class = FirmwareImageSerializer
     lookup_fields = ["pk"]
