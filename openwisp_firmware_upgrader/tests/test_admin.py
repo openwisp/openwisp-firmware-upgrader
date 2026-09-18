@@ -3031,6 +3031,11 @@ class TestAdminTransaction(
             org = self._get_org()
             category = self._create_category(organization=org)
             build = self._create_build(category=category, version="error-test")
+            image = self._create_firmware_image(build=build)
+            FirmwareImage.objects.filter(pk=image.pk).update(
+                extraction_status=FirmwareImage.STATUS_SUCCESS,
+                board="TP-Link WDR43000",
+            )
             # Create location and group but no devices matching both
             location = Location.objects.create(
                 name="Empty Location", address="456 Empty St", organization=org

@@ -2,6 +2,7 @@ import bz2
 import gzip
 import io
 import json
+import logging
 import lzma
 import os
 import struct
@@ -19,6 +20,8 @@ from .exceptions import (
     ExtractionError,
     UnsupportedImageError,
 )
+
+logger = logging.getLogger(__name__)
 
 _VIRTUAL_DISK_IMAGES = (".vdi", ".vmdk")
 DTB_MAGIC = b"\xd0\x0d\xfe\xed"
@@ -376,13 +379,15 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             return [s for s in value.split("\x00") if s]
         if isinstance(value, (list, tuple)):
             return [str(s).rstrip("\x00") for s in value if s]
+        if isinstance(value, (bytes, bytearray)):
+            return [s for s in value.decode("utf-8", "replace").split("\x00") if s]
         return [str(value)]
 
     def _metadata_from_dtb(self, dtb_bytes):
         try:
             dt = fdt.parse_dtb(dtb_bytes)
         except Exception as e:
-            raise ExtractionError(f"Failed to parse DTB: {e}")
+            raise ExtractionError(f"Failed to parse DTB: {e}") from e
         root = dt.get_node("/")
         model, compatible = None, []
         # model uses prop.value (single string), compatible uses prop.data
@@ -518,6 +523,13 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 fwtool_result["model_confirmed"] = True
             if not fwtool_result.get("compatible") and dtb_result.get("compatible"):
                 fwtool_result["compatible"] = dtb_result["compatible"]
+        except DecompressionLimitExceeded as exc:
+            logger.warning(
+                "Decompression limit exceeded during DTB enrichment for %s: %s. "
+                "Keeping the fwtool result without DTB confirmation.",
+                self.image_path,
+                exc,
+            )
         except ExtractionError:
             pass
         return fwtool_result

@@ -47,10 +47,12 @@ def _update_single_board(FirmwareImage, image_type, board, source):
     build_ids = list(qs.values_list("build_id", flat=True))
     if not build_ids:
         return []
+    # "success", not "manually_confirmed", because this value
+    # comes from the static hardware map, not from a user confirming it
     qs.update(
         board=board,
         source=source,
-        extraction_status="manually_confirmed",
+        extraction_status="success",
     )
     return build_ids
 

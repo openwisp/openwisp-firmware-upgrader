@@ -224,6 +224,8 @@ class AbstractBuild(TimeStampedEditableModel):
     ):
         upgrade_options = upgrade_options or {}
         FirmwareImage = load_model("FirmwareImage")
+        if not self.firmwareimage_set.exists():
+            raise ValidationError(_("This build has no firmware images."))
         unconfirmed = self.firmwareimage_set.exclude(
             extraction_status__in=FirmwareImage.PAIRING_ELIGIBLE_STATUSES
         )

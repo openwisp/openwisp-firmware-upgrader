@@ -629,6 +629,31 @@ class TestExtractOverride(TestCase):
             extractor.extract()
         mock_dtb.assert_not_called()
 
+    @mock.patch("openwisp_firmware_upgrader.extractors.openwrt.logger")
+    @mock.patch.object(
+        OpenWrtMetadataExtractor,
+        "extract_from_dtb",
+        side_effect=DecompressionLimitExceeded("bomb"),
+    )
+    @mock.patch.object(OpenWrtMetadataExtractor, "extract_from_image")
+    def test_dtb_enrich_decompression_limit_logged_and_fwtool_kept(
+        self, mock_image, _mock_dtb, mock_logger
+    ):
+        extractor = self._make_extractor()
+        mock_image.return_value = {
+            "model": "x",
+            "compatible": ["x"],
+            "target": "x",
+            "version": "x",
+            "compat_version": "1.0",
+            "source": "fwtool",
+        }
+        result = extractor.extract()
+        self.assertEqual(result["model"], "x")
+        self.assertEqual(result["source"], "fwtool")
+        self.assertFalse(result["model_confirmed"])
+        mock_logger.warning.assert_called_once()
+
     @mock.patch.object(
         OpenWrtMetadataExtractor, "_metadata_from_dtb", return_value={"source": "dtb"}
     )
