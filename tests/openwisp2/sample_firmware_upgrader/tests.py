@@ -179,6 +179,10 @@ class TestMultiBoardReconciliationMigration(BaseTestMultiBoardReconciliationMigr
         "openwisp2.sample_firmware_upgrader.migrations."
         "0009_backfill_board_from_hardware_map"
     )
+    backfill_migration = (
+        "openwisp2.sample_firmware_upgrader.migrations."
+        "0008_backfill_extraction_status"
+    )
 
 
 # this is necessary to avoid excuting the base test suites

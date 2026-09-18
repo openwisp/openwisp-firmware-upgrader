@@ -28,6 +28,9 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
     reconciliation_migration = (
         "openwisp_firmware_upgrader.migrations." "0023_backfill_board_from_hardware_map"
     )
+    backfill_migration = (
+        "openwisp_firmware_upgrader.migrations.0019_backfill_extraction_status"
+    )
 
     def setUp(self):
         cache.delete(_LOCK_KEY)
@@ -60,6 +63,8 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
     def tearDown(self):
         migration = import_module(self.reconciliation_migration)
         post_migrate.disconnect(dispatch_uid=migration._DISPATCH_UID)
+        backfill_migration = import_module(self.backfill_migration)
+        post_migrate.disconnect(backfill_migration._queue_legacy_extractions)
         super().tearDown()
 
     def test_legacy_multi_board_image_is_reconciled(self):
