@@ -63,7 +63,7 @@ to add a per-row DTB-fallback/failed-extraction metadata warning.
         {% with inline_admin_formset.formset.help_text as help_text %}
           {% with help_text.image_url|default:'admin/img/icon-alert.svg' as icon_url %}
             <div class="ow-help-text">
-              <img src="{% static icon_url %}">
+              <img src="{% static icon_url %}" alt="">
               <p>{{ help_text.text }}
                 {% if help_text.documentation_url %}
                   {% blocktrans with anchor_open='<a href="'|add:help_text.documentation_url|add:'">'|safe anchor_close='</a>'|safe %}
