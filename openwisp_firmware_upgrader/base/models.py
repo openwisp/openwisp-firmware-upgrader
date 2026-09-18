@@ -543,6 +543,8 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
                     label += f" ({self.target})"
                 if self.fw_version and self.fw_version != self.build.version:
                     label += f" v{self.fw_version}"
+            elif self.type:
+                label += f": {self.type}"
             return label
         return super().__str__()
 

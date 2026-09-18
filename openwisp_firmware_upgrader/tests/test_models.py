@@ -109,6 +109,19 @@ class TestModels(TestUpgraderMixin, TestCase):
             fw.refresh_from_db()
             self.assertIn("v23.05.5", str(fw))
 
+    def test_fw_str_distinct_when_board_empty(self):
+        build = self._create_build()
+        fw1 = self._create_firmware_image(build=build, type=self.TPLINK_4300_IMAGE)
+        fw2 = self._create_firmware_image(build=build, type=self.TPLINK_4300_IL_IMAGE)
+        FirmwareImage.objects.filter(pk__in=[fw1.pk, fw2.pk]).update(board="")
+        fw1.refresh_from_db()
+        fw2.refresh_from_db()
+        with self.subTest("both use type as a fallback suffix"):
+            self.assertIn(fw1.type, str(fw1))
+            self.assertIn(fw2.type, str(fw2))
+        with self.subTest("images are distinguishable"):
+            self.assertNotEqual(str(fw1), str(fw2))
+
     def test_fw_str_new(self):
         fw = FirmwareImage()
         self.assertIsNotNone(str(fw))
@@ -1257,20 +1270,29 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             image2 = self._create_firmware_image(build=build2, type=image1.type)
 
             matching_device = self._create_device(
-                name="Matching Device",
+                name="MatchingDevice",
                 organization=org,
                 model=image1.boards[0],
                 mac_address="00:11:22:33:44:61",
             )
             mismatched_device = self._create_device(
-                name="Mismatched Device",
+                name="MismatchedDevice",
                 organization=org,
                 model="board-that-does-not-match-any-image",
                 mac_address="00:11:22:33:44:62",
             )
+            unique_id = str(uuid.uuid4())[:8]
+            credentials = self._create_credentials(
+                name=f"test-creds-{unique_id}", organization=None, auto_add=True
+            )
             for device in (matching_device, mismatched_device):
                 self._create_config(device=device)
-                self._create_device_connection(device=device)
+                if not DeviceConnection.objects.filter(
+                    device=device, credentials=credentials
+                ).exists():
+                    self._create_device_connection(
+                        device=device, credentials=credentials
+                    )
 
             with mock.patch(
                 "openwisp_firmware_upgrader.base.models."
