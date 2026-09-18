@@ -791,6 +791,23 @@ class TestExtractFwtoolMetadata(TestCase):
         self.assertIsNone(result)
         mock_crc32.assert_not_called()
 
+    def test_oversized_metadata_skipped_after_crc_match(self):
+        meta = {"padding": "x" * 5000}
+        path = self._write_image(self._build_image(meta))
+        try:
+            with mock.patch(
+                "openwisp_firmware_upgrader.extractors.openwrt"
+                ".MAX_TRAILER_METADATA_BYTES",
+                100,
+            ), mock.patch(
+                "openwisp_firmware_upgrader.extractors.openwrt.json.loads"
+            ) as mock_loads:
+                result = OpenWrtMetadataExtractor(path)._extract_fwtool_metadata()
+        finally:
+            os.unlink(path)
+        self.assertIsNone(result)
+        mock_loads.assert_not_called()
+
     def test_raw_file_read_only_once_across_multiple_calls(self):
         path = self._write_image(b"\x00" * 256)
         try:

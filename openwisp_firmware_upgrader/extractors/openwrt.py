@@ -33,6 +33,7 @@ TRAILER_FORMAT = ">IIB3sI"
 TRAILER_SIZE = struct.calcsize(TRAILER_FORMAT)
 HEADER_FORMAT = ">II"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+MAX_TRAILER_METADATA_BYTES = 64 * 1024
 
 
 class OpenWrtMetadataExtractor(BaseMetadataExtractor):
@@ -115,6 +116,11 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 offset = data_start
                 continue
             if type_val == FWIMAGE_INFO:
+                # CRC32 only catches accidental corruption, not a self-crafted
+                # upload, so cap the claimed metadata size too
+                if data_end - data_start - HEADER_SIZE > MAX_TRAILER_METADATA_BYTES:
+                    offset = data_start
+                    continue
                 metadata_bytes = data[data_start + HEADER_SIZE : data_end]
                 try:
                     return json.loads(metadata_bytes.decode("utf-8"))
