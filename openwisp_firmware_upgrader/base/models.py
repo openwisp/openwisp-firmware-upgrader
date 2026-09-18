@@ -1114,10 +1114,22 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             image = self.build.firmwareimage_set.filter(
                 type=device_fw.image.type
             ).first()
-            if image:
-                device_fw.image = image
+            if not image:
+                continue
+            device_fw.image = image
+            try:
                 device_fw.full_clean()
-                device_fw.save(self, upgrade_options=self.upgrade_options)
+            except ValidationError:
+                UpgradeOperation = load_model("UpgradeOperation")
+                op = UpgradeOperation(device=device_fw.device, image=image, batch=self)
+                op.status = "aborted"
+                op.log_line(
+                    _("Aborted: device model does not match the new image's board."),
+                    save=False,
+                )
+                op.save()
+                continue
+            device_fw.save(self, upgrade_options=self.upgrade_options)
 
     def upgrade_firmwareless_devices(self):
         """

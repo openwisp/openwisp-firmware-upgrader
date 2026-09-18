@@ -1247,6 +1247,64 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(batch.status, "success")
 
     @mock.patch(_mock_updrade, return_value=True)
+    def test_upgrade_related_devices_records_aborted_operation_on_mismatch(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
+            org = self._get_org()
+            category = self._get_category(organization=org)
+            build1 = self._create_build(category=category, version="0.1")
+            build2 = self._create_build(category=category, version="0.2")
+            image1 = self._create_firmware_image(build=build1)
+            image2 = self._create_firmware_image(build=build2, type=image1.type)
+
+            matching_device = self._create_device(
+                name="Matching Device",
+                organization=org,
+                model=image1.boards[0],
+                mac_address="00:11:22:33:44:61",
+            )
+            mismatched_device = self._create_device(
+                name="Mismatched Device",
+                organization=org,
+                model="board-that-does-not-match-any-image",
+                mac_address="00:11:22:33:44:62",
+            )
+            for device in (matching_device, mismatched_device):
+                self._create_config(device=device)
+                self._create_device_connection(device=device)
+
+            with mock.patch(
+                "openwisp_firmware_upgrader.base.models."
+                "AbstractDeviceFirmware.create_upgrade_operation"
+            ):
+                matching_fw = DeviceFirmware.objects.create(
+                    device=matching_device, image=image1, installed=True
+                )
+                mismatched_fw = DeviceFirmware.objects.create(
+                    device=mismatched_device, image=image1, installed=True
+                )
+
+            batch = build2.batch_upgrade(firmwareless=False)
+            matching_fw.refresh_from_db()
+            mismatched_fw.refresh_from_db()
+
+            with self.subTest("matching device is upgraded"):
+                self.assertEqual(matching_fw.image, image2)
+
+            with self.subTest("mismatched device is left untouched"):
+                self.assertEqual(mismatched_fw.image, image1)
+
+            with self.subTest("mismatch is recorded as an aborted operation"):
+                aborted_op = UpgradeOperation.objects.get(
+                    device=mismatched_device, batch=batch
+                )
+                self.assertEqual(aborted_op.status, "aborted")
+                self.assertIn("match", aborted_op.log.lower())
+
+            with self.subTest("batch reaches a terminal status instead of hanging"):
+                batch.refresh_from_db()
+                self.assertEqual(batch.status, "failed")
+
+    @mock.patch(_mock_updrade, return_value=True)
     def test_upgrade_firmwareless_devices(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             env = self._create_upgrade_env(device_firmware=False)
