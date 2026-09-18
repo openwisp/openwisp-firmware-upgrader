@@ -30,6 +30,8 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
     )
 
     def setUp(self):
+        cache.delete(_LOCK_KEY)
+        self.addCleanup(cache.delete, _LOCK_KEY)
         boards = OPENWRT_FIRMWARE_IMAGE_MAP[_MULTI_BOARD_TYPE]["boards"]
         assert len(boards) > 1, "fixture type must map to multiple boards"
 
@@ -162,6 +164,7 @@ class TestBackfillExtractionStatusMigration(TransactionTestCase):
 
     def setUp(self):
         cache.delete(_LOCK_KEY)
+        self.addCleanup(cache.delete, _LOCK_KEY)
         executor = MigrationExecutor(connection)
         self.addCleanup(call_command, "migrate", self.app_label, verbosity=0)
         executor.migrate([(self.app_label, self.migrate_from)])

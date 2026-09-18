@@ -17,6 +17,7 @@ _LOCK_KEY = "firmware_upgrader.queue_unconfirmed_lock"
 class TestWorkerReadySignal(TestCase):
     def setUp(self):
         cache.delete(_LOCK_KEY)
+        self.addCleanup(cache.delete, _LOCK_KEY)
 
     @mock.patch(_MOCK_DELAY)
     def test_queue_unconfirmed_extractions_on_worker_ready(self, mock_delay):
