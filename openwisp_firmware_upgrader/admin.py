@@ -978,6 +978,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
         status_choices = []
         # build a base QueryDict with all current GET params
         params = request.GET.copy()
+        params.pop("page", None)
 
         # generic choice builder used by both status and organization filters
         def _make_choice(current_value, display, param_name, value):
@@ -988,7 +989,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
             if value:
                 q[param_name] = value
             qs = q.urlencode()
-            query_string = f"?{qs}" if qs else ""
+            query_string = f"?{qs}"
             return {
                 "display": display,
                 "selected": current_value == value,
