@@ -29,13 +29,23 @@ django.jQuery(function ($) {
 });
 
 let batchUpgradeOperationsInitialized = false;
+let batchUpgradeResultsRefreshTimeout = null;
 
 function requestCurrentBatchState(websocket) {
+  let $ = django.jQuery;
   if (websocket.readyState === WebSocket.OPEN) {
     try {
+      const operationIds = $("#result_list tbody td.status-cell")
+        .map(function () {
+          return $(this).attr("data-operation-id");
+        })
+        .get()
+        .filter(Boolean);
+
       const requestMessage = {
         type: "request_current_state",
         batch_id: window.batchUpgradeId,
+        operation_ids: operationIds,
       };
       websocket.send(JSON.stringify(requestMessage));
     } catch (error) {
@@ -255,52 +265,44 @@ function updateBatchOperationProgress(data) {
     }
   });
   if (!found) {
-    addNewOperationRow(data);
+    scheduleBatchUpgradeResultsRefresh();
   }
 }
 
-function addNewOperationRow(data) {
-  let $ = django.jQuery;
-  if (!data.device_name || !data.device_id) {
+function scheduleBatchUpgradeResultsRefresh() {
+  if (batchUpgradeResultsRefreshTimeout) {
     return;
   }
-  let tbody = $("#result_list tbody");
-  tbody.find("tr td[colspan]").parent().remove();
-  let existingRows = tbody.find("tr").length;
-  let rowClass = existingRows % 2 === 0 ? "row1" : "row2";
-  let deviceUrl = owDeviceUpgradeOperationUrl.replace(
-    "00000000-0000-0000-0000-000000000000",
-    data.operation_id,
-  );
-  let imageDisplay = data.image_name || gettext("None");
-  let modifiedTime = data.modified
-    ? getFormattedDateTimeString(data.modified)
-    : gettext("Just now");
-  // Build row using DOM attributes to prevent XSS vulnerability due to string interpolation
-  let $row = $("<tr>").addClass(rowClass);
-  let $deviceTd = $("<td>");
-  let $link = $("<a>")
-    .addClass("device-link")
-    .attr("href", deviceUrl)
-    .attr("aria-label", gettext("View upgrade operation for") + " " + data.device_name)
-    .text(data.device_name);
-  $deviceTd.append($link);
-  let $statusTd = $("<td>")
-    .addClass("status-cell")
-    .attr("data-operation-id", data.operation_id);
-  let $statusContent = $("<div>").addClass("status-content").text(data.status); // SAFE
-  $statusTd.append($statusContent);
-  let $imageTd = $("<td>").text(imageDisplay);
-  let $modifiedTd = $("<td>").text(modifiedTime);
-  $row.append($deviceTd, $statusTd, $imageTd, $modifiedTd);
-  tbody.append($row);
 
-  let operation = {
-    status: data.status,
-    id: data.operation_id,
-    progress: data.progress,
-  };
-  renderOperationProgressBarInCell($statusTd, operation);
+  batchUpgradeResultsRefreshTimeout = setTimeout(function () {
+    batchUpgradeResultsRefreshTimeout = null;
+    refreshBatchUpgradeResults();
+  }, 250);
+}
+
+function refreshBatchUpgradeResults() {
+  let $ = django.jQuery;
+  $.ajax({
+    url: window.location.href,
+    type: "GET",
+    success: function (response) {
+      let currentResults = $(".results-container");
+      let updatedResults = $(response).find(".results-container");
+
+      if (currentResults.length && updatedResults.length) {
+        currentResults.replaceWith(updatedResults);
+        batchUpgradeOperationsInitialized = false;
+        initializeExistingBatchUpgradeOperations($, true);
+
+        if (window.batchUpgradeProgressWebSocket) {
+          requestCurrentBatchState(window.batchUpgradeProgressWebSocket);
+        }
+      }
+    },
+    error: function (xhr, status, error) {
+      console.error("Failed to refresh batch upgrade results:", error);
+    },
+  });
 }
 
 function renderOperationProgressBarInCell(statusCell, operation) {

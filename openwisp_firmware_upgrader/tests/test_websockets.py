@@ -210,6 +210,51 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(response["progress"], 50)
         await communicator.disconnect()
 
+    async def test_batch_upgrade_progress_consumer_current_state_request(self):
+        """Test current state only returns requested batch operations."""
+        build = await sync_to_async(self._get_build)()
+        batch = await sync_to_async(BatchUpgradeOperation.objects.create)(
+            build=build, status="in-progress"
+        )
+
+        device_fw = await sync_to_async(self._create_device_firmware)()
+
+        selected_operation = await sync_to_async(UpgradeOperation.objects.create)(
+            device_id=device_fw.device_id,
+            image_id=device_fw.image_id,
+            batch=batch,
+            status="success",
+            progress=100,
+        )
+        await sync_to_async(UpgradeOperation.objects.create)(
+            device_id=device_fw.device_id,
+            image_id=device_fw.image_id,
+            batch=batch,
+            status="in-progress",
+            progress=0,
+        )
+
+        communicator = await self._get_batch_upgrade_progress_communicator(
+            str(batch.pk)
+        )
+
+        await communicator.send_json_to(
+            {
+                "type": "request_current_state",
+                "operation_ids": [str(selected_operation.pk)],
+            }
+        )
+
+        response = await communicator.receive_json_from()
+
+        self.assertEqual(response["type"], "batch_state")
+        self.assertEqual(response["batch_status"]["total"], 2)
+        self.assertEqual(response["batch_status"]["completed"], 1)
+        self.assertEqual(len(response["operations"]), 1)
+        self.assertEqual(response["operations"][0]["id"], str(selected_operation.pk))
+
+        await communicator.disconnect()
+
     @patch(_mock_upgrade, return_value=True)
     @patch(_mock_connect, return_value=True)
     async def test_device_upgrade_progress_consumer_connection_authenticated(

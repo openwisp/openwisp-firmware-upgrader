@@ -1358,3 +1358,60 @@ class TestRealTimeProgress(
         )
         self.assertEqual(len(status_containers), 2)
         self._assert_no_js_errors()
+
+    def test_batch_upgrade_progress_respects_pagination(self):
+        """Test that live batch progress respects pagination."""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+
+        for _ in range(20):
+            UpgradeOperation.objects.create(
+                device=self.device1,
+                image=self.image2,
+                batch=batch_operation,
+                status="in-progress",
+                progress=0,
+            )
+
+        self._prepare_batch(batch_operation)
+
+        self._wait_for_realtime_update(lambda driver: self._check_row_count(20))
+        self.assertEqual(
+            len(self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")),
+            20,
+        )
+
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        operation21 = UpgradeOperation.objects.create(
+            device=self.device2,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=0,
+        )
+        device_info_21 = {
+            "device_id": self.device2.pk,
+            "device_name": self.device2.name,
+            "image_name": str(self.image2),
+        }
+
+        publisher.publish_operation_progress(
+            str(operation21.pk),
+            "in-progress",
+            0,
+            operation21.modified,
+            device_info_21,
+        )
+        publisher.publish_batch_status(status="in-progress", completed=0, total=21)
+
+        self._wait_for_realtime_update(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".pagination .current-page"),
+                "Page 1 of 2",
+            )
+        )
+        self.assertEqual(
+            len(self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")),
+            20,
+        )
