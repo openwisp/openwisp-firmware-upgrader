@@ -30,6 +30,8 @@ django.jQuery(function ($) {
 
 let batchUpgradeOperationsInitialized = false;
 let batchUpgradeResultsRefreshTimeout = null;
+let batchUpgradeResultsRefreshRequest = null;
+let batchUpgradeResultsRefreshPending = false;
 
 function requestCurrentBatchState(websocket) {
   let $ = django.jQuery;
@@ -270,6 +272,11 @@ function updateBatchOperationProgress(data) {
 }
 
 function scheduleBatchUpgradeResultsRefresh() {
+  if (batchUpgradeResultsRefreshRequest) {
+    batchUpgradeResultsRefreshPending = true;
+    return;
+  }
+
   if (batchUpgradeResultsRefreshTimeout) {
     return;
   }
@@ -282,7 +289,13 @@ function scheduleBatchUpgradeResultsRefresh() {
 
 function refreshBatchUpgradeResults() {
   let $ = django.jQuery;
-  $.ajax({
+
+  if (batchUpgradeResultsRefreshRequest) {
+    batchUpgradeResultsRefreshPending = true;
+    return;
+  }
+
+  batchUpgradeResultsRefreshRequest = $.ajax({
     url: window.location.href,
     type: "GET",
     success: function (response) {
@@ -301,6 +314,14 @@ function refreshBatchUpgradeResults() {
     },
     error: function (xhr, status, error) {
       console.error("Failed to refresh batch upgrade results:", error);
+    },
+    complete: function () {
+      batchUpgradeResultsRefreshRequest = null;
+
+      if (batchUpgradeResultsRefreshPending) {
+        batchUpgradeResultsRefreshPending = false;
+        scheduleBatchUpgradeResultsRefresh();
+      }
     },
   });
 }

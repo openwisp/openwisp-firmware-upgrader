@@ -1415,3 +1415,59 @@ class TestRealTimeProgress(
             len(self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")),
             20,
         )
+
+    def test_batch_upgrade_progress_refresh_requests_are_serialized(self):
+        """Test that batch results refresh requests are serialized."""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        self._prepare_batch(batch_operation)
+
+        result = self.web_driver.execute_script("""
+            const originalAjax = django.jQuery.ajax;
+            const originalSetTimeout = window.setTimeout;
+            const ajaxCalls = [];
+            const refreshTimers = [];
+
+            django.jQuery.ajax = function (options) {
+                ajaxCalls.push(options);
+                return {};
+            };
+
+            window.setTimeout = function (callback) {
+                refreshTimers.push(callback);
+                return refreshTimers.length;
+            };
+
+            try {
+                refreshBatchUpgradeResults();
+                refreshBatchUpgradeResults();
+
+                const ajaxCallsBeforeComplete = ajaxCalls.length;
+                const timersBeforeComplete = refreshTimers.length;
+
+                ajaxCalls[0].complete();
+
+                const timersAfterComplete = refreshTimers.length;
+                refreshTimers.shift()();
+
+                const ajaxCallsAfterTrailingRefresh = ajaxCalls.length;
+
+                ajaxCalls[1].complete();
+
+                return {
+                    ajaxCallsBeforeComplete: ajaxCallsBeforeComplete,
+                    timersBeforeComplete: timersBeforeComplete,
+                    timersAfterComplete: timersAfterComplete,
+                    ajaxCallsAfterTrailingRefresh: ajaxCallsAfterTrailingRefresh,
+                };
+            } finally {
+                django.jQuery.ajax = originalAjax;
+                window.setTimeout = originalSetTimeout;
+            }
+            """)
+
+        self.assertEqual(result["ajaxCallsBeforeComplete"], 1)
+        self.assertEqual(result["timersBeforeComplete"], 0)
+        self.assertEqual(result["timersAfterComplete"], 1)
+        self.assertEqual(result["ajaxCallsAfterTrailingRefresh"], 2)

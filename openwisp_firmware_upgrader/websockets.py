@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from uuid import UUID
 
 from asgiref.sync import async_to_sync, sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -241,6 +242,40 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             batch_operation = await self._get_batch_upgrade_operation()
             if batch_operation:
                 operation_ids = content.get("operation_ids", [])
+
+                if not isinstance(operation_ids, list):
+                    logger.warning(
+                        "Invalid operation_ids received for batch %s: %r",
+                        self.batch_id,
+                        operation_ids,
+                    )
+                    await self.send_json(
+                        {
+                            "type": "error",
+                            "message": "operation_ids must be a list of valid UUIDs.",
+                        }
+                    )
+                    return
+
+                try:
+                    for operation_id in operation_ids:
+                        if not isinstance(operation_id, str):
+                            raise ValueError
+                        UUID(operation_id)
+                except ValueError:
+                    logger.warning(
+                        "Invalid operation_ids received for batch %s: %r",
+                        self.batch_id,
+                        operation_ids,
+                    )
+                    await self.send_json(
+                        {
+                            "type": "error",
+                            "message": "operation_ids must be a list of valid UUIDs.",
+                        }
+                    )
+                    return
+
                 operations_qs = batch_operation.upgrade_operations
 
                 total_operations = await sync_to_async(operations_qs.count)()

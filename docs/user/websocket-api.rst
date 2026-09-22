@@ -119,8 +119,18 @@ To request the current state of the batch:
 
     {
         "type": "request_current_state",    // Required. Requests current batch state.
-        "batch_id": "<uuid>"                // Must match the <batch_id> in the URL.
+        "batch_id": "<uuid>",               // Must match the <batch_id> in the URL.
+        "operation_ids": [                  // Optional. Limits the returned operations.
+            "<uuid>"
+        ]
     }
+
+When ``operation_ids`` is provided, only matching operations belonging to
+the batch are returned in ``operations``. When it is omitted or empty,
+``operations`` is returned as an empty list.
+
+The ``batch_status.completed`` and ``batch_status.total`` values always
+describe the full batch, regardless of ``operation_ids``.
 
 .. warning::
 
