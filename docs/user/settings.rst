@@ -127,8 +127,8 @@ consuming all available memory, e.g.:
   ``OPENWISP_FIRMWARE_UPGRADER_MAX_DECOMPRESSED_BYTES`` are per-task
   memory ceilings, not global ones. Each is tracked cumulatively for the
   whole task, not reset per decompression attempt. Multiple metadata
-  extraction tasks can run concurently within the same Celery worker. Size
-  the worker concurrency and the container memory limit so that
+  extraction tasks can run concurrently within the same Celery worker.
+  Size the worker concurrency and the container memory limit so that
   ``concurrency * (MAX_KERNEL_BYTES + MAX_DECOMPRESSED_BYTES)`` fits
   within the available memory.
 

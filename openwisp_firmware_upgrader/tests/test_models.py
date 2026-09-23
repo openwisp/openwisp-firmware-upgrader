@@ -1080,7 +1080,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         image.board = "Manually entered"
         image._validate_locked(original)
 
-    def test_validate_locked_allows_filling_empty_locked_fields(self):
+    def test_validate_locked_blocks_filling_empty_locked_fields(self):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_MANUALLY_CONFIRMED
         image.board = "Orange Pi Zero"
@@ -1101,7 +1101,9 @@ class TestModels(TestUpgraderMixin, TestCase):
             .first()
         )
         image.target = "sunxi/cortexa7"
-        image._validate_locked(original)
+        with self.assertRaises(ValidationError) as ctx:
+            image._validate_locked(original)
+        self.assertIn("read-only", str(ctx.exception))
 
     def test_validate_locked_blocks_bypass_via_status_change(self):
         image = self._create_firmware_image()
@@ -1212,12 +1214,12 @@ class TestModels(TestUpgraderMixin, TestCase):
 
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
-    _mock_updrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
+    _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
     os = TestModels.os
     image_type = TestModels.image_type
 
-    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_dry_run(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             env = self._create_upgrade_env()
@@ -1235,7 +1237,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(list(result["device_firmwares"]), [])
             self.assertEqual(list(result["devices"]), [])
 
-    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_related_devices(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             env = self._create_upgrade_env()
@@ -1259,7 +1261,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(batch.build, env["build2"])
             self.assertEqual(batch.status, "success")
 
-    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_related_devices_records_aborted_operation_on_mismatch(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             org = self._get_org()
@@ -1326,7 +1328,42 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
                 batch.refresh_from_db()
                 self.assertEqual(batch.status, "failed")
 
-    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_upgrade_related_devices_records_actual_failure_reason(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
+            org = self._get_org()
+            category = self._get_category(organization=org)
+            build1 = self._create_build(category=category, version="0.1")
+            build2 = self._create_build(category=category, version="0.2")
+            image1 = self._create_firmware_image(build=build1)
+            self._create_firmware_image(build=build2, type=image1.type)
+
+            device = self._create_device(
+                name="NoConnectionDevice",
+                organization=org,
+                model=image1.boards[0],
+                mac_address="00:11:22:33:44:70",
+            )
+            self._create_config(device=device)
+            # deliberately no device connection created
+
+            with mock.patch(
+                "openwisp_firmware_upgrader.base.models."
+                "AbstractDeviceFirmware.create_upgrade_operation"
+            ):
+                device_fw = DeviceFirmware.objects.create(
+                    device=device, image=image1, installed=True
+                )
+
+            batch = build2.batch_upgrade(firmwareless=False)
+            device_fw.refresh_from_db()
+
+            aborted_op = UpgradeOperation.objects.get(device=device, batch=batch)
+            self.assertEqual(aborted_op.status, "aborted")
+            self.assertIn("connection", aborted_op.log.lower())
+            self.assertNotIn("does not match", aborted_op.log.lower())
+
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_firmwareless_devices(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             env = self._create_upgrade_env(device_firmware=False)
@@ -1358,7 +1395,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(batch.status, "failed")
         self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
 
-    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_related_devices_existing_fw(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             env = self._create_upgrade_env()
@@ -1496,7 +1533,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         # Check that the file was deleted
         self.assertEqual(file_storage_backend.exists(file_name), False)
 
-    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_batch_upgrade_with_group_filtering(self, *_args):
         """Test complete batch upgrade workflow with group filtering."""
         with mock.patch(self._mock_connect, return_value=True):
@@ -1584,7 +1621,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             batch.refresh_from_db()
             self.assertEqual(batch.status, "success")
 
-    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_batch_upgrade_with_location_filtering(self, *_args):
         """Test complete batch upgrade workflow with location filtering."""
         with mock.patch(self._mock_connect, return_value=True):
@@ -1683,7 +1720,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             batch.refresh_from_db()
             self.assertEqual(batch.status, "success")
 
-    @mock.patch(_mock_updrade, return_value=True)
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_batch_upgrade_with_group_and_location_filtering(self, *_args):
         """Test batch upgrade with both group and location filtering."""
         with mock.patch(self._mock_connect, return_value=True):

@@ -32,7 +32,7 @@ can be disabled with
 :ref:`OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_ON_WORKER_READY
 <openwisp_firmware_upgrader_queue_unconfirmed_on_worker_ready>`.
 
-To avoid woker process re-queuing the entire backlog on the same restart,
+To avoid worker process re-queuing the entire backlog on the same restart,
 this is guarded by a short-lived cache lock (see
 :ref:`OPENWISP_FIRMWARE_UPGRADER_QUEUE_UNCONFIRMED_LOCK_TIMEOUT
 <openwisp_firmware_upgrader_queue_unconfirmed_lock_timeout>`). This only

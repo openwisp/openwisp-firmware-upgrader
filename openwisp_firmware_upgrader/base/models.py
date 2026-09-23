@@ -703,7 +703,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
             "source",
         ):
             original_val = original[field]
-            if original_val and getattr(self, field) != original_val:
+            if getattr(self, field) != original_val:
                 raise ValidationError(
                     _("Metadata fields are read-only after confirmation.")
                 )
@@ -1123,12 +1123,12 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             device_fw.image = image
             try:
                 device_fw.full_clean()
-            except ValidationError:
+            except ValidationError as error:
                 UpgradeOperation = load_model("UpgradeOperation")
                 op = UpgradeOperation(device=device_fw.device, image=image, batch=self)
                 op.status = "aborted"
                 op.log_line(
-                    _("Aborted: device model does not match the new image's board."),
+                    _("Aborted: %(reason)s") % {"reason": "; ".join(error.messages)},
                     save=False,
                 )
                 op.save()
