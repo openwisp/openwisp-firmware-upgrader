@@ -44,11 +44,15 @@ def get_upgrader_class_from_device_connection(device_conn):
 
 
 def compat_blocks_pairing(compat_version):
+    if not compat_version:
+        return False
     try:
-        major, minor = (int(x) for x in compat_version.split("."))
+        parts = compat_version.split(".")
+        major = int(parts[0])
+        minor = int(parts[1]) if len(parts) > 1 else 0
         return (major, minor) > (1, 0)
     except (ValueError, AttributeError, TypeError):
-        return False
+        return True
 
 
 class UpgradeProgress:

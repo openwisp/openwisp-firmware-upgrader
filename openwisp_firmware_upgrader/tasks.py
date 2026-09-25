@@ -260,7 +260,7 @@ def extract_firmware_metadata(self, image_pk):
     except FirmwareImage.DoesNotExist:
         # the file was replaced concurrently, release the claim so the
         # extraction scheduled by the replacement can claim the row
-        FirmwareImage.objects.filter(
+        released = FirmwareImage.objects.filter(
             pk=image.pk,
             extraction_status=FirmwareImage.STATUS_IN_PROGRESS,
             extraction_claimed_at=claimed_at,
@@ -268,6 +268,10 @@ def extract_firmware_metadata(self, image_pk):
             extraction_status=FirmwareImage.STATUS_UNCONFIRMED,
             extraction_claimed_at=None,
         )
+        if released:
+            transaction.on_commit(
+                partial(extract_firmware_metadata.delay, str(image_pk))
+            )
         logger.warning(
             "file changed concurrently for pk=%s, skipping",
             image_pk,

@@ -251,12 +251,16 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         image.refresh_from_db()
         self.assertEqual(image.extraction_status, FirmwareImage.STATUS_IN_PROGRESS)
 
+    @mock.patch("openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay")
     @capture_any_output()
-    def test_extract_firmware_metadata_releases_claim_on_concurrent_replace(self):
+    def test_extract_firmware_metadata_releases_claim_on_concurrent_replace(
+        self, mock_delay
+    ):
         image = self._create_firmware_image()
         FirmwareImage.objects.filter(pk=image.pk).update(
             extraction_status=FirmwareImage.STATUS_UNCONFIRMED
         )
+        mock_delay.reset_mock()
         original_get = QuerySet.get
 
         def flaky_get(self, *args, **kwargs):
@@ -278,6 +282,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         image.refresh_from_db()
         self.assertEqual(image.extraction_status, FirmwareImage.STATUS_UNCONFIRMED)
         self.assertIsNone(image.extraction_claimed_at)
+        mock_delay.assert_called_once_with(str(image.pk))
 
     @mock.patch(_MOCK_NOTIFY)
     @mock.patch(_MOCK_EXTRACTOR)
@@ -451,7 +456,10 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
     def test_compat_blocks_pairing_invalid_values(self):
         self.assertFalse(utils.compat_blocks_pairing(""))
         self.assertFalse(utils.compat_blocks_pairing(None))
-        self.assertFalse(utils.compat_blocks_pairing("bad"))
+
+        for value in ("bad", "2"):
+            with self.subTest(value=value):
+                self.assertTrue(utils.compat_blocks_pairing(value))
 
     def test_get_extractor_class_for_os_matches_custom_upgrader(self):
         class FakeExtractor:

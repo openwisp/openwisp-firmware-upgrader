@@ -61,6 +61,12 @@ class FirmwareImageSerializer(BaseSerializer):
         if status not in self.CONFIRMABLE_STATUSES:
             for field in self.METADATA_FIELDS:
                 fields[field].read_only = True
+        elif (
+            status == FirmwareImage.STATUS_INCOMPLETE
+            and getattr(self.instance, "source", None) == "dtb"
+        ):
+            for field in ("board", "compatible"):
+                fields[field].read_only = True
         if self.instance is not None:
             fields["type"].read_only = True
         return fields

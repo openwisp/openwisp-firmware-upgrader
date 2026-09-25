@@ -1350,6 +1350,32 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         )
         self.assertEqual(image.source, "dtb")
 
+    def test_firmware_patch_dtb_incomplete_board_compatible_read_only(self):
+        image = self._create_firmware_image()
+        FirmwareImage.objects.filter(pk=image.pk).update(
+            extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+            source="dtb",
+            board="Xunlong Orange Pi Zero",
+            compatible="xunlong,orangepi-zero",
+        )
+        url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
+        data = {
+            "board": "Tampered Board",
+            "compatible": "tampered,board",
+            "target": "sunxi/cortexa7",
+            "fw_version": "23.05.5",
+        }
+        r = self.client.patch(url, data, content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        image.refresh_from_db()
+        self.assertEqual(
+            image.extraction_status, FirmwareImage.STATUS_MANUALLY_CONFIRMED
+        )
+        self.assertEqual(image.board, "Xunlong Orange Pi Zero")
+        self.assertEqual(image.compatible, "xunlong,orangepi-zero")
+        self.assertEqual(image.target, "sunxi/cortexa7")
+        self.assertEqual(image.fw_version, "23.05.5")
+
     def test_firmware_patch_metadata_ignored_when_not_failed_or_incomplete(self):
         image = self._create_firmware_image()
         url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
