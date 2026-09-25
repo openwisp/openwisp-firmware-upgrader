@@ -14,16 +14,16 @@ def _queue_legacy_extractions(app_config, **kwargs):
     if app_config.name != "openwisp_firmware_upgrader":
         return
     post_migrate.disconnect(_queue_legacy_extractions)
-    # shares the worker_ready lock key so a deploy that both migrates and
-    # restarts workers in the same rollout doesn't queue the backlog twice
-    lock_acquired = cache.add(
-        "firmware_upgrader.queue_unconfirmed_lock",
-        True,
-        timeout=app_settings.QUEUE_UNCONFIRMED_LOCK_TIMEOUT,
-    )
-    if not lock_acquired:
-        return
     try:
+        # shares the worker_ready lock key so a deploy that both migrates and
+        # restarts workers in the same rollout doesn't queue the backlog twice
+        lock_acquired = cache.add(
+            "firmware_upgrader.queue_unconfirmed_lock",
+            True,
+            timeout=app_settings.QUEUE_UNCONFIRMED_LOCK_TIMEOUT,
+        )
+        if not lock_acquired:
+            return
         queue_unconfirmed_extractions.delay()
     except Exception:
         cache.delete("firmware_upgrader.queue_unconfirmed_lock")
@@ -34,6 +34,10 @@ def _queue_legacy_extractions(app_config, **kwargs):
             "restart. If not, run the 'queue_unconfirmed_extractions' "
             "Celery task manually to retry."
         )
+        try:
+            cache.delete("firmware_upgrader.queue_unconfirmed_lock")
+        except Exception:
+            pass
 
 
 # Queueing must run after the whole `migrate` command completes, because the

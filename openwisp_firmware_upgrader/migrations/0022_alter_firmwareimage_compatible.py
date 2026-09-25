@@ -14,7 +14,13 @@ def convert_compatible_to_text(apps, schema_editor):
     for image in FirmwareImage.objects.iterator():
         try:
             value = json.loads(image.compatible or "null")
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError) as error:
+            logger.warning(
+                "convert_compatible_to_text: could not parse compatible for "
+                "FirmwareImage pk=%s: %s",
+                image.pk,
+                error,
+            )
             continue
         if isinstance(value, list):
             string_items = [item for item in value if isinstance(item, str)]

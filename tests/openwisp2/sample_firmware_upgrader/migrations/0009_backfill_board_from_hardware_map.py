@@ -50,7 +50,7 @@ def _update_single_board(FirmwareImage, image_type, board, source):
     qs.update(
         board=board,
         source=source,
-        extraction_status="manually_confirmed",
+        extraction_status="success",
     )
     return build_ids
 

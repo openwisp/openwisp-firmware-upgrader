@@ -12,6 +12,7 @@ from django.test import TransactionTestCase
 from ..hardware import OPENWRT_FIRMWARE_IMAGE_MAP
 
 _MULTI_BOARD_TYPE = "ar71xx-generic-cpe210-220-v1-squashfs-sysupgrade.bin"
+_SINGLE_BOARD_TYPE = "ath79-generic-tplink_tl-wdr4300-v1-squashfs-sysupgrade.bin"
 _MOCK_NOTIFY = "openwisp_notifications.signals.notify.send"
 _MOCK_EXTRACT_DELAY = "openwisp_firmware_upgrader.tasks.extract_firmware_metadata.delay"
 _MOCK_QUEUE_DELAY = (
@@ -162,6 +163,165 @@ class TestMultiBoardReconciliationMigration(TransactionTestCase):
         )
 
 
+class TestSingleBoardReconciliationMigration(TransactionTestCase):
+    app_label = "firmware_upgrader"
+    migrate_from = "0017_alter_batchupgradeoperation_status"
+    migrate_to = "0024_firmwareimage_extraction_claimed_at"
+    backfill_migration = (
+        "openwisp_firmware_upgrader.migrations.0019_backfill_extraction_status"
+    )
+
+    def setUp(self):
+        cache.delete(_LOCK_KEY)
+        self.addCleanup(cache.delete, _LOCK_KEY)
+        boards = OPENWRT_FIRMWARE_IMAGE_MAP[_SINGLE_BOARD_TYPE]["boards"]
+        assert len(boards) == 1, "fixture type must map to exactly one board"
+
+        executor = MigrationExecutor(connection)
+        self.addCleanup(call_command, "migrate", self.app_label, verbosity=0)
+        executor.migrate([(self.app_label, self.migrate_from)])
+
+        old_apps = executor.loader.project_state(
+            (self.app_label, self.migrate_from)
+        ).apps
+        Organization = old_apps.get_model("openwisp_users", "Organization")
+        Category = old_apps.get_model(self.app_label, "Category")
+        Build = old_apps.get_model(self.app_label, "Build")
+        FirmwareImage = old_apps.get_model(self.app_label, "FirmwareImage")
+
+        org = Organization.objects.create(name="test-org", slug="test-org")
+        category = Category.objects.create(name="Test Category", organization=org)
+        build = Build.objects.create(category=category, version="0.1")
+        self.image_pk = FirmwareImage.objects.create(
+            build=build,
+            type=_SINGLE_BOARD_TYPE,
+            file="firmware/fake-single-board-image.bin",
+        ).pk
+
+    def tearDown(self):
+        backfill_migration = import_module(self.backfill_migration)
+        post_migrate.disconnect(backfill_migration._queue_legacy_extractions)
+        super().tearDown()
+
+    def test_single_board_image_is_set_to_success(self):
+        with mock.patch(_MOCK_EXTRACT_DELAY), mock.patch(_MOCK_NOTIFY), mock.patch(
+            _MOCK_QUEUE_DELAY
+        ):
+            call_command("migrate", self.app_label, self.migrate_to, verbosity=0)
+
+            FirmwareImage = apps.get_model(self.app_label, "FirmwareImage")
+            image = FirmwareImage.objects.get(pk=self.image_pk)
+
+            with self.subTest("board is backfilled from the hardware map"):
+                self.assertEqual(
+                    image.board,
+                    OPENWRT_FIRMWARE_IMAGE_MAP[_SINGLE_BOARD_TYPE]["boards"][0],
+                )
+
+            with self.subTest("status is success, not manually_confirmed"):
+                self.assertEqual(image.extraction_status, "success")
+
+            with self.subTest("source records the hardware map origin"):
+                self.assertEqual(image.source, "hardware map")
+
+            with self.subTest("build status reflects the successful image"):
+                self.assertEqual(image.build.status, "success")
+
+
+class TestConvertCompatibleToTextMigration(TransactionTestCase):
+    app_label = "firmware_upgrader"
+    migrate_from = "0021_firmwareimage_remove_type_choices"
+    migrate_to = "0024_firmwareimage_extraction_claimed_at"
+
+    def setUp(self):
+        executor = MigrationExecutor(connection)
+        self.addCleanup(call_command, "migrate", self.app_label, verbosity=0)
+        executor.migrate([(self.app_label, self.migrate_from)])
+
+        old_apps = executor.loader.project_state(
+            (self.app_label, self.migrate_from)
+        ).apps
+        Organization = old_apps.get_model("openwisp_users", "Organization")
+        Category = old_apps.get_model(self.app_label, "Category")
+        Build = old_apps.get_model(self.app_label, "Build")
+        FirmwareImage = old_apps.get_model(self.app_label, "FirmwareImage")
+
+        org = Organization.objects.create(name="test-org", slug="test-org")
+        category = Category.objects.create(name="Test Category", organization=org)
+        build = Build.objects.create(category=category, version="0.1")
+
+        self.valid_list_pk = FirmwareImage.objects.create(
+            build=build, type="t1", file="firmware/1.bin", compatible=["a", "b"]
+        ).pk
+        self.mixed_items_pk = FirmwareImage.objects.create(
+            build=build, type="t2", file="firmware/2.bin", compatible=["a", 123, "b"]
+        ).pk
+        self.not_a_list_pk = FirmwareImage.objects.create(
+            build=build, type="t3", file="firmware/3.bin", compatible="just a string"
+        ).pk
+        self.malformed_pk = FirmwareImage.objects.create(
+            build=build, type="t4", file="firmware/4.bin", compatible=[]
+        ).pk
+        # bypass the JSONField's own encoding, which would otherwise
+        # always produce syntactically valid JSON, to simulate a
+        # genuinely corrupted/unparseable stored value. compatible is
+        # still a JSONField here (AlterField to TextField happens inside
+        # migration 0022 itself), so SQLite's own JSON_VALID CHECK
+        # constraint must be disabled for this one write
+        with connection.cursor() as cursor:
+            cursor.execute("PRAGMA ignore_check_constraints = 1")
+            try:
+                cursor.execute(
+                    f"UPDATE {self.app_label}_firmwareimage "
+                    "SET compatible = %s WHERE id = %s",
+                    ["not valid json {{{", self.malformed_pk.hex],
+                )
+            finally:
+                cursor.execute("PRAGMA ignore_check_constraints = 0")
+
+    def test_convert_compatible_to_text(self):
+        with self.assertLogs(level="WARNING") as cm:
+            call_command("migrate", self.app_label, self.migrate_to, verbosity=0)
+        FirmwareImage = apps.get_model(self.app_label, "FirmwareImage")
+
+        with self.subTest("valid list of strings is converted"):
+            image = FirmwareImage.objects.get(pk=self.valid_list_pk)
+            self.assertEqual(image.compatible, "a\nb")
+
+        with self.subTest("non-string items are dropped and logged"):
+            image = FirmwareImage.objects.get(pk=self.mixed_items_pk)
+            self.assertEqual(image.compatible, "a\nb")
+            self.assertTrue(
+                any(f"pk={self.mixed_items_pk}" in msg for msg in cm.output)
+            )
+
+        with self.subTest("valid JSON but not a list is left unchanged and logged"):
+            image = FirmwareImage.objects.get(pk=self.not_a_list_pk)
+            self.assertEqual(image.compatible, '"just a string"')
+            self.assertTrue(any(f"pk={self.not_a_list_pk}" in msg for msg in cm.output))
+
+        with self.subTest("unparseable JSON is left unchanged and logged"):
+            image = FirmwareImage.objects.get(pk=self.malformed_pk)
+            self.assertEqual(image.compatible, "not valid json {{{")
+            self.assertTrue(
+                any(
+                    f"pk={self.malformed_pk}" in msg and "could not parse" in msg
+                    for msg in cm.output
+                )
+            )
+
+    def test_convert_compatible_to_json_reverse(self):
+        call_command("migrate", self.app_label, self.migrate_to, verbosity=0)
+        executor = MigrationExecutor(connection)
+        executor.migrate([(self.app_label, self.migrate_from)])
+        old_apps = executor.loader.project_state(
+            (self.app_label, self.migrate_from)
+        ).apps
+        FirmwareImage = old_apps.get_model(self.app_label, "FirmwareImage")
+        image = FirmwareImage.objects.get(pk=self.valid_list_pk)
+        self.assertEqual(image.compatible, ["a", "b"])
+
+
 class TestBackfillExtractionStatusMigration(TransactionTestCase):
     app_label = "firmware_upgrader"
     migrate_from = "0017_alter_batchupgradeoperation_status"
@@ -214,6 +374,19 @@ class TestBackfillExtractionStatusMigration(TransactionTestCase):
             )
         )
         self.assertIsNone(cache.get(_LOCK_KEY))
+
+    def test_cache_add_failure_does_not_fail_migrate(self):
+        with mock.patch.object(
+            cache, "add", side_effect=Exception("cache backend unreachable")
+        ):
+            with self.assertLogs(level="ERROR") as cm:
+                call_command("migrate", self.app_label, self.migrate_to, verbosity=0)
+        self.assertTrue(
+            any(
+                "Failed to queue legacy unconfirmed firmware image extractions" in msg
+                for msg in cm.output
+            )
+        )
 
     def test_queueing_skipped_when_lock_already_held(self):
         cache.add(_LOCK_KEY, True, timeout=60)
