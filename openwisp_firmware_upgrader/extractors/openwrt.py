@@ -1,5 +1,4 @@
 import bz2
-import gzip
 import io
 import json
 import logging
@@ -77,11 +76,10 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
             self._raw_data = data
         return self._raw_data
 
-    def _extract_fwtool_metadata(self):
-        # must read the full file, not just the tail, the trailer's CRC
-        # covers the entire prefix from byte 0, so a partial read can
-        # never match a genuine trailer's checksum
-        data = self._read_raw_data()
+    def _locate_fwtool_trailer(self, data):
+        # scans backward for a genuine, CRC-verified fwtool trailer whose
+        # metadata also parses as JSON. Returns (data_start, data_end)
+        # marking the appended metadata block, or None if none is found
         file_size = len(data)
         magic_bytes = struct.pack(">I", FWIMAGE_MAGIC)
         view = memoryview(data)
@@ -119,19 +117,32 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
                 offset = data_start
                 continue
             if type_val == FWIMAGE_INFO:
-                # CRC32 only catches accidental corruption, not a self-crafted
+                # CRRC32 only catches accidental corruption, not a self-crafted
                 # upload, so cap the claimed metadata size too
                 if data_end - data_start - HEADER_SIZE > MAX_TRAILER_METADATA_BYTES:
                     offset = data_start
                     continue
                 metadata_bytes = data[data_start + HEADER_SIZE : data_end]
                 try:
-                    return json.loads(metadata_bytes.decode("utf-8"))
+                    json.loads(metadata_bytes.decode("utf-8"))
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     offset = data_start
                     continue
+                return data_start, data_end
             offset = data_start
         return None
+
+    def _extract_fwtool_metadata(self):
+        # must read the full file, not just the tail, the trailer's CRC
+        # covers the entire prefix from byte 0, so a partial read can
+        # never match a genuine trailer's checksum
+        data = self._read_raw_data()
+        boundary = self._locate_fwtool_trailer(data)
+        if boundary is None:
+            return None
+        data_start, data_end = boundary
+        metadata_bytes = data[data_start + HEADER_SIZE : data_end]
+        return json.loads(metadata_bytes.decode("utf-8"))
 
     def _parse_supported_devices(self, meta):
         if meta.get("compat_version", "1.0") != "1.0":
@@ -141,6 +152,11 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         if not isinstance(devices, list):
             return []
         return [d for d in devices if isinstance(d, str)]
+
+    def _validate_str_field(self, value):
+        if not isinstance(value, str):
+            raise ExtractionError("Malformed fwtool metadata")
+        return value
 
     def _strip_uimage_header(self, data):
         if data[:4] == UIMAGE_MAGIC and len(data) >= UIMAGE_HEADER_SIZE:
@@ -180,23 +196,33 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         if data[:2] != b"\x1f\x8b":
             return None
         buf, total = bytearray(), 0
-        raw = io.BytesIO(data)
+        dec = zlib.decompressobj(wbits=zlib.MAX_WBITS | 16)
+        offset = 0
+        pending = b""
         try:
-            with gzip.GzipFile(fileobj=raw) as gz:
-                while True:
-                    chunk = gz.read(_CHUNK_SIZE)
-                    if not chunk:
+            while not dec.eof:
+                if not pending:
+                    pending = data[offset : offset + _CHUNK_SIZE]
+                    offset += len(pending)
+                    if not pending:
+                        # ran out of input before this member's own
+                        # trailer was reached and verified
                         break
+                chunk = dec.decompress(pending, _CHUNK_SIZE)
+                pending = dec.unconsumed_tail
+                if chunk:
                     buf.extend(chunk)
                     total += len(chunk)
                     self._track_cumulative_decompressed_bytes(len(chunk))
-                    self._check_limits(total, raw.tell())
+                    self._check_limits(total, offset)
         except DecompressionLimitExceeded:
             raise
         except Exception:
-            # Some OpenWrt .img.gz files append fwtool metadata after the gzip stream.
-            # Keep any valid decompressed bytes collected before gzip reports trailing data.
-            pass
+            # a genuine failure within this member: corrupt deflate
+            # data, or a mismatched trailer CRC/size
+            return None
+        if not dec.eof:
+            return None
         return bytes(buf) or None
 
     def _try_decompress(self, data, magic, make_decompressor):
@@ -416,11 +442,13 @@ class OpenWrtMetadataExtractor(BaseMetadataExtractor):
         if not isinstance(version, dict):
             raise ExtractionError("Malformed fwtool metadata")
         return {
-            "model": version.get("board", ""),
+            "model": self._validate_str_field(version.get("board", "")),
             "compatible": self._parse_supported_devices(meta),
-            "target": version.get("target", ""),
-            "version": version.get("version", ""),
-            "compat_version": meta.get("compat_version", "1.0"),
+            "target": self._validate_str_field(version.get("target", "")),
+            "version": self._validate_str_field(version.get("version", "")),
+            "compat_version": self._validate_str_field(
+                meta.get("compat_version", "1.0")
+            ),
             "source": "fwtool",
         }
 

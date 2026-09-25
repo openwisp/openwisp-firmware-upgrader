@@ -190,6 +190,24 @@ class TestExtractFromImage(TestCase):
             with self.assertRaises(ExtractionError):
                 extractor.extract_from_image()
 
+    def test_non_str_scalar_field_raises_extraction_error(self):
+        base_version = {"board": "x", "target": "x", "version": "x"}
+        cases = (
+            ("board", {**base_version, "board": 123}),
+            ("target", {**base_version, "target": ["not", "a", "string"]}),
+            ("version", {**base_version, "version": None}),
+        )
+        for field, version in cases:
+            with self.subTest(field=field):
+                meta = {"version": version, "compat_version": "1.0"}
+                with self.assertRaises(ExtractionError):
+                    self._mock_fwtool(meta)
+
+        with self.subTest(field="compat_version"):
+            meta = {"version": base_version, "compat_version": 2}
+            with self.assertRaises(ExtractionError):
+                self._mock_fwtool(meta)
+
     def test_dsa_migration_compat_v2(self):
         meta = {
             "version": {"board": "x", "target": "x", "version": "x"},
@@ -403,6 +421,34 @@ class TestTryExtractDtbFromKernel(TestCase):
     def test_no_dtb_in_payload_returns_none(self):
         kernel = gzip.compress(b"\xff" * 256)
         self.assertIsNone(self.extractor._try_extract_dtb_from_kernel(kernel))
+
+    def test_valid_gzip_with_fwtool_trailer_decompresses_cleanly(self):
+        payload = b"kernel payload contents" * 100
+        gzipped = gzip.compress(payload)
+        meta = {"version": {"board": "x", "target": "x", "version": "x"}}
+        json_bytes = json.dumps(meta).encode("utf-8")
+        header = b"\x00" * HEADER_SIZE
+        data_block = gzipped + header + json_bytes
+        size = HEADER_SIZE + len(json_bytes) + TRAILER_SIZE
+        crc = zlib.crc32(data_block) ^ 0xFFFFFFFF
+        trailer = struct.pack(
+            TRAILER_FORMAT, FWIMAGE_MAGIC, crc, FWIMAGE_INFO, b"\x00\x00\x00", size
+        )
+        result = self.extractor._try_gzip(data_block + trailer)
+        self.assertEqual(result, payload)
+
+    def test_corrupted_gzip_with_valid_dtb_prefix_returns_none(self):
+        dtb = self._make_dtb(model="Corrupt Stream Router")
+        payload = b"\x00" * 64 + dtb + b"\x00" * 64
+        gzipped = bytearray(gzip.compress(payload))
+        # corrupt a byte early in the deflate stream, right after the
+        # 10-byte gzip header, so the member's own checksum can never
+        # be verified, no fwtool trailer is involved here
+        gzipped[15] ^= 0xFF
+        result = self.extractor._try_gzip(bytes(gzipped))
+        self.assertIsNone(
+            result, "corrupted gzip must not return a partial, unverified buffer"
+        )
 
     def test_unrecognized_data_returns_none(self):
         self.assertIsNone(
