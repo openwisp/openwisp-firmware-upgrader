@@ -5,10 +5,6 @@ django.jQuery(function ($) {
     return;
   }
   var firmwareImageChanged = false;
-  // Do not render JSONSchema form if the image field is not changed.
-  // The "change" event is also emitted when the form is rendered.
-  // The "firmwareImageChanged" variable is used as flag to prevent this
-  // behavior.
   if (
     $("#id_devicefirmware-0-upgrade_options").val() &&
     $("#id_devicefirmware-0-upgrade_options").val() !== "null"
