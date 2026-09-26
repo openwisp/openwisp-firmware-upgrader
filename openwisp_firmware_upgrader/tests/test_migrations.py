@@ -388,6 +388,18 @@ class TestBackfillExtractionStatusMigration(TransactionTestCase):
             )
         )
 
+    def test_cache_delete_failure_during_cleanup_does_not_fail_migrate(self):
+        with mock.patch.object(
+            cache, "add", side_effect=Exception("cache backend unreachable")
+        ), mock.patch.object(
+            cache, "delete", side_effect=Exception("cache backend unreachable")
+        ):
+            with self.assertLogs(level="WARNING") as cm:
+                call_command("migrate", self.app_label, self.migrate_to, verbosity=0)
+        self.assertTrue(
+            any("Failed to release queue_unconfirmed lock" in msg for msg in cm.output)
+        )
+
     def test_queueing_skipped_when_lock_already_held(self):
         cache.add(_LOCK_KEY, True, timeout=60)
         with mock.patch(_MOCK_QUEUE_DELAY) as mock_delay:

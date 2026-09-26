@@ -26,7 +26,6 @@ def _queue_legacy_extractions(app_config, **kwargs):
             return
         queue_unconfirmed_extractions.delay()
     except Exception:
-        cache.delete("firmware_upgrader.queue_unconfirmed_lock")
         logger.exception(
             "Failed to queue legacy unconfirmed firmware image extractions. "
             "If QUEUE_UNCONFIRMED_ON_WORKER_READY is enabled (the default), "
@@ -37,7 +36,7 @@ def _queue_legacy_extractions(app_config, **kwargs):
         try:
             cache.delete("firmware_upgrader.queue_unconfirmed_lock")
         except Exception:
-            pass
+            logger.warning("Failed to release queue_unconfirmed lock", exc_info=True)
 
 
 # Queueing must run after the whole `migrate` command completes, because the

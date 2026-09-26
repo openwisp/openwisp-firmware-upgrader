@@ -48,6 +48,8 @@ def compat_blocks_pairing(compat_version):
         return False
     try:
         parts = compat_version.split(".")
+        if len(parts) > 2:
+            return True
         major = int(parts[0])
         minor = int(parts[1]) if len(parts) > 1 else 0
         return (major, minor) > (1, 0)

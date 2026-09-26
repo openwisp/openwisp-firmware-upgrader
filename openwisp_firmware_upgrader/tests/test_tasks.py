@@ -457,7 +457,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         self.assertFalse(utils.compat_blocks_pairing(""))
         self.assertFalse(utils.compat_blocks_pairing(None))
 
-        for value in ("bad", "2"):
+        for value in ("bad", "2", "1.0.1"):
             with self.subTest(value=value):
                 self.assertTrue(utils.compat_blocks_pairing(value))
 
