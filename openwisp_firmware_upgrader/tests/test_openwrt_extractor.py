@@ -441,14 +441,14 @@ class TestTryExtractDtbFromKernel(TestCase):
         dtb = self._make_dtb(model="Corrupt Stream Router")
         payload = b"\x00" * 64 + dtb + b"\x00" * 64
         gzipped = bytearray(gzip.compress(payload))
-        # corrupt a byte early in the deflate stream, right after the
-        # 10-byte gzip header, so the member's own checksum can never
-        # be verified, no fwtool trailer is involved here
-        gzipped[15] ^= 0xFF
+        # corrupt only the member CRC32 trailer: the deflate stream,
+        # including the DTB, still decompresses completely
+        gzipped[-8] ^= 0xFF
         result = self.extractor._try_gzip(bytes(gzipped))
         self.assertIsNone(
             result, "corrupted gzip must not return a partial, unverified buffer"
         )
+        self.assertIsNone(self.extractor._try_extract_dtb_from_kernel(bytes(gzipped)))
 
     def test_unrecognized_data_returns_none(self):
         self.assertIsNone(

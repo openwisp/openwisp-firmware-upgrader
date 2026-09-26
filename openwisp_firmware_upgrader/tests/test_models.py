@@ -1,6 +1,5 @@
 import io
 import threading
-import time
 import uuid
 from contextlib import redirect_stdout
 from unittest import mock
@@ -1885,11 +1884,13 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
 
         images_read = threading.Event()
         concurrent_write_done = threading.Event()
+        about_to_write = threading.Event()
         errors = []
 
         def replace_file_concurrently():
             try:
                 images_read.wait(timeout=5)
+                about_to_write.set()
                 FirmwareImage.objects.filter(pk=image1.pk).update(
                     extraction_status=FirmwareImage.STATUS_UNCONFIRMED
                 )
@@ -1908,7 +1909,7 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             original_fetch_all(self)
             if self.model is FirmwareImage and not images_read.is_set():
                 images_read.set()
-                time.sleep(0.3)
+                about_to_write.wait(timeout=5)
 
         thread = threading.Thread(target=replace_file_concurrently)
         thread.start()
