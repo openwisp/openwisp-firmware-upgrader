@@ -219,15 +219,12 @@ class TestUpgraderMixin(CreateConnectionsMixin):
 class SeleniumTestMixin(SeleniumTestMixin):
     def _assert_no_js_errors(self, ignore_websockets=False):
         browser_logs = []
-        for log in self.get_browser_logs():
-            # capture SEVERE-level entries from both JS runtime and console API
-            if log.get("level") == "SEVERE" and log.get("source") in (
-                "javascript",
-                "console-api",
-            ):
-                if ignore_websockets and "websocket" in log.get("message", "").lower():
-                    continue
-                browser_logs.append(log)
+        for log in self.get_browser_errors():
+            if log.get("source") not in (None, "javascript", "console-api"):
+                continue
+            if ignore_websockets and "websocket" in log.get("message", "").lower():
+                continue
+            browser_logs.append(log)
         self.assertEqual(browser_logs, [])
 
 

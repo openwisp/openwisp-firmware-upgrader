@@ -110,7 +110,7 @@ if not TESTING or "--exclude-tag=selenium_tests" not in sys.argv:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [f"{REDIS_URL}/7"]},
+            "CONFIG": {"hosts": [f"{REDIS_URL}/3"]},
         }
     }
 else:
@@ -165,22 +165,31 @@ if TESTING:
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
             "LOCATION": "firmware-upgrader",
-        }
+        },
+        "sessions": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "firmware-upgrader-sessions",
+        },
     }
 else:
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"{REDIS_URL}/6",
+            "LOCATION": f"{REDIS_URL}/0",
             "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
-        }
+        },
+        "sessions": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"{REDIS_URL}/1",
+            "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+        },
     }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
-SESSION_CACHE_ALIAS = "default"
+SESSION_CACHE_ALIAS = "sessions"
 # Force Redis for development to ensure async task execution
 if not TESTING:
-    CELERY_BROKER_URL = f"{REDIS_URL}/1"
+    CELERY_BROKER_URL = f"{REDIS_URL}/2"
 else:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
@@ -199,8 +208,8 @@ LOGGING = {
     },
     "loggers": {
         "py.warnings": {"handlers": ["console"]},
-        "celery": {"handlers": ["console"], "level": "DEBUG"},
-        "celery.task": {"handlers": ["console"], "level": "DEBUG"},
+        "celery": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "celery.task": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "openwisp_firmware_upgrader.websockets": {
             "handlers": ["console"],
             "level": "DEBUG",
@@ -239,6 +248,19 @@ if os.environ.get("SAMPLE_APP", False):
     FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = (
         "sample_firmware_upgrader.UpgradeOperation"
     )
+
+    # For controller extended apps:
+    # Replace Connection
+    connection_index = INSTALLED_APPS.index("openwisp_controller.connection")
+    INSTALLED_APPS.remove("openwisp_controller.connection")
+    INSTALLED_APPS.insert(connection_index, "openwisp2.sample_connection")
+    # Extended apps
+    EXTENDED_APPS.append("openwisp_controller.connection")
+    # Swapper
+    CONNECTION_CREDENTIALS_MODEL = "sample_connection.Credentials"
+    CONNECTION_DEVICECONNECTION_MODEL = "sample_connection.DeviceConnection"
+    CONNECTION_COMMAND_MODEL = "sample_connection.Command"
+
 
 TEST_RUNNER = "openwisp_utils.tests.TimeLoggingTestRunner"
 

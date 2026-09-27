@@ -30,6 +30,9 @@ from openwisp_firmware_upgrader.tests.test_openwrt_upgrader import (
 from openwisp_firmware_upgrader.tests.test_private_storage import (
     TestPrivateStorage as BaseTestPrivateStorage,
 )
+from openwisp_firmware_upgrader.tests.test_selenium import (
+    TestDeviceAdmin as BaseTestDeviceAdmin,
+)
 from openwisp_firmware_upgrader.tests.test_tasks import TestTasks as BaseTestTasks
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -41,8 +44,8 @@ UpgradeOperation = load_model("UpgradeOperation")
 
 
 class TestAdmin(BaseTestAdmin):
-    app_label = "sample_firmware_upgrader"
-    build_list_url = reverse(f"admin:{app_label}_build_changelist")
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
+    build_list_url = reverse(f"admin:{BaseTestAdmin.app_label}_build_changelist")
 
     def test_category_details(self):
         self._login()
@@ -73,7 +76,9 @@ class TestAdmin(BaseTestAdmin):
     def test_device_firmware_details(self):
         self._login()
         device_fw = self._create_device_firmware(details="sample device_fw details")
-        path = reverse("admin:config_device_change", args=[device_fw.device_id])
+        path = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[device_fw.device_id]
+        )
         r = self.client.get(path)
         self.assertContains(
             r,
@@ -101,14 +106,18 @@ class TestAdmin(BaseTestAdmin):
         uo = UpgradeOperation.objects.first()
         uo.details = "Test Upgrade device details"
         uo.save()
-        url = reverse("admin:config_device_change", args=[device_fw.device.pk])
+        url = reverse(
+            f"admin:{self.config_app_label}_device_change", args=[device_fw.device.pk]
+        )
         r = self.client.get(url)
         self.assertContains(r, '<div class="readonly">Test Upgrade device details')
 
 
 class TestAdminTransaction(BaseTestAdminTransaction):
-    app_label = "sample_firmware_upgrader"
-    build_list_url = reverse(f"admin:{app_label}_build_changelist")
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
+    build_list_url = reverse(
+        f"admin:{BaseTestAdminTransaction.app_label}_build_changelist"
+    )
 
 
 class TestModels(BaseTestModels):
@@ -116,6 +125,7 @@ class TestModels(BaseTestModels):
 
 
 class TestModelsTransaction(BaseTestModelsTransaction):
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
     pass
 
 
@@ -127,7 +137,13 @@ class TestPrivateStorage(BaseTestPrivateStorage):
     pass
 
 
+class TestDeviceAdmin(BaseTestDeviceAdmin):
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
+    pass
+
+
 class TestTasks(BaseTestTasks):
+    _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
     pass
 
 
@@ -158,6 +174,7 @@ del BaseTestAdminTransaction
 del BaseTestModelsTransaction
 del BaseTestOpenwrtUpgrader
 del BaseTestPrivateStorage
+del BaseTestDeviceAdmin
 del BaseTestTasks
 del BaseTestBuildViews
 del BaseTestCategoryViews

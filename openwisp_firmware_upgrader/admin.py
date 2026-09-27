@@ -7,10 +7,12 @@ import swapper
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
+from django.contrib.admin.actions import delete_selected
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
+from django.forms.formsets import DELETION_FIELD_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.templatetags.static import static
@@ -24,8 +26,13 @@ from reversion.admin import VersionAdmin
 
 from openwisp_controller.config.admin import DeactivatedDeviceReadOnlyMixin, DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
-from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
+from openwisp_utils.admin import (
+    BlockDeleteAllowCascadeMixin,
+    ReadOnlyAdmin,
+    TimeReadonlyAdminMixin,
+)
 
+from . import settings as app_settings
 from .filters import (
     BuildCategoryFilter,
     BuildCategoryOrganizationFilter,
@@ -52,6 +59,12 @@ DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Organization = swapper.load_model("openwisp_users", "Organization")
 Location = swapper.load_model("geo", "Location")
 DeviceGroup = swapper.load_model("config", "DeviceGroup")
+
+IN_PROGRESS_DELETE_MESSAGE = _(
+    "Some selected operations are still in progress and cannot be deleted. "
+    "Remove them from the selection and try again."
+)
+IN_PROGRESS_STATUS = UpgradeOperation.CANCELLABLE_STATUS
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -366,9 +379,6 @@ class UpgradeOperationInline(admin.StackedInline):
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
 
-    def has_delete_permission(self, request, obj):
-        return False
-
     def has_add_permission(self, request, obj):
         return False
 
@@ -405,8 +415,55 @@ class ReadonlyUpgradeOptionsMixin:
         )
 
 
+class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+    actions = ["delete_selected"]
+
+    def get_actions(self, request):
+        # skip ReadOnlyAdmin
+        return super(ReadOnlyAdmin, self).get_actions(request)
+
+    def delete_model(self, request, obj):
+        # skip ReadOnlyAdmin
+        super(ReadOnlyAdmin, self).delete_model(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        # allow deleting except if in-progress, in which case operation must
+        # be cancelled first or wait until resolved (success/failed).
+        if not super(ReadOnlyAdmin, self).has_delete_permission(request, obj):
+            return False
+        if obj and obj.status == IN_PROGRESS_STATUS:
+            if BlockDeleteAllowCascadeMixin.is_admin_cascade_delete_request(
+                self, request
+            ):
+                self._add_in_progress_upgrade_delete_error(request)
+            return False
+        return True
+
+    def _add_in_progress_upgrade_delete_error(self, request):
+        if getattr(request, "_in_progress_upgrade_delete_error", False):
+            return
+        self.message_user(
+            request,
+            _(
+                "This deletion is blocked because one or more upgrade operations are "
+                "in progress. Cancel them or wait for them to finish before "
+                "continuing."
+            ),
+            messages.ERROR,
+        )
+        request._in_progress_upgrade_delete_error = True
+
+    @admin.action(description=delete_selected.short_description, permissions=["delete"])
+    def delete_selected(self, request, queryset):
+        """Overrides default delete_selected action of from Django admin"""
+        if queryset.filter(status=IN_PROGRESS_STATUS).exists():
+            self.message_user(request, IN_PROGRESS_DELETE_MESSAGE, messages.ERROR)
+            return None
+        return delete_selected(self, request, queryset)
+
+
 @admin.register(UpgradeOperation)
-class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+class UpgradeOperationAdmin(BaseUpgradeAdmin):
     form = UpgradeOperationForm
     list_display = ["device", "status", "image", "modified"]
     list_filter = ["status"]
@@ -443,9 +500,13 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
 
     def change_view(self, request, object_id, extra_context=None, **kwargs):
         extra_context = extra_context or {}
-        extra_context["upgrade_operation_cancel_url"] = reverse(
-            "upgrader:api_upgradeoperation_cancel",
-            args=["00000000-0000-0000-0000-000000000000"],
+        extra_context["upgrade_operation_cancel_url"] = (
+            reverse(
+                "upgrader:api_upgradeoperation_cancel",
+                args=["00000000-0000-0000-0000-000000000000"],
+            )
+            if app_settings.FIRMWARE_UPGRADER_API
+            else ""
         )
         extra_context["django_locale"] = get_language()
         obj = self.get_object(request, object_id)
@@ -490,12 +551,9 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
     def has_add_permission(self, request):
         return False
 
-    def has_delete_permission(self, request, obj=None):
-        return False
-
 
 @admin.register(BatchUpgradeOperation)
-class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
     list_display = ["build", "organization", "status", "created", "modified"]
     list_filter = [
         BuildCategoryOrganizationFilter,
@@ -560,6 +618,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         status_choices = []
         # build a base QueryDict with all current GET params
         params = request.GET.copy()
+        params.pop("page", None)
 
         # generic choice builder used by both status and organization filters
         def _make_choice(current_value, display, param_name, value):
@@ -570,7 +629,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
             if value:
                 q[param_name] = value
             qs = q.urlencode()
-            query_string = f"?{qs}" if qs else ""
+            query_string = f"?{qs}"
             return {
                 "display": display,
                 "selected": current_value == value,
@@ -711,7 +770,24 @@ class DeviceFirmwareForm(forms.ModelForm):
             device, device_firmware=self.instance
         )
 
+    def _has_credentials_in_form(self):
+        if not self.data:
+            return False
+        try:
+            total = int(self.data.get("deviceconnection_set-TOTAL_FORMS", 0))
+        except (TypeError, ValueError):
+            return False
+        for i in range(total):
+            prefix = f"deviceconnection_set-{i}"
+            has_cred = self.data.get(f"{prefix}-credentials")
+            is_deleted = self.data.get(f"{prefix}-DELETE")
+            if has_cred and not is_deleted:
+                return True
+        return False
+
     def full_clean(self):
+        if self._has_credentials_in_form():
+            self.instance._skip_connection_check = True
         super().full_clean()
         if not self.is_bound:
             return
@@ -754,6 +830,19 @@ class DeviceFormSet(forms.BaseInlineFormSet):
         return kwargs
 
 
+class DeviceUpgradeOperationFormSet(DeviceFormSet):
+    """Disable inline deletion of in-progress operations server-side."""
+
+    def add_fields(self, form, index):
+        super().add_fields(form, index)
+        if (
+            form.instance.pk
+            and form.instance.status == IN_PROGRESS_STATUS
+            and DELETION_FIELD_NAME in form.fields
+        ):
+            form.fields[DELETION_FIELD_NAME].disabled = True
+
+
 class DeviceFirmwareInline(
     MultitenantAdminMixin, DeactivatedDeviceReadOnlyMixin, admin.StackedInline
 ):
@@ -790,6 +879,13 @@ class DeviceFirmwareInline(
 
     def get_formset(self, request, obj=None, **kwargs):
         formset = super().get_formset(request, obj=obj, **kwargs)
+        if app_settings.FIRMWARE_UPGRADER_API:
+            formset.upgrade_operation_cancel_url = reverse(
+                "upgrader:api_upgradeoperation_cancel",
+                args=["00000000-0000-0000-0000-000000000000"],
+            )
+        else:
+            formset.upgrade_operation_cancel_url = ""
         if obj:
             try:
                 schema = get_upgrader_schema_for_device(obj)
@@ -813,7 +909,7 @@ class DeviceUpgradeOperationForm(UpgradeOperationForm):
 class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperationInline):
     verbose_name = _("Recent Firmware Upgrades")
     verbose_name_plural = verbose_name
-    formset = DeviceFormSet
+    formset = DeviceUpgradeOperationFormSet
     form = DeviceUpgradeOperationForm
     # hack for openwisp-monitoring integration
     # TODO: remove when this issue solved:

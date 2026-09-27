@@ -19,6 +19,10 @@ from openwisp_users.mixins import ShareableOrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
+from ..constants import (
+    DEACTIVATED_DEVICE_FIRMWARE_ERROR,
+    DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR,
+)
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
     ReconnectionFailed,
@@ -61,12 +65,18 @@ class UpgradeOptionsMixin(models.Model):
     def validate_upgrade_options(self):
         if not self.upgrade_options:
             return
-        if not getattr(self.upgrader_class, "SCHEMA"):
+        try:
+            upgrader_class = self.upgrader_class
+        except ObjectDoesNotExist:
+            raise ValidationError(
+                _("No related connection or credentials found for this device.")
+            )
+        if not getattr(upgrader_class, "SCHEMA"):
             raise ValidationError(
                 _("Using upgrade options is not allowed with this upgrader.")
             )
         try:
-            self.upgrader_class.validate_upgrade_options(self.upgrade_options)
+            upgrader_class.validate_upgrade_options(self.upgrade_options)
         except jsonschema.ValidationError:
             raise ValidationError("The upgrade options are invalid")
         except FirmwareUpgradeOptionsException as error:
@@ -217,6 +227,7 @@ class AbstractBuild(TimeStampedEditableModel):
             .select_related(*related)
             .filter(image__build__category_id=self.category_id)
             .exclude(image__build=self, installed=True)
+            .exclude(device___is_deactivated=True)
             .order_by("-created")
         )
         if group:
@@ -238,7 +249,7 @@ class AbstractBuild(TimeStampedEditableModel):
         qs = Device.objects.filter(
             devicefirmware__isnull=True,
             model__in=boards,
-        )
+        ).exclude(_is_deactivated=True)
         if self.category.organization_id:
             qs = qs.filter(organization_id=self.category.organization_id)
         if group:
@@ -402,6 +413,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def clean(self):
         if not hasattr(self, "image") or not hasattr(self, "device"):
             return
+        if self.device.is_deactivated():
+            raise ValidationError(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
         if (
             self.image.build.category.organization is not None
             and self.image.build.category.organization != self.device.organization
@@ -414,7 +427,19 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     )
                 }
             )
-        if self.device.deviceconnection_set.count() < 1:
+        # When an admin adds credentials and changes the firmware image in the
+        # same save, the new credentials haven't been persisted yet at the time
+        # this check runs, so without `_skip_connection_check` the form would
+        # wrongly reject the change with "please add credentials".
+        # `DeviceFirmwareForm` sets the flag when it sees credentials in the
+        # submitted data.
+        skip_connection_check = getattr(self, "_skip_connection_check", False)
+        will_start_upgrade = self.image_has_changed or not self.installed
+        if (
+            will_start_upgrade
+            and not skip_connection_check
+            and self.device.deviceconnection_set.count() < 1
+        ):
             raise ValidationError(
                 _(
                     "This device does not have a related connection object defined "
@@ -829,7 +854,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
 
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
-    _CANCELLABLE_STATUS = "in-progress"
+    CANCELLABLE_STATUS = "in-progress"
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
@@ -865,6 +890,11 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
 
     class Meta:
         abstract = True
+
+    def clean(self):
+        super().clean()
+        if hasattr(self, "device") and self.device and self.device.is_deactivated():
+            raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
 
     def log_line(self, line, save=True):
         if self.log:
@@ -903,13 +933,13 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             # By using an UPDATE query, we avoid such situation.
             updated = self._meta.model.objects.filter(
                 pk=self.pk,
-                status=self._CANCELLABLE_STATUS,
+                status=self.CANCELLABLE_STATUS,
                 progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
             ).update(status="cancelled")
             if not updated:
                 # The cancellation did not succeed, check why
                 self.refresh_from_db(fields=["status", "progress"])
-                if self.status != self._CANCELLABLE_STATUS:
+                if self.status != self.CANCELLABLE_STATUS:
                     raise ValueError(
                         _("Cannot cancel operation with status: %(status)s")
                         % {"status": self.status}
@@ -941,6 +971,14 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     def upgrade(self, recoverable=True):
         # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
         if self.status != "in-progress":
+            return
+        if self.device.is_deactivated():
+            self.status = "aborted"
+            self.log_line(
+                _("Upgrade aborted because the device has been deactivated."),
+                save=False,
+            )
+            self.save()
             return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:
@@ -1041,6 +1079,19 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         if installed:
             self.device.devicefirmware.installed = True
             self.device.devicefirmware.save(upgrade=False)
+
+    def validate_upgrade_options(self):
+        """Validate options only for new upgrade operations.
+
+        Pre-existing upgrade operations are readonly, but validation of relationship
+        can become complex and generate a lot of edge cases, in order to keep things
+        simple this validation step is skipped for pre-existing objects.
+        """
+        try:
+            super().validate_upgrade_options()
+        except ValidationError:
+            if self._state.adding:
+                raise
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
