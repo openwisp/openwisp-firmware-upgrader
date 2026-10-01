@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from uuid import UUID
 
 from asgiref.sync import async_to_sync, sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -240,19 +241,56 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             # Get the batch operation and its upgrade operations
             batch_operation = await self._get_batch_upgrade_operation()
             if batch_operation:
-                # Get operations list
+                operation_ids = content.get("operation_ids", [])
+
+                if not isinstance(operation_ids, list):
+                    logger.warning(
+                        "Invalid operation_ids received for batch %s: %r",
+                        self.batch_id,
+                        operation_ids,
+                    )
+                    await self.send_json(
+                        {
+                            "type": "error",
+                            "message": "operation_ids must be a list of valid UUIDs.",
+                        }
+                    )
+                    return
+
+                try:
+                    for operation_id in operation_ids:
+                        if not isinstance(operation_id, str):
+                            raise ValueError
+                        UUID(operation_id)
+                except ValueError:
+                    logger.warning(
+                        "Invalid operation_ids received for batch %s: %r",
+                        self.batch_id,
+                        operation_ids,
+                    )
+                    await self.send_json(
+                        {
+                            "type": "error",
+                            "message": "operation_ids must be a list of valid UUIDs.",
+                        }
+                    )
+                    return
+
+                operations_qs = batch_operation.upgrade_operations
+
+                total_operations = await sync_to_async(operations_qs.count)()
+                completed_operations = await sync_to_async(
+                    operations_qs.exclude(status="in-progress").count
+                )()
+
                 operations_list = await sync_to_async(list)(
-                    batch_operation.upgrade_operations.all()
+                    operations_qs.filter(pk__in=operation_ids)
                 )
                 # Serialize operations using the existing serializer
                 operations_data = await sync_to_async(
                     lambda: UpgradeOperationSerializer(operations_list, many=True).data
                 )()
-                # Calculate counts
-                total_operations = len(operations_list)
-                completed_operations = sum(
-                    1 for op in operations_list if op.status != "in-progress"
-                )
+
                 # Send everything in ONE message
                 await self.send_json(
                     {
