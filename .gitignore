@@ -69,6 +69,7 @@ local_settings.py
 *.db
 *.tar.gz
 Pipfile
+.firmware_cache/
 
 # celery
 tests/celerybeat*
