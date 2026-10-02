@@ -24,6 +24,74 @@ RETRY_OPTIONS = getattr(
 
 TASK_TIMEOUT = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT", 1500)
 
+PERSISTENT_RETRY_OPTIONS = dict(
+    base_delay=600,
+    multiplier=2,
+    jitter=0.25,
+    max_delay=43200,
+    dispatch_jitter=300,
+    signal_jitter=120,
+    claim_timeout=3600,
+)
+PERSISTENT_RETRY_OPTIONS.update(
+    getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS", {})
+)
+if (
+    PERSISTENT_RETRY_OPTIONS["base_delay"] <= 0
+    or PERSISTENT_RETRY_OPTIONS["max_delay"] <= 0
+    or PERSISTENT_RETRY_OPTIONS["multiplier"] < 1
+    or not 0 <= PERSISTENT_RETRY_OPTIONS["jitter"] < 1
+    or PERSISTENT_RETRY_OPTIONS["dispatch_jitter"] <= 0
+    or PERSISTENT_RETRY_OPTIONS["signal_jitter"] < 0
+):
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS requires "
+        "base_delay > 0, max_delay > 0, multiplier >= 1, 0 <= jitter < 1, "
+        "dispatch_jitter > 0 and signal_jitter >= 0"
+    )
+if PERSISTENT_RETRY_OPTIONS["claim_timeout"] <= TASK_TIMEOUT + RETRY_OPTIONS.get(
+    "retry_backoff_max", 600
+):
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS['claim_timeout'] "
+        "must be greater than OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT plus the "
+        "retry_backoff_max of OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS"
+    )
+PERSISTENT_REMINDER_PERIOD = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD", 5184000
+)
+if PERSISTENT_REMINDER_PERIOD <= 0:
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD must be positive"
+    )
+
+SCHEDULE_MIN_DELAY = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MIN_DELAY", 600
+)
+SCHEDULE_MAX_HORIZON = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MAX_HORIZON", 15552000
+)
+if SCHEDULE_MIN_DELAY < 0:
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MIN_DELAY cannot be negative"
+    )
+if SCHEDULE_MAX_HORIZON <= 0:
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MAX_HORIZON must be positive"
+    )
+if SCHEDULE_MIN_DELAY >= SCHEDULE_MAX_HORIZON:
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MIN_DELAY must be smaller than "
+        "OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MAX_HORIZON"
+    )
+SCHEDULE_LAUNCH_TIMEOUT = getattr(
+    settings, "OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_LAUNCH_TIMEOUT", 300
+)
+if SCHEDULE_LAUNCH_TIMEOUT <= 0:
+    raise ImproperlyConfigured(
+        "OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_LAUNCH_TIMEOUT must be positive"
+    )
+
 FIRMWARE_UPGRADER_API = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_API", True)
 FIRMWARE_API_BASEURL = getattr(settings, "OPENWISP_FIRMWARE_API_BASEURL", "/")
 OPENWRT_SETTINGS = getattr(settings, "OPENWISP_FIRMWARE_UPGRADER_OPENWRT_SETTINGS", {})
