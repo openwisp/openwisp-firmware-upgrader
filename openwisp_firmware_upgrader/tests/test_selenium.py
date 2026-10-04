@@ -1358,3 +1358,116 @@ class TestRealTimeProgress(
         )
         self.assertEqual(len(status_containers), 2)
         self._assert_no_js_errors()
+
+    def test_batch_upgrade_progress_respects_pagination(self):
+        """Test that live batch progress respects pagination."""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+
+        for _ in range(20):
+            UpgradeOperation.objects.create(
+                device=self.device1,
+                image=self.image2,
+                batch=batch_operation,
+                status="in-progress",
+                progress=0,
+            )
+
+        self._prepare_batch(batch_operation)
+
+        self._wait_for_realtime_update(lambda driver: self._check_row_count(20))
+        self.assertEqual(
+            len(self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")),
+            20,
+        )
+
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        operation21 = UpgradeOperation.objects.create(
+            device=self.device2,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=0,
+        )
+        device_info_21 = {
+            "device_id": self.device2.pk,
+            "device_name": self.device2.name,
+            "image_name": str(self.image2),
+        }
+
+        publisher.publish_operation_progress(
+            str(operation21.pk),
+            "in-progress",
+            0,
+            operation21.modified,
+            device_info_21,
+        )
+        publisher.publish_batch_status(status="in-progress", completed=0, total=21)
+
+        self._wait_for_realtime_update(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".pagination .current-page"),
+                "Page 1 of 2",
+            )
+        )
+        self.assertEqual(
+            len(self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")),
+            20,
+        )
+
+    def test_batch_upgrade_progress_refresh_requests_are_serialized(self):
+        """Test that batch results refresh requests are serialized."""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        self._prepare_batch(batch_operation)
+
+        result = self.web_driver.execute_script("""
+            const originalAjax = django.jQuery.ajax;
+            const originalSetTimeout = window.setTimeout;
+            const ajaxCalls = [];
+            const refreshTimers = [];
+
+            django.jQuery.ajax = function (options) {
+                ajaxCalls.push(options);
+                return {};
+            };
+
+            window.setTimeout = function (callback) {
+                refreshTimers.push(callback);
+                return refreshTimers.length;
+            };
+
+            try {
+                refreshBatchUpgradeResults();
+                refreshBatchUpgradeResults();
+
+                const ajaxCallsBeforeComplete = ajaxCalls.length;
+                const timersBeforeComplete = refreshTimers.length;
+
+                ajaxCalls[0].complete();
+
+                const timersAfterComplete = refreshTimers.length;
+                refreshTimers.shift()();
+
+                const ajaxCallsAfterTrailingRefresh = ajaxCalls.length;
+
+                ajaxCalls[1].complete();
+
+                return {
+                    ajaxCallsBeforeComplete: ajaxCallsBeforeComplete,
+                    timersBeforeComplete: timersBeforeComplete,
+                    timersAfterComplete: timersAfterComplete,
+                    ajaxCallsAfterTrailingRefresh: ajaxCallsAfterTrailingRefresh,
+                };
+            } finally {
+                django.jQuery.ajax = originalAjax;
+                window.setTimeout = originalSetTimeout;
+            }
+            """)
+
+        self.assertEqual(result["ajaxCallsBeforeComplete"], 1)
+        self.assertEqual(result["timersBeforeComplete"], 0)
+        self.assertEqual(result["timersAfterComplete"], 1)
+        self.assertEqual(result["ajaxCallsAfterTrailingRefresh"], 2)
