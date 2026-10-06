@@ -3,6 +3,7 @@ from django.urls import path
 from .websockets import (
     BatchUpgradeProgressConsumer,
     DeviceUpgradeProgressConsumer,
+    FirmwareExtractionConsumer,
     UpgradeProgressConsumer,
 )
 
@@ -18,6 +19,10 @@ websocket_urlpatterns = [
     path(
         "ws/firmware-upgrader/device/<uuid:device_id>/",
         DeviceUpgradeProgressConsumer.as_asgi(),
+    ),
+    path(
+        "ws/firmware-upgrader/firmware-image/<uuid:image_id>/",
+        FirmwareExtractionConsumer.as_asgi(),
     ),
 ]
 
