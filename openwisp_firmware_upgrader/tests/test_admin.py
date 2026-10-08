@@ -165,7 +165,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(21):
+        with self.assertNumQueries(16):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -179,7 +179,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(18):
+        with self.assertNumQueries(14):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -208,7 +208,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             follow=True,
         )
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "no SSH credentials assigned")
+        self.assertContains(r, "no credentials assigned")
         device_url = reverse(
             f"admin:{self.config_app_label}_device_change", args=[env["d1"].pk]
         )
@@ -229,7 +229,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             follow=True,
         )
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "no SSH credentials assigned")
+        self.assertContains(r, "no credentials assigned")
         device_url = reverse(
             f"admin:{self.config_app_label}_device_change", args=[env["d1"].pk]
         )
@@ -251,7 +251,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             follow=True,
         )
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "no SSH credentials assigned")
+        self.assertContains(r, "no credentials assigned")
 
     def test_upgrade_intermediate_page_credentialless_more_than_max(self):
         from openwisp_firmware_upgrader.admin import MAX_CREDENTIALLESS_DISPLAY
@@ -292,7 +292,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             follow=True,
         )
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "no SSH credentials assigned")
+        self.assertContains(r, "no credentials assigned")
         self.assertContains(r, "more device")
         self.assertContains(r, "without credentials")
         total_credentialless = MAX_CREDENTIALLESS_DISPLAY + 2
@@ -1925,7 +1925,7 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
+                with self.assertNumQueries(24 if django.VERSION < (5, 2) else 22):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")
