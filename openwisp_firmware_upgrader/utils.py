@@ -1,5 +1,6 @@
 import logging
 
+import swapper
 from django.utils.module_loading import import_string
 
 from . import settings as app_settings
@@ -10,6 +11,17 @@ logger = logging.getLogger(__name__)
 def get_upgrader_schema_for_device(device):
     upgrader_class = get_upgrader_class_for_device(device)
     return getattr(upgrader_class, "SCHEMA", None)
+
+
+def get_upgrade_connections():
+    """
+    Returns enabled DeviceConnection objects whose
+    update_strategy has an upgrader in UPGRADERS_MAP
+    """
+    DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+    return DeviceConnection.objects.filter(
+        update_strategy__in=list(app_settings.UPGRADERS_MAP), enabled=True
+    )
 
 
 def get_upgrader_class_for_device(device):
@@ -24,10 +36,7 @@ def get_upgrader_class_for_device(device):
         - an upgrade cannot be performed on a device without a
           device connection
     """
-    device_conn = device.deviceconnection_set.filter(
-        update_strategy__icontains="ssh",
-        enabled=True,
-    ).first()
+    device_conn = get_upgrade_connections().filter(device=device).first()
     if not device_conn:
         raise device.deviceconnection_set.model.DoesNotExist
     return get_upgrader_class_from_device_connection(device_conn)
