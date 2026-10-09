@@ -454,8 +454,9 @@ routes), use ``get_api_urls`` instead:
         ),
     ]
 
-``get_api_urls`` preserves URL paths, names and the ``upgrader``
-namespace. Use ``get_urls`` to also get the private storage routes and the
+``get_api_urls`` preserves the URL paths and names, while the ``upgrader``
+namespace is declared by the caller's ``include``, as shown above. Use
+``get_urls`` to also get the private storage routes and the
 ``FIRMWARE_UPGRADER_API`` setting behavior.
 
 For more information regarding Django REST Framework API views, please
