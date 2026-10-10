@@ -1,4 +1,5 @@
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -78,16 +79,44 @@ class BuildSerializer(BaseSerializer):
         fields = "__all__"
 
 
+class TimezoneAwareDateTimeField(serializers.DateTimeField):
+    def enforce_timezone(self, value):
+        if timezone.is_naive(value):
+            raise serializers.ValidationError(
+                _(
+                    "The scheduled time must include a timezone offset, "
+                    "e.g. '2026-08-25T09:00:00Z'."
+                )
+            )
+        return super().enforce_timezone(value)
+
+
 class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSerializer):
     upgrade_all = serializers.BooleanField(required=False, default=False)
+    is_persistent = serializers.BooleanField(required=False, default=True)
+    scheduled_at = TimezoneAwareDateTimeField(required=False, allow_null=True)
 
     class Meta:
-        fields = ("upgrade_all", "group", "location")
+        fields = (
+            "upgrade_all",
+            "is_persistent",
+            "group",
+            "location",
+            "scheduled_at",
+        )
         model = BatchUpgradeOperation
         extra_kwargs = {
             "group": {"required": False, "allow_null": True},
             "location": {"required": False, "allow_null": True},
         }
+
+
+class BatchUpgradeRescheduleSerializer(BatchUpgradeSerializer):
+    upgrade_all = serializers.BooleanField(source="firmwareless", required=False)
+
+    class Meta(BatchUpgradeSerializer.Meta):
+        fields = BatchUpgradeSerializer.Meta.fields + ("build", "upgrade_options")
+        read_only_fields = ("build", "upgrade_options")
 
 
 class UpgradeOperationSerializer(serializers.ModelSerializer):
@@ -97,18 +126,34 @@ class UpgradeOperationSerializer(serializers.ModelSerializer):
             "id",
             "device",
             "image",
+            "is_persistent",
+            "retry_count",
+            "next_retry_at",
             "status",
             "log",
             "progress",
             "modified",
             "created",
         )
+        read_only_fields = ("is_persistent", "retry_count", "next_retry_at")
 
 
 class DeviceUpgradeOperationSerializer(serializers.ModelSerializer):
     class Meta:
         model = UpgradeOperation
-        fields = ("id", "device", "image", "status", "log", "progress", "modified")
+        fields = (
+            "id",
+            "device",
+            "image",
+            "is_persistent",
+            "retry_count",
+            "next_retry_at",
+            "status",
+            "log",
+            "progress",
+            "modified",
+        )
+        read_only_fields = ("is_persistent", "retry_count", "next_retry_at")
 
 
 class BatchUpgradeOperationListSerializer(BaseSerializer):
@@ -135,10 +180,27 @@ class BatchUpgradeOperationSerializer(BatchUpgradeOperationListSerializer):
 
 
 class DeviceFirmwareSerializer(ValidatedModelSerializer):
+    is_persistent = serializers.BooleanField(
+        required=False, default=False, write_only=True
+    )
+
     class Meta:
         model = DeviceFirmware
-        fields = ("id", "image", "installed", "modified")
+        fields = ("id", "image", "installed", "is_persistent", "modified")
         read_only_fields = ("installed", "modified")
+
+    def create(self, validated_data):
+        is_persistent = validated_data.pop("is_persistent", False)
+        instance = DeviceFirmware(**validated_data)
+        instance.save(is_persistent=is_persistent)
+        return instance
+
+    def update(self, instance, validated_data):
+        is_persistent = validated_data.pop("is_persistent", False)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save(is_persistent=is_persistent)
+        return instance
 
     def validate(self, data):
         if not data.get("device"):

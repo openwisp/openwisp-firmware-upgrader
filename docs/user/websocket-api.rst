@@ -79,6 +79,9 @@ exactly one message:
             "id": "<uuid>",                 // Operation identifier
             "device": "<uuid>",             // Device identifier
             "image": "<uuid>",              // Firmware image identifier
+            "is_persistent": <boolean>,     // Whether the operation retries persistently
+            "retry_count": <integer>,       // Number of retry attempts made
+            "next_retry_at": "<datetime>",  // Next scheduled retry (null if none)
             "status": "<string>",           // Current operation status
             "log": "<string>",              // Operation log output
             "progress": <integer>,          // Progress percentage (0–100)
@@ -136,6 +139,7 @@ exactly one message:
         "batch_status": {
             "status": "<string>",           // Overall batch status
             "completed": <integer>,         // Number of completed operations
+            "pending": <integer>,           // Number of operations awaiting a persistent retry
             "total": <integer>              // Total operations in the batch
         },
         "operations": [
@@ -143,6 +147,9 @@ exactly one message:
                 "id": "<uuid>",             // Operation identifier
                 "device": "<uuid>",         // Device identifier
                 "image": "<uuid>",          // Firmware image identifier
+                "is_persistent": <boolean>,     // Whether the operation retries persistently
+                "retry_count": <integer>,       // Number of retry attempts made
+                "next_retry_at": "<datetime>",  // Next scheduled retry (null if none)
                 "status": "<string>",       // Operation status
                 "log": "<string>",          // Operation log output
                 "progress": <integer>,      // Progress percentage (0–100)
@@ -167,6 +174,8 @@ The endpoint may push:
         "status": "<string>",               // Operation status
         "progress": <integer>,              // Progress percentage (0–100)
         "modified": "<datetime>",           // Last modification timestamp
+        "retry_count": <integer>,           // Number of retry attempts made
+        "next_retry_at": "<datetime>",      // Next scheduled retry (null if none)
         "device_id": "<uuid>",              // Device identifier
         "device_name": "<string>",          // Device display name
         "image_name": "<string>"            // Firmware image display name
@@ -180,6 +189,7 @@ The endpoint may push:
         "type": "batch_status",             // Message type identifier
         "status": "<string>",               // Overall batch status
         "completed": <integer>,             // Number of completed operations
+        "pending": <integer>,               // Number of operations awaiting a persistent retry
         "total": <integer>                  // Total operations in the batch
     }
 
@@ -221,19 +231,20 @@ Each message uses the following envelope:
 .. code-block:: javascript
 
     {
-        "model": "UpgradeOperation",        // Model identifier
-        "data": {
-            "type": "operation_update",     // Message type identifier
-            "operation": {
-                "id": "<uuid>",             // Operation identifier
-                "device": "<uuid>",         // Device identifier
-                "image": "<uuid>",          // Firmware image identifier
-                "status": "<string>",       // Operation status
-                "log": "<string>",          // Operation log output
-                "progress": <integer>,      // Progress percentage (0–100)
-                "modified": "<datetime>"    // Last modification timestamp
-            }
-        }
+        "type": "operation_update",         // Message type identifier
+        "operation": {
+            "id": "<uuid>",                 // Operation identifier
+            "device": "<uuid>",             // Device identifier
+            "image": "<uuid>",              // Firmware image identifier
+            "is_persistent": <boolean>,       // Whether the operation retries persistently
+            "retry_count": <integer>,         // Number of retry attempts made
+            "next_retry_at": "<datetime>",  // Next scheduled retry (null if none)
+            "status": "<string>",           // Operation status
+            "log": "<string>",              // Operation log output
+            "progress": <integer>,            // Progress percentage (0-100)
+            "modified": "<datetime>"         // Last modification timestamp
+        },
+        "timestamp": "<datetime>"            // Message timestamp
     }
 
 Real-time Updates
