@@ -46,6 +46,7 @@ from ..tasks import (
 )
 from ..utils import (
     UpgradeProgress,
+    get_upgrade_connections,
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
@@ -179,10 +180,18 @@ class AbstractBuild(TimeStampedEditableModel):
         dry_run_result = load_model("BatchUpgradeOperation").dry_run(
             build=self, group=group, location=location
         )
+        # Filter out credentialless devices before checking if any remain
+        valid_device_ids = get_upgrade_connections().values("device_id")
+        upgradeable_device_firmwares = dry_run_result["device_firmwares"].filter(
+            device_id__in=valid_device_ids
+        )
+        upgradeable_firmwareless = dry_run_result["devices"].filter(
+            pk__in=valid_device_ids
+        )
         # If no devices match the filters, don't start the upgrade
         if not (
-            dry_run_result["device_firmwares"].exists()
-            or (firmwareless and dry_run_result["devices"].exists())
+            upgradeable_device_firmwares.exists()
+            or (firmwareless and upgradeable_firmwareless.exists())
         ):
             raise ValidationError(
                 _(
@@ -637,9 +646,10 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         upgrades all devices which have an
         existing related DeviceFirmware
         """
+        valid_device_ids = get_upgrade_connections().values("device_id")
         device_firmwares = self.build._find_related_device_firmwares(
             group=self.group, location=self.location
-        )
+        ).filter(device_id__in=valid_device_ids)
         for device_fw in device_firmwares:
             image = self.build.firmwareimage_set.filter(
                 type=device_fw.image.type
@@ -655,12 +665,13 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         have a related DeviceFirmware yet
         (referred as "firmwareless")
         """
+        valid_device_ids = get_upgrade_connections().values("device_id")
         # for each image, find related "firmwareless"
         # devices and perform upgrade one by one
         for image in self.build.firmwareimage_set.all():
             devices = self.build._find_firmwareless_devices(
                 image.boards, group=self.group, location=self.location
-            )
+            ).filter(pk__in=valid_device_ids)
             for device in devices:
                 DeviceFirmware = load_model("DeviceFirmware")
                 device_fw = DeviceFirmware(device=device, image=image)
@@ -717,19 +728,25 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self._get_upgrader_schema()
 
     def _get_upgrader_class(self, related_device_fw=None, firmwareless_devices=None):
+        # The connection is looked up in a single query, so a device losing
+        # its credentials while this runs cannot cause DoesNotExist (#302)
         if self.upgrade_operations:
-            return get_upgrader_class_for_device(self.upgrade_operations[0].device)
-        related_device_fw = (
-            related_device_fw
-            or self.build._find_related_device_firmwares(select_devices=True)
-        )
-        if related_device_fw:
-            return get_upgrader_class_for_device(related_device_fw.first().device)
-        firmwareless_devices = (
-            firmwareless_devices or self.build._find_firmwareless_devices()
-        )
-        if firmwareless_devices:
-            return get_upgrader_class_for_device(firmwareless_devices.first())
+            device_ids = Q(device_id__in=self.upgrade_operations.values("device_id"))
+        else:
+            if related_device_fw is None:
+                related_device_fw = self.build._find_related_device_firmwares(
+                    group=self.group, location=self.location
+                )
+            if firmwareless_devices is None:
+                firmwareless_devices = self.build._find_firmwareless_devices(
+                    group=self.group, location=self.location
+                )
+            device_ids = Q(device_id__in=related_device_fw.values("device_id")) | Q(
+                device_id__in=firmwareless_devices.values("pk")
+            )
+        device_conn = get_upgrade_connections().filter(device_ids).first()
+        if device_conn:
+            return get_upgrader_class_from_device_connection(device_conn)
 
     def _get_upgrader_schema(self, related_device_fw=None, firmwareless_devices=None):
         upgrader_class = self._get_upgrader_class(
