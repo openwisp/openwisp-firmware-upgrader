@@ -36,14 +36,14 @@ documentation regarding automatic retries for known errors
 ``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT``
 -------------------------------------------
 
-============ =======
+============ ========
 **type**:    ``int``
-**default**: ``600``
-============ =======
+**default**: ``1500``
+============ ========
 
 Timeout for the background tasks which perform firmware upgrades.
 
-If for some unexpected reason an upgrade remains stuck for more than 10
+If for some unexpected reason an upgrade remains stuck for more than 25
 minutes, the upgrade operation will be flagged as failed and the task will
 be killed.
 
@@ -53,6 +53,134 @@ unexpected bug causes a specific task to hang, which will quickly fill all
 the available slots in a background queue and prevent other tasks from
 being executed, which will end up affecting negatively the rest of the
 application.
+
+``OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS``
+-------------------------------------------------------
+
+============ =========
+**type**:    ``dict``
+**default**: see below
+============ =========
+
+.. code-block:: python
+
+    # default value of OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_RETRY_OPTIONS:
+
+    dict(
+        base_delay=600,
+        multiplier=2,
+        jitter=0.25,
+        max_delay=43200,
+        dispatch_jitter=300,
+        signal_jitter=120,
+        claim_timeout=3600,
+    )
+
+Backoff settings for :doc:`persistent retries <persistent-mass-upgrades>`.
+
+When an upgrade operation has its ``is_persistent`` flag set and the
+device is unreachable, the operation transitions to ``pending`` rather
+than ``failed``. ``next_retry_at`` is then scheduled using the values in
+this dict:
+
+- ``base_delay`` (seconds): delay before the first persistent retry.
+- ``multiplier``: exponential factor applied per retry. With the defaults
+  the delays grow 10m → 20m → 40m → ...
+- ``jitter`` (0-1): random fraction added or subtracted from each delay,
+  so retries for many devices don't all fire at the same instant.
+- ``max_delay`` (seconds): upper bound for any single retry delay.
+- ``dispatch_jitter`` (seconds): when the Beat scanner fans out a batch of
+  due retries, each one is delayed by a random ``[0, dispatch_jitter]``
+  interval so the worker isn't slammed all at once.
+- ``signal_jitter`` (seconds): same idea as ``dispatch_jitter`` but for
+  the openwisp-monitoring ``health_status_changed`` wake-up path: when a
+  network outage recovers and many devices come back online together, each
+  pending op's retry is delayed by a random ``[0, signal_jitter]``
+  interval. Smaller than ``dispatch_jitter`` because the signal wake-up is
+  meant to feel fast. Has no effect when ``openwisp-monitoring`` is not
+  installed.
+- ``claim_timeout`` (seconds): a persistent upgrade left ``in-progress``
+  longer than this is treated as stranded by a terminated worker and
+  returned to ``pending``. The claim is renewed on every attempt, so a
+  running upgrade is never reclaimed. Must be greater than
+  ``OPENWISP_FIRMWARE_UPGRADER_TASK_TIMEOUT`` plus the
+  ``retry_backoff_max`` of ``OPENWISP_FIRMWARE_UPGRADER_RETRY_OPTIONS``.
+
+.. _firmware_upgrader_persistent_reminder_period:
+
+``OPENWISP_FIRMWARE_UPGRADER_PERSISTENT_REMINDER_PERIOD``
+---------------------------------------------------------
+
+============ =====================
+**type**:    ``int``
+**default**: ``5184000`` (60 days)
+============ =====================
+
+Seconds between consecutive reminders for a single :doc:`persistent
+<persistent-mass-upgrades>` batch that still has pending children. The
+first reminder fires when the batch is older than this period; subsequent
+reminders fire when the same period has elapsed since the previous send.
+The reminder itself goes out as a ``generic_message`` notification to the
+batch's organization admins and all superusers, linking to the batch
+filtered to its pending devices.
+
+The Beat task that drives these reminders
+(``send_pending_upgrade_reminders``) is registered in the deployment's own
+``CELERY_BEAT_SCHEDULE``; see the docker-openwisp and ansible-openwisp2
+recipes for the snippet.
+
+``OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MIN_DELAY``
+-------------------------------------------------
+
+============ ====================
+**type**:    ``int``
+**default**: ``600`` (10 minutes)
+============ ====================
+
+Minimum delay, in seconds, between the moment a scheduled mass upgrade is
+created and its ``scheduled_at`` time. A schedule closer than this is
+rejected; the floor keeps a schedule from slipping past before the scanner
+runs again. The validation bound and its error message are derived from
+the configured value: with the default of 600 seconds the message reads
+*The scheduled time must be at least 10 minutes in the future.*
+
+``OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MAX_HORIZON``
+---------------------------------------------------
+
+============ =======================
+**type**:    ``int``
+**default**: ``15552000`` (180 days)
+============ =======================
+
+Furthest into the future, in seconds, that a mass upgrade may be
+scheduled, catching dates entered by mistake. The validation bound and its
+error message are derived from the configured value: with the default of
+15552000 seconds the message reads *The scheduled time cannot be more than
+180 days in the future.*
+
+The Beat task that launches due scheduled upgrades
+(``execute_scheduled_upgrades``) is registered in the deployment's own
+``CELERY_BEAT_SCHEDULE`` on a short cadence (60 seconds in production);
+see the docker-openwisp and ansible-openwisp2 recipes for the snippet.
+
+``OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_LAUNCH_TIMEOUT``
+------------------------------------------------------
+
+============ ===================
+**type**:    ``int``
+**default**: ``300`` (5 minutes)
+============ ===================
+
+Grace period, in seconds, that a due scheduled upgrade may stay
+``in-progress`` without having created any upgrade operation before it is
+treated as a stalled launch and reset to ``scheduled`` for a later scan to
+dispatch again. This recovers batches whose launch task was lost, for
+example when a worker crashes between claiming the batch and running it.
+
+Keep it above the worst-case delay between dispatching the launch task and
+a worker picking it up. If it is shorter than that latency, a batch can be
+reset before its task runs, and every dispatch keeps timing out without
+ever launching.
 
 .. _openwisp_custom_openwrt_images:
 

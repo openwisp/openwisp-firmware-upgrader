@@ -29,6 +29,7 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         self.connect_device_signals()
         self.connect_upgrade_signals()
         self.connect_delete_signals()
+        self.connect_monitoring_signals()
 
     def register_menu_groups(self):
         register_menu_group(
@@ -89,6 +90,16 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             sender=BatchUpgradeOperation,
             dispatch_uid="batch_upgrade_operation.websocket_publish",
         )
+        post_save.connect(
+            UpgradeOperation.notify_on_failed_persistent_upgrade,
+            sender=UpgradeOperation,
+            dispatch_uid="upgrade_operation.notify_on_failure",
+        )
+        post_save.connect(
+            BatchUpgradeOperation.notify_on_completion,
+            sender=BatchUpgradeOperation,
+            dispatch_uid="batch_upgrade_operation.notify_on_completion",
+        )
 
     def connect_delete_signals(self):
         """
@@ -114,6 +125,22 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             FirmwareImage.organization_pre_delete_handler,
             sender=Organization,
             dispatch_uid="organization.pre_delete.firmware_files",
+        )
+
+    def connect_monitoring_signals(self):
+        """
+        Connect the openwisp-monitoring health_status_changed signal so
+        persistent upgrades wake up when a device recovers. openwisp-monitoring
+        is an optional, swappable dependency.
+        """
+        if load_model("device_monitoring", "DeviceMonitoring", required=False) is None:
+            return
+        from openwisp_monitoring.device.signals import health_status_changed
+
+        UpgradeOperation = load_model("firmware_upgrader", "UpgradeOperation")
+        health_status_changed.connect(
+            UpgradeOperation.handle_health_status_changed,
+            dispatch_uid="firmware_upgrader.health_status_changed",
         )
 
 

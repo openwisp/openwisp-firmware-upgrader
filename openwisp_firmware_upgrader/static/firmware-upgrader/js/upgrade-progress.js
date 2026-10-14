@@ -157,6 +157,7 @@ function initializeExistingSingleUpgrade($, isRetry = false) {
       progress: null,
     };
     updateStatusWithProgressBar(statusField, operation);
+    updateRetryFields($("#upgradeoperation_form fieldset"), getInitialOperationState());
     upgradeOperationsInitialized = true;
   } else if (!isRetry) {
     setTimeout(function () {
@@ -236,6 +237,30 @@ function updateUpgradeOperationDisplay(operation) {
       .find(".field-modified .readonly")
       .html(getFormattedDateTimeString(operation.modified));
   }
+  updateRetryFields(operationFieldset, operation);
+}
+
+function getInitialOperationState() {
+  let state = document.getElementById("ow-upgrade-operation-state");
+  return state ? JSON.parse(state.textContent) : {};
+}
+
+// Update retry detail values and hide rows without meaningful values.
+function updateRetryFields(operationFieldset, operation) {
+  if ("retry_count" in operation) {
+    let retryCount = Number(operation.retry_count) || 0;
+    let retryCountRow = operationFieldset.find(".field-retry_count");
+    retryCountRow.toggleClass("ow-hide", retryCount < 1);
+    retryCountRow.find(".readonly").text(retryCount);
+  }
+  if ("next_retry_at" in operation) {
+    let nextRetryRow = operationFieldset.find(".field-next_retry_at");
+    let nextRetry = operation.next_retry_at
+      ? getFormattedDateTimeString(operation.next_retry_at)
+      : "";
+    nextRetryRow.toggleClass("ow-hide", !operation.next_retry_at);
+    nextRetryRow.find(".readonly").text(nextRetry);
+  }
 }
 
 function updateStatusWithProgressBar(statusField, operation) {
@@ -249,10 +274,10 @@ function updateStatusWithProgressBar(statusField, operation) {
       ${FW_UPGRADE_DISPLAY_STATUS[statusKey]}
     </span>
   `;
-  if (FW_STATUS_GROUPS.IN_PROGRESS.has(status)) {
+  if (FW_STATUS_GROUPS.CANCELLABLE.has(status)) {
     statusHtml += `
       <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill in-progress"
+        <div class="upgrade-progress-fill ${escapeHtml(progressClass)}"
              style="width: ${escapeHtml(progressPercentage)}%">
         </div>
       </div>
@@ -291,17 +316,6 @@ function updateStatusWithProgressBar(statusField, operation) {
              style="width: 100%">
         </div>
       </div>
-    `;
-  } else {
-    statusHtml += `
-      <div class="upgrade-progress-bar">
-        <div class="upgrade-progress-fill"
-             style="width: ${progressPercentage}%">
-        </div>
-      </div>
-      <span class="upgrade-progress-text">
-        ${progressPercentage}%
-      </span>
     `;
   }
   if (!statusField.find(".upgrade-status-container").length) {
