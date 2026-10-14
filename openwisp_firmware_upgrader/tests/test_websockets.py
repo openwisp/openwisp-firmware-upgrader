@@ -700,3 +700,31 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         # Assert that we received exactly ONE log message (not duplicates)
         self.assertEqual(len(messages), 1)
         await communicator.disconnect()
+
+    @override_settings(
+        CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    )
+    async def test_progress_published_after_organization_disabled(self):
+        """
+        Progress and status updates must keep being published even after the
+        device's organization has been disabled: notification is never
+        blocked, only new writes/upgrades are.
+        """
+        device_fw = await sync_to_async(self._create_device_firmware)(upgrade=False)
+        operation = await sync_to_async(UpgradeOperation.objects.create)(
+            device=device_fw.device,
+            image=device_fw.image,
+            status="in-progress",
+        )
+        org = await sync_to_async(lambda: device_fw.device.organization)()
+        org.is_active = False
+        await sync_to_async(org.save)(update_fields=["is_active"])
+
+        communicator = await self._get_upgrade_progress_communicator(
+            str(operation.pk), user=self.superuser
+        )
+        await sync_to_async(operation.update_progress)(50)
+        response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2)
+        self.assertEqual(response["type"], "operation_update")
+        self.assertEqual(response["operation"]["progress"], 50)
+        await communicator.disconnect()
