@@ -1,5 +1,7 @@
-from django.urls import reverse
+from django.test import SimpleTestCase
+from django.urls import resolve, reverse
 
+from openwisp_firmware_upgrader.api import views as api_views
 from openwisp_firmware_upgrader.swapper import load_model
 from openwisp_firmware_upgrader.tests.test_admin import TestAdmin as BaseTestAdmin
 from openwisp_firmware_upgrader.tests.test_admin import (
@@ -34,6 +36,8 @@ from openwisp_firmware_upgrader.tests.test_selenium import (
     TestDeviceAdmin as BaseTestDeviceAdmin,
 )
 from openwisp_firmware_upgrader.tests.test_tasks import TestTasks as BaseTestTasks
+
+from .api import views as custom_api_views
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Build = load_model("Build")
@@ -165,6 +169,18 @@ class TestFirmwareImageViews(BaseTestFirmwareImageViews):
 
 class TestOrgAPIMixin(BaseTestOrgAPIMixin):
     pass
+
+
+class TestCustomApiViews(SimpleTestCase):
+    def test_overrides_and_fallbacks(self):
+        for url_name, view_class in (
+            ("api_build_list", custom_api_views.BuildListView),
+            ("api_category_list", api_views.CategoryListView),
+        ):
+            with self.subTest(url_name=url_name):
+                self.assertIs(
+                    resolve(reverse(f"upgrader:{url_name}")).func.cls, view_class
+                )
 
 
 # this is necessary to avoid excuting the base test suites
