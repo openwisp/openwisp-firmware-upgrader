@@ -7,13 +7,13 @@ on:
       - master
       - "1.2"
       - "1.3"
+      - "[0-9]+.[0-9]+"
   pull_request:
     branches:
       - master
       - "1.2"
       - "1.3"
-      - gsoc26-persistent-scheduled-upgrades
-      - gsoc26-metadata-extraction
+      - "[0-9]+.[0-9]+"
 
 jobs:
   build:
