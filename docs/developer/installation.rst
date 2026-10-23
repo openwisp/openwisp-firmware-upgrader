@@ -41,14 +41,20 @@ Install spatialite and sqlite:
     sudo apt-get install sqlite3 libsqlite3-dev openssl libssl-dev
     sudo apt-get install gdal-bin libproj-dev libgeos-dev libspatialite-dev libsqlite3-mod-spatialite
 
+    # For running E2E Selenium tests (Firefox is the default browser)
+    sudo apt install firefox chromium
+
 Installing for Development
 --------------------------
 
-Fork and clone the forked repository:
+Fork the `openwisp-firmware-upgrader repository
+<https://github.com/openwisp/openwisp-firmware-upgrader>`_ on GitHub, then
+clone your fork. Replace ``YOUR_GITHUB_USERNAME`` with your GitHub
+username:
 
 .. code-block:: shell
 
-    git clone git://github.com/<your_fork>/openwisp-firmware-upgrader
+    git clone git@github.com:YOUR_GITHUB_USERNAME/openwisp-firmware-upgrader.git
 
 Navigate into the cloned repository:
 

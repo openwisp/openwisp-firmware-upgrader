@@ -5,13 +5,13 @@ on:
   push:
     branches:
       - master
-      - "1.2"
-      - "gsoc26-*"
+      - "[0-9]+.[0-9]+"
   pull_request:
     branches:
       - master
-      - "1.2"
-      - "gsoc26-*"
+      - "[0-9]+.[0-9]+"
+      - gsoc26-persistent-scheduled-upgrades
+      - gsoc26-metadata-extraction
 
 jobs:
   build:
