@@ -33,6 +33,35 @@ file upload, and firmware flashing.
 progress, but only before the firmware flashing phase begins (typically
 when progress is below 65%).
 
+Pending
+~~~~~~~
+
+**Status**: ``pending``
+
+**Description**: The device was unreachable when the upgrade was last
+attempted, or the worker running an ``in-progress`` attempt was terminated
+before it finished. The operation keeps a future ``next_retry_at`` and a
+Celery Beat task picks it up later. This is the status that
+:doc:`Persistent Mass Upgrades <persistent-mass-upgrades>` use while a
+device is offline.
+
+**What happens during this status:**
+
+- ``retry_count`` is incremented and ``next_retry_at`` is scheduled with
+  an exponential backoff (10m → 20m → 40m → ..., capped at 12 hours, with
+  ±25% jitter)
+- A periodic Beat task scans for pending operations whose
+  ``next_retry_at`` has elapsed and re-dispatches them
+- A device deactivated while pending is set to ``aborted`` and not retried
+
+**User Actions**: Pending operations can be cancelled the same way as
+in-progress ones, both from the admin and the REST API. Starting another
+upgrade on the same device is blocked while one is pending, so the device
+cannot be flashed twice. ``pending`` is treated as an active, non-terminal
+state by the deletion guard: a pending operation cannot be deleted
+directly and must be cancelled or left to reach a terminal state first
+(see :ref:`Deleting Upgrade Operations <deleting_upgrade_operations>`).
+
 Success
 ~~~~~~~
 
@@ -109,14 +138,16 @@ before completion. This is a deliberate action taken through the admin
 interface or REST API.
 
 Users can cancel upgrades through the admin interface using the "Cancel"
-button that appears next to in-progress operations.
+button that appears next to in-progress and pending operations.
 
 **When cancellation is possible:**
 
 - During the early stages of upgrade (typically before 65% progress)
 - Before the new firmware image is written to the flash memory of the
   network device
-- While the operation status is still "in-progress"
+- While the operation status is still ``in-progress`` or ``pending`` (a
+  pending operation can be cancelled to stop its :doc:`persistent retries
+  <persistent-mass-upgrades>`)
 
 **What happens when the upgrade operation is cancelled:**
 
@@ -157,6 +188,15 @@ An upgrade may also end prematurely or unsuccessfully:
   not become reachable afterward, it usually indicates a post-flash
   failure.
 
+Persistent Retry Flow
+~~~~~~~~~~~~~~~~~~~~~
+
+For a persistent mass upgrade, an unreachable device does not end as
+``failed``: the operation alternates between ``in-progress`` and
+``pending`` until it succeeds or is cancelled. The full retry loop,
+backoff schedule and monitoring integration are described in
+:doc:`persistent-mass-upgrades`.
+
 Terminal States
 ~~~~~~~~~~~~~~~
 
@@ -184,11 +224,16 @@ about what occurred during the upgrade process.
 **Batch Operations**: When performing mass upgrades, you can monitor the
 status of individual device upgrades within the batch operation.
 
+.. _deleting_upgrade_operations:
+
 Deleting Upgrade Operations
 ---------------------------
 
 Upgrade operations and batch upgrade operations can be deleted from the
-admin interface only after they leave the ``in-progress`` state.
+admin interface only after they leave the ``in-progress`` state. The
+``pending`` state is guarded the same way: a pending operation is still
+active (it is waiting to be retried), so it cannot be deleted until it is
+cancelled or reaches a terminal state.
 
 Deleting an operation while it is still running is intentionally blocked
 because the upgrade may be uploading or flashing a firmware image,

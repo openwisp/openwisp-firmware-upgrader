@@ -1,10 +1,38 @@
 import logging
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 from django.utils.module_loading import import_string
+from django.utils.translation import gettext_lazy as _
 
 from . import settings as app_settings
 
 logger = logging.getLogger(__name__)
+
+
+def reinterpret_in_timezone(dt, tz_name):
+    try:
+        tz = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        raise ValidationError(_("Invalid timezone."))
+    naive = dt.replace(tzinfo=None)
+    aware = naive.replace(tzinfo=tz)
+    if aware.astimezone(ZoneInfo("UTC")).astimezone(tz).replace(tzinfo=None) != naive:
+        raise ValidationError(
+            _(
+                "The selected time does not exist in the chosen timezone "
+                "because of a daylight saving time change."
+            )
+        )
+    if aware.utcoffset() != aware.replace(fold=1).utcoffset():
+        raise ValidationError(
+            _(
+                "The selected time is ambiguous in the chosen timezone "
+                "because of a daylight saving time change; pick another time."
+            )
+        )
+    return timezone.make_aware(naive, tz)
 
 
 def get_upgrader_schema_for_device(device):
