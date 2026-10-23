@@ -9,7 +9,7 @@ import swapper
 from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models.query import QuerySet
 from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
 from django.utils import timezone
@@ -884,6 +884,23 @@ class TestModels(TestUpgraderMixin, TestCase):
         build.refresh_from_db()
         self.assertEqual(build.status, Build.BUILD_STATUS_SUCCESS)
 
+    @patch.object(Build, "_notify_extraction_complete")
+    def test_update_extraction_status_notifies_after_commit(self, mock_notify):
+        build = self._create_firmware_image().build
+
+        with self.subTest("rolled back transaction sends no notification"):
+            with self.captureOnCommitCallbacks(execute=True):
+                with self.assertRaises(RuntimeError), transaction.atomic():
+                    build.update_extraction_status()
+                    raise RuntimeError("rollback")
+            mock_notify.assert_not_called()
+
+        with self.subTest("committed transaction notifies after the commit"):
+            with self.captureOnCommitCallbacks(execute=True):
+                build.update_extraction_status()
+                mock_notify.assert_not_called()
+            mock_notify.assert_called_once_with(Build.BUILD_STATUS_SUCCESS)
+
     def test_validate_locked_blocks_field_change_on_success(self):
         image = self._create_firmware_image()
         image.extraction_status = FirmwareImage.STATUS_SUCCESS
@@ -975,6 +992,31 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(fw.fw_version, "")
         self.assertEqual(fw.compat_version, "")
         self.assertEqual(fw.source, "")
+
+    def test_reset_metadata_locks_builds_before_updating_images(self):
+        image = self._create_firmware_image()
+        calls = []
+        original_select_for_update = QuerySet.select_for_update
+        original_update = QuerySet.update
+
+        def select_for_update(queryset, *args, **kwargs):
+            calls.append(("lock", queryset.model))
+            return original_select_for_update(queryset, *args, **kwargs)
+
+        def update(queryset, **kwargs):
+            calls.append(("update", queryset.model))
+            return original_update(queryset, **kwargs)
+
+        with mock.patch.object(QuerySet, "select_for_update", select_for_update):
+            with mock.patch.object(QuerySet, "update", update):
+                FirmwareImage.reset_metadata_and_schedule_extraction(
+                    FirmwareImage.objects.filter(pk=image.pk)
+                )
+        self.assertEqual(
+            calls[:2],
+            [("lock", Build), ("update", FirmwareImage)],
+            "builds must be locked before the image rows are updated",
+        )
 
     @mock.patch("openwisp_firmware_upgrader.base.models.extract_firmware_metadata")
     def test_firmware_image_save_after_refresh_from_db_does_not_reset_metadata(
@@ -1210,6 +1252,36 @@ class TestModels(TestUpgraderMixin, TestCase):
         with mock.patch("django.db.transaction.on_commit") as mock_on_commit:
             DeviceFirmware.auto_create_device_firmwares(instance=image, created=False)
             mock_on_commit.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.base.models.create_all_device_firmwares")
+    def test_auto_create_device_firmwares_triggers_on_board_change(self, mock_task):
+        def _create_incomplete_image(type_):
+            return self._create_firmware_image(
+                type=type_,
+                board="tplink_archer-c6-v3",
+                source="fwtool",
+                extraction_status=FirmwareImage.STATUS_INCOMPLETE,
+            )
+
+        with self.subTest("board corrected and confirmed"):
+            mock_task.reset_mock()
+            image = _create_incomplete_image("pairing-board-confirm")
+            image.board = "TP-Link Archer C6 v3"
+            with self.captureOnCommitCallbacks(execute=True):
+                image.confirm_metadata()
+            mock_task.delay.assert_called_once_with(str(image.pk))
+
+        with self.subTest("board changed with a plain save"):
+            mock_task.reset_mock()
+            image = _create_incomplete_image("pairing-board-save")
+            image.board = "TP-Link Archer C6 v3"
+            with self.captureOnCommitCallbacks(execute=True):
+                image.save()
+            mock_task.delay.assert_called_once_with(str(image.pk))
+            mock_task.reset_mock()
+            with self.captureOnCommitCallbacks(execute=True):
+                image.save()
+            mock_task.delay.assert_not_called()
 
 
 class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):

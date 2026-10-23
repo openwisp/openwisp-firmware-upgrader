@@ -363,7 +363,7 @@ class AbstractBuild(TimeStampedEditableModel):
                 return
             Build.objects.filter(pk=self.pk).update(status=new_status)
             self.status = new_status
-        self._notify_extraction_complete(new_status)
+        transaction.on_commit(partial(self._notify_extraction_complete, new_status))
 
     def _notify_extraction_complete(self, new_status):
         if new_status == self.BUILD_STATUS_INVALID:
@@ -488,7 +488,11 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._sync_original()
+
+    def _sync_original(self):
         self._original_extraction_status = self.extraction_status
+        self._original_board = self.board
 
     def save(self, *args, **kwargs):
         persisted_file = None
@@ -504,7 +508,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
             )
         if not file_changed:
             super().save(*args, **kwargs)
-            self._original_extraction_status = self.extraction_status
+            self._sync_original()
             return
         old_file_name = persisted_file
         # lock the build row before writing this image row, matching the
@@ -526,7 +530,7 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         self.fw_version = ""
         self.compat_version = ""
         self.source = ""
-        self._original_extraction_status = self.extraction_status
+        self._sync_original()
         if old_file_name and old_file_name != self.file.name:
             transaction.on_commit(partial(self._remove_file, old_file_name))
 
@@ -657,6 +661,14 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         build_ids = set(queryset.values_list("build_id", flat=True))
         Build = load_model("Build")
         with transaction.atomic():
+            # lock the builds before the image rows, in a stable order, matching
+            # Build.update_extraction_status() and the file replacement path
+            list(
+                Build.objects.select_for_update()
+                .filter(pk__in=build_ids)
+                .order_by("pk")
+                .values_list("pk", flat=True)
+            )
             queryset.update(
                 extraction_status=cls.STATUS_UNCONFIRMED,
                 extraction_log="",
@@ -991,7 +1003,10 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             return
         if instance.extraction_status not in instance.PAIRING_ELIGIBLE_STATUSES:
             return
-        if instance._original_extraction_status in instance.PAIRING_ELIGIBLE_STATUSES:
+        if (
+            instance._original_extraction_status in instance.PAIRING_ELIGIBLE_STATUSES
+            and instance._original_board == instance.board
+        ):
             return
         transaction.on_commit(
             partial(create_all_device_firmwares.delay, str(instance.pk))
@@ -1004,17 +1019,22 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             build__category__organization__isnull=True
         )
         status_filter = Q(extraction_status__in=FirmwareImage.PAIRING_ELIGIBLE_STATUSES)
+        current_image = None
         if device_firmware and hasattr(device_firmware, "image"):
-            status_filter |= Q(pk=device_firmware.image_id)
+            current_image = Q(pk=device_firmware.image_id)
+            status_filter |= current_image
         qs = (
             FirmwareImage.objects.filter(org_or_shared, status_filter)
             .order_by("-created")
             .select_related("build", "build__category")
         )
-        # if device model is defined
-        # restrict the images to the ones compatible with it
+        # if device model is defined restrict the replacement candidates
+        # to the ones compatible with it, but keep the current image selectable
         if device.model:
-            qs = qs.filter(board=device.model)
+            board_filter = Q(board=device.model)
+            if current_image is not None:
+                board_filter |= current_image
+            qs = qs.filter(board_filter)
         # if DeviceFirmware instance already exists
         # restrict images to the ones of the same category
         if device_firmware and hasattr(device_firmware, "image"):

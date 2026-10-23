@@ -766,6 +766,15 @@ class TestAdmin(BaseTestAdmin, TestCase):
         form = DeviceFirmwareForm(device=device_fw.device, instance=device_fw)
         self.assertIn(device_fw.image, form.fields["image"].queryset)
 
+    def test_image_queryset_includes_currently_assigned_image_with_unresolved_board(
+        self,
+    ):
+        device_fw = self._create_device_firmware()
+        FirmwareImage.objects.filter(pk=device_fw.image_id).update(board="")
+        device_fw.refresh_from_db()
+        form = DeviceFirmwareForm(device=device_fw.device, instance=device_fw)
+        self.assertIn(device_fw.image, form.fields["image"].queryset)
+
     def test_device_firmware_form_image_dropdown_shows_board(self):
         self._login()
         device_fw = self._create_device_firmware()
@@ -1875,7 +1884,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.assertEqual(fw.build.status, Build.BUILD_STATUS_ANALYZING)
 
         with self.subTest("build status and notifications are correct on completion"):
-            tasks.extract_firmware_metadata.run(str(fw.pk))
+            with self.captureOnCommitCallbacks(execute=True):
+                tasks.extract_firmware_metadata.run(str(fw.pk))
             fw.refresh_from_db()
             self.assertEqual(fw.extraction_status, FirmwareImage.STATUS_SUCCESS)
             fw.build.refresh_from_db()
