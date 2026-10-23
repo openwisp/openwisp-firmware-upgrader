@@ -1,6 +1,18 @@
 Changelog
 =========
 
+Version 1.3.1 [2026-10-23]
+--------------------------
+
+Bugfixes
+~~~~~~~~
+
+- Relaxed sysupgrade false-positive matching `#477
+  <https://github.com/openwisp/openwisp-firmware-upgrader/issues/477>`_
+
+  Allowed additional sysupgrade options in the expected UBus connection
+  failure response.
+
 Version 1.3.0 [2026-09-04]
 --------------------------
 
