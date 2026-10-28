@@ -27,7 +27,7 @@ within the OpenWISP architecture.
 Requirements
 ------------
 
-- Python >= 3.8
+- Python >= 3.11
 - :doc:`OpenWISP Controller (and its dependencies)
   </controller/developer/installation>` >= 1.0.0
 
