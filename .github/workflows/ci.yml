@@ -58,6 +58,12 @@ jobs:
           restore-keys: |
             apt-${{ runner.os }}-
 
+      - name: Cache firmware images
+        uses: actions/cache@v6
+        with:
+          path: openwisp_firmware_upgrader/tests/.firmware_cache
+          key: firmware-${{ hashFiles('openwisp_firmware_upgrader/tests/fixtures/firmware_checksums.json') }}
+
       - name: Disable man page auto-update
         run: |
           echo 'set man-db/auto-update false' | sudo debconf-communicate >/dev/null
@@ -103,7 +109,7 @@ jobs:
         with:
           parallel: true
           format: cobertura
-          flag-name: python-${{ matrix.env.env }}
+          flag-name: python-${{ matrix.python-version }}-${{ matrix.django-version }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-error: false
 

@@ -20,6 +20,18 @@ from openwisp_firmware_upgrader.tests.test_api import (
 from openwisp_firmware_upgrader.tests.test_api import (
     TestOrgAPIMixin as BaseTestOrgAPIMixin,
 )
+from openwisp_firmware_upgrader.tests.test_migrations import (
+    TestBackfillExtractionStatusMigration as BaseTestBackfillExtractionStatusMigration,
+)
+from openwisp_firmware_upgrader.tests.test_migrations import (
+    TestConvertCompatibleToTextMigration as BaseTestConvertCompatibleToTextMigration,
+)
+from openwisp_firmware_upgrader.tests.test_migrations import (
+    TestMultiBoardReconciliationMigration as BaseTestMultiBoardReconciliationMigration,
+)
+from openwisp_firmware_upgrader.tests.test_migrations import (
+    TestSingleBoardReconciliationMigration as BaseTestSingleBoardReconciliationMigration,
+)
 from openwisp_firmware_upgrader.tests.test_models import TestModels as BaseTestModels
 from openwisp_firmware_upgrader.tests.test_models import (
     TestModelsTransaction as BaseTestModelsTransaction,
@@ -167,6 +179,44 @@ class TestOrgAPIMixin(BaseTestOrgAPIMixin):
     pass
 
 
+class TestMultiBoardReconciliationMigration(BaseTestMultiBoardReconciliationMigration):
+    app_label = "sample_firmware_upgrader"
+    migrate_from = "0004_alter_firmwareimage_file"
+    migrate_to = "0010_firmwareimage_extraction_claimed_at"
+    migrate_to_dependency = "0008_backfill_extraction_status"
+    reconciliation_migration = (
+        "openwisp2.sample_firmware_upgrader.migrations."
+        "0009_backfill_board_from_hardware_map"
+    )
+    backfill_migration = (
+        "openwisp2.sample_firmware_upgrader.migrations."
+        "0008_backfill_extraction_status"
+    )
+
+
+class TestSingleBoardReconciliationMigration(
+    BaseTestSingleBoardReconciliationMigration
+):
+    app_label = "sample_firmware_upgrader"
+    migrate_from = "0004_alter_firmwareimage_file"
+    migrate_to = "0010_firmwareimage_extraction_claimed_at"
+    backfill_migration = (
+        "openwisp2.sample_firmware_upgrader.migrations.0008_backfill_extraction_status"
+    )
+
+
+class TestConvertCompatibleToTextMigration(BaseTestConvertCompatibleToTextMigration):
+    app_label = "sample_firmware_upgrader"
+    migrate_from = "0006_alter_firmwareimage_board_and_more"
+    migrate_to = "0010_firmwareimage_extraction_claimed_at"
+
+
+class TestBackfillExtractionStatusMigration(BaseTestBackfillExtractionStatusMigration):
+    app_label = "sample_firmware_upgrader"
+    migrate_from = "0007_alter_firmwareimage_compatible_and_more"
+    migrate_to = "0008_backfill_extraction_status"
+
+
 # this is necessary to avoid excuting the base test suites
 del BaseTestModels
 del BaseTestAdmin
@@ -181,3 +231,7 @@ del BaseTestCategoryViews
 del BaseTestBatchUpgradeOperationViews
 del BaseTestFirmwareImageViews
 del BaseTestOrgAPIMixin
+del BaseTestMultiBoardReconciliationMigration
+del BaseTestConvertCompatibleToTextMigration
+del BaseTestBackfillExtractionStatusMigration
+del BaseTestSingleBoardReconciliationMigration
