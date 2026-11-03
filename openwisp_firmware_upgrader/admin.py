@@ -12,6 +12,7 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.core.exceptions import ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models import Q
 from django.forms.formsets import DELETION_FIELD_NAME
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -43,10 +44,11 @@ from .filters import (
     LocationFilter,
 )
 from .swapper import load_model
-from .utils import get_upgrader_schema_for_device
+from .utils import get_upgrade_connections, get_upgrader_schema_for_device
 from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
 
 logger = logging.getLogger(__name__)
+MAX_CREDENTIALLESS_DISPLAY = 5
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
@@ -274,6 +276,11 @@ class BuildAdmin(BaseAdmin):
         )
         related_device_fw = result["device_firmwares"]
         firmwareless_devices = result["devices"]
+        credentialless = Device.objects.filter(
+            Q(pk__in=related_device_fw.values("device_id"))
+            | Q(pk__in=firmwareless_devices.values("pk"))
+        ).exclude(pk__in=get_upgrade_connections().values("device_id"))
+        credentialless_count = credentialless.count()
         title = _("Confirm mass upgrade operation")
         context = self.admin_site.each_context(request)
         upgrader_schema = BatchUpgradeOperation(build=build)._get_upgrader_schema(
@@ -287,6 +294,14 @@ class BuildAdmin(BaseAdmin):
                 "related_count": len(related_device_fw),
                 "firmwareless_devices": firmwareless_devices,
                 "firmwareless_count": len(firmwareless_devices),
+                "credentialless_devices": credentialless.only("id", "name")[
+                    :MAX_CREDENTIALLESS_DISPLAY
+                ],
+                "credentialless_count": credentialless_count,
+                "credentialless_more": max(
+                    0, credentialless_count - MAX_CREDENTIALLESS_DISPLAY
+                ),
+                "device_change_url": f"admin:{Device._meta.app_label}_device_change",
                 "form": form,
                 "firmware_upgrader_schema": json.dumps(
                     upgrader_schema, cls=DjangoJSONEncoder

@@ -16,6 +16,7 @@ from .. import settings as app_settings
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..tasks import upgrade_firmware
+from ..upgraders.openwrt import OpenWrt
 from .base import TestUpgraderMixin
 
 Group = swapper.load_model("openwisp_users", "Group")
@@ -650,6 +651,32 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(batch.upgradeoperation_set.count(), 2)
             self.assertEqual(batch.build, env["build2"])
             self.assertEqual(batch.status, "success")
+
+    @mock.patch(_mock_updrade, return_value=True)
+    def test_batch_upgrader_class_credentials(self, *args):
+        """Regression test for #302."""
+        env = self._create_upgrade_env()
+        update_strategy = DeviceConnection.objects.first().update_strategy
+
+        with self.subTest("update strategy is checked against UPGRADERS_MAP"):
+            DeviceConnection.objects.update(update_strategy="custom.Connector")
+            batch = BatchUpgradeOperation(build=env["build2"])
+            self.assertIsNone(batch.upgrader_class)
+            with mock.patch.dict(
+                app_settings.UPGRADERS_MAP,
+                {
+                    "custom.Connector": "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt"
+                },
+            ):
+                self.assertEqual(batch.upgrader_class, OpenWrt)
+
+        with self.subTest("credentials removed after the batch started"):
+            DeviceConnection.objects.update(update_strategy=update_strategy)
+            with mock.patch(self._mock_connect, return_value=True):
+                batch = env["build2"].batch_upgrade(firmwareless=False)
+            DeviceConnection.objects.all().delete()
+            batch = BatchUpgradeOperation.objects.get(pk=batch.pk)
+            self.assertIsNone(batch.upgrader_schema)
 
     @mock.patch(_mock_updrade, return_value=True)
     def test_upgrade_firmwareless_devices(self, *args):
