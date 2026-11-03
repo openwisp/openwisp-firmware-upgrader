@@ -3,7 +3,6 @@ import re
 from datetime import timedelta
 from unittest import mock
 
-import django
 import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
@@ -1156,12 +1155,10 @@ class TestAdminTransaction(
                     },
                     follow=True,
                 )
-                id_attr = (
-                    ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ""
-                )
                 self.assertContains(
                     response,
-                    f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
+                    '<ul class="errorlist" id="id_upgrade_options_error">'
+                    "<li>Enter a valid JSON.</li></ul>",
                 )
 
             with self.subTest("Test with valid upgrade_options"):
@@ -1211,12 +1208,10 @@ class TestAdminTransaction(
                     follow=True,
                 )
                 self.assertEqual(response.status_code, 200)
-                id_attr = (
-                    ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ""
-                )
                 self.assertContains(
                     response,
-                    f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
+                    '<ul class="errorlist" id="id_upgrade_options_error">'
+                    "<li>Enter a valid JSON.</li></ul>",
                 )
 
             with self.subTest("Test with valid upgrade_options"):
@@ -1815,7 +1810,7 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
+                with self.assertNumQueries(23):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")
