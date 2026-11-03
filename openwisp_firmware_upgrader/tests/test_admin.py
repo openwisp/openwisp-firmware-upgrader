@@ -1,8 +1,9 @@
 import json
 import re
 from datetime import timedelta
-from unittest import mock
+from unittest import mock, skipUnless
 
+import django
 import swapper
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
@@ -861,6 +862,29 @@ class TestAdmin(BaseTestAdmin, TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '<option value="delete_selected">')
+
+    @skipUnless(
+        django.VERSION >= (6, 1),
+        "ActionLocation is only available on Django 6.1 and later",
+    )
+    def test_upgrade_operation_admin_delete_selected_by_action_location(self):
+        # ActionLocation was added in Django 6.1, so it is imported inside
+        # this version-guarded test to avoid an ImportError on older Django
+        from django.contrib.admin import ActionLocation
+
+        model_admin = admin.site._registry[UpgradeOperation]
+        request = self.factory.get(
+            reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        )
+        request.user = self._get_admin()
+        self.assertIn(
+            "delete_selected",
+            model_admin.get_actions(request, ActionLocation.CHANGE_LIST),
+        )
+        self.assertNotIn(
+            "delete_selected",
+            model_admin.get_actions(request, ActionLocation.CHANGE_FORM),
+        )
 
     def test_upgrade_operation_admin_delete_by_status(self):
         self._login()
