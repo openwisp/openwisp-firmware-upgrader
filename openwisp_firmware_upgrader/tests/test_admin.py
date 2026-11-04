@@ -1,7 +1,7 @@
 import json
 import re
 from datetime import timedelta
-from unittest import mock
+from unittest import mock, skipUnless
 
 import django
 import swapper
@@ -863,6 +863,29 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '<option value="delete_selected">')
 
+    @skipUnless(
+        django.VERSION >= (6, 1),
+        "ActionLocation is only available on Django 6.1 and later",
+    )
+    def test_upgrade_operation_admin_delete_selected_by_action_location(self):
+        # ActionLocation was added in Django 6.1, so it is imported inside
+        # this version-guarded test to avoid an ImportError on older Django
+        from django.contrib.admin import ActionLocation
+
+        model_admin = admin.site._registry[UpgradeOperation]
+        request = self.factory.get(
+            reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        )
+        request.user = self._get_admin()
+        self.assertIn(
+            "delete_selected",
+            model_admin.get_actions(request, ActionLocation.CHANGE_LIST),
+        )
+        self.assertNotIn(
+            "delete_selected",
+            model_admin.get_actions(request, ActionLocation.CHANGE_FORM),
+        )
+
     def test_upgrade_operation_admin_delete_by_status(self):
         self._login()
         device = self._create_device_with_connection()
@@ -1156,12 +1179,10 @@ class TestAdminTransaction(
                     },
                     follow=True,
                 )
-                id_attr = (
-                    ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ""
-                )
                 self.assertContains(
                     response,
-                    f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
+                    '<ul class="errorlist" id="id_upgrade_options_error">'
+                    "<li>Enter a valid JSON.</li></ul>",
                 )
 
             with self.subTest("Test with valid upgrade_options"):
@@ -1211,12 +1232,10 @@ class TestAdminTransaction(
                     follow=True,
                 )
                 self.assertEqual(response.status_code, 200)
-                id_attr = (
-                    ' id="id_upgrade_options_error"' if django.VERSION >= (5, 2) else ""
-                )
                 self.assertContains(
                     response,
-                    f'<ul class="errorlist"{id_attr}><li>Enter a valid JSON.</li></ul>',
+                    '<ul class="errorlist" id="id_upgrade_options_error">'
+                    "<li>Enter a valid JSON.</li></ul>",
                 )
 
             with self.subTest("Test with valid upgrade_options"):
@@ -1815,7 +1834,7 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(25 if django.VERSION < (5, 2) else 23):
+                with self.assertNumQueries(23):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")

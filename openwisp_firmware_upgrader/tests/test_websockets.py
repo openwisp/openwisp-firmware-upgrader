@@ -694,7 +694,7 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
                     communicator.receive_json_from(), timeout=0.5
                 )
                 messages.append(response)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # No more messages available, which is expected
             pass
         # Assert that we received exactly ONE log message (not duplicates)
