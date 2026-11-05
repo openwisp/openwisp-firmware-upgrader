@@ -27,6 +27,7 @@ For a comprehensive overview of features, please refer to the
     ./user/rest-api.rst
     ./user/websocket-api.rst
     ./user/settings.rst
+    ./user/recovering-from-extraction-failures.rst
 
 .. toctree::
     :caption: Firmware Upgrader Developer Docs
