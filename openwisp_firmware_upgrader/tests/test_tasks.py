@@ -1,5 +1,6 @@
 from unittest import mock
 
+import swapper
 from celery.exceptions import SoftTimeLimitExceeded
 from django.test import TransactionTestCase
 
@@ -10,7 +11,9 @@ from ..swapper import load_model
 from .base import TestUpgraderMixin
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+DeviceFirmware = load_model("DeviceFirmware")
 UpgradeOperation = load_model("UpgradeOperation")
+DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 
 
 class TestTasks(TestUpgraderMixin, TransactionTestCase):
@@ -66,3 +69,118 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             mocked_logger.assert_called_with(
                 f"The BatchUpgradeOperation object with id {batch_id} has been deleted"
             )
+
+    def test_upgrade_firmware_task_aborts_for_deactivated_device_or_disabled_org(self):
+        cases = (
+            ("deactivated-device", lambda device: device.deactivate()),
+            (
+                "disabled-organization",
+                lambda device: (
+                    setattr(device.organization, "is_active", False),
+                    device.organization.save(update_fields=["is_active"]),
+                ),
+            ),
+        )
+        for label, disable in cases:
+            with self.subTest(label):
+                # Each case needs its own org/build/device: reusing the
+                # defaults across subTests would hit their unique_together
+                # constraints, since this is a TransactionTestCase and
+                # nothing is rolled back between subTests.
+                org = self._create_org(name=label, slug=label)
+                category = self._create_category(name=label, organization=org)
+                build = self._create_build(category=category, version="0.1")
+                image = self._create_firmware_image(build=build)
+                device = self._create_device(
+                    name=label, organization=org, model=image.boards[0]
+                )
+                self._create_config(device=device)
+                self._create_device_connection(device=device)
+                device_fw = DeviceFirmware(device=device, image=image)
+                device_fw.full_clean()
+                device_fw.save(upgrade=False)
+                operation = UpgradeOperation.objects.create(
+                    device=device_fw.device, image=device_fw.image
+                )
+                disable(device_fw.device)
+                with mock.patch.object(
+                    DeviceConnection, "get_working_connection"
+                ) as mocked:
+                    tasks.upgrade_firmware.run(operation.pk)
+                mocked.assert_not_called()
+                operation.refresh_from_db()
+                self.assertEqual(operation.status, "aborted")
+
+    def test_create_all_device_firmwares_excludes_deactivated_and_disabled_org(self):
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build = self._create_build(category=category, version="0.1", os="TestOS")
+        image = self._create_firmware_image(build=build)
+
+        with self.subTest("deactivated device"):
+            device = self._create_device(
+                name="deactivated-device",
+                organization=org,
+                os="TestOS",
+                model=image.boards[0],
+                mac_address="00:11:22:33:77:01",
+            )
+            device.deactivate()
+            tasks.create_all_device_firmwares.run(image.pk)
+            self.assertEqual(DeviceFirmware.objects.filter(device=device).count(), 0)
+
+        with self.subTest("disabled organization device"):
+            disabled_org = self._create_org(name="disabled-org")
+            device = self._create_device(
+                name="disabled-org-device",
+                organization=disabled_org,
+                os="TestOS",
+                model=image.boards[0],
+                mac_address="00:11:22:33:77:02",
+            )
+            disabled_org.is_active = False
+            disabled_org.save(update_fields=["is_active"])
+            tasks.create_all_device_firmwares.run(image.pk)
+            self.assertEqual(DeviceFirmware.objects.filter(device=device).count(), 0)
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.create_device_firmware.delay")
+    def test_create_device_firmware_not_queued_for_deactivated_or_disabled_org(
+        self, mocked_delay
+    ):
+        org = self._get_org()
+        category = self._get_category(organization=org)
+        build = self._create_build(category=category, version="0.1", os="TestOS")
+        image = self._create_firmware_image(build=build)
+        credentials = self._create_credentials(organization=None, auto_add=False)
+
+        with self.subTest("deactivated device"):
+            mocked_delay.reset_mock()
+            device = self._create_device(
+                name="deactivated-device",
+                organization=org,
+                os="TestOS",
+                model=image.boards[0],
+                mac_address="00:11:22:33:88:01",
+            )
+            self._create_config(device=device)
+            device.deactivate()
+            self._create_device_connection(device=device, credentials=credentials)
+            mocked_delay.assert_not_called()
+            self.assertEqual(DeviceFirmware.objects.filter(device=device).count(), 0)
+
+        with self.subTest("disabled organization device"):
+            mocked_delay.reset_mock()
+            disabled_org = self._create_org(name="disabled-org")
+            device = self._create_device(
+                name="disabled-org-device",
+                organization=disabled_org,
+                os="TestOS",
+                model=image.boards[0],
+                mac_address="00:11:22:33:88:02",
+            )
+            self._create_config(device=device)
+            disabled_org.is_active = False
+            disabled_org.save(update_fields=["is_active"])
+            self._create_device_connection(device=device, credentials=credentials)
+            mocked_delay.assert_not_called()
+            self.assertEqual(DeviceFirmware.objects.filter(device=device).count(), 0)
