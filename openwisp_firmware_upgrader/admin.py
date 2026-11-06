@@ -382,9 +382,11 @@ class ReadonlyUpgradeOptionsMixin:
 class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
     actions = ["delete_selected"]
 
-    def get_actions(self, request):
+    def get_actions(self, request, action_location=None):
         # skip ReadOnlyAdmin
-        return super(ReadOnlyAdmin, self).get_actions(request)
+        # for Django <= 6.0, which does not accept action_location
+        kwargs = {"action_location": action_location} if action_location else {}
+        return super(ReadOnlyAdmin, self).get_actions(request, **kwargs)
 
     def delete_model(self, request, obj):
         # skip ReadOnlyAdmin
@@ -917,7 +919,7 @@ class DeviceUpgradeOperationInline(
                 device_id=resolved.kwargs["object_id"], created__gte=seven_days
             ).order_by("-created")
         if select_related:
-            qs = qs.select_related()
+            qs = qs.select_related("device__organization")
         return qs
 
     def _get_conditional_queryset(self, request, obj, select_related=False):
