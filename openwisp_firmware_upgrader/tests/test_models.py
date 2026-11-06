@@ -13,10 +13,13 @@ from django.utils import timezone
 from openwisp_utils.tests import capture_any_output
 
 from .. import settings as app_settings
-from ..exceptions import RecoverableFailure
+from ..exceptions import RecoverableFailure, UpgradeAborted
 from ..hardware import FIRMWARE_IMAGE_MAP, REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..tasks import upgrade_firmware
+from ..upgraders.openwrt import OpenWrt
+from ..utils import UpgradeProgress
+from ..websockets import BatchUpgradeProgressPublisher, UpgradeProgressPublisher
 from .base import TestUpgraderMixin
 
 Group = swapper.load_model("openwisp_users", "Group")
@@ -465,6 +468,204 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIsNone(op.image)
         batch.refresh_from_db()
         self.assertEqual(batch.status, "failed")
+
+    def test_abort_upgrade_operation_records_reason_and_updates_batch(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(build=device_fw.image.build)
+        operation = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            batch=batch,
+            log="Upgrade started",
+            progress=UpgradeProgress.DEVICE_VERIFIED,
+        )
+        operation.abort("Firmware image is unavailable.")
+        operation.refresh_from_db()
+        batch.refresh_from_db()
+        self.assertEqual(operation.status, "aborted")
+        self.assertEqual(
+            operation.log, "Upgrade started\nFirmware image is unavailable."
+        )
+        self.assertEqual(operation.progress, UpgradeProgress.DEVICE_VERIFIED)
+        self.assertEqual(operation.image_id, device_fw.image.pk)
+        self.assertEqual(batch.status, "failed")
+        operation.abort("This reason must not replace the original reason.")
+        operation.refresh_from_db()
+        self.assertEqual(
+            operation.log, "Upgrade started\nFirmware image is unavailable."
+        )
+
+    def test_abort_preserves_completed_upgrade_operation(self):
+        device_fw = self._create_device_firmware()
+        operation = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            status="success",
+            log="Upgrade completed",
+            progress=100,
+        )
+        operation.abort("Firmware image is unavailable.")
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "success")
+        self.assertEqual(operation.log, "Upgrade completed")
+        self.assertEqual(operation.progress, 100)
+
+    def test_image_delete_aborts_operation_before_removing_file(self):
+        device_fw = self._create_device_firmware()
+        operation = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image
+        )
+        original_remove_file = FirmwareImage._remove_file
+
+        def remove_file(file_path):
+            operation.refresh_from_db()
+            self.assertEqual(operation.status, "aborted")
+            self.assertEqual(
+                operation.log,
+                "Upgrade aborted because the firmware image has been deleted.",
+            )
+            return original_remove_file(file_path)
+
+        with mock.patch.object(FirmwareImage, "_remove_file", side_effect=remove_file):
+            device_fw.image.delete()
+
+    def test_image_delete_aborts_operations_and_updates_affected_batches(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(build=device_fw.image.build)
+        operation1 = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, batch=batch
+        )
+        operation2 = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, batch=batch
+        )
+        second_batch = BatchUpgradeOperation.objects.create(build=device_fw.image.build)
+        operation3 = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image, batch=second_batch
+        )
+        completed_operation = UpgradeOperation.objects.create(
+            device=device_fw.device,
+            image=device_fw.image,
+            status="success",
+            log="Upgrade completed",
+        )
+        remaining_image = self._create_firmware_image(
+            build=device_fw.image.build, type=self.TPLINK_4300_IL_IMAGE
+        )
+        remaining_operation = UpgradeOperation.objects.create(
+            device=device_fw.device, image=remaining_image, log="Upgrade started"
+        )
+        with (
+            mock.patch.object(
+                UpgradeProgressPublisher, "publish_operation_update"
+            ) as device_update,
+            mock.patch.object(
+                BatchUpgradeProgressPublisher, "publish_operation_progress"
+            ) as batch_update,
+            mock.patch.object(
+                BatchUpgradeProgressPublisher, "publish_batch_status"
+            ) as batch_status,
+        ):
+            device_fw.image.delete()
+        operation1.refresh_from_db()
+        operation2.refresh_from_db()
+        operation3.refresh_from_db()
+        completed_operation.refresh_from_db()
+        remaining_operation.refresh_from_db()
+        batch.refresh_from_db()
+        second_batch.refresh_from_db()
+        self.assertEqual(operation1.status, "aborted")
+        self.assertEqual(operation2.status, "aborted")
+        self.assertEqual(operation3.status, "aborted")
+        expected_log = "Upgrade aborted because the firmware image has been deleted."
+        self.assertEqual(operation1.log, expected_log)
+        self.assertEqual(operation2.log, expected_log)
+        self.assertEqual(operation3.log, expected_log)
+        self.assertEqual(operation1.image_id, None)
+        self.assertEqual(operation2.image_id, None)
+        self.assertEqual(operation3.image_id, None)
+        self.assertEqual(completed_operation.status, "success")
+        self.assertEqual(completed_operation.log, "Upgrade completed")
+        self.assertEqual(remaining_operation.status, "in-progress")
+        self.assertEqual(remaining_operation.log, "Upgrade started")
+        self.assertEqual(remaining_operation.image_id, remaining_image.pk)
+        self.assertEqual(batch.status, "failed")
+        self.assertEqual(second_batch.status, "failed")
+        expected_updates = [
+            (str(operation1.pk), "aborted"),
+            (str(operation2.pk), "aborted"),
+            (str(operation3.pk), "aborted"),
+        ]
+        self.assertCountEqual(
+            [
+                (update.args[0]["id"], update.args[0]["status"])
+                for update in device_update.call_args_list
+            ],
+            expected_updates,
+        )
+        self.assertCountEqual(
+            [
+                (update.args[0], update.args[1])
+                for update in batch_update.call_args_list
+            ],
+            expected_updates,
+        )
+        batch_status.assert_any_call("failed", 2, 2)
+        batch_status.assert_any_call("failed", 1, 1)
+
+    def test_deleted_image_stops_worker_before_reflash(self):
+        image = self._create_firmware_image()
+        device = self._create_device(organization=image.build.category.organization)
+        operation = UpgradeOperation.objects.create(device=device, image=image)
+        upgrader = OpenWrt.__new__(OpenWrt)
+        upgrader.upgrade_operation = operation
+        upgrader._non_critical_services_stopped = False
+        upgrader.disconnect = mock.Mock()
+        FirmwareImage.objects.get(pk=image.pk).delete()
+
+        with self.assertRaises(UpgradeAborted):
+            upgrader._check_cancellation()
+
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "aborted")
+        self.assertIn("firmware image has been deleted", operation.log)
+        upgrader.disconnect.assert_called_once()
+
+    def test_deleted_image_abort_survives_stale_worker_save(self):
+        image = self._create_firmware_image()
+        device = self._create_device(organization=image.build.category.organization)
+        operation = UpgradeOperation.objects.create(device=device, image=image)
+        operation._worker_running = True
+        FirmwareImage.objects.get(pk=image.pk).delete()
+        operation.status = "success"
+        operation.save()
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "aborted")
+        self.assertEqual(operation.image, None)
+        self.assertIn("firmware image has been deleted", operation.log)
+
+    def test_image_deletion_after_reflash_has_started_preserves_worker_result(self):
+        image = self._create_firmware_image()
+        device = self._create_device(organization=image.build.category.organization)
+        operation = UpgradeOperation.objects.create(
+            device=device, image=image, progress=UpgradeProgress.REFLASHING
+        )
+        operation._worker_running = True
+        FirmwareImage.objects.get(pk=image.pk).delete()
+        operation.status = "success"
+        operation.save()
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "success")
+        self.assertEqual(operation.image, None)
+
+    def test_cascade_image_cleanup_passes_queryset_to_abort_lookup(self):
+        image = self._create_firmware_image()
+        with mock.patch.object(
+            FirmwareImage, "_abort_related_upgrade_operations"
+        ) as abort:
+            FirmwareImage.schedule_firmware_file_deletion(build=image.build)
+        images = abort.call_args.args[0]
+        self.assertEqual(images.model, FirmwareImage)
+        self.assertEqual(list(images), [image])
 
     def test_delete_firmware_build_aborts_in_progress_upgrade_operation(self):
         device_fw = self._create_device_firmware()

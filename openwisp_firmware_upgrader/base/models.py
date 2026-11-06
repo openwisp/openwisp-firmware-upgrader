@@ -377,12 +377,9 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         queryset = UpgradeOperation.objects.filter(
             status="in-progress", image__in=images
         )
-        for operation in queryset.iterator():
-            operation.status = "aborted"
-            operation.log_line(
-                DELETED_FIRMWARE_IMAGE_UPGRADE_OPERATION_ERROR, save=False
-            )
-            operation.save()
+        for operation in queryset.select_related("batch").iterator():
+            # Individual saves preserve operation notifications and batch updates.
+            operation.abort(DELETED_FIRMWARE_IMAGE_UPGRADE_OPERATION_ERROR)
 
     @classmethod
     def schedule_firmware_file_deletion(cls, **filter_kwargs):
@@ -395,10 +392,12 @@ class AbstractFirmwareImage(TimeStampedEditableModel):
         # Avoid circular import
         from ..tasks import delete_firmware_files
 
-        images = list(cls.objects.filter(**filter_kwargs).iterator())
+        images = cls.objects.filter(**filter_kwargs)
         cls._abort_related_upgrade_operations(images)
         files_to_delete = [
-            image.file.name for image in images if image.file and image.file.name
+            image.file.name
+            for image in images.iterator()
+            if image.file and image.file.name
         ]
         if files_to_delete:
             # Schedule file deletion after transaction is committed
@@ -970,6 +969,14 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.refresh_from_db()
             self.log_line(_("Upgrade operation has been cancelled by user"))
 
+    def abort(self, reason):
+        """Mark an in-progress operation as aborted and record the reason."""
+        if self.status != "in-progress":
+            return
+        self.status = "aborted"
+        self.log_line(reason, save=False)
+        self.save()
+
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
         if recoverable:
@@ -1060,7 +1067,9 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.update_progress(100, save=False)
             installed = True
         # this exception is raised when the test of the image fails,
-        # meaning the image file is corrupted or not apt for flashing
+        # meaning the image file is corrupted or not apt for flashing.
+        # It is also raised if device identity verification fails or the
+        # operation is aborted externally, for example when its image is deleted.
         except UpgradeAborted:
             self.status = "aborted"
         # this exception is raised when the upgrade is cancelled by the user

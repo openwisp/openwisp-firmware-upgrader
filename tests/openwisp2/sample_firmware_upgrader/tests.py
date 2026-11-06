@@ -216,7 +216,7 @@ class TestApiMisc(BaseTestApiMisc):
     pass
 
 
-# this is necessary to avoid excuting the base test suites
+# this is necessary to avoid executing the base test suites
 del BaseTestModels
 del BaseTestAdmin
 del BaseTestAdminTransaction

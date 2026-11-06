@@ -1100,27 +1100,6 @@ class TestAdminTransaction(
     _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
-    def _ensure_administrator_group_permissions(self):
-        Group = swapper.load_model("openwisp_users", "Group")
-        group, _ = Group.objects.get_or_create(name="Administrator")
-        model_names = (
-            "build",
-            "category",
-            "devicefirmware",
-            "firmwareimage",
-            "batchupgradeoperation",
-            "upgradeoperation",
-        )
-        codenames = [
-            f"{action}_{model_name}"
-            for action in ("add", "change", "delete", "view")
-            for model_name in model_names
-        ]
-        permissions = Permission.objects.filter(
-            content_type__app_label=self.app_label, codename__in=codenames
-        )
-        group.permissions.add(*permissions)
-
     @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_selected_action_perms(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
@@ -1854,7 +1833,7 @@ class TestAdminTransaction(
     @mock.patch(_mock_upgrade, return_value=True)
     def test_batch_upgrade_confirmation_form_multitenancy(self, *args):
         """Test BatchUpgradeConfirmationForm multitenancy for organization admin vs superuser."""
-        self._ensure_administrator_group_permissions()
+        self._ensure_default_group_permissions()
         with mock.patch(self._mock_connect, return_value=True):
             # Setup common objects
             org1 = self._get_org()
@@ -2221,7 +2200,7 @@ class TestAdminTransaction(
             self.assertIn("location", form.errors)
 
     def test_category_disabled_org_admin_crud(self):
-        self._ensure_administrator_group_permissions()
+        self._ensure_default_group_permissions()
         org = self._create_org(name="disabled-org", slug="disabled-org")
         category = self._create_category(name="disabled-category", organization=org)
         org.is_active = False
@@ -2241,7 +2220,7 @@ class TestAdminTransaction(
         )
 
     def test_build_disabled_org_admin_crud(self):
-        self._ensure_administrator_group_permissions()
+        self._ensure_default_group_permissions()
         org = self._create_org(name="disabled-org", slug="disabled-org")
         build = self._create_build(organization=org, version="1.0")
         org.is_active = False
