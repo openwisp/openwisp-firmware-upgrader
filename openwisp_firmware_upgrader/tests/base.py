@@ -35,6 +35,35 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         for fw in FirmwareImage.objects.all():
             fw.delete()
 
+    def _ensure_default_group_permissions(self):
+        """
+        Restore default permission groups deleted by TransactionTestCase's
+        database cleanup so later tests can use Administrator and Operator roles.
+        """
+        app_label = Build._meta.app_label
+        admin_group, _ = Group.objects.get_or_create(name="Administrator")
+        operator_group, _ = Group.objects.get_or_create(name="Operator")
+        admin_only_models = ["category"]
+        shared_models = [
+            "build",
+            "devicefirmware",
+            "firmwareimage",
+            "batchupgradeoperation",
+            "upgradeoperation",
+        ]
+        for model_name in admin_only_models + shared_models:
+            for action in ("add", "change", "delete", "view"):
+                permission = Permission.objects.get(
+                    codename=f"{action}_{model_name}",
+                    content_type__app_label=app_label,
+                )
+                admin_group.permissions.add(permission)
+        for model_name in shared_models:
+            permission = Permission.objects.get(
+                codename=f"view_{model_name}", content_type__app_label=app_label
+            )
+            operator_group.permissions.add(permission)
+
     def _get_build(self, version="0.1", **kwargs):
         opts = {"version": version}
         opts.update(kwargs)
