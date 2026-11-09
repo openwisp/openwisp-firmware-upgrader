@@ -1303,6 +1303,21 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         with self.subTest(pk=pk):
             self.assertEqual(r.status_code, 404)
 
+    def test_firmware_create_uses_url_build(self):
+        build = self._create_build()
+        unmanaged_org = self._create_org(name="unmanaged-org")
+        unmanaged_build = self._create_build(organization=unmanaged_org)
+        response = self.client.post(
+            reverse("upgrader:api_firmware_list", args=[build.pk]),
+            {
+                "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+                "type": self.TPLINK_4300_IMAGE,
+                "build": unmanaged_build.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(FirmwareImage.objects.get().build, build)
+
     def test_firmware_view(self):
         image = self._create_firmware_image()
         serialized = self._serialize_image(image)
@@ -1376,6 +1391,66 @@ class TestFirmwareImageViewsTransaction(TestAPIUpgraderMixin, TransactionTestCas
             operations=("list", "retrieve", "delete"),
             organization=org,
         )
+
+    def test_firmware_create_disabled_organization(self):
+        org = self._get_org()
+        build = self._create_build(organization=org)
+        url = reverse("upgrader:api_firmware_list", args=[build.pk])
+        # Keep an active managed organization so validation is reached.
+        active_org = self._create_org(name="other-active-org")
+        self._create_org_user(
+            user=self.administrator, organization=active_org, is_admin=True
+        )
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+
+        with self.subTest("Operator cannot upload to a disabled organization"):
+            self._login(username=self.operator.username)
+            response = self.client.post(
+                url,
+                data={
+                    "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+                    "type": self.TPLINK_4300_IL_IMAGE,
+                },
+            )
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(FirmwareImage.objects.filter(build=build).count(), 0)
+
+        with self.subTest(
+            "Administrator cannot upload firmware to a disabled organization"
+        ):
+            self._login(username=self.administrator.username)
+            response = self.client.post(
+                url,
+                data={
+                    "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+                    "type": self.TPLINK_4300_IL_IMAGE,
+                },
+            )
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "Firmware upgrades are not allowed for disabled organizations.",
+            )
+            self.assertEqual(FirmwareImage.objects.filter(build=build).count(), 0)
+
+        with self.subTest(
+            "Superuser cannot upload firmware to a disabled organization"
+        ):
+            self._login(username=self._get_admin().username)
+            response = self.client.post(
+                url,
+                data={
+                    "file": self._get_simpleuploadedfile(self.FAKE_IMAGE_PATH2),
+                    "type": self.TPLINK_4300_IMAGE,
+                },
+            )
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.data["detail"],
+                "Firmware upgrades are not allowed for disabled organizations.",
+            )
+            self.assertEqual(FirmwareImage.objects.filter(build=build).count(), 0)
 
 
 class TestDeviceFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
@@ -2402,17 +2477,42 @@ class TestApiMisc(TestAPIUpgraderMixin, TestCase):
         operation = UpgradeOperation.objects.create(
             device=device, image=env["image2b"], status="in-progress", progress=30
         )
+        deactivated_device = env["d1"]
+        deactivated_operation = UpgradeOperation.objects.create(
+            device=deactivated_device,
+            image=env["image2a"],
+            status="in-progress",
+            progress=30,
+        )
         org = device.organization
         org.is_active = False
         org.save(update_fields=["is_active"])
         self._login(self._get_admin().username)
-        url = reverse(
-            "upgrader:api_upgradeoperation_cancel", kwargs={"pk": operation.pk}
-        )
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 200)
-        operation.refresh_from_db()
-        self.assertEqual(operation.status, "cancelled")
+
+        with self.subTest(
+            "Superuser can cancel for an active device in a disabled organization"
+        ):
+            self.assertEqual(device.is_deactivated(), False)
+            url = reverse(
+                "upgrader:api_upgradeoperation_cancel", kwargs={"pk": operation.pk}
+            )
+            response = self.client.post(url)
+            self.assertEqual(response.status_code, 200)
+            operation.refresh_from_db()
+            self.assertEqual(operation.status, "cancelled")
+
+        with self.subTest(
+            "Superuser can cancel for a deactivated device in a disabled organization"
+        ):
+            deactivated_device.deactivate()
+            url = reverse(
+                "upgrader:api_upgradeoperation_cancel",
+                kwargs={"pk": deactivated_operation.pk},
+            )
+            response = self.client.post(url)
+            self.assertEqual(response.status_code, 200)
+            deactivated_operation.refresh_from_db()
+            self.assertEqual(deactivated_operation.status, "cancelled")
 
 
 class TestFirmwareDownloadPermissions(
