@@ -211,17 +211,16 @@ class OpenWrt(object):
         self._write_checksum(checksum)
 
     def _check_cancellation(self):
-        """Stop if the upgrade operation has been cancelled or aborted."""
+        """
+        Check if the upgrade operation has been cancelled.
+        """
         self.upgrade_operation.refresh_from_db()
-        status = self.upgrade_operation.status
-        if status in ("cancelled", "aborted"):
+        if self.upgrade_operation.status == "cancelled":
             if self._non_critical_services_stopped:
                 self.log(_("Restarting non-critical services..."))
                 self._start_non_critical_services()
             self.disconnect()
-            if status == "cancelled":
-                raise UpgradeCancelled("Upgrade cancelled by user")
-            raise UpgradeAborted()
+            raise UpgradeCancelled("Upgrade cancelled by user")
 
     def _test_connection(self):
         result = self.connect()

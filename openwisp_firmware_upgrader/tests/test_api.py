@@ -1315,9 +1315,7 @@ class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
         image = self._create_firmware_image()
         self.assertEqual(FirmwareImage.objects.count(), 1)
         url = reverse("upgrader:api_firmware_detail", args=[image.build.pk, image.pk])
-        # +1 query: `_abort_related_upgrade_operations` looks up in-progress
-        # operations referencing the image before it is deleted.
-        with self.assertNumQueries(9):
+        with self.assertNumQueries(8):
             r = self.client.delete(url)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(FirmwareImage.objects.count(), 0)
