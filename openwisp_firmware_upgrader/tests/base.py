@@ -37,12 +37,8 @@ class TestUpgraderMixin(CreateConnectionsMixin):
 
     def _ensure_default_group_permissions(self):
         """
-        ``TransactionTestCase`` flushes the database after every test,
-        which deletes the Administrator/Operator groups (and their
-        firmware-upgrader permissions) seeded once by openwisp-users'
-        data migration. Recreate them here so tests relying on those
-        groups keep working regardless of which transactional test in
-        the class ran (and flushed) before this one.
+        Restore default permission groups deleted by TransactionTestCase's
+        database cleanup so later tests can use Administrator and Operator roles.
         """
         app_label = Build._meta.app_label
         admin_group, _ = Group.objects.get_or_create(name="Administrator")

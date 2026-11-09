@@ -489,7 +489,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
 
         May return ``None`` if it was not possible to create the DeviceFirmware.
         """
-        if device.is_deactivated() or not device.organization.is_active:
+        if not device.is_operational():
             return
 
         DeviceFirmware = load_model("DeviceFirmware")
@@ -527,10 +527,7 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
             return
         if instance.device.model not in REVERSE_FIRMWARE_IMAGE_MAP:
             return
-        if (
-            instance.device.is_deactivated()
-            or not instance.device.organization.is_active
-        ):
+        if not instance.device.is_operational():
             return
 
         transaction.on_commit(partial(create_device_firmware.delay, instance.device.pk))
@@ -641,6 +638,9 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         self.upgrade_related_devices()
         if firmwareless:
             self.upgrade_firmwareless_devices()
+        # Targets may become ineligible after the batch is queued, for example
+        # when their organization is disabled. Without child operations, no
+        # status update would otherwise move the batch out of in-progress.
         if not self.upgradeoperation_set.exists():
             self.status = "cancelled"
             self.save(update_fields=["status"])

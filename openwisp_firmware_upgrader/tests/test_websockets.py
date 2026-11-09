@@ -719,7 +719,6 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         org = await sync_to_async(lambda: device_fw.device.organization)()
         org.is_active = False
         await sync_to_async(org.save)(update_fields=["is_active"])
-
         communicator = await self._get_upgrade_progress_communicator(
             str(operation.pk), user=self.superuser
         )

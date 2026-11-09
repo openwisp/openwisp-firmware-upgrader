@@ -2146,16 +2146,16 @@ class TestAdminTransaction(
     def test_device_inlines_readonly_for_disabled_organization(self):
         active_device_fw = self._create_device_firmware()
         active_device = active_device_fw.device
-        disabled_org = self._create_org(name="disabled-org")
-        disabled_image = self._create_firmware_image(organization=disabled_org)
-        disabled_device_fw = self._create_device_firmware(image=disabled_image)
-        disabled_device = disabled_device_fw.device
-        disabled_org.is_active = False
-        disabled_org.save(update_fields=["is_active"])
+        org = self._create_org(name="disabled-org")
+        image = self._create_firmware_image(organization=org)
+        device_fw = self._create_device_firmware(image=image)
+        device = device_fw.device
+        org.is_active = False
+        org.save(update_fields=["is_active"])
         deviceadmin = DeviceAdmin(model=Device, admin_site=admin.site)
         self._test_disabled_org_admin_inline_readonly(
             deviceadmin,
-            disabled_obj=disabled_device,
+            disabled_obj=device,
             active_obj=active_device,
             inline_models=(DeviceFirmwareInline, DeviceUpgradeOperationInline),
         )
@@ -2166,13 +2166,13 @@ class TestAdminTransaction(
         build = self._create_build(organization=org)
         org.is_active = False
         org.save(update_fields=["is_active"])
-        r = self.client.post(
+        response = self.client.post(
             self.build_list_url,
             {"action": "upgrade_selected", ACTION_CHECKBOX_NAME: (build.pk,)},
             follow=True,
         )
         self.assertContains(
-            r, "Actions cannot modify objects of disabled organizations."
+            response, "Actions cannot modify objects of disabled organizations."
         )
         self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
@@ -2207,16 +2207,26 @@ class TestAdminTransaction(
                 data={"build": build.pk, "group": disabled_group.pk},
                 user=admin_user,
             )
-            self.assertFalse(form.is_valid())
-            self.assertIn("group", form.errors)
+            self.assertEqual(form.is_valid(), False)
+            self.assertEqual(
+                form.errors["group"],
+                [
+                    "Select a valid choice. That choice is not one of the available choices."
+                ],
+            )
 
         with self.subTest("submitting a disabled org location is rejected"):
             form = BatchUpgradeConfirmationForm(
                 data={"build": build.pk, "location": disabled_location.pk},
                 user=admin_user,
             )
-            self.assertFalse(form.is_valid())
-            self.assertIn("location", form.errors)
+            self.assertEqual(form.is_valid(), False)
+            self.assertEqual(
+                form.errors["location"],
+                [
+                    "Select a valid choice. That choice is not one of the available choices."
+                ],
+            )
 
     def test_category_disabled_org_admin_crud(self):
         self._ensure_default_group_permissions()

@@ -48,7 +48,9 @@ class TestPrivateStorageTransaction(
         org.save(update_fields=["is_active"])
         url = reverse("serve_private_file", args=[image.file])
 
-        with self.subTest("Disabling org revokes org manager status"):
+        with self.subTest(
+            "Administrator cannot download firmware from a disabled organization"
+        ):
             self.client.force_login(administrator)
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403)

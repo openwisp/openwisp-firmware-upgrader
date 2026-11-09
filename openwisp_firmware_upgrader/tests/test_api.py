@@ -1371,8 +1371,8 @@ class TestFirmwareImageViewsTransaction(TestAPIUpgraderMixin, TransactionTestCas
                 "upgrader:api_firmware_detail", args=[image.build.pk, image.pk]
             ),
             list_url=reverse("upgrader:api_firmware_list", args=[image.build.pk]),
-            # FirmwareImageDetailView is retrieve/destroy only, and creation
-            # requires a multipart file upload the JSON-only helper cannot do.
+            # The detail endpoint has no update operation. Multipart creation
+            # is covered separately below.
             operations=("list", "retrieve", "delete"),
             organization=org,
         )
@@ -1820,6 +1820,8 @@ class TestDeviceFirmwareImageViewsTransaction(
                 data={"image": env["image1a"].pk},
                 content_type="application/json",
             )
+            # Disabled organizations are excluded from user.organizations_managed,
+            # so their managers no longer have access to these resources.
             self.assertEqual(response.status_code, 403)
             self.assertEqual(
                 response.data["detail"],
@@ -1879,7 +1881,6 @@ class TestDeviceFirmwareImageViewsTransaction(
             username="superuser", email="superuser@test.com", is_superuser=True
         )
         self._login(username=superuser.username)
-
         with self.subTest("Test superuser can retrieve DeviceFirmwareImage"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
@@ -1893,7 +1894,6 @@ class TestDeviceFirmwareImageViewsTransaction(
             self.assertEqual(response.status_code, 403)
 
         device_fw.device.deactivate()
-
         with self.subTest(
             "Test superuser can delete DeviceFirmwareImage of a disabled organization and deactivated device"
         ):
