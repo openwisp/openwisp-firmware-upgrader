@@ -301,6 +301,30 @@ class TestModels(TestUpgraderMixin, TestCase):
         uo.refresh_from_db()
         self.assertEqual(uo.log, "line1\nline2")
 
+    def test_upgrade_operation_log_line_after_image_deleted(self):
+        device_fw = self._create_device_firmware()
+        uo = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image
+        )
+        worker_uo = UpgradeOperation.objects.get(pk=uo.pk)
+        device_fw.image.delete()
+        worker_uo.log_line("line1")
+        uo.refresh_from_db()
+        self.assertIsNone(uo.image_id)
+        self.assertEqual(uo.log, "line1")
+
+    def test_upgrade_operation_update_progress_after_image_deleted(self):
+        device_fw = self._create_device_firmware()
+        uo = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image
+        )
+        worker_uo = UpgradeOperation.objects.get(pk=uo.pk)
+        device_fw.image.delete()
+        worker_uo.update_progress(50)
+        uo.refresh_from_db()
+        self.assertIsNone(uo.image_id)
+        self.assertEqual(uo.progress, 50)
+
     def test_upgrade_operation_update_progress(self):
         self._create_device_firmware(upgrade=True)
         uo = UpgradeOperation.objects.first()
@@ -354,6 +378,19 @@ class TestModels(TestUpgraderMixin, TestCase):
         operation.refresh_from_db()
         self.assertEqual(operation.status, "aborted")
         self.assertIn("deactivated", operation.log)
+
+    def test_upgrade_operation_upgrade_after_image_deleted(self):
+        device_fw = self._create_device_firmware()
+        uo = UpgradeOperation.objects.create(
+            device=device_fw.device, image=device_fw.image
+        )
+        worker_uo = UpgradeOperation.objects.get(pk=uo.pk)
+        device_fw.image.delete()
+        device_fw.device.deactivate()
+        worker_uo.upgrade()
+        uo.refresh_from_db()
+        self.assertIsNone(uo.image_id)
+        self.assertEqual(uo.status, "aborted")
 
     def test_concurrent_cancellation_race_condition(self):
         """Test that concurrent cancellation attempts don't cause errors."""
