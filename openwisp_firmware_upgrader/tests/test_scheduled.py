@@ -1,6 +1,8 @@
 from datetime import timedelta
 from unittest import mock
 
+import swapper
+from django.contrib.auth.models import Permission
 from django.db.models.signals import post_save
 from django.test import TransactionTestCase
 from django.utils import timezone
@@ -12,6 +14,7 @@ from .base import TestUpgraderMixin, time_travel
 
 UpgradeOperation = load_model("UpgradeOperation")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+Location = swapper.load_model("geo", "Location")
 
 _upgrade_dispatch = "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async"
 _connect = "openwisp_controller.connection.models.DeviceConnection.connect"
@@ -124,6 +127,103 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(batch.status, "scheduled")
         started.assert_not_called()
         self.assertEqual(batch.upgradeoperation_set.count(), 0)
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_launch_fails_when_initiator_deactivated(self, dispatch):
+        device_fw = self._create_device_firmware()
+        org = device_fw.image.build.category.organization
+        admin = self._create_administrator(organizations=[org])
+        future = timezone.now() + timedelta(days=1)
+        batch = device_fw.image.build.batch_upgrade(
+            firmwareless=False, scheduled_at=future, initiated_by=admin
+        )
+        admin.is_active = False
+        admin.save(update_fields=["is_active"])
+        with time_travel(future + timedelta(seconds=1)):
+            tasks.execute_scheduled_upgrades.run()
+        dispatch.assert_not_called()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_launch_fails_when_initiator_loses_org_access(self, dispatch):
+        device_fw = self._create_device_firmware()
+        admin = self._create_administrator(organizations=[])
+        future = timezone.now() + timedelta(days=1)
+        batch = device_fw.image.build.batch_upgrade(
+            firmwareless=False, scheduled_at=future, initiated_by=admin
+        )
+        with time_travel(future + timedelta(seconds=1)):
+            tasks.execute_scheduled_upgrades.run()
+        dispatch.assert_not_called()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_launch_proceeds_for_authorized_initiator(self, dispatch):
+        device_fw = self._create_device_firmware()
+        org = device_fw.image.build.category.organization
+        admin = self._create_administrator(organizations=[org])
+        admin.user_permissions.add(
+            Permission.objects.get(
+                codename="add_batchupgradeoperation",
+                content_type__app_label=BatchUpgradeOperation._meta.app_label,
+            )
+        )
+        future = timezone.now() + timedelta(days=1)
+        batch = device_fw.image.build.batch_upgrade(
+            firmwareless=False, scheduled_at=future, initiated_by=admin
+        )
+        with time_travel(future + timedelta(seconds=1)):
+            tasks.execute_scheduled_upgrades.run()
+        dispatch.assert_called_once()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
+
+    def test_scheduled_batch_failed_when_group_deleted(self):
+        build = self._create_build()
+        org = build.category.organization
+        group = self._create_device_group(organization=org)
+        batch = BatchUpgradeOperation.objects.create(
+            build=build,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+            group=group,
+        )
+        group.delete()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+
+    def test_scheduled_batch_failed_when_location_deleted(self):
+        build = self._create_build()
+        org = build.category.organization
+        location = Location.objects.create(
+            name="Office A", address="123 Main St", organization=org
+        )
+        batch = BatchUpgradeOperation.objects.create(
+            build=build,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+            location=location,
+        )
+        location.delete()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+
+    def test_target_delete_leaves_unrelated_and_non_scheduled(self):
+        build = self._create_build()
+        org = build.category.organization
+        # deleting a group or location with no scheduled batch must not raise
+        self._create_device_group(name="unrelated", organization=org).delete()
+        Location.objects.create(name="Empty", address="0", organization=org).delete()
+        # a non-scheduled batch targeting a group is left untouched
+        group = self._create_device_group(name="in-progress-group", organization=org)
+        batch = BatchUpgradeOperation.objects.create(
+            build=build, status="in-progress", group=group
+        )
+        group.delete()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
 
     def test_recover_orphaned_launches(self):
         Batch = BatchUpgradeOperation

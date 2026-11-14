@@ -11,6 +11,7 @@ from .. import settings as app_settings
 from .. import tasks
 from ..exceptions import RecoverableFailure
 from ..swapper import load_model
+from ..utils import UpgradeProgress
 from .base import TestUpgraderMixin, time_travel
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -257,6 +258,26 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
         with time_travel(now + timedelta(seconds=options["base_delay"] + 1)):
             tasks.check_pending_upgrades.run()
         mocked_dispatch.assert_called_once()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.retry_pending_upgrade.apply_async")
+    def test_check_leaves_post_flash_claim(self, mocked_dispatch):
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        now = timezone.now()
+        stale = now - timedelta(seconds=options["claim_timeout"] + 1)
+        op = self._create_pending_op()
+        UpgradeOperation.objects.filter(pk=op.pk).update(
+            status="in-progress",
+            next_retry_at=None,
+            claimed_at=stale,
+            progress=UpgradeProgress.REFLASHING,
+        )
+        with time_travel(now):
+            tasks.check_pending_upgrades.run()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "in-progress")
+        self.assertEqual(op.claimed_at, stale)
+        self.assertIsNone(op.next_retry_at)
+        mocked_dispatch.assert_not_called()
 
     @mock.patch("openwisp_firmware_upgrader.tasks.retry_pending_upgrade.apply_async")
     def test_check_keeps_fresh_claim(self, mocked_dispatch):

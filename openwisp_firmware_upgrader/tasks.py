@@ -51,8 +51,9 @@ def upgrade_firmware(self, operation_id):
         ).update(status="failed")
         if claimed:
             operation.status = "failed"
-            operation.log_line(_("Operation timed out."), save=False)
-            operation.save(update_fields=["status", "log"])
+            operation.log_line(
+                _("Operation timed out."), update_fields=["status", "log"]
+            )
         logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
 
 

@@ -1,6 +1,8 @@
+import datetime
 import logging
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django import forms
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.module_loading import import_string
@@ -33,6 +35,21 @@ def reinterpret_in_timezone(dt, tz_name):
             )
         )
     return timezone.make_aware(naive, tz)
+
+
+class NaiveSplitDateTimeField(forms.SplitDateTimeField):
+    def compress(self, data_list):
+        if data_list:
+            if data_list[0] in self.empty_values:
+                raise ValidationError(
+                    self.error_messages["invalid_date"], code="invalid_date"
+                )
+            if data_list[1] in self.empty_values:
+                raise ValidationError(
+                    self.error_messages["invalid_time"], code="invalid_time"
+                )
+            return datetime.datetime.combine(*data_list)
+        return None
 
 
 def get_upgrader_schema_for_device(device):

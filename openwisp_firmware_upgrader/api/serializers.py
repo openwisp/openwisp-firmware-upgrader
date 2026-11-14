@@ -158,6 +158,7 @@ class DeviceUpgradeOperationSerializer(serializers.ModelSerializer):
 
 class BatchUpgradeOperationListSerializer(BaseSerializer):
     build = BuildSerializer(read_only=True)
+    initiated_by = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = BatchUpgradeOperation

@@ -110,6 +110,9 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         Category = load_model("firmware_upgrader", "Category")
         Organization = load_model("openwisp_users", "Organization")
         FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
+        BatchUpgradeOperation = load_model("firmware_upgrader", "BatchUpgradeOperation")
+        DeviceGroup = load_model("config", "DeviceGroup")
+        Location = load_model("geo", "Location")
 
         pre_delete.connect(
             FirmwareImage.build_pre_delete_handler,
@@ -125,6 +128,16 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             FirmwareImage.organization_pre_delete_handler,
             sender=Organization,
             dispatch_uid="organization.pre_delete.firmware_files",
+        )
+        pre_delete.connect(
+            BatchUpgradeOperation.fail_scheduled_on_target_delete,
+            sender=DeviceGroup,
+            dispatch_uid="devicegroup.pre_delete.fail_scheduled_batches",
+        )
+        pre_delete.connect(
+            BatchUpgradeOperation.fail_scheduled_on_target_delete,
+            sender=Location,
+            dispatch_uid="location.pre_delete.fail_scheduled_batches",
         )
 
     def connect_monitoring_signals(self):

@@ -423,7 +423,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             r = get_change(batch)
             self.assertContains(r, 'id="batch-reschedule-btn"')
             self.assertContains(r, 'id="batch-cancel-btn"')
-            self.assertContains(r, f"batch-upgrade-operation/{batch.pk}/reschedule/")
+            self.assertContains(r, f"batchupgradeoperation/{batch.pk}/reschedule/")
             self.assertContains(r, 'id="batch-reschedule-group"')
             self.assertContains(r, 'id="batch-reschedule-location"')
             self.assertContains(r, 'id="batch-reschedule-persistent"')
@@ -497,24 +497,51 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertNotContains(r, 'id="batch-reschedule-btn"')
         self.assertNotContains(r, "batch-actions.js")
 
-    def test_batch_change_page_renders_without_api(self):
+    def test_batch_actions_without_api(self):
         self._login()
         batch = BatchUpgradeOperation.objects.create(
             build=self._create_build(),
             status="scheduled",
             scheduled_at=timezone.now() + timedelta(days=1),
         )
-        url = reverse(
+        change_url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        reschedule_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_reschedule", args=[batch.pk]
+        )
+        cancel_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_cancel", args=[batch.pk]
         )
         with mock.patch(
             "openwisp_firmware_upgrader.admin.app_settings.FIRMWARE_UPGRADER_API",
             False,
         ):
-            r = self.client.get(url)
-        self.assertEqual(r.status_code, 200)
-        self.assertNotContains(r, 'id="batch-cancel-btn"')
-        self.assertNotContains(r, "batch-actions.js")
+            r = self.client.get(change_url)
+            self.assertEqual(r.status_code, 200)
+            self.assertContains(r, 'id="batch-cancel-btn"')
+            self.assertContains(r, "batch-actions.js")
+            new_time = (timezone.localtime() + timedelta(days=2)).replace(
+                second=0, microsecond=0
+            )
+            r = self.client.post(
+                reschedule_url,
+                data=json.dumps(
+                    {
+                        "scheduled_at_0": new_time.strftime("%Y-%m-%d"),
+                        "scheduled_at_1": new_time.strftime("%H:%M"),
+                        "scheduled_at_tz": "",
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(r.status_code, 200)
+            batch.refresh_from_db()
+            self.assertEqual(batch.scheduled_at, new_time)
+            r = self.client.post(cancel_url, data="{}", content_type="application/json")
+            self.assertEqual(r.status_code, 200)
+            batch.refresh_from_db()
+            self.assertEqual(batch.status, "cancelled")
 
     def test_upgrade_operation_filter_by_persistence(self):
         self._login()

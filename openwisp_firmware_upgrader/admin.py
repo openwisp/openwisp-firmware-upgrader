@@ -9,18 +9,19 @@ from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.actions import delete_selected
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.forms.formsets import DELETION_FIELD_NAME
-from django.shortcuts import redirect
+from django.http import Http404, JsonResponse
+from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.templatetags.static import static
-from django.urls import resolve, reverse
+from django.urls import path, resolve, reverse
 from django.utils.formats import localize
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-from django.utils.timezone import localtime
+from django.utils.timezone import get_current_timezone_name, localtime
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
@@ -44,7 +45,11 @@ from .filters import (
     LocationFilter,
 )
 from .swapper import load_model
-from .utils import get_upgrader_schema_for_device, reinterpret_in_timezone
+from .utils import (
+    NaiveSplitDateTimeField,
+    get_upgrader_schema_for_device,
+    reinterpret_in_timezone,
+)
 from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
 
 logger = logging.getLogger(__name__)
@@ -153,7 +158,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
             "until they come online or the operation is cancelled"
         ),
     )
-    scheduled_at = forms.SplitDateTimeField(
+    scheduled_at = NaiveSplitDateTimeField(
         required=False,
         widget=admin.widgets.AdminSplitDateTime(),
         help_text=_(
@@ -187,8 +192,8 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         scheduled_at = cleaned_data.get("scheduled_at")
-        tz_name = self.data.get("scheduled_at_tz")
-        if scheduled_at and tz_name:
+        if scheduled_at:
+            tz_name = self.data.get("scheduled_at_tz") or get_current_timezone_name()
             try:
                 cleaned_data["scheduled_at"] = reinterpret_in_timezone(
                     scheduled_at, tz_name
@@ -217,7 +222,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 
 
 class BatchRescheduleForm(forms.Form):
-    scheduled_at = forms.SplitDateTimeField(
+    scheduled_at = NaiveSplitDateTimeField(
         required=False,
         widget=admin.widgets.AdminSplitDateTime(),
     )
@@ -354,6 +359,7 @@ class BuildAdmin(BaseAdmin):
                         location=location,
                         is_persistent=form.cleaned_data["is_persistent"],
                         scheduled_at=scheduled_at,
+                        initiated_by=request.user,
                     )
                     if scheduled_at:
                         text = _(
@@ -801,6 +807,81 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
             page_obj = paginator.page(1)
         return page_obj, paginator, page_obj.object_list
 
+    def get_urls(self):
+        opts = self.model._meta
+        prefix = f"{opts.app_label}_{opts.model_name}"
+        custom = [
+            path(
+                "<path:object_id>/reschedule/",
+                self.admin_site.admin_view(self.reschedule_view),
+                name=f"{prefix}_reschedule",
+            ),
+            path(
+                "<path:object_id>/cancel/",
+                self.admin_site.admin_view(self.cancel_view),
+                name=f"{prefix}_cancel",
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def _get_batch_for_action(self, request, object_id):
+        if request.method != "POST":
+            raise Http404
+        if not request.user.has_perm(
+            f"{self.model._meta.app_label}.change_batchupgradeoperation"
+        ):
+            raise PermissionDenied
+        return get_object_or_404(self.get_queryset(request), pk=object_id)
+
+    def reschedule_view(self, request, object_id):
+        batch = self._get_batch_for_action(request, object_id)
+        try:
+            data = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": _("Invalid request body.")}, status=400)
+        tz_name = data.get("scheduled_at_tz") or get_current_timezone_name()
+        field = NaiveSplitDateTimeField(required=False)
+        try:
+            parsed = field.clean(
+                [data.get("scheduled_at_0"), data.get("scheduled_at_1")]
+            )
+            scheduled_at = reinterpret_in_timezone(parsed, tz_name) if parsed else None
+        except ValidationError as error:
+            return JsonResponse({"error": error.messages[0]}, status=400)
+        groups, locations = scoped_group_and_location_querysets(
+            request.user, batch.build.category.organization_id
+        )
+        try:
+            group = groups.get(pk=data["group"]) if data.get("group") else None
+            location = (
+                locations.get(pk=data["location"]) if data.get("location") else None
+            )
+        except (DeviceGroup.DoesNotExist, Location.DoesNotExist, ValidationError):
+            return JsonResponse(
+                {"error": _("The selected group or location is not valid.")}, status=400
+            )
+        try:
+            batch.reschedule(
+                scheduled_at=scheduled_at,
+                group=group,
+                location=location,
+                is_persistent=bool(data.get("is_persistent", batch.is_persistent)),
+                firmwareless=bool(data.get("upgrade_all", batch.firmwareless)),
+            )
+        except ValueError as error:
+            return JsonResponse({"error": str(error)}, status=409)
+        except ValidationError as error:
+            return JsonResponse({"error": error.messages[0]}, status=400)
+        return JsonResponse({"message": _("Mass upgrade rescheduled")})
+
+    def cancel_view(self, request, object_id):
+        batch = self._get_batch_for_action(request, object_id)
+        try:
+            batch.cancel()
+        except ValueError as error:
+            return JsonResponse({"error": str(error)}, status=409)
+        return JsonResponse({"message": _("Mass upgrade cancelled")})
+
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra_context = extra_context or {}
         obj = self.get_object(request, object_id)
@@ -842,34 +923,33 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                     "server_timezone": settings.TIME_ZONE,
                 }
             )
-            if app_settings.FIRMWARE_UPGRADER_API:
-                app_label = self.model._meta.app_label
-                can_change = request.user.has_perm(
-                    "%s.change_batchupgradeoperation" % app_label
+            app_label = self.model._meta.app_label
+            model_name = self.model._meta.model_name
+            can_change = request.user.has_perm(
+                "%s.change_batchupgradeoperation" % app_label
+            )
+            show_batch_actions = can_change and obj.status in (
+                "scheduled",
+                "in-progress",
+            )
+            extra_context["show_batch_actions"] = show_batch_actions
+            if show_batch_actions:
+                extra_context["batch_reschedule_url"] = reverse(
+                    f"admin:{app_label}_{model_name}_reschedule", args=[object_id]
                 )
-                show_batch_actions = can_change and obj.status in (
-                    "scheduled",
-                    "in-progress",
+                extra_context["batch_cancel_url"] = reverse(
+                    f"admin:{app_label}_{model_name}_cancel", args=[object_id]
                 )
-                extra_context["show_batch_actions"] = show_batch_actions
-                if show_batch_actions:
-                    extra_context["batch_reschedule_url"] = reverse(
-                        "upgrader:api_batchupgradeoperation_reschedule",
-                        args=[object_id],
+                if obj.status == "scheduled":
+                    extra_context["reschedule_form"] = BatchRescheduleForm(
+                        user=request.user,
+                        organization_id=obj.build.category.organization_id,
+                        initial={
+                            "scheduled_at": obj.scheduled_at,
+                            "group": obj.group_id,
+                            "location": obj.location_id,
+                        },
                     )
-                    extra_context["batch_cancel_url"] = reverse(
-                        "upgrader:api_batchupgradeoperation_cancel", args=[object_id]
-                    )
-                    if obj.status == "scheduled":
-                        extra_context["reschedule_form"] = BatchRescheduleForm(
-                            user=request.user,
-                            organization_id=obj.build.category.organization_id,
-                            initial={
-                                "scheduled_at": obj.scheduled_at,
-                                "group": obj.group_id,
-                                "location": obj.location_id,
-                            },
-                        )
         return super().change_view(request, object_id, extra_context=extra_context)
 
     def get_readonly_fields(self, request, obj=None):

@@ -243,7 +243,7 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                 # Get operations list
                 operations_list = await sync_to_async(list)(
                     batch_operation.upgrade_operations.select_related(
-                        "device", "image"
+                        "device", "image__build__category"
                     ).all()
                 )
 

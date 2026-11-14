@@ -110,19 +110,23 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
         updateBatchProgress(data.batch_status);
         if (data.operations && Array.isArray(data.operations)) {
           // Replay the initial snapshot onto each existing row.
+          const mayAdd = snapshotMayAddRows($);
           data.operations.forEach(function (operation) {
-            updateBatchOperationProgress({
-              operation_id: operation.id,
-              status: operation.status,
-              progress: operation.progress,
-              modified: operation.modified,
-              is_persistent: operation.is_persistent,
-              retry_count: operation.retry_count,
-              next_retry_at: operation.next_retry_at,
-              device_id: operation.device_id,
-              device_name: operation.device_name,
-              image_name: operation.image_name,
-            });
+            updateBatchOperationProgress(
+              {
+                operation_id: operation.id,
+                status: operation.status,
+                progress: operation.progress,
+                modified: operation.modified,
+                is_persistent: operation.is_persistent,
+                retry_count: operation.retry_count,
+                next_retry_at: operation.next_retry_at,
+                device_id: operation.device_id,
+                device_name: operation.device_name,
+                image_name: operation.image_name,
+              },
+              mayAdd,
+            );
           });
         }
       } else if (data.type === "batch_status") {
@@ -266,7 +270,18 @@ function updateBatchProgress(data) {
   }
 }
 
-function updateBatchOperationProgress(data) {
+function snapshotMayAddRows($) {
+  let params = new URLSearchParams(window.location.search);
+  let filtered =
+    params.has("status") ||
+    params.has("organization") ||
+    params.has("q") ||
+    params.has("page");
+  let paginated = $(".pagination").length > 0;
+  return !filtered && !paginated;
+}
+
+function updateBatchOperationProgress(data, allowAdd = true) {
   let $ = django.jQuery;
   let found = false;
   $("#result_list tbody tr").each(function () {
@@ -299,7 +314,7 @@ function updateBatchOperationProgress(data) {
       }
     }
   });
-  if (!found) {
+  if (!found && allowAdd) {
     addNewOperationRow(data);
   }
 }

@@ -946,6 +946,24 @@ class TestModels(TestUpgraderMixin, TestCase):
                 batch.upgrade(firmwareless=False)
                 fwless.assert_not_called()
 
+    def test_upgrade_isolates_invalid_devices(self):
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(build=env["build2"])
+        DeviceConnection.objects.filter(device=env["d2"]).delete()
+        batch.upgrade(firmwareless=False)
+        operations = batch.upgradeoperation_set.all()
+        self.assertEqual(operations.count(), 1)
+        self.assertEqual(operations.first().device_id, env["d1"].id)
+        self.assertEqual(batch.status, "in-progress")
+
+    def test_upgrade_fails_when_no_target_image(self):
+        env = self._create_upgrade_env()
+        env["build2"].firmwareimage_set.all().delete()
+        batch = BatchUpgradeOperation.objects.create(build=env["build2"])
+        batch.upgrade(firmwareless=False)
+        self.assertEqual(batch.upgradeoperation_set.count(), 0)
+        self.assertEqual(batch.status, "failed")
+
     def test_filters_overlap_truth_table(self):
         build = self._create_device_firmware().image.build
         org = build.category.organization

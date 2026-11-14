@@ -7,6 +7,7 @@ from pathlib import Path
 
 import jsonschema
 import swapper
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator
 from django.db import models, transaction
@@ -197,6 +198,7 @@ class AbstractBuild(TimeStampedEditableModel):
         location=None,
         is_persistent=True,
         scheduled_at=None,
+        initiated_by=None,
     ):
         upgrade_options = upgrade_options or {}
         firmwareless = bool(firmwareless)
@@ -223,6 +225,7 @@ class AbstractBuild(TimeStampedEditableModel):
             is_persistent=is_persistent,
             firmwareless=firmwareless,
             scheduled_at=scheduled_at,
+            initiated_by=initiated_by,
             status="scheduled" if scheduled_at else "idle",
         )
         with transaction.atomic():
@@ -673,6 +676,18 @@ class AbstractBatchUpgradeOperation(
             "record when this mass upgrade launches"
         ),
     )
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+        verbose_name=_("initiated by"),
+        help_text=_(
+            "user who requested this mass upgrade; their access is re-checked "
+            "when a scheduled upgrade launches"
+        ),
+    )
 
     class Meta:
         abstract = True
@@ -961,9 +976,13 @@ class AbstractBatchUpgradeOperation(
                 return
             self.status = "in-progress"
             self.save(update_fields=["status"])
-            self.upgrade_related_devices()
+            created = self.upgrade_related_devices()
             if firmwareless:
-                self.upgrade_firmwareless_devices()
+                created += self.upgrade_firmwareless_devices()
+            if not created:
+                self.status = "failed"
+                self.save(update_fields=["status"])
+                self._launch_without_eligible_devices()
 
     @classmethod
     def send_pending_reminders(cls):
@@ -1036,14 +1055,17 @@ class AbstractBatchUpgradeOperation(
         device_firmwares = self.build._find_related_device_firmwares(
             group=self.group, location=self.location
         )
+        created = 0
         for device_fw in device_firmwares:
             image = self.build.firmwareimage_set.filter(
                 type=device_fw.image.type
             ).first()
-            if image:
-                device_fw.image = image
-                device_fw.full_clean()
-                device_fw.save(self, upgrade_options=self.upgrade_options)
+            if not image:
+                continue
+            device_fw.image = image
+            if self._launch_device_firmware(device_fw):
+                created += 1
+        return created
 
     def upgrade_firmwareless_devices(self):
         """
@@ -1053,15 +1075,47 @@ class AbstractBatchUpgradeOperation(
         """
         # for each image, find related "firmwareless"
         # devices and perform upgrade one by one
+        DeviceFirmware = load_model("DeviceFirmware")
+        created = 0
         for image in self.build.firmwareimage_set.all():
             devices = self.build._find_firmwareless_devices(
                 image.boards, group=self.group, location=self.location
             )
             for device in devices:
-                DeviceFirmware = load_model("DeviceFirmware")
                 device_fw = DeviceFirmware(device=device, image=image)
+                if self._launch_device_firmware(device_fw):
+                    created += 1
+        return created
+
+    def _launch_device_firmware(self, device_fw):
+        try:
+            with transaction.atomic():
                 device_fw.full_clean()
                 device_fw.save(self, upgrade_options=self.upgrade_options)
+        except ValidationError as error:
+            logger.warning(
+                "Skipped device %s in mass upgrade %s: %s",
+                device_fw.device,
+                self,
+                error.messages,
+            )
+            return False
+        return True
+
+    def _launch_without_eligible_devices(self):
+        description = _(
+            "Mass upgrade %(batch)s failed to start: no selected device could "
+            "be upgraded with the target build."
+        ) % {"batch": self}
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=self,
+                type="generic_message",
+                target=self,
+                message=description,
+            )
+        )
 
     @cached_property
     def upgrade_operations(self):
@@ -1382,14 +1436,24 @@ class AbstractBatchUpgradeOperation(
                     batch.firmwareless and result["devices"].exists()
                 )
                 conflict = batch._find_conflict()
-                if not eligible or conflict:
+                authorized = batch._initiator_can_launch()
+                if not eligible or conflict or not authorized:
                     failed = cls.objects.filter(
                         pk=batch_id, status="scheduled", scheduled_at__lte=now
                     ).update(status="failed", modified=timezone.now())
                     if failed:
+                        if conflict:
+                            reason = conflict
+                        elif not authorized:
+                            reason = _(
+                                "the user who scheduled it no longer has "
+                                "permission to run it"
+                            )
+                        else:
+                            reason = None
                         batch.status = "failed"
                         batch.save(update_fields=["status", "modified"])
-                        batch._scheduled_validation_failed(reason=conflict)
+                        batch._scheduled_validation_failed(reason=reason)
                     continue
                 claimed = cls.objects.filter(
                     pk=batch_id, status="scheduled", scheduled_at__lte=now
@@ -1459,6 +1523,43 @@ class AbstractBatchUpgradeOperation(
                 message=description,
             )
         )
+
+    def _initiator_can_launch(self):
+        user = self.initiated_by
+        if user is None:
+            return True
+        if not user.is_active:
+            return False
+        if user.is_superuser:
+            return True
+        org_id = self.build.category.organization_id
+        if org_id is not None and str(org_id) not in [
+            str(managed) for managed in user.organizations_managed
+        ]:
+            return False
+        return user.has_perm(f"{self._meta.app_label}.add_{self._meta.model_name}")
+
+    @classmethod
+    def fail_scheduled_on_target_delete(cls, sender, instance, **kwargs):
+        field = (
+            "group"
+            if sender is swapper.load_model("config", "DeviceGroup")
+            else "location"
+        )
+        scheduled = cls.objects.filter(status="scheduled", **{field: instance})
+        for batch in scheduled:
+            failed = cls.objects.filter(pk=batch.pk, status="scheduled").update(
+                status="failed", modified=timezone.now()
+            )
+            if failed:
+                batch.status = "failed"
+                batch._scheduled_validation_failed(
+                    reason=_(
+                        "a device group or location it targeted was deleted, which "
+                        "would otherwise have widened the upgrade to unintended "
+                        "devices"
+                    )
+                )
 
 
 class AbstractUpgradeOperation(
@@ -1558,17 +1659,23 @@ class AbstractUpgradeOperation(
     class Meta:
         abstract = True
 
-    def log_line(self, line, save=True):
+    def log_line(self, line, save=True, update_fields=None):
         if self.log:
             self.log += f"\n{line}"
         else:
             self.log = line
         logger.info(f"# {line}")
         if save:
-            self.save()
-            firmware_upgrader_log_updated.send(
-                sender=self.__class__, instance=self, line=line
-            )
+            if update_fields is None:
+                self.save()
+            else:
+                self.save(update_fields=update_fields)
+            self._emit_log_updated(line)
+
+    def _emit_log_updated(self, line):
+        firmware_upgrader_log_updated.send(
+            sender=self.__class__, instance=self, line=line
+        )
 
     def update_progress(self, progress, save=True):
         """Update progress with validation."""
@@ -1684,18 +1791,16 @@ class AbstractUpgradeOperation(
                     operation.status = "aborted"
                     operation.log_line(
                         _("Device has been deactivated; persistent retry aborted."),
-                        save=False,
+                        update_fields=["status", "log"],
                     )
-                    operation.save(update_fields=["status", "log"])
                 return
             if not cls.objects.filter(pk=operation_id, status="in-progress").exists():
                 return
             operation.log_line(
                 _("Persistent retry #%(count)s starting.\n")
                 % {"count": operation.retry_count},
-                save=False,
+                update_fields=["log"],
             )
-            operation.save(update_fields=["log"])
             upgrade_firmware.apply_async(
                 (operation.pk,),
                 expires=app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"],
@@ -1717,7 +1822,10 @@ class AbstractUpgradeOperation(
         now = timezone.now()
         stale_claim = now - timedelta(seconds=options["claim_timeout"])
         cls.objects.filter(
-            status="in-progress", is_persistent=True, claimed_at__lte=stale_claim
+            status="in-progress",
+            is_persistent=True,
+            claimed_at__lte=stale_claim,
+            progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
         ).update(
             status="pending",
             next_retry_at=now + timedelta(seconds=options["base_delay"]),
@@ -1774,8 +1882,10 @@ class AbstractUpgradeOperation(
                 _("Detected a recoverable failure: %(cause)s.\n") % {"cause": cause},
                 save=False,
             )
-            self.log_line(_("The upgrade operation will be retried soon."), save=False)
-            self.save(update_fields=["log"])
+            self.log_line(
+                _("The upgrade operation will be retried soon."),
+                update_fields=["log"],
+            )
             raise error
         if self.is_persistent and isinstance(error, RecoverableFailure):
             self.status = "pending"
@@ -1828,6 +1938,7 @@ class AbstractUpgradeOperation(
                     "modified",
                 ]
             )
+            self._emit_log_updated((self.log or "").rstrip("\n").rsplit("\n", 1)[-1])
             return True
 
     def upgrade(self, recoverable=True):

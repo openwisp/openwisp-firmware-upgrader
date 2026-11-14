@@ -1,7 +1,6 @@
 import logging
 
 import swapper
-from django import forms
 from django.core.exceptions import ValidationError
 from django.http import Http404
 from django.utils.translation import gettext_lazy as _
@@ -22,7 +21,7 @@ from openwisp_users.api.permissions import DjangoModelPermissions
 from openwisp_utils.api.pagination import OpenWispPagination
 
 from ..swapper import load_model
-from ..utils import reinterpret_in_timezone
+from ..utils import NaiveSplitDateTimeField, reinterpret_in_timezone
 from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
     BatchUpgradeOperationListSerializer,
@@ -166,6 +165,7 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
                 location=location,
                 is_persistent=is_persistent,
                 scheduled_at=scheduled_at,
+                initiated_by=request.user,
             )
         except ValidationError as e:
             return Response(
@@ -525,7 +525,7 @@ class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
         data = request.data
         tz_name = data.get("scheduled_at_tz")
         if tz_name is not None:
-            field = forms.SplitDateTimeField(required=False)
+            field = NaiveSplitDateTimeField(required=False)
             try:
                 parsed = field.clean(
                     [data.get("scheduled_at_0"), data.get("scheduled_at_1")]
