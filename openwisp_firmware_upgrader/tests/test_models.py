@@ -1,6 +1,7 @@
 import io
 import uuid
 from contextlib import redirect_stdout
+from datetime import timedelta
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -592,6 +593,31 @@ class TestModels(TestUpgraderMixin, TestCase):
         batch = BatchUpgradeOperation.objects.create(build=build)
         expected = f"{build} ({timezone.localtime(batch.created).strftime('%Y-%m-%d %H:%M:%S')})"
         self.assertEqual(str(batch), expected)
+
+    def test_batch_modified_updates_on_status_change(self):
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(), status="in-progress"
+        )
+        operation = UpgradeOperation.objects.create(
+            device=self._create_device(), batch=batch
+        )
+        previous_modified = batch.modified - timedelta(hours=1)
+        BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
+            modified=previous_modified
+        )
+        batch.refresh_from_db()
+
+        operation.status = "success"
+        operation.save()
+        batch.refresh_from_db()
+
+        self.assertEqual(batch.status, "success")
+        self.assertGreater(batch.modified, previous_modified)
+
+        modified = batch.modified
+        batch.calculate_and_update_status()
+        batch.refresh_from_db()
+        self.assertEqual(batch.modified, modified)
 
     def test_upgrade_operation_str(self):
         with mock.patch(

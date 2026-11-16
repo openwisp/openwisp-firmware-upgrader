@@ -812,7 +812,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         # Update status only if it has changed
         if self.status != new_status:
             self.status = new_status
-            self.save(update_fields=["status"])
+            self.save(update_fields=["status", "modified"])
         return new_status, stats
 
 
