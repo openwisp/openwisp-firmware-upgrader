@@ -1631,13 +1631,16 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             operation.save()
 
         mocked_upgrade.side_effect = complete_first_operation
-        env["build2"].batch_upgrade(firmwareless=False)
+        launched_at = timezone.now() + timedelta(hours=1)
+        with time_travel(launched_at):
+            env["build2"].batch_upgrade(firmwareless=False)
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
         operations = batch.upgradeoperation_set
         self.assertEqual(operations.count(), 2)
         self.assertEqual(operations.filter(status="success").count(), 1)
         self.assertEqual(operations.filter(status="in-progress").count(), 1)
         self.assertEqual(batch.status, "in-progress")
+        self.assertEqual(batch.modified, launched_at)
         mocked_notify.assert_not_called()
 
     @mock.patch(_mock_updrade, return_value=True)

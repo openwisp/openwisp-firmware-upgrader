@@ -28,7 +28,9 @@ OrganizationUser = swapper.load_model("openwisp_users", "OrganizationUser")
 def time_travel(moment):
     """Freeze ``timezone.now()`` at ``moment`` so backoff, the Beat scan
     window and reminder cadence are deterministic."""
-    with mock.patch.object(timezone, "now", return_value=moment):
+    with mock.patch.object(timezone, "now", return_value=moment), mock.patch(
+        "model_utils.fields.now", return_value=moment
+    ):
         yield moment
 
 

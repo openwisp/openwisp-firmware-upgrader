@@ -158,7 +158,7 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(mocked_upgrade.call_count, 1)
 
     def test_connect_skips_without_monitoring(self):
-        config = apps.get_app_config("firmware_upgrader")
+        config = apps.get_app_config(UpgradeOperation._meta.app_label)
         with mock.patch(
             "openwisp_firmware_upgrader.apps.load_model", return_value=None
         ) as mocked_load:
@@ -171,7 +171,7 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
         "openwisp_firmware_upgrader.base.models.retry_pending_upgrade.apply_async"
     )
     def test_connects_monitoring_signal(self, mocked_dispatch):
-        config = apps.get_app_config("firmware_upgrader")
+        config = apps.get_app_config(UpgradeOperation._meta.app_label)
         signal = Signal()
         fake_signals = mock.Mock(health_status_changed=signal)
         with mock.patch(

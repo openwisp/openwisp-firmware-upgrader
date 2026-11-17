@@ -8,6 +8,7 @@ const FW_UPGRADE_STATUS = {
   CANCELLED: "cancelled",
   IN_PROGRESS: "in-progress",
   PENDING: "pending",
+  SCHEDULED: "scheduled",
 };
 
 // Display statuses
@@ -18,6 +19,7 @@ const FW_UPGRADE_DISPLAY_STATUS = {
   CANCELLED: gettext("cancelled"),
   IN_PROGRESS: gettext("in progress"),
   PENDING: gettext("pending"),
+  SCHEDULED: gettext("scheduled"),
   COMPLETED_SUCCESSFULLY: gettext("completed successfully"),
   COMPLETED_WITH_FAILURES: gettext("completed with some failures"),
   COMPLETED_WITH_CANCELLATIONS: gettext("completed with some cancellations"),
@@ -33,6 +35,7 @@ const FW_UPGRADE_CSS_CLASSES = {
   SUCCESS: "success",
   ABORTED: "aborted",
   PENDING: "pending",
+  SCHEDULED: "scheduled",
 };
 
 const VALID_FW_STATUSES = new Set(Object.values(FW_UPGRADE_STATUS));

@@ -843,33 +843,39 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
             return JsonResponse({"error": _("Invalid request body.")}, status=400)
         tz_name = data.get("scheduled_at_tz") or get_current_timezone_name()
         field = NaiveSplitDateTimeField(required=False)
+        fields = {}
         try:
-            parsed = field.clean(
-                [data.get("scheduled_at_0"), data.get("scheduled_at_1")]
-            )
-            scheduled_at = reinterpret_in_timezone(parsed, tz_name) if parsed else None
+            if "scheduled_at_0" in data or "scheduled_at_1" in data:
+                parsed = field.clean(
+                    [data.get("scheduled_at_0"), data.get("scheduled_at_1")]
+                )
+                fields["scheduled_at"] = (
+                    reinterpret_in_timezone(parsed, tz_name) if parsed else None
+                )
         except ValidationError as error:
             return JsonResponse({"error": error.messages[0]}, status=400)
         groups, locations = scoped_group_and_location_querysets(
             request.user, batch.build.category.organization_id
         )
         try:
-            group = groups.get(pk=data["group"]) if data.get("group") else None
-            location = (
-                locations.get(pk=data["location"]) if data.get("location") else None
-            )
+            if "group" in data:
+                fields["group"] = (
+                    groups.get(pk=data["group"]) if data.get("group") else None
+                )
+            if "location" in data:
+                fields["location"] = (
+                    locations.get(pk=data["location"]) if data.get("location") else None
+                )
         except (DeviceGroup.DoesNotExist, Location.DoesNotExist, ValidationError):
             return JsonResponse(
                 {"error": _("The selected group or location is not valid.")}, status=400
             )
+        if "is_persistent" in data:
+            fields["is_persistent"] = bool(data["is_persistent"])
+        if "upgrade_all" in data:
+            fields["firmwareless"] = bool(data["upgrade_all"])
         try:
-            batch.reschedule(
-                scheduled_at=scheduled_at,
-                group=group,
-                location=location,
-                is_persistent=bool(data.get("is_persistent", batch.is_persistent)),
-                firmwareless=bool(data.get("upgrade_all", batch.firmwareless)),
-            )
+            batch.reschedule(**fields)
         except ValueError as error:
             return JsonResponse({"error": str(error)}, status=409)
         except ValidationError as error:

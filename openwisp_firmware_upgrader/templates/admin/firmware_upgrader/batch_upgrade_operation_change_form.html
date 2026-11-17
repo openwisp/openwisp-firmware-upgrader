@@ -72,7 +72,7 @@
             {% trans "Persistent" %}
           </label>
         </div>
-        <div class="help">{% trans "Keep retrying failed device upgrades until they succeed." %}</div>
+        <div class="help">{% trans "Retry offline or recoverable pre-flash failures until the device upgrade succeeds or is cancelled." %}</div>
       </div>
     </div>
 
@@ -298,12 +298,4 @@
 {% endif %}
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-utils.js' %}"></script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-upgrade-progress.js' %}"></script>
-<script>
-django.jQuery(function($) {
-  var statusField = $('.field-status .readonly');
-    if (statusField.length && !statusField.find('.batch-main-progress').length) {
-      statusField.append('<div class="batch-main-progress"></div>');
-    }
-});
-</script>
 {% endblock %}

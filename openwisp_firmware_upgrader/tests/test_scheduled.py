@@ -3,12 +3,12 @@ from unittest import mock
 
 import swapper
 from django.contrib.auth.models import Permission
+from django.db import transaction
 from django.db.models.signals import post_save
 from django.test import TransactionTestCase
 from django.utils import timezone
 
 from .. import tasks
-from ..exceptions import RecoverableFailure
 from ..swapper import load_model
 from .base import TestUpgraderMixin, time_travel
 
@@ -17,48 +17,60 @@ BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Location = swapper.load_model("geo", "Location")
 
 _upgrade_dispatch = "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async"
-_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
+DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 
 
 class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
-    def _schedule(self, at, **kwargs):
-        device_fw = self._create_device_firmware()
-        return device_fw.image.build.batch_upgrade(
-            firmwareless=False, scheduled_at=at, **kwargs
-        )
+    _mock_connect = f"{DeviceConnection.__module__}.DeviceConnection.connect"
 
-    def test_scheduled_persistent_offline_device_recovers(self):
+    @mock.patch.object(tasks.upgrade_firmware, "max_retries", 0)
+    @mock.patch(
+        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
+        return_value=True,
+    )
+    def test_scheduled_persistent_offline_device_recovers(self, flash):
+        env = self._create_upgrade_env()
         future = timezone.now() + timedelta(days=1)
-        batch = self._schedule(future, is_persistent=True)
+        batch = env["build2"].batch_upgrade(
+            firmwareless=False, scheduled_at=future, is_persistent=True
+        )
+        offline_device = env["d2"]
 
-        def pend(args, **kwargs):
-            op = UpgradeOperation.objects.get(pk=args[0])
-            op._recoverable_failure_handler(
-                recoverable=False, error=RecoverableFailure("device offline")
-            )
-            op.save()
+        def connect(connection):
+            return connection.device_id != offline_device.pk
 
         due = future + timedelta(seconds=1)
-        with time_travel(due), mock.patch(_connect, return_value=True), mock.patch(
-            _upgrade_dispatch, side_effect=pend
+        with time_travel(due), mock.patch(
+            self._mock_connect, autospec=True, side_effect=connect
         ):
             tasks.execute_scheduled_upgrades.run()
-
-        op = batch.upgradeoperation_set.get()
-        self.assertTrue(op.is_persistent)
+        online_op = batch.upgradeoperation_set.get(device=env["d1"])
+        self.assertEqual(online_op.status, "success")
+        env["device_fw1"].refresh_from_db()
+        self.assertEqual(env["device_fw1"].image, env["image2a"])
+        self.assertEqual(env["device_fw1"].installed, True)
+        op = batch.upgradeoperation_set.get(device=offline_device)
+        self.assertEqual(op.is_persistent, True)
         self.assertEqual(op.status, "pending")
         self.assertEqual(op.retry_count, 1)
         self.assertGreater(op.next_retry_at, due)
         batch.refresh_from_db()
         self.assertEqual(batch.status, "in-progress")
-
-        def succeed(args, **kwargs):
-            recovered = UpgradeOperation.objects.get(pk=args[0])
-            recovered.status = "success"
-            recovered.save()
-
+        env["device_fw2"].refresh_from_db()
+        self.assertEqual(env["device_fw2"].installed, False)
+        first_retry = op.next_retry_at
+        with time_travel(first_retry + timedelta(seconds=1)), mock.patch(
+            self._mock_connect, autospec=True, side_effect=connect
+        ):
+            tasks.check_pending_upgrades.run()
+        op.refresh_from_db()
+        self.assertEqual(op.status, "pending")
+        self.assertEqual(op.retry_count, 2)
+        self.assertGreater(op.next_retry_at, first_retry)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
         with time_travel(op.next_retry_at + timedelta(seconds=1)), mock.patch(
-            _upgrade_dispatch, side_effect=succeed
+            self._mock_connect, return_value=True
         ):
             tasks.check_pending_upgrades.run()
 
@@ -66,6 +78,11 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(op.status, "success")
         batch.refresh_from_db()
         self.assertEqual(batch.status, "success")
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+        env["device_fw2"].refresh_from_db()
+        self.assertEqual(env["device_fw2"].image, env["image2b"])
+        self.assertEqual(env["device_fw2"].installed, True)
+        self.assertEqual(flash.call_count, 2)
 
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
     def test_conflict_at_launch_fails_batch_without_duplicate(self, mocked_dispatch):
@@ -103,9 +120,12 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, "in-progress")
         self.assertEqual(batch.upgradeoperation_set.count(), 0)
-        batch.cancel()
+        cancelled_at = future + timedelta(hours=1)
+        with time_travel(cancelled_at):
+            batch.cancel()
         batch.refresh_from_db()
         self.assertEqual(batch.status, "cancelled")
+        self.assertEqual(batch.modified, cancelled_at)
         with mock.patch(_upgrade_dispatch) as mocked_upgrade:
             tasks.batch_upgrade_operation.run(batch.pk, batch.firmwareless)
         batch.refresh_from_db()
@@ -144,6 +164,62 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         dispatch.assert_not_called()
         batch.refresh_from_db()
         self.assertEqual(batch.status, "failed")
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_worker_rejects_initiator_deactivated_after_dispatch(self, dispatch):
+        device_fw = self._create_device_firmware()
+        admin = self._create_admin()
+        future = timezone.now() + timedelta(days=1)
+        batch = device_fw.image.build.batch_upgrade(
+            firmwareless=False, scheduled_at=future, initiated_by=admin
+        )
+        with time_travel(future + timedelta(seconds=1)):
+            tasks.execute_scheduled_upgrades.run()
+        dispatch.assert_called_once()
+        # Cache the active user on a stale batch to exercise the locked reload.
+        batch.refresh_from_db()
+        self.assertEqual(batch.initiated_by.is_active, True)
+        admin.is_active = False
+        admin.save(update_fields=["is_active"])
+        failed_at = future + timedelta(minutes=1)
+        with time_travel(failed_at), mock.patch(
+            "openwisp_notifications.signals.notify.send"
+        ) as notify, mock.patch(_upgrade_dispatch) as upgrade:
+            with self.subTest(
+                "rolled back failure does not notify"
+            ), transaction.atomic():
+                batch.upgrade()
+                transaction.set_rollback(True)
+            notify.assert_not_called()
+
+            with self.subTest("worker refuses the queued launch"):
+                tasks.batch_upgrade_operation.run(batch.pk, batch.firmwareless)
+            notify.assert_called_once()
+            self.assertEqual(
+                str(notify.call_args.kwargs["message"]),
+                f"Scheduled mass upgrade {batch} was not started: "
+                "the user who scheduled it no longer has permission to run it",
+            )
+            upgrade.assert_not_called()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+        self.assertEqual(batch.modified, failed_at)
+        self.assertEqual(batch.upgradeoperation_set.count(), 0)
+
+    def test_worker_updates_empty_failure_timestamp(self):
+        empty = BatchUpgradeOperation.objects.create(
+            build=self._create_build(version="empty"), firmwareless=False
+        )
+        failed_at = timezone.now() + timedelta(hours=1)
+        with time_travel(failed_at), mock.patch(
+            "openwisp_notifications.signals.notify.send"
+        ) as notify:
+            tasks.batch_upgrade_operation.run(empty.pk, False)
+        empty.refresh_from_db()
+        self.assertEqual(empty.status, "failed")
+        self.assertEqual(empty.modified, failed_at)
+        self.assertEqual(empty.upgradeoperation_set.count(), 0)
+        notify.assert_called_once()
 
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
     def test_launch_fails_when_initiator_loses_org_access(self, dispatch):

@@ -923,7 +923,7 @@ class AbstractBatchUpgradeOperation(
             .exclude(pk=self.pk)
             .select_related("build")
         )
-        for existing in active:
+        for existing in active.iterator():
             if self._filters_overlap_with(existing):
                 if existing.scheduled_at:
                     local = timezone.localtime(existing.scheduled_at)
@@ -974,14 +974,25 @@ class AbstractBatchUpgradeOperation(
             )
             if locked is None or locked.upgradeoperation_set.exists():
                 return
+            self.refresh_from_db()
+            # Authorization may change while a scheduled launch waits in the queue.
+            if self.scheduled_at is not None and not self._initiator_can_launch():
+                self.status = "failed"
+                self.save(update_fields=["status", "modified"])
+                self._scheduled_validation_failed(
+                    reason=_(
+                        "the user who scheduled it no longer has permission to run it"
+                    )
+                )
+                return
             self.status = "in-progress"
-            self.save(update_fields=["status"])
+            self.save(update_fields=["status", "modified"])
             created = self.upgrade_related_devices()
             if firmwareless:
                 created += self.upgrade_firmwareless_devices()
             if not created:
                 self.status = "failed"
-                self.save(update_fields=["status"])
+                self.save(update_fields=["status", "modified"])
                 self._launch_without_eligible_devices()
 
     @classmethod
@@ -1333,7 +1344,7 @@ class AbstractBatchUpgradeOperation(
             # Re-save the same status after the atomic claim so post_save fires.
             updated = self._meta.model.objects.filter(
                 pk=self.pk, status="scheduled"
-            ).update(status="cancelled")
+            ).update(status="cancelled", modified=timezone.now())
             if not updated:
                 self.refresh_from_db(fields=["status"])
                 raise ValueError(
@@ -1341,7 +1352,7 @@ class AbstractBatchUpgradeOperation(
                     % {"status": self.status}
                 )
             self.status = "cancelled"
-            self.save(update_fields=["status"])
+            self.save(update_fields=["status", "modified"])
             return
         if self.status == "in-progress":
             UpgradeOperation = load_model("UpgradeOperation")
@@ -1352,26 +1363,23 @@ class AbstractBatchUpgradeOperation(
                     return
                 if not locked.upgradeoperation_set.exists():
                     self.status = "cancelled"
-                    self.save(update_fields=["status"])
+                    self.save(update_fields=["status", "modified"])
                     return
             cancelled = 0
-            operation_ids = list(
-                self.upgradeoperation_set.filter(
-                    status__in=UpgradeOperation.CANCELLABLE_STATUS,
-                    progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
-                ).values_list("pk", flat=True)
+            operations = self.upgradeoperation_set.filter(
+                status__in=UpgradeOperation.CANCELLABLE_STATUS,
+                progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
             )
-            for operation_id in operation_ids:
-                try:
-                    operation = UpgradeOperation.objects.get(pk=operation_id)
-                except UpgradeOperation.DoesNotExist:
-                    continue
+            # Individual cancellation preserves its progress guard and log signals.
+            for operation in operations.iterator():
                 try:
                     operation.cancel()
+                except UpgradeOperation.DoesNotExist:
+                    continue
                 except ValueError as error:
                     logger.warning(
                         "Could not cancel upgrade operation %s of batch %s: %s",
-                        operation_id,
+                        operation.pk,
                         self.pk,
                         error,
                     )
@@ -1411,12 +1419,10 @@ class AbstractBatchUpgradeOperation(
         """
         now = timezone.now()
         cls._recover_orphaned_launches(now)
-        due_ids = list(
-            cls.objects.filter(status="scheduled", scheduled_at__lte=now).values_list(
-                "pk", flat=True
-            )
-        )
-        for batch_id in due_ids:
+        due_ids = cls.objects.filter(
+            status="scheduled", scheduled_at__lte=now
+        ).values_list("pk", flat=True)
+        for batch_id in due_ids.iterator():
             with transaction.atomic():
                 try:
                     batch = (
@@ -1546,8 +1552,10 @@ class AbstractBatchUpgradeOperation(
             if sender is swapper.load_model("config", "DeviceGroup")
             else "location"
         )
-        scheduled = cls.objects.filter(status="scheduled", **{field: instance})
-        for batch in scheduled:
+        scheduled = cls.objects.filter(
+            status="scheduled", **{field: instance}
+        ).select_related("build__category")
+        for batch in scheduled.iterator():
             failed = cls.objects.filter(pk=batch.pk, status="scheduled").update(
                 status="failed", modified=timezone.now()
             )
@@ -1601,8 +1609,8 @@ class AbstractUpgradeOperation(
         default=False,
         verbose_name=_("persistent"),
         help_text=_(
-            "if enabled, the system will keep retrying this upgrade "
-            "until it succeeds or is cancelled"
+            "if enabled, the system will retry offline or recoverable pre-flash "
+            "failures until this upgrade succeeds or is cancelled"
         ),
     )
     retry_count = models.PositiveIntegerField(
@@ -1746,15 +1754,11 @@ class AbstractUpgradeOperation(
         """
         if status != "ok":
             return
-        pending_ops = list(
-            cls.objects.filter(device=instance.device, status="pending").values_list(
-                "pk", "retry_count"
-            )
-        )
-        if not pending_ops:
-            return
+        pending_ops = cls.objects.filter(
+            device=instance.device, status="pending"
+        ).values_list("pk", "retry_count")
         jitter = app_settings.PERSISTENT_RETRY_OPTIONS["signal_jitter"]
-        for pk, retry_count in pending_ops:
+        for pk, retry_count in pending_ops.iterator():
             retry_pending_upgrade.apply_async(
                 args=[pk],
                 kwargs={"expected_retry_count": retry_count},

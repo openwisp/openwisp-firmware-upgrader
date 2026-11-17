@@ -32,6 +32,7 @@ from ..upgraders.openwisp import OpenWrt
 
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+Location = swapper.load_model("geo", "Location")
 Build = load_model("Build")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
@@ -656,11 +657,11 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             )
 
     def test_batch_reschedule_panel_widgets(self):
-        """The reschedule panel on a scheduled batch initializes the Select2
-        group/location widgets, renders the AdminSplitDateTime inputs prefilled
-        with the current schedule, and the cancel button opens the styled
-        confirmation modal."""
-        _, _, _, build2, _, _, _ = self._set_up_env()
+        org, _, _, build2, _, _, _ = self._set_up_env()
+        group = self._create_device_group(organization=org)
+        location = Location.objects.create(
+            name="Office", address="123 Main St", organization=org
+        )
         batch = BatchUpgradeOperation.objects.create(
             build=build2,
             status="scheduled",
@@ -689,14 +690,208 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             "Both group and location Select2 widgets are initialized",
         )
         self._assert_no_js_errors(ignore_websockets=True)
-        # the cancel action opens the styled confirmation modal; asserting it
-        # opens is enough (the destructive cancel is covered by the API tests)
+        scheduled = (timezone.localtime() + timedelta(days=2)).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
+        expected_iso = self.web_driver.execute_script(
+            "return new Date(arguments[0] + 'T' + arguments[1]).toISOString();",
+            scheduled.strftime("%Y-%m-%d"),
+            scheduled.strftime("%H:%M"),
+        )
+        date_format = self.web_driver.execute_script(
+            "return get_format('DATE_INPUT_FORMATS')[0];"
+        )
+        scheduled_date = scheduled.strftime(date_format)
+        self.web_driver.execute_script(
+            "django.jQuery('#batch-reschedule-group').val(arguments[0]).trigger('change');"
+            "django.jQuery('#batch-reschedule-location').val(arguments[1]).trigger('change');",
+            str(group.pk),
+            str(location.pk),
+        )
+        persistent = self.find_element(By.ID, "batch-reschedule-persistent")
+        firmwareless = self.find_element(By.ID, "batch-reschedule-firmwareless")
+        persistent.click()
+        firmwareless.click()
+        date_input.clear()
+        invalid_date = (timezone.localtime() - timedelta(days=1)).strftime(date_format)
+        date_input.send_keys(invalid_date)
+        time_input.clear()
+        time_input.send_keys(scheduled.strftime("%H:%M"))
+        self.find_element(By.ID, "batch-reschedule-save").click()
+        alert = self.wait_until(EC.alert_is_present())
+        message = alert.text
+        alert.accept()
+        self.assertEqual(
+            message, "The scheduled time must be at least 10 minutes in the future."
+        )
+        self.assertEqual(date_input.get_attribute("value"), invalid_date)
+        self.assertEqual(time_input.get_attribute("value"), scheduled.strftime("%H:%M"))
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-group")
+            ).first_selected_option.get_attribute("value"),
+            str(group.pk),
+        )
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-location")
+            ).first_selected_option.get_attribute("value"),
+            str(location.pk),
+        )
+        self.assertEqual(persistent.is_selected(), False)
+        self.assertEqual(firmwareless.is_selected(), True)
+        date_input.clear()
+        date_input.send_keys(scheduled_date)
+        self.find_element(By.ID, "batch-reschedule-save").click()
+        self.wait_until(EC.staleness_of(date_input))
+        self.hide_loading_overlay()
+        batch.refresh_from_db()
+        self.assertEqual(
+            batch.scheduled_at,
+            datetime.fromisoformat(expected_iso.replace("Z", "+00:00")),
+        )
+        self.assertEqual(batch.group, group)
+        self.assertEqual(batch.location, location)
+        self.assertEqual(batch.is_persistent, False)
+        self.assertEqual(batch.firmwareless, True)
+        self.find_element(By.ID, "batch-reschedule-btn").click()
+        self.wait_for_visibility(By.ID, "batch-reschedule-form")
+        self.assertEqual(
+            self.find_element(By.NAME, "scheduled_at_0").get_attribute("value"),
+            scheduled_date,
+        )
+        self.assertEqual(
+            self.find_element(By.NAME, "scheduled_at_1").get_attribute("value"),
+            scheduled.strftime("%H:%M"),
+        )
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-group")
+            ).first_selected_option.get_attribute("value"),
+            str(group.pk),
+        )
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-location")
+            ).first_selected_option.get_attribute("value"),
+            str(location.pk),
+        )
+        self.assertEqual(
+            self.find_element(By.ID, "batch-reschedule-persistent").is_selected(), False
+        )
+        self.assertEqual(
+            self.find_element(By.ID, "batch-reschedule-firmwareless").is_selected(),
+            True,
+        )
         cancel_button = self.find_element(By.ID, "batch-cancel-btn")
         self.web_driver.execute_script("arguments[0].click();", cancel_button)
         modal = self.wait_for_visibility(
             By.CSS_SELECTOR, "#ow-batch-cancel-modal.ow-overlay-notification"
         )
         self.assertTrue(modal.is_displayed())
+        self.find_element(
+            By.CSS_SELECTOR, "#ow-batch-cancel-modal .ow-batch-cancel-confirm"
+        ).click()
+        self.wait_until(EC.staleness_of(cancel_button))
+        self.hide_loading_overlay()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "cancelled")
+        self.assertEqual(self.web_driver.find_elements(By.ID, "batch-cancel-btn"), [])
+        self._assert_no_js_errors(ignore_websockets=True)
+
+    def test_scheduled_snapshot_reveals_completed_results(self):
+        _, _, _, build2, _, image2, device = self._set_up_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=build2,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        self.login()
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                args=[batch.pk],
+            )
+        )
+        self.hide_loading_overlay()
+        self.wait_for_presence(By.ID, "batch-reschedule-btn")
+        self.web_driver.execute_script("window.batchUpgradeProgressWebSocket.close();")
+        self.assertEqual(
+            self.find_element(
+                By.ID, "upgrade-operations-section", wait_for="presence"
+            ).is_displayed(),
+            False,
+        )
+        self.assertEqual(
+            self.find_element(
+                By.CSS_SELECTOR,
+                ".batch-main-progress .upgrade-progress-fill",
+                wait_for="presence",
+            ).get_attribute("class"),
+            "upgrade-progress-fill scheduled",
+        )
+        self.assertEqual(
+            self.find_element(By.CSS_SELECTOR, ".field-status .readonly").text,
+            "scheduled",
+        )
+        self.web_driver.execute_script(
+            "window.snapshotSocket = {addEventListener(type, handler) {"
+            "if (type === 'message') {this.message = handler;}}, open() {}};"
+            "initBatchUpgradeProgressWebSockets(django.jQuery, window.snapshotSocket);"
+            "window.snapshotSocket.message({data: JSON.stringify({type: 'batch_state',"
+            "batch_status: {status: 'scheduled', total: 0, completed: 0}, operations: []})});"
+        )
+        self.assertEqual(
+            self.find_element(
+                By.CSS_SELECTOR,
+                ".batch-main-progress .upgrade-progress-fill",
+                wait_for="presence",
+            ).get_attribute("class"),
+            "upgrade-progress-fill scheduled",
+        )
+        self.assertEqual(
+            self.find_element(By.CSS_SELECTOR, ".field-status .readonly").text,
+            "scheduled",
+        )
+        operation = UpgradeOperation.objects.create(
+            device=device, image=image2, batch=batch, status="success", progress=100
+        )
+        self.web_driver.execute_script(
+            "window.snapshotSocket.message({data: JSON.stringify(arguments[0])});",
+            {
+                "type": "batch_state",
+                "batch_status": {"status": "success", "total": 1, "completed": 1},
+                "operations": [
+                    {
+                        "id": str(operation.pk),
+                        "status": "success",
+                        "progress": 100,
+                        "device_id": str(device.pk),
+                        "device_name": device.name,
+                        "image_name": str(image2),
+                    }
+                ],
+            },
+        )
+        self.wait_for_visibility(By.ID, "upgrade-operations-section")
+        self.assertEqual(
+            len(
+                self.web_driver.find_elements(
+                    By.CSS_SELECTOR, "#result_list tbody td.status-cell"
+                )
+            ),
+            1,
+        )
+        self.assertEqual(
+            self.web_driver.find_elements(By.CSS_SELECTOR, ".batch-actions"), []
+        )
+        self.assertEqual(
+            self.find_element(
+                By.CSS_SELECTOR, "#result_list .upgrade-progress-fill"
+            ).get_attribute("class"),
+            "upgrade-progress-fill success",
+        )
+        self._assert_no_js_errors(ignore_websockets=True)
 
     @patch(_mock_upgrade, return_value=True)
     def test_upgrade_operation_admin_no_submit_row(self, *args):

@@ -20,15 +20,33 @@ from openwisp_firmware_upgrader.tests.test_api import (
 from openwisp_firmware_upgrader.tests.test_api import (
     TestOrgAPIMixin as BaseTestOrgAPIMixin,
 )
+from openwisp_firmware_upgrader.tests.test_handlers import (
+    TestMonitoringSignalHandler as BaseTestMonitoringSignalHandler,
+)
 from openwisp_firmware_upgrader.tests.test_models import TestModels as BaseTestModels
 from openwisp_firmware_upgrader.tests.test_models import (
     TestModelsTransaction as BaseTestModelsTransaction,
+)
+from openwisp_firmware_upgrader.tests.test_notifications import (
+    TestBatchCompletionNotification as BaseTestBatchCompletionNotification,
+)
+from openwisp_firmware_upgrader.tests.test_notifications import (
+    TestFailedPersistentUpgradeNotification as BaseTestFailedPersistentUpgradeNotification,
+)
+from openwisp_firmware_upgrader.tests.test_notifications import (
+    TestPendingUpgradeReminders as BaseTestPendingUpgradeReminders,
+)
+from openwisp_firmware_upgrader.tests.test_notifications import (
+    TestScheduledUpgradeNotifications as BaseTestScheduledUpgradeNotifications,
 )
 from openwisp_firmware_upgrader.tests.test_openwrt_upgrader import (
     TestOpenwrtUpgrader as BaseTestOpenwrtUpgrader,
 )
 from openwisp_firmware_upgrader.tests.test_private_storage import (
     TestPrivateStorage as BaseTestPrivateStorage,
+)
+from openwisp_firmware_upgrader.tests.test_scheduled import (
+    TestScheduledExecution as BaseTestScheduledExecution,
 )
 from openwisp_firmware_upgrader.tests.test_selenium import (
     TestDeviceAdmin as BaseTestDeviceAdmin,
@@ -147,6 +165,32 @@ class TestTasks(BaseTestTasks):
     pass
 
 
+class TestScheduledExecution(BaseTestScheduledExecution):
+    pass
+
+
+class TestMonitoringSignalHandler(BaseTestMonitoringSignalHandler):
+    pass
+
+
+class TestPendingUpgradeReminders(BaseTestPendingUpgradeReminders):
+    pass
+
+
+class TestFailedPersistentUpgradeNotification(
+    BaseTestFailedPersistentUpgradeNotification
+):
+    pass
+
+
+class TestBatchCompletionNotification(BaseTestBatchCompletionNotification):
+    pass
+
+
+class TestScheduledUpgradeNotifications(BaseTestScheduledUpgradeNotifications):
+    pass
+
+
 class TestBuildViews(BaseTestBuildViews):
     pass
 
@@ -181,3 +225,9 @@ del BaseTestCategoryViews
 del BaseTestBatchUpgradeOperationViews
 del BaseTestFirmwareImageViews
 del BaseTestOrgAPIMixin
+del BaseTestScheduledExecution
+del BaseTestMonitoringSignalHandler
+del BaseTestPendingUpgradeReminders
+del BaseTestFailedPersistentUpgradeNotification
+del BaseTestBatchCompletionNotification
+del BaseTestScheduledUpgradeNotifications

@@ -1,6 +1,7 @@
 import json
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
+from datetime import timezone as datetime_timezone
 from unittest import mock, skipUnless
 from zoneinfo import ZoneInfo
 
@@ -36,7 +37,7 @@ from .. import settings as app_settings
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..upgraders.openwisp import OpenWisp1
-from .base import TestUpgraderMixin
+from .base import TestUpgraderMixin, time_travel
 
 User = get_user_model()
 
@@ -240,7 +241,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, 'class="vDateField"')
         self.assertContains(r, 'class="vTimeField"')
 
-    def test_scheduled_upgrade_creates_batch(self):
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_scheduled_upgrade_creates_batch(self, mocked_now):
         self._login()
         env = self._create_upgrade_env()
         due = (timezone.localtime() + timedelta(days=1)).replace(
@@ -263,7 +268,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertTrue(batch.firmwareless)
         self.assertEqual(batch.scheduled_at, due)
 
-    def test_schedule_past_rejected(self):
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_schedule_past_rejected(self, mocked_now):
         self._login()
         env = self._create_upgrade_env()
         past = timezone.localtime() - timedelta(hours=1)
@@ -284,7 +293,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
             BatchUpgradeOperation.objects.filter(build=env["build2"]).exists()
         )
 
-    def test_scheduled_upgrade_related_persists_firmwareless_false(self):
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_scheduled_upgrade_related_persists_firmwareless_false(self, mocked_now):
         self._login()
         env = self._create_upgrade_env()
         due = timezone.localtime() + timedelta(days=1)
@@ -304,7 +317,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertFalse(batch.firmwareless)
 
     @override_settings(TIME_ZONE="Asia/Kolkata")
-    def test_schedule_server_timezone(self):
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_schedule_server_timezone(self, mocked_now):
         # The admin datetime widget submits a naive wall-clock; it must be read
         # in the server timezone, not as UTC. Kolkata's +05:30 offset makes a
         # UTC misinterpretation land on a different instant.
@@ -328,7 +345,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(batch.scheduled_at, due)
 
     @override_settings(TIME_ZONE="Asia/Kolkata")
-    def test_schedule_browser_timezone(self):
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_schedule_browser_timezone(self, mocked_now):
         self._login()
         env = self._create_upgrade_env()
         browser_tz = ZoneInfo("America/New_York")
@@ -351,7 +372,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
         batch = BatchUpgradeOperation.objects.get(build=env["build2"])
         self.assertEqual(batch.scheduled_at, due)
 
-    def test_schedule_invalid_timezone_rejected(self):
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_schedule_invalid_timezone_rejected(self, mocked_now):
         self._login()
         env = self._create_upgrade_env()
         due = (timezone.localtime() + timedelta(days=1)).replace(
@@ -497,12 +522,27 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertNotContains(r, 'id="batch-reschedule-btn"')
         self.assertNotContains(r, "batch-actions.js")
 
-    def test_batch_actions_without_api(self):
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_batch_actions_without_api(self, mocked_now):
         self._login()
+        build = self._create_build()
+        group = self._create_device_group(organization=build.category.organization)
+        location = Location.objects.create(
+            name="Office",
+            address="123 Main St",
+            organization=build.category.organization,
+        )
         batch = BatchUpgradeOperation.objects.create(
-            build=self._create_build(),
+            build=build,
             status="scheduled",
             scheduled_at=timezone.now() + timedelta(days=1),
+            group=group,
+            location=location,
+            is_persistent=True,
+            firmwareless=True,
         )
         change_url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
@@ -517,14 +557,14 @@ class TestAdmin(BaseTestAdmin, TestCase):
             "openwisp_firmware_upgrader.admin.app_settings.FIRMWARE_UPGRADER_API",
             False,
         ):
-            r = self.client.get(change_url)
-            self.assertEqual(r.status_code, 200)
-            self.assertContains(r, 'id="batch-cancel-btn"')
-            self.assertContains(r, "batch-actions.js")
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, 'id="batch-cancel-btn"')
+            self.assertContains(response, "batch-actions.js")
             new_time = (timezone.localtime() + timedelta(days=2)).replace(
                 second=0, microsecond=0
             )
-            r = self.client.post(
+            response = self.client.post(
                 reschedule_url,
                 data=json.dumps(
                     {
@@ -535,13 +575,76 @@ class TestAdmin(BaseTestAdmin, TestCase):
                 ),
                 content_type="application/json",
             )
-            self.assertEqual(r.status_code, 200)
+            self.assertEqual(response.status_code, 200)
             batch.refresh_from_db()
             self.assertEqual(batch.scheduled_at, new_time)
-            r = self.client.post(cancel_url, data="{}", content_type="application/json")
-            self.assertEqual(r.status_code, 200)
+            self.assertEqual(batch.group, group)
+            self.assertEqual(batch.location, location)
+            self.assertEqual(batch.is_persistent, True)
+            self.assertEqual(batch.firmwareless, True)
+            unmanaged_org = self._create_org(name="Unmanaged organization")
+            unmanaged_group = self._create_device_group(organization=unmanaged_org)
+            unmanaged_location = Location.objects.create(
+                name="Unmanaged office",
+                address="456 Main St",
+                organization=unmanaged_org,
+            )
+
+            with self.subTest("group from another organization is rejected"):
+                response = self.client.post(
+                    reschedule_url,
+                    data=json.dumps({"group": str(unmanaged_group.pk)}),
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json(),
+                    {"error": "The selected group or location is not valid."},
+                )
+                batch.refresh_from_db()
+                self.assertEqual(batch.group, group)
+
+            with self.subTest("location from another organization is rejected"):
+                response = self.client.post(
+                    reschedule_url,
+                    data=json.dumps({"location": str(unmanaged_location.pk)}),
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json(),
+                    {"error": "The selected group or location is not valid."},
+                )
+                batch.refresh_from_db()
+                self.assertEqual(batch.location, location)
+            response = self.client.post(
+                reschedule_url,
+                data=json.dumps(
+                    {
+                        "group": None,
+                        "location": None,
+                        "is_persistent": False,
+                        "upgrade_all": False,
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            batch.refresh_from_db()
+            self.assertEqual(batch.scheduled_at, new_time)
+            self.assertEqual(batch.group, None)
+            self.assertEqual(batch.location, None)
+            self.assertEqual(batch.is_persistent, False)
+            self.assertEqual(batch.firmwareless, False)
+            cancelled_at = timezone.now() + timedelta(hours=1)
+            with time_travel(cancelled_at):
+                response = self.client.post(
+                    cancel_url, data="{}", content_type="application/json"
+                )
+            self.assertEqual(response.status_code, 200)
             batch.refresh_from_db()
             self.assertEqual(batch.status, "cancelled")
+            self.assertEqual(batch.modified, cancelled_at)
 
     def test_upgrade_operation_filter_by_persistence(self):
         self._login()
@@ -1499,6 +1602,31 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertTrue(
             UpgradeOperation.objects.filter(pk=failed_operation.pk).exists()
         )
+
+        with self.subTest("pending is the only protected status"):
+            response = self.client.post(
+                url,
+                data={
+                    "action": "delete_selected",
+                    ACTION_CHECKBOX_NAME: [
+                        str(pending_operation.pk),
+                        str(failed_operation.pk),
+                    ],
+                    "post": "yes",
+                },
+                follow=True,
+            )
+            self.assertContains(
+                response,
+                "Some selected operations are still in progress and cannot be deleted. "
+                "Remove them from the selection and try again.",
+            )
+            self.assertEqual(
+                UpgradeOperation.objects.filter(pk=pending_operation.pk).exists(), True
+            )
+            self.assertEqual(
+                UpgradeOperation.objects.filter(pk=failed_operation.pk).exists(), True
+            )
 
     def test_batch_upgrade_operation_admin_delete_selected_action_present(self):
         self._login()

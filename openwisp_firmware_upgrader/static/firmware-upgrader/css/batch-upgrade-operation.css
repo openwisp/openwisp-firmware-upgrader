@@ -229,14 +229,13 @@
   transition: width 0.5s ease;
 }
 
-.batch-main-progress .upgrade-progress-fill.idle {
+.batch-main-progress .upgrade-progress-fill.idle,
+.batch-main-progress .upgrade-progress-fill.scheduled,
+.batch-main-progress .upgrade-progress-fill.cancelled {
   background-color: var(--ow-color-fg-dark);
 }
 
-.batch-main-progress .upgrade-progress-fill.in-progress {
-  background-color: var(--ow-color-success);
-}
-
+.batch-main-progress .upgrade-progress-fill.in-progress,
 .batch-main-progress .upgrade-progress-fill.success,
 .batch-main-progress .upgrade-progress-fill.completed-successfully {
   background-color: var(--ow-color-success);
@@ -248,10 +247,6 @@
 
 .batch-main-progress .upgrade-progress-fill.aborted {
   background-color: var(--ow-color-fg-darker);
-}
-
-.batch-main-progress .upgrade-progress-fill.cancelled {
-  background-color: var(--ow-color-fg-dark);
 }
 
 .batch-main-progress .upgrade-progress-fill.partial-success {

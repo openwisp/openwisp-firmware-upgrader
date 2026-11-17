@@ -39,7 +39,7 @@ class Migration(migrations.Migration):
             name="is_persistent",
             field=models.BooleanField(
                 default=False,
-                help_text="if enabled, the system will keep retrying this upgrade until it succeeds or is cancelled",
+                help_text="if enabled, the system will retry offline or recoverable pre-flash failures until this upgrade succeeds or is cancelled",
                 verbose_name="persistent",
             ),
         ),
