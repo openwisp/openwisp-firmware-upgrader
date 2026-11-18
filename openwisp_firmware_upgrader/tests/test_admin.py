@@ -165,7 +165,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(15):
+        with self.assertNumQueries(16):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -179,7 +179,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(14):
+        with self.assertNumQueries(15):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -1834,7 +1834,7 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(23):
+                with self.assertNumQueries(24):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")
@@ -1852,6 +1852,7 @@ class TestAdminTransaction(
     @mock.patch(_mock_upgrade, return_value=True)
     def test_batch_upgrade_confirmation_form_multitenancy(self, *args):
         """Test BatchUpgradeConfirmationForm multitenancy for organization admin vs superuser."""
+        self._ensure_default_group_permissions()
         with mock.patch(self._mock_connect, return_value=True):
             # Setup common objects
             org1 = self._get_org()
@@ -2141,6 +2142,142 @@ class TestAdminTransaction(
             initial_total_upgrade_op_count,
             "Total UpgradeOperation count should remain unchanged",
         )
+
+    def test_device_inlines_readonly_for_disabled_organization(self):
+        active_device_fw = self._create_device_firmware()
+        active_device = active_device_fw.device
+        org = self._create_org(name="disabled-org")
+        image = self._create_firmware_image(organization=org)
+        device_fw = self._create_device_firmware(image=image)
+        device = device_fw.device
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        deviceadmin = DeviceAdmin(model=Device, admin_site=admin.site)
+        self._test_disabled_org_admin_inline_readonly(
+            deviceadmin,
+            disabled_obj=device,
+            active_obj=active_device,
+            inline_models=(DeviceFirmwareInline, DeviceUpgradeOperationInline),
+        )
+
+    def test_upgrade_selected_disabled_organization(self):
+        self._login()
+        org = self._get_org()
+        build = self._create_build(organization=org)
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        response = self.client.post(
+            self.build_list_url,
+            {"action": "upgrade_selected", ACTION_CHECKBOX_NAME: (build.pk,)},
+            follow=True,
+        )
+        self.assertContains(
+            response, "Actions cannot modify objects of disabled organizations."
+        )
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+    def test_batch_upgrade_confirmation_form_excludes_disabled_organizations(self):
+        org = self._get_org()
+        disabled_org = self._create_org(name="disabled-org")
+        category = self._create_category(organization=None)
+        build = self._create_build(category=category, version="1.0")
+        group = self._create_device_group(name="Group", organization=org)
+        disabled_group = self._create_device_group(
+            name="Disabled group", organization=disabled_org
+        )
+        location = Location.objects.create(
+            name="Location", address="somewhere", organization=org
+        )
+        disabled_location = Location.objects.create(
+            name="Disabled location", address="somewhere", organization=disabled_org
+        )
+        disabled_org.is_active = False
+        disabled_org.save(update_fields=["is_active"])
+        admin_user = self._get_admin()
+        form = BatchUpgradeConfirmationForm(initial={"build": build}, user=admin_user)
+        group_qs = form.fields["group"].queryset
+        location_qs = form.fields["location"].queryset
+        self.assertIn(group, group_qs)
+        self.assertNotIn(disabled_group, group_qs)
+        self.assertIn(location, location_qs)
+        self.assertNotIn(disabled_location, location_qs)
+
+        with self.subTest("submitting a disabled org group is rejected"):
+            form = BatchUpgradeConfirmationForm(
+                data={"build": build.pk, "group": disabled_group.pk},
+                user=admin_user,
+            )
+            self.assertEqual(form.is_valid(), False)
+            self.assertEqual(
+                form.errors["group"],
+                [
+                    "Select a valid choice. That choice is not one of the available choices."
+                ],
+            )
+
+        with self.subTest("submitting a disabled org location is rejected"):
+            form = BatchUpgradeConfirmationForm(
+                data={"build": build.pk, "location": disabled_location.pk},
+                user=admin_user,
+            )
+            self.assertEqual(form.is_valid(), False)
+            self.assertEqual(
+                form.errors["location"],
+                [
+                    "Select a valid choice. That choice is not one of the available choices."
+                ],
+            )
+
+    def test_category_disabled_org_admin_crud(self):
+        self._ensure_default_group_permissions()
+        org = self._create_org(name="disabled-org", slug="disabled-org")
+        category = self._create_category(name="disabled-category", organization=org)
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        self._test_disabled_org_admin_crud(
+            category,
+            change_data={"name": "renamed-category"},
+            create_data={"name": "new-category", "organization": str(org.pk)},
+        )
+
+    def test_category_disabled_org_admin_org_field_excludes_disabled(self):
+        active_org = self._get_org()
+        disabled_org = self._create_org(name="disabled-org", is_active=False)
+        add_url = reverse(f"admin:{self.app_label}_category_add")
+        self._test_disabled_org_admin_org_field_excludes_disabled(
+            add_url, disabled_org, organization=active_org
+        )
+
+    def test_build_disabled_org_admin_crud(self):
+        self._ensure_default_group_permissions()
+        org = self._create_org(name="disabled-org", slug="disabled-org")
+        build = self._create_build(organization=org, version="1.0")
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        self._test_disabled_org_admin_crud(
+            build,
+            change_data={"version": "2.0"},
+            create_data={"version": "2.0", "category": str(build.category_id)},
+            organization=org,
+            unchanged_field="version",
+        )
+
+    def test_build_disabled_org_admin_category_field_excludes_disabled(self):
+        active_org = self._get_org()
+        disabled_org = self._create_org(name="disabled-org", is_active=False)
+        active_category = self._create_category(
+            name="active-org-category", organization=active_org
+        )
+        disabled_category = self._create_category(
+            name="disabled-org-category", organization=disabled_org
+        )
+        request = self.factory.get(reverse(f"admin:{self.app_label}_build_add"))
+        request.user = self._get_admin()
+        build_admin = BuildAdmin(model=Build, admin_site=admin.site)
+        form = build_admin.get_form(request)
+        category_qs = form.base_fields["category"].queryset
+        self.assertIn(active_category, category_qs)
+        self.assertNotIn(disabled_category, category_qs)
 
 
 class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):

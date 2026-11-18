@@ -1,10 +1,12 @@
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from openwisp_users.api.mixins import FilterSerializerByOrgManaged
 from openwisp_utils.api.serializers import ValidatedModelSerializer
 
+from ..constants import DISABLED_ORGANIZATION_FIRMWARE_ERROR
 from ..swapper import load_model
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -44,7 +46,16 @@ class CategoryRelationSerializer(BaseSerializer):
 
 class FirmwareImageSerializer(BaseSerializer):
     def validate(self, data):
-        data["build"] = self.context["view"].get_parent_queryset().get()
+        data["build"] = (
+            self.context["view"]
+            .get_parent_queryset()
+            .select_related("category__organization")
+            .get()
+        )
+        # The URL supplies this read-only relation, bypassing field filtering.
+        organization = data["build"].category.organization
+        if organization is not None and not organization.is_active:
+            raise PermissionDenied(DISABLED_ORGANIZATION_FIRMWARE_ERROR)
         return super().validate(data)
 
     def to_representation(self, instance):
