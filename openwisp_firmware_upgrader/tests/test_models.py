@@ -1,7 +1,7 @@
 import io
 import uuid
 from contextlib import redirect_stdout
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -594,30 +594,33 @@ class TestModels(TestUpgraderMixin, TestCase):
         expected = f"{build} ({timezone.localtime(batch.created).strftime('%Y-%m-%d %H:%M:%S')})"
         self.assertEqual(str(batch), expected)
 
-    def test_batch_modified_updates_on_status_change(self):
+    @patch("model_utils.fields.now")
+    def test_batch_modified_updates_on_status_change(self, now):
+        started_at = datetime(2026, 1, 1, tzinfo=UTC)
+        completed_at = started_at + timedelta(hours=1)
+        now.return_value = started_at
         batch = BatchUpgradeOperation.objects.create(
-            build=self._create_build(), status="in-progress"
+            build=self._create_build(),
+            status="in-progress",
+            created=started_at,
+            modified=started_at,
         )
         operation = UpgradeOperation.objects.create(
             device=self._create_device(), batch=batch
         )
-        previous_modified = batch.modified - timedelta(hours=1)
-        BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
-            modified=previous_modified
-        )
-        batch.refresh_from_db()
 
+        now.return_value = completed_at
         operation.status = "success"
         operation.save()
         batch.refresh_from_db()
 
         self.assertEqual(batch.status, "success")
-        self.assertGreater(batch.modified, previous_modified)
+        self.assertEqual(batch.modified, completed_at)
 
-        modified = batch.modified
+        now.return_value = completed_at + timedelta(hours=1)
         batch.calculate_and_update_status()
         batch.refresh_from_db()
-        self.assertEqual(batch.modified, modified)
+        self.assertEqual(batch.modified, completed_at)
 
     def test_upgrade_operation_str(self):
         with mock.patch(
