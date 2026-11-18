@@ -7,7 +7,7 @@ import jsonschema
 import swapper
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator
-from django.db import models, transaction
+from django.db import models, router, transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -809,11 +809,20 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
             new_status = "success"
         else:
             new_status = self.status
-        # Update status only if it has changed
         if self.status != new_status:
-            self.status = new_status
-            self.save(update_fields=["status", "modified"])
-        return new_status, stats
+            model = type(self)
+            using = router.db_for_write(model, instance=self)
+            with transaction.atomic(using=using):
+                batch = model._base_manager.using(using).filter(
+                    pk=self.pk, status=self.status
+                )
+                # Lock the matching row before running the normal save hooks.
+                if batch.update(status=models.F("status")):
+                    self.status = new_status
+                    self.save(using=using, update_fields=["status", "modified"])
+                else:
+                    self.refresh_from_db(using=using, fields=["status", "modified"])
+        return self.status, stats
 
 
 class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):

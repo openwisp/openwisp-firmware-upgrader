@@ -608,6 +608,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         operation = UpgradeOperation.objects.create(
             device=self._create_device(), batch=batch
         )
+        stale_batch = BatchUpgradeOperation.objects.get(pk=batch.pk)
 
         now.return_value = completed_at
         operation.status = "success"
@@ -618,9 +619,13 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(batch.modified, completed_at)
 
         now.return_value = completed_at + timedelta(hours=1)
-        batch.calculate_and_update_status()
-        batch.refresh_from_db()
-        self.assertEqual(batch.modified, completed_at)
+        for instance in (batch, stale_batch):
+            with self.subTest(status=instance.status):
+                status, _ = instance.calculate_and_update_status()
+                self.assertEqual(status, "success")
+                self.assertEqual(instance.modified, completed_at)
+                instance.refresh_from_db()
+                self.assertEqual(instance.modified, completed_at)
 
     def test_upgrade_operation_str(self):
         with mock.patch(
