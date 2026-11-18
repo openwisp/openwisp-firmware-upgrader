@@ -1,3 +1,7 @@
+import logging
+
+from celery.signals import worker_ready
+from django.core.cache import cache
 from django.db.models.signals import post_save, pre_delete
 from django.utils.translation import gettext_lazy as _
 from swapper import get_model_name, load_model
@@ -8,6 +12,8 @@ from openwisp_utils.utils import default_or_test
 
 from . import settings as app_settings
 from .websockets import BatchUpgradeProgressPublisher, UpgradeProgressPublisher
+
+logger = logging.getLogger(__name__)
 
 
 class FirmwareUpdaterConfig(ApiAppConfig):
@@ -29,6 +35,9 @@ class FirmwareUpdaterConfig(ApiAppConfig):
         self.connect_device_signals()
         self.connect_upgrade_signals()
         self.connect_delete_signals()
+        self.connect_metadata_signals()
+        self.connect_worker_ready_signal()
+        from . import checks  # noqa
 
     def register_menu_groups(self):
         register_menu_group(
@@ -53,6 +62,12 @@ class FirmwareUpdaterConfig(ApiAppConfig):
                         "model": get_model_name(self.label, "BatchUpgradeOperation"),
                         "name": "changelist",
                         "icon": "ow-mass-upgrade",
+                    },
+                    4: {
+                        "label": _("Firmware Images"),
+                        "model": get_model_name(self.label, "FirmwareImage"),
+                        "name": "changelist",
+                        "icon": "ow-firmware",
                     },
                 },
                 "icon": "ow-firmware",
@@ -115,6 +130,49 @@ class FirmwareUpdaterConfig(ApiAppConfig):
             sender=Organization,
             dispatch_uid="organization.pre_delete.firmware_files",
         )
+
+    def connect_metadata_signals(self):
+        FirmwareImage = load_model("firmware_upgrader", "FirmwareImage")
+
+        post_save.connect(
+            FirmwareImage.trigger_metadata_extraction,
+            sender=FirmwareImage,
+            dispatch_uid="firmware_image.trigger_metadata_extraction",
+        )
+
+    def connect_worker_ready_signal(self):
+        worker_ready.connect(
+            self.queue_unconfirmed_extractions_on_worker_ready,
+            dispatch_uid="firmware_upgrader.queue_unconfirmed_extractions_on_worker_ready",
+        )
+
+    @staticmethod
+    def queue_unconfirmed_extractions_on_worker_ready(sender=None, **kwargs):
+        if not app_settings.QUEUE_UNCONFIRMED_ON_WORKER_READY:
+            return
+        # multiple worker processes each fire this on their own startup,
+        # this lock collapses a restart burst into a single enqueue
+        # instead of one per worker process
+        lock_acquired = cache.add(
+            "firmware_upgrader.queue_unconfirmed_lock",
+            True,
+            timeout=app_settings.QUEUE_UNCONFIRMED_LOCK_TIMEOUT,
+        )
+        if not lock_acquired:
+            return
+        from .tasks import queue_unconfirmed_extractions
+
+        try:
+            queue_unconfirmed_extractions.delay()
+        except Exception:
+            # release the lock so a later worker restart isn't blocked by
+            # this attempt's failure
+            cache.delete("firmware_upgrader.queue_unconfirmed_lock")
+            logger.exception(
+                "Failed to queue unconfirmed firmware image extractions "
+                "on worker startup. Will be retried on a later worker "
+                "restart."
+            )
 
 
 del ApiAppConfig
