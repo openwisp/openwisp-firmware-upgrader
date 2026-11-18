@@ -12,9 +12,6 @@ from openwisp_firmware_upgrader.urls import get_urls
 
 class TestApiUrls(SimpleTestCase):
     def test_get_api_urls_uses_overrides_and_default_fallbacks(self):
-        def custom_view():
-            return None
-
         view_names = {
             "api_build_list": "build_list",
             "api_build_detail": "build_detail",
@@ -32,13 +29,12 @@ class TestApiUrls(SimpleTestCase):
             "api_deviceupgradeoperation_list": "device_upgrade_operation_list",
             "api_devicefirmware_detail": "device_firmware_detail",
         }
-        custom_views = SimpleNamespace(
-            **{
-                view_name: custom_view
-                for view_name in view_names.values()
-                if view_name != "device_firmware_detail"
-            }
-        )
+        custom = {
+            view_name: lambda: None
+            for view_name in view_names.values()
+            if view_name != "device_firmware_detail"
+        }
+        custom_views = SimpleNamespace(**custom)
         callbacks = {
             pattern.name: pattern.callback
             for pattern in get_api_urls(custom_views)[0].url_patterns
@@ -49,7 +45,7 @@ class TestApiUrls(SimpleTestCase):
                 expected = (
                     views.device_firmware_detail
                     if view_name == "device_firmware_detail"
-                    else custom_view
+                    else custom[view_name]
                 )
                 self.assertIs(callbacks[url_name], expected)
 

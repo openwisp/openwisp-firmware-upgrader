@@ -398,9 +398,10 @@ The custom views module only needs to define the views you want to
 customize: whenever a view is missing, the helper falls back to the
 standard view, so there is no need to duplicate the full set of views. The
 default API URLs are already loaded automatically by the app with the
-standard views. The following URL configuration is only needed when
-customizing the API views: it must be used instead of the default
-configuration include, so the custom URLs take precedence:
+standard views. Projects mount them with the default include
+``path("", include("openwisp_firmware_upgrader.urls"))``. When customizing
+the API views, replace that include with the following one (do not add
+both), so the custom URLs take precedence:
 
 .. code-block:: python
 
