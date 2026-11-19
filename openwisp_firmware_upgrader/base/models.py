@@ -99,8 +99,8 @@ class UpgradeOptionsMixin(models.Model):
 
 class StatusTrackingMixin:
     @classmethod
-    def from_db(cls, db, field_names, values):
-        instance = super().from_db(db, field_names, values)
+    def from_db(cls, db, field_names, values, **kwargs):
+        instance = super().from_db(db, field_names, values, **kwargs)
         if "status" in field_names:
             instance._previous_status = instance.status
         return instance

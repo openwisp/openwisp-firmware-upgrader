@@ -615,6 +615,12 @@ class TestModels(TestUpgraderMixin, TestCase):
         expected = f"{build} ({timezone.localtime(batch.created).strftime('%Y-%m-%d %H:%M:%S')})"
         self.assertEqual(str(batch), expected)
 
+    def test_batch_loaded_from_database_tracks_status(self):
+        batch = BatchUpgradeOperation.objects.create(build=self._create_build())
+        loaded = BatchUpgradeOperation.objects.get(pk=batch.pk)
+        self.assertEqual(loaded.status, batch.status)
+        self.assertEqual(loaded._previous_status, batch.status)
+
     def test_upgrade_operation_str(self):
         with mock.patch(
             f"{self.app_label}.models.UpgradeOperation.upgrade", return_value=None

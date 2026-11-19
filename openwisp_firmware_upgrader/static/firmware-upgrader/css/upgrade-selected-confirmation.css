@@ -40,3 +40,11 @@ fieldset.aligned label.is-persistent-checkbox input[type="checkbox"] {
 #schedule-row .timezonewarning {
   display: none;
 }
+
+/* Keep help text aligned with fields after Django 6.1 changed admin forms. */
+@media (min-width: 768px) {
+  #content form fieldset.aligned .form-row > div > .help {
+    margin-left: 0;
+    padding-left: 170px;
+  }
+}
