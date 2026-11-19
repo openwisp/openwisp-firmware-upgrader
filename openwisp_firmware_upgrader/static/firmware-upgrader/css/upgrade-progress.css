@@ -177,17 +177,9 @@
 }
 
 .ow-dialog-close-x {
-  position: absolute;
   top: 15px;
   right: 20px;
-  font-size: 24px;
-  font-weight: bold;
-  color: var(--body-quiet-color);
-  cursor: pointer;
-  line-height: 1;
   transition: color 0.2s ease;
-}
-
-.ow-dialog-close-x:hover {
-  color: var(--body-fg);
+  border: none;
+  background: none;
 }

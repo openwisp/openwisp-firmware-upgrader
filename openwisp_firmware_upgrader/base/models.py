@@ -1906,6 +1906,7 @@ class AbstractUpgradeOperation(
                 sender=instance,
                 type="generic_message",
                 target=instance.device,
+                target_url_suffix="#upgradeoperation_set-group",
                 message=description,
             )
         )

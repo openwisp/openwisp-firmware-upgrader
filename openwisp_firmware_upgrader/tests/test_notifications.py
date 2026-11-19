@@ -194,6 +194,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         kwargs = mocked_notify.call_args.kwargs
         self.assertEqual(kwargs["target"], op.device)
         self.assertEqual(kwargs["type"], "generic_message")
+        self.assertEqual(kwargs.get("target_url_suffix"), "#upgradeoperation_set-group")
 
         self.assertEqual(
             str(kwargs["message"]),
