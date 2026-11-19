@@ -50,9 +50,11 @@ def upgrade_firmware(self, operation_id):
             pk=operation.pk, status="in-progress"
         ).update(status="failed")
         if claimed:
+            # The conditional UPDATE changes the row, not this Python instance.
+            # Therefore, we explicitly set the operation.status again.
             operation.status = "failed"
             operation.log_line(
-                _("Operation timed out."), update_fields=["status", "log"]
+                _("Operation timed out."), update_fields=["status", "log", "modified"]
             )
         logger.warning("SoftTimeLimitExceeded raised in upgrade_firmware task")
 

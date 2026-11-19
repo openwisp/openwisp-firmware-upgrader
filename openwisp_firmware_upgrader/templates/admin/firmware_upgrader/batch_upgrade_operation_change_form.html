@@ -95,6 +95,21 @@
   </div>
   {% endif %}
 </section>
+<div id="ow-batch-cancel-modal" class="ow-overlay ow-overlay-notification ow-overlay-inner ow-hide">
+  <div class="ow-dialog-notification ow-cancel-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="ow-batch-cancel-title">
+    <button type="button" class="ow-dialog-close ow-dialog-close-x" aria-label="{% trans 'Close' %}">&times;</button>
+    <div class="ow-cancel-confirmation-header">
+      <h2 id="ow-batch-cancel-title" class="ow-cancel-confirmation-title">{% trans "Cancel mass upgrade" %}</h2>
+    </div>
+    <div class="ow-cancel-confirmation-content">
+      <p>{% trans "Are you sure you want to cancel this mass upgrade?" %}</p>
+    </div>
+    <div class="ow-dialog-buttons ow-cancel-confirmation-buttons">
+      <button type="button" class="ow-batch-cancel-confirm button default danger-btn">{% trans "Yes" %}</button>
+      <button type="button" class="ow-dialog-close button default">{% trans "No" %}</button>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 <div id="upgrade-operations-section"{% if batch.status == "scheduled" %} class="ow-hide"{% endif %}>
@@ -294,6 +309,7 @@
   var owBatchRescheduleUrl = "{{ batch_reschedule_url }}";
   var owBatchCancelUrl = "{{ batch_cancel_url }}";
 </script>
+<script type="text/javascript" src="{% static 'firmware-upgrader/js/schedule-utils.js' %}"></script>
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/batch-actions.js' %}"></script>
 {% endif %}
 <script type="text/javascript" src="{% static 'firmware-upgrader/js/upgrade-utils.js' %}"></script>

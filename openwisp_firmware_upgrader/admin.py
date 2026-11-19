@@ -35,6 +35,7 @@ from openwisp_utils.admin import (
 )
 
 from . import settings as app_settings
+from .fields import NaiveSplitDateTimeField
 from .filters import (
     BuildCategoryFilter,
     BuildCategoryOrganizationFilter,
@@ -45,12 +46,12 @@ from .filters import (
     LocationFilter,
 )
 from .swapper import load_model
-from .utils import (
-    NaiveSplitDateTimeField,
-    get_upgrader_schema_for_device,
-    reinterpret_in_timezone,
+from .utils import get_upgrader_schema_for_device, reinterpret_in_timezone
+from .widgets import (
+    FirmwareSchemaWidget,
+    MassUpgradeSelect2Widget,
+    ScheduledDateTimeWidget,
 )
-from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
 
 logger = logging.getLogger(__name__)
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -160,7 +161,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
     )
     scheduled_at = NaiveSplitDateTimeField(
         required=False,
-        widget=admin.widgets.AdminSplitDateTime(),
+        widget=ScheduledDateTimeWidget(),
         help_text=_(
             "Leave empty to execute immediately, or pick a future date and "
             "time to schedule this mass upgrade."
@@ -207,6 +208,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         # included by the JSONSchemaWidget used for upgrade_options.
         js = [
             "admin/js/jquery.init.js",
+            "firmware-upgrader/js/schedule-utils.js",
             "firmware-upgrader/js/upgrade-selected-confirmation.js",
             "firmware-upgrader/js/mass-upgrade-select2.js",
         ]
@@ -224,7 +226,7 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
 class BatchRescheduleForm(forms.Form):
     scheduled_at = NaiveSplitDateTimeField(
         required=False,
-        widget=admin.widgets.AdminSplitDateTime(),
+        widget=ScheduledDateTimeWidget(),
     )
     group = forms.ModelChoiceField(
         queryset=DeviceGroup.objects.none(),
@@ -250,9 +252,6 @@ class BatchRescheduleForm(forms.Form):
         )
         self.fields["group"].queryset = device_group_qs
         self.fields["location"].queryset = location_qs
-        date_widget, time_widget = self.fields["scheduled_at"].widget.widgets
-        date_widget.attrs["aria-label"] = _("Scheduled date")
-        time_widget.attrs["aria-label"] = _("Scheduled time")
 
     class Media:
         extra = "" if getattr(settings, "DEBUG", False) else ".min"
@@ -651,11 +650,11 @@ class UpgradeOperationAdmin(BaseUpgradeAdmin):
         fields = super().get_fields(request, obj).copy()
         if self._should_display_batch(obj, fields):
             fields.insert(1, "batch")
-        if obj and not obj.is_persistent:
-            hidden = ("retry_count", "next_retry_at")
-        else:
-            hidden = ()
-        return [field for field in fields if field not in hidden]
+        if not obj or obj.is_persistent:
+            return fields
+        return [
+            field for field in fields if field not in ("retry_count", "next_retry_at")
+        ]
 
     @admin.display(description=_("retry count"), ordering="retry_count")
     def retry_count_display(self, obj):
@@ -890,6 +889,28 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
             return JsonResponse({"error": str(error)}, status=409)
         return JsonResponse({"message": _("Mass upgrade cancelled")})
 
+    def _get_batch_action_context(self, request, obj):
+        opts = self.model._meta
+        can_change = request.user.has_perm(f"{opts.app_label}.change_{opts.model_name}")
+        show_actions = can_change and obj.status in ("scheduled", "in-progress")
+        context = {"show_batch_actions": show_actions}
+        if not show_actions:
+            return context
+        prefix = f"admin:{opts.app_label}_{opts.model_name}"
+        context["batch_reschedule_url"] = reverse(f"{prefix}_reschedule", args=[obj.pk])
+        context["batch_cancel_url"] = reverse(f"{prefix}_cancel", args=[obj.pk])
+        if obj.status == "scheduled":
+            context["reschedule_form"] = BatchRescheduleForm(
+                user=request.user,
+                organization_id=obj.build.category.organization_id,
+                initial={
+                    "scheduled_at": obj.scheduled_at,
+                    "group": obj.group_id,
+                    "location": obj.location_id,
+                },
+            )
+        return context
+
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra_context = extra_context or {}
         obj = self.get_object(request, object_id)
@@ -931,33 +952,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                     "server_timezone": settings.TIME_ZONE,
                 }
             )
-            app_label = self.model._meta.app_label
-            model_name = self.model._meta.model_name
-            can_change = request.user.has_perm(
-                "%s.change_batchupgradeoperation" % app_label
-            )
-            show_batch_actions = can_change and obj.status in (
-                "scheduled",
-                "in-progress",
-            )
-            extra_context["show_batch_actions"] = show_batch_actions
-            if show_batch_actions:
-                extra_context["batch_reschedule_url"] = reverse(
-                    f"admin:{app_label}_{model_name}_reschedule", args=[object_id]
-                )
-                extra_context["batch_cancel_url"] = reverse(
-                    f"admin:{app_label}_{model_name}_cancel", args=[object_id]
-                )
-                if obj.status == "scheduled":
-                    extra_context["reschedule_form"] = BatchRescheduleForm(
-                        user=request.user,
-                        organization_id=obj.build.category.organization_id,
-                        initial={
-                            "scheduled_at": obj.scheduled_at,
-                            "group": obj.group_id,
-                            "location": obj.location_id,
-                        },
-                    )
+            extra_context.update(self._get_batch_action_context(request, obj))
         return super().change_view(request, object_id, extra_context=extra_context)
 
     def get_readonly_fields(self, request, obj=None):

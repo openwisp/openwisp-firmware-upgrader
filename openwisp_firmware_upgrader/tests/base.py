@@ -1,5 +1,6 @@
 import os
 from contextlib import contextmanager
+from datetime import timedelta
 from unittest import mock
 
 import swapper
@@ -19,6 +20,8 @@ Build = load_model("Build")
 Category = load_model("Category")
 FirmwareImage = load_model("FirmwareImage")
 DeviceFirmware = load_model("DeviceFirmware")
+BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+UpgradeOperation = load_model("UpgradeOperation")
 Credentials = swapper.load_model("connection", "Credentials")
 DeviceGroup = swapper.load_model("config", "DeviceGroup")
 OrganizationUser = swapper.load_model("openwisp_users", "OrganizationUser")
@@ -129,6 +132,34 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         device_fw.full_clean()
         device_fw.save(upgrade=upgrade)
         return device_fw
+
+    def _create_batch_upgrade_operation(self, **kwargs):
+        if "build" not in kwargs:
+            kwargs["build"] = self._create_build()
+        return BatchUpgradeOperation.objects.create(**kwargs)
+
+    def _create_scheduled_batch(self, build=None, **kwargs):
+        if build is not None:
+            kwargs["build"] = build
+        opts = dict(
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        opts.update(kwargs)
+        return self._create_batch_upgrade_operation(**opts)
+
+    def _create_upgrade_operation(self, device_fw=None, **kwargs):
+        if device_fw is None:
+            device_fw = self._create_device_firmware()
+        opts = dict(device=device_fw.device, image=device_fw.image)
+        opts.update(kwargs)
+        # Keep model validation separate so tests can prepare intermediate states.
+        return UpgradeOperation.objects.create(**opts)
+
+    def _create_pending_op(self, device_fw=None, **kwargs):
+        opts = dict(status="pending", is_persistent=True)
+        opts.update(kwargs)
+        return self._create_upgrade_operation(device_fw=device_fw, **opts)
 
     def _create_upgrade_env(
         self, device_firmware=True, upgrade_operation=False, **kwargs

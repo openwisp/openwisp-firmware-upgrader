@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -6,7 +7,9 @@ from rest_framework import serializers
 from openwisp_users.api.mixins import FilterSerializerByOrgManaged
 from openwisp_utils.api.serializers import ValidatedModelSerializer
 
+from ..fields import NaiveSplitDateTimeField
 from ..swapper import load_model
+from ..utils import reinterpret_in_timezone
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Build = load_model("Build")
@@ -113,6 +116,25 @@ class BatchUpgradeSerializer(FilterSerializerByOrgManaged, serializers.ModelSeri
 
 class BatchUpgradeRescheduleSerializer(BatchUpgradeSerializer):
     upgrade_all = serializers.BooleanField(source="firmwareless", required=False)
+
+    def to_internal_value(self, data):
+        tz_name = data.get("scheduled_at_tz")
+        if tz_name is not None:
+            # Normalize split browser input before scheduled_at's ISO validation.
+            # Keep the caller's data intact, including QueryDict submissions.
+            normalized = data.copy()
+            field = NaiveSplitDateTimeField(required=False)
+            try:
+                parsed = field.clean(
+                    [data.get("scheduled_at_0"), data.get("scheduled_at_1")]
+                )
+                normalized["scheduled_at"] = (
+                    reinterpret_in_timezone(parsed, tz_name) if parsed else None
+                )
+            except ValidationError as error:
+                raise serializers.ValidationError({"error": error.messages[0]})
+            data = normalized
+        return super().to_internal_value(data)
 
     class Meta(BatchUpgradeSerializer.Meta):
         fields = BatchUpgradeSerializer.Meta.fields + ("build", "upgrade_options")

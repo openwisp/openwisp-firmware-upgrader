@@ -748,7 +748,7 @@ class AbstractBatchUpgradeOperation(
             .get(pk=self.pk)
         )
 
-    def _validate_schedule(self, stored=None):
+    def _validate_schedule(self, stored):
         """
         Enforce the min-delay/max-horizon bounds only when the schedule is set
         or changed; an unchanged stored time is left alone so a now-due batch
@@ -765,10 +765,10 @@ class AbstractBatchUpgradeOperation(
                     }
                 )
             return
-        if not self._state.adding:
-            if stored is None:
-                stored = self._fetch_stored_row()
+        if stored is not None:
             stored_at = stored["scheduled_at"]
+            # The admin submits only hours and minutes. Keeping the same minute
+            # must preserve stored seconds, not count as a new schedule.
             if stored_at is not None and self.scheduled_at.replace(
                 second=0, microsecond=0
             ) == stored_at.replace(second=0, microsecond=0):
@@ -806,18 +806,14 @@ class AbstractBatchUpgradeOperation(
                 }
             )
 
-    def _validate_is_persistent_immutable(self, stored=None):
+    def _validate_is_persistent_immutable(self, stored):
         """
         Reject changes to ``is_persistent`` once the batch has left the
         pre-launch states. ``idle`` and ``scheduled`` batches haven't
         dispatched anything yet, so the flag can still flip; after that
         the retry pipeline relies on it staying stable.
         """
-        if self._state.adding:
-            return
-        if stored is None:
-            stored = self._fetch_stored_row()
-        if stored["status"] in ("idle", "scheduled"):
+        if stored is None or stored["status"] in ("idle", "scheduled"):
             return
         if self.is_persistent != stored["is_persistent"]:
             raise ValidationError(
@@ -829,17 +825,14 @@ class AbstractBatchUpgradeOperation(
                 }
             )
 
-    def _validate_scheduled_editability(self, stored=None):
+    def _validate_scheduled_editability(self, stored):
         """
-        The build is frozen once a batch leaves ``idle`` and the schedule once
-        it leaves ``scheduled``: re-targeting the firmware or the time after the
-        device set was computed would invalidate the run.
+        Keep the chosen firmware and upgrade options fixed after scheduling.
+        Operators can still change when and which devices to upgrade while
+        waiting, but once launch starts those choices must stay consistent
+        with the device operations that have already been created.
         """
-        if self._state.adding:
-            return
-        if stored is None:
-            stored = self._fetch_stored_row()
-        if stored["status"] == "idle":
+        if stored is None or stored["status"] == "idle":
             return
         if self.build_id != stored["build_id"]:
             raise ValidationError(
@@ -880,18 +873,18 @@ class AbstractBatchUpgradeOperation(
                 }
             )
 
-    def _filters_overlap_with(self, other):
-        if self.build.category_id != other.build.category_id:
+    def _filters_overlap_with(self, batch):
+        if self.build.category_id != batch.build.category_id:
             return False
         group_overlaps = (
             self.group_id is None
-            or other.group_id is None
-            or self.group_id == other.group_id
+            or batch.group_id is None
+            or self.group_id == batch.group_id
         )
         location_overlaps = (
             self.location_id is None
-            or other.location_id is None
-            or self.location_id == other.location_id
+            or batch.location_id is None
+            or self.location_id == batch.location_id
         )
         return group_overlaps and location_overlaps
 
@@ -909,11 +902,20 @@ class AbstractBatchUpgradeOperation(
 
     def _find_conflict(self):
         """
-        Return a message describing an active batch or per-device operation
-        that already covers this batch's device population, or ``None``. Run
-        both at create/edit time and again at launch, because the schedule
-        horizon is long enough for a clashing operation to appear in between.
+        Check whether another active upgrade could target the same devices.
+
+        - Check other waiting or running batches for the same firmware category.
+          Their group and location filters may select the same devices. A missing
+          filter means all groups or locations are included.
+        - Check whether any selected device already has a running upgrade or a
+          pending retry, including upgrades started outside a batch.
+
+        Return a message identifying the conflict, or None if there is none.
+        Check both when saving the schedule and when launching it, because
+        another upgrade may have started while this batch was waiting.
         """
+        # Unset group/location filters cover every value, so compare populations
+        # rather than requiring two batches to have identical filters.
         Batch = load_model("BatchUpgradeOperation")
         active = (
             Batch.objects.filter(
@@ -938,6 +940,8 @@ class AbstractBatchUpgradeOperation(
                     "status": existing.get_status_display(),
                     "when": when,
                 }
+        # Standalone upgrades have no batch filters. Check their device IDs
+        # against both recorded-firmware and optional firmwareless targets.
         UpgradeOperation = load_model("UpgradeOperation")
         device_filter = models.Q(
             device_id__in=self.build._find_related_device_firmwares(
@@ -954,6 +958,8 @@ class AbstractBatchUpgradeOperation(
             device_filter, status__in=UpgradeOperation.CANCELLABLE_STATUS
         )
         if self.pk is not None:
+            # Device upgrades created by this batch belong to this run.
+            # Only upgrades started by a different run should block it.
             clashing = clashing.exclude(batch_id=self.pk)
         clash = clashing.first()
         if clash:
@@ -964,9 +970,16 @@ class AbstractBatchUpgradeOperation(
         return None
 
     def upgrade(self, firmwareless=None):
+        """Start an upgrade for each device selected by this mass upgrade.
+
+        Stop if the batch was cancelled or its device upgrades already exist.
+        Read the saved batch while holding its database lock, so two workers
+        cannot start the same batch at the same time.
+        """
         if firmwareless is None:
             firmwareless = self.firmwareless
         with transaction.atomic():
+            # Cancelled or completed batches must not be restarted by a queued task.
             locked = (
                 self._meta.model.objects.select_for_update()
                 .filter(pk=self.pk, status__in=("idle", "in-progress"))
@@ -987,10 +1000,14 @@ class AbstractBatchUpgradeOperation(
                 return
             self.status = "in-progress"
             self.save(update_fields=["status", "modified"])
+            # Queue children only after the whole batch transaction commits,
+            # so early child completion cannot prematurely finish the batch.
             created = self.upgrade_related_devices()
             if firmwareless:
                 created += self.upgrade_firmwareless_devices()
             if not created:
+                # Devices may have been removed or upgraded while this batch
+                # waited to start. Report failure if none can be upgraded now.
                 self.status = "failed"
                 self.save(update_fields=["status", "modified"])
                 self._launch_without_eligible_devices()
@@ -1318,9 +1335,11 @@ class AbstractBatchUpgradeOperation(
         """
         Fires a notification when a mass upgrade reaches a terminal state.
         """
-        if created or instance.status not in ("success", "failed"):
-            return
-        if not instance.upgradeoperation_set.exists():
+        if (
+            created
+            or instance.status not in ("success", "failed")
+            or not instance.upgradeoperation_set.exists()
+        ):
             return
         if getattr(instance, "_previous_status", None) == instance.status:
             return
@@ -1340,8 +1359,17 @@ class AbstractBatchUpgradeOperation(
         instance._previous_status = instance.status
 
     def cancel(self):
+        """Stop this mass upgrade where cancellation is still safe.
+
+        - If the batch is scheduled, cancel it so it will not start.
+        - If the batch has started but has no device upgrades yet, cancel it
+          before those upgrades are created.
+        - If device upgrades exist, cancel pending retries and upgrades that
+          have not started flashing. Leave devices already flashing alone.
+        - If nothing can be cancelled, report an error.
+        """
         if self.status == "scheduled":
-            # Re-save the same status after the atomic claim so post_save fires.
+            # Cancel only if it is still scheduled, not if a worker started it.
             updated = self._meta.model.objects.filter(
                 pk=self.pk, status="scheduled"
             ).update(status="cancelled", modified=timezone.now())
@@ -1352,6 +1380,7 @@ class AbstractBatchUpgradeOperation(
                     % {"status": self.status}
                 )
             self.status = "cancelled"
+            # update() does not emit the save signals used by the live display.
             self.save(update_fields=["status", "modified"])
             return
         if self.status == "in-progress":
@@ -1362,6 +1391,7 @@ class AbstractBatchUpgradeOperation(
                     self.refresh_from_db(fields=["status"])
                     return
                 if not locked.upgradeoperation_set.exists():
+                    # The launch task has not created any device upgrades yet.
                     self.status = "cancelled"
                     self.save(update_fields=["status", "modified"])
                     return
@@ -1370,7 +1400,8 @@ class AbstractBatchUpgradeOperation(
                 status__in=UpgradeOperation.CANCELLABLE_STATUS,
                 progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
             )
-            # Individual cancellation preserves its progress guard and log signals.
+            # Each device rechecks its flashing progress before cancelling,
+            # because it may have advanced since the query above.
             for operation in operations.iterator():
                 try:
                     operation.cancel()
@@ -1386,6 +1417,7 @@ class AbstractBatchUpgradeOperation(
                     continue
                 cancelled += 1
             if not cancelled:
+                # All remaining devices may already be flashing or finished.
                 raise ValueError(
                     _("No upgrade operation of this mass upgrade could be cancelled.")
                 )

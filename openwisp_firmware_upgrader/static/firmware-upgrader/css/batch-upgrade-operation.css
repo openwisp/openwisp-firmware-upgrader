@@ -273,9 +273,7 @@
   margin-bottom: 0.5rem;
 }
 
-/* -------------------------------------------------------------------------
-   Batch actions: reschedule + cancel panel (batch-detail page)
-   ------------------------------------------------------------------------- */
+/* Reschedule and cancel controls on the mass-upgrade detail page. */
 .batch-actions.module {
   clear: both;
   margin: 20px 0;

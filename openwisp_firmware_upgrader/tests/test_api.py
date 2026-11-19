@@ -16,6 +16,7 @@ from rest_framework import VERSION as REST_FRAMEWORK_VERSION
 from openwisp_firmware_upgrader.api.serializers import (
     BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
+    BatchUpgradeRescheduleSerializer,
     BuildSerializer,
     CategorySerializer,
     DeviceFirmwareSerializer,
@@ -348,9 +349,14 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
         env = self._create_upgrade_env()
         url = reverse("upgrader:api_build_batch_upgrade", args=[env["build2"].pk])
         self.assertEqual(self.client.post(url).status_code, 201)
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
         r = self.client.post(url)
         self.assertEqual(r.status_code, 400)
-        self.assertIn("conflicting mass upgrade", r.data["error"])
+        self.assertEqual(
+            r.data["error"],
+            f"A conflicting mass upgrade already exists: operation {batch.pk} "
+            "(status: idle, scheduled for immediate execution).",
+        )
 
     def test_api_create_scheduled_batch(self):
         env = self._create_upgrade_env()
@@ -376,7 +382,10 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             url, {"upgrade_all": True, "scheduled_at": past.isoformat()}
         )
         self.assertEqual(r.status_code, 400)
-        self.assertIn("at least", str(r.data))
+        self.assertEqual(
+            r.data["error"],
+            "The scheduled time must be at least 10 minutes in the future.",
+        )
 
     def test_api_create_naive_scheduled_at_returns_400(self):
         env = self._create_upgrade_env()
@@ -389,7 +398,12 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             {"upgrade_all": True, "scheduled_at": due.strftime("%Y-%m-%dT%H:%M")},
         )
         self.assertEqual(r.status_code, 400)
-        self.assertIn("timezone", str(r.data).lower())
+        self.assertEqual(
+            r.data["scheduled_at"],
+            [
+                "The scheduled time must include a timezone offset, e.g. '2026-08-25T09:00:00Z'."
+            ],
+        )
 
     def test_build_upgradeable(self):
         env = self._create_upgrade_env()
@@ -1005,29 +1019,23 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
 
     def test_batchupgradeoperation_list(self):
         env = self._create_upgrade_env()
-        env["build2"].batch_upgrade(firmwareless=False)
+        env["build2"].batch_upgrade(firmwareless=False, is_persistent=False)
         operation = BatchUpgradeOperation.objects.get(build=env["build2"])
         serialized_list = [self._serialize_upgrade_env(operation)]
         url = reverse("upgrader:api_batchupgradeoperation_list")
         with self.assertNumQueries(5):
             r = self.client.get(url)
         self.assertEqual(r.data["results"], serialized_list)
-
-    def _create_scheduled_batch(self, build, **kwargs):
-        opts = dict(
-            build=build,
-            status="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
-        )
-        opts.update(kwargs)
-        return BatchUpgradeOperation.objects.create(**opts)
+        self.assertEqual(r.data["count"], 1)
+        self.assertEqual(r.data["results"][0]["is_persistent"], False)
 
     def test_reschedule_scheduled_batch(self):
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(env["build2"])
         new_due = (timezone.now() + timedelta(days=2)).replace(microsecond=0)
         url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
-        r = self.client.post(url, {"scheduled_at": new_due.isoformat()})
+        with self.assertNumQueries(16):
+            r = self.client.post(url, {"scheduled_at": new_due.isoformat()})
         self.assertEqual(r.status_code, 200)
         batch.refresh_from_db()
         self.assertEqual(batch.scheduled_at, new_due)
@@ -1042,17 +1050,39 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         )
         date_format = get_format("DATE_INPUT_FORMATS")[0]
         url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
-        r = self.client.post(
-            url,
-            {
-                "scheduled_at_0": new_due.strftime(date_format),
-                "scheduled_at_1": new_due.strftime("%H:%M"),
-                "scheduled_at_tz": "America/New_York",
-            },
-        )
+        data = {
+            "scheduled_at_0": new_due.strftime(date_format),
+            "scheduled_at_1": new_due.strftime("%H:%M"),
+            "scheduled_at_tz": "America/New_York",
+        }
+        serializer = BatchUpgradeRescheduleSerializer(data=data, partial=True)
+        self.assertEqual(serializer.is_valid(), True, serializer.errors)
+        self.assertEqual(serializer.validated_data.get("scheduled_at"), new_due)
+        self.assertEqual(data["scheduled_at_tz"], "America/New_York")
+        r = self.client.post(url, data)
         self.assertEqual(r.status_code, 200)
         batch.refresh_from_db()
         self.assertEqual(batch.scheduled_at, new_due)
+
+    def test_reschedule_invalid_browser_timezone(self):
+        batch = self._create_scheduled_batch()
+        original_time = batch.scheduled_at
+        data = {
+            "scheduled_at_0": original_time.strftime(
+                get_format("DATE_INPUT_FORMATS")[0]
+            ),
+            "scheduled_at_1": original_time.strftime("%H:%M"),
+            "scheduled_at_tz": "Not/AZone",
+        }
+        serializer = BatchUpgradeRescheduleSerializer(data=data, partial=True)
+        self.assertEqual(serializer.is_valid(), False)
+        self.assertEqual(serializer.errors, {"error": "Invalid timezone."})
+        url = reverse("upgrader:api_batchupgradeoperation_reschedule", args=[batch.pk])
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data, {"error": "Invalid timezone."})
+        batch.refresh_from_db()
+        self.assertEqual(batch.scheduled_at, original_time)
 
     @override_settings(TIME_ZONE="Asia/Kolkata")
     def test_reschedule_naive_scheduled_at_returns_400(self):
@@ -1144,7 +1174,8 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
         env = self._create_upgrade_env()
         batch = self._create_scheduled_batch(env["build2"])
         url = reverse("upgrader:api_batchupgradeoperation_cancel", args=[batch.pk])
-        r = self.client.post(url)
+        with self.assertNumQueries(8):
+            r = self.client.post(url)
         self.assertEqual(r.status_code, 200)
         batch.refresh_from_db()
         self.assertEqual(batch.status, "cancelled")
@@ -1413,33 +1444,14 @@ class TestBatchUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
 
     def test_batchupgradeoperation_view(self):
         env = self._create_upgrade_env()
-        env["build2"].batch_upgrade(firmwareless=False)
+        env["build2"].batch_upgrade(firmwareless=False, is_persistent=False)
         operation = BatchUpgradeOperation.objects.get(build=env["build2"])
         serialized = self._serialize_upgrade_env(operation, action="detail")
         url = reverse("upgrader:api_batchupgradeoperation_detail", args=[operation.pk])
         with self.assertNumQueries(7):
             r = self.client.get(url)
         self.assertEqual(r.data, serialized)
-
-    def test_detail_exposes_persistence(self):
-        env = self._create_upgrade_env()
-        env["build2"].batch_upgrade(firmwareless=False, is_persistent=False)
-        operation = BatchUpgradeOperation.objects.get(build=env["build2"])
-        url = reverse("upgrader:api_batchupgradeoperation_detail", args=[operation.pk])
-        r = self.client.get(url)
-        self.assertEqual(r.status_code, 200)
-        self.assertIn("is_persistent", r.data)
-        self.assertFalse(r.data["is_persistent"])
-
-    def test_list_exposes_persistence(self):
-        env = self._create_upgrade_env()
-        env["build2"].batch_upgrade(firmwareless=False, is_persistent=False)
-        url = reverse("upgrader:api_batchupgradeoperation_list")
-        r = self.client.get(url)
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.data["count"], 1)
-        self.assertIn("is_persistent", r.data["results"][0])
-        self.assertFalse(r.data["results"][0]["is_persistent"])
+        self.assertEqual(r.data["is_persistent"], False)
 
 
 class TestFirmwareImageViews(TestAPIUpgraderMixin, TestCase):
@@ -2387,16 +2399,9 @@ class TestUpgradeOperationViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 200)
             serializer_list = self._serialize_upgrade_operation(uo1)
             self.assertEqual(r.data, serializer_list)
-
-    def test_detail_exposes_persistence(self):
-        self._create_upgrade_env(upgrade_operation=True)
-        uo = UpgradeOperation.objects.first()
-        url = reverse("upgrader:api_upgradeoperation_detail", args=[uo.pk])
-        r = self.client.get(url)
-        self.assertEqual(r.status_code, 200)
-        self.assertIn("is_persistent", r.data)
-        self.assertIn("retry_count", r.data)
-        self.assertIn("next_retry_at", r.data)
+            self.assertEqual(r.data["is_persistent"], uo1.is_persistent)
+            self.assertEqual(r.data["retry_count"], uo1.retry_count)
+            self.assertEqual(r.data["next_retry_at"], None)
 
     def test_list_filters_pending(self):
         env = self._create_upgrade_env(upgrade_operation=True)

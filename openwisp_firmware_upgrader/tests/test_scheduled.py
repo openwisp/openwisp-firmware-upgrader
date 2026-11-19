@@ -44,11 +44,13 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
             self._mock_connect, autospec=True, side_effect=connect
         ):
             tasks.execute_scheduled_upgrades.run()
+        # The reachable device finishes during the scheduled launch.
         online_op = batch.upgradeoperation_set.get(device=env["d1"])
         self.assertEqual(online_op.status, "success")
         env["device_fw1"].refresh_from_db()
         self.assertEqual(env["device_fw1"].image, env["image2a"])
         self.assertEqual(env["device_fw1"].installed, True)
+        # The offline device keeps the batch open until a later retry succeeds.
         op = batch.upgradeoperation_set.get(device=offline_device)
         self.assertEqual(op.is_persistent, True)
         self.assertEqual(op.status, "pending")
@@ -321,9 +323,7 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
             device=device_fw.device, image=device_fw.image, batch=started
         )
         Batch.objects.filter(pk=started.pk).update(modified=stale)
-
         Batch._recover_orphaned_launches(timezone.now())
-
         orphan.refresh_from_db()
         fresh.refresh_from_db()
         started.refresh_from_db()

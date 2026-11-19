@@ -16,25 +16,32 @@ UpgradeOperation = load_model("UpgradeOperation")
 
 
 class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
+    def setUp(self):
+        super().setUp()
+        self.health_status_changed = Signal()
+        self.addCleanup(
+            self.health_status_changed.disconnect,
+            dispatch_uid="firmware_upgrader.health_status_changed",
+        )
+        config = apps.get_app_config(UpgradeOperation._meta.app_label)
+        signals = mock.Mock(health_status_changed=self.health_status_changed)
+        with mock.patch(
+            "openwisp_firmware_upgrader.apps.load_model",
+            side_effect=[mock.sentinel.device_monitoring, UpgradeOperation],
+        ), mock.patch.dict(
+            "sys.modules", {"openwisp_monitoring.device.signals": signals}
+        ):
+            config.connect_monitoring_signals()
+
     def _monitoring_instance(self, device):
         return mock.Mock(device=device)
-
-    def _create_pending_op(self, device_fw=None):
-        if device_fw is None:
-            device_fw = self._create_device_firmware()
-        return UpgradeOperation.objects.create(
-            device=device_fw.device,
-            image=device_fw.image,
-            status="pending",
-            is_persistent=True,
-        )
 
     @mock.patch(
         "openwisp_firmware_upgrader.base.models.retry_pending_upgrade.apply_async"
     )
     def test_dispatches_retry_when_status_is_ok(self, mocked_dispatch):
         op = self._create_pending_op()
-        UpgradeOperation.handle_health_status_changed(
+        self.health_status_changed.send(
             sender=mock.Mock(),
             instance=self._monitoring_instance(op.device),
             status="ok",
@@ -54,18 +61,36 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
     def test_ignores_non_ok_statuses(self, mocked_dispatch):
         op = self._create_pending_op()
         instance = self._monitoring_instance(op.device)
-        for status in ("critical", "unknown", "problem", "deactivated"):
-            UpgradeOperation.handle_health_status_changed(
-                sender=mock.Mock(), instance=instance, status=status
+        with self.subTest("critical device is not retried"):
+            self.health_status_changed.send(
+                sender=mock.Mock(), instance=instance, status="critical"
             )
-        mocked_dispatch.assert_not_called()
+            mocked_dispatch.assert_not_called()
+
+        with self.subTest("unknown health is not retried"):
+            self.health_status_changed.send(
+                sender=mock.Mock(), instance=instance, status="unknown"
+            )
+            mocked_dispatch.assert_not_called()
+
+        with self.subTest("problem device is not retried"):
+            self.health_status_changed.send(
+                sender=mock.Mock(), instance=instance, status="problem"
+            )
+            mocked_dispatch.assert_not_called()
+
+        with self.subTest("deactivated device is not retried"):
+            self.health_status_changed.send(
+                sender=mock.Mock(), instance=instance, status="deactivated"
+            )
+            mocked_dispatch.assert_not_called()
 
     @mock.patch(
         "openwisp_firmware_upgrader.base.models.retry_pending_upgrade.apply_async"
     )
     def test_skips_when_device_has_no_pending_op(self, mocked_dispatch):
         device_fw = self._create_device_firmware()
-        UpgradeOperation.handle_health_status_changed(
+        self.health_status_changed.send(
             sender=mock.Mock(),
             instance=self._monitoring_instance(device_fw.device),
             status="ok",
@@ -83,7 +108,7 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
             status="in-progress",
             is_persistent=True,
         )
-        UpgradeOperation.handle_health_status_changed(
+        self.health_status_changed.send(
             sender=mock.Mock(),
             instance=self._monitoring_instance(device_fw.device),
             status="ok",
@@ -95,19 +120,9 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
     )
     def test_dispatches_pending_operations(self, mocked_dispatch):
         device_fw = self._create_device_firmware()
-        op1 = UpgradeOperation.objects.create(
-            device=device_fw.device,
-            image=device_fw.image,
-            status="pending",
-            is_persistent=True,
-        )
-        op2 = UpgradeOperation.objects.create(
-            device=device_fw.device,
-            image=device_fw.image,
-            status="pending",
-            is_persistent=True,
-        )
-        UpgradeOperation.handle_health_status_changed(
+        op1 = self._create_pending_op(device_fw=device_fw)
+        op2 = self._create_pending_op(device_fw=device_fw)
+        self.health_status_changed.send(
             sender=mock.Mock(),
             instance=self._monitoring_instance(device_fw.device),
             status="ok",
@@ -136,7 +151,7 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
             status="pending",
             is_persistent=True,
         )
-        UpgradeOperation.handle_health_status_changed(
+        self.health_status_changed.send(
             sender=mock.Mock(),
             instance=self._monitoring_instance(own.device),
             status="ok",
@@ -148,7 +163,7 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
     def test_concurrent_dispatches_once(self, mocked_upgrade):
         """A signal and periodic scan cannot dispatch one pending upgrade twice."""
         op = self._create_pending_op()
-        UpgradeOperation.handle_health_status_changed(
+        self.health_status_changed.send(
             sender=mock.Mock(),
             instance=self._monitoring_instance(op.device),
             status="ok",
@@ -166,33 +181,6 @@ class TestMonitoringSignalHandler(TestUpgraderMixin, TransactionTestCase):
         mocked_load.assert_called_once_with(
             "device_monitoring", "DeviceMonitoring", required=False
         )
-
-    @mock.patch(
-        "openwisp_firmware_upgrader.base.models.retry_pending_upgrade.apply_async"
-    )
-    def test_connects_monitoring_signal(self, mocked_dispatch):
-        config = apps.get_app_config(UpgradeOperation._meta.app_label)
-        signal = Signal()
-        fake_signals = mock.Mock(health_status_changed=signal)
-        with mock.patch(
-            "openwisp_firmware_upgrader.apps.load_model",
-            side_effect=lambda app, model, **kw: (
-                mock.Mock()
-                if (app, model) == ("device_monitoring", "DeviceMonitoring")
-                else UpgradeOperation
-            ),
-        ), mock.patch.dict(
-            "sys.modules", {"openwisp_monitoring.device.signals": fake_signals}
-        ):
-            config.connect_monitoring_signals()
-        op = self._create_pending_op()
-        signal.send(
-            sender=mock.Mock(),
-            instance=self._monitoring_instance(op.device),
-            status="ok",
-        )
-        mocked_dispatch.assert_called_once()
-        self.assertEqual(mocked_dispatch.call_args.kwargs["args"], [op.pk])
 
 
 class TestLogSignal(TestUpgraderMixin, TransactionTestCase):

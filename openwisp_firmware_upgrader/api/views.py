@@ -21,7 +21,6 @@ from openwisp_users.api.permissions import DjangoModelPermissions
 from openwisp_utils.api.pagination import OpenWispPagination
 
 from ..swapper import load_model
-from ..utils import NaiveSplitDateTimeField, reinterpret_in_timezone
 from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
     BatchUpgradeOperationListSerializer,
@@ -447,7 +446,7 @@ class DeviceFirmwareDetailView(
         return obj
 
 
-class PostRequiresChangePermission(DjangoModelPermissions):
+class UpgradeActionPermission(DjangoModelPermissions):
     perms_map = {
         **DjangoModelPermissions.perms_map,
         "POST": ["%(app_label)s.change_%(model_name)s"],
@@ -459,7 +458,7 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     serializer_class = serializers.Serializer
     permission_classes = (
         IsOrganizationManager,
-        PostRequiresChangePermission,
+        UpgradeActionPermission,
     )
     lookup_field = "pk"
     organization_field = "device__organization"
@@ -502,11 +501,13 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
 
 
 class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
-    queryset = BatchUpgradeOperation.objects.all()
+    queryset = BatchUpgradeOperation.objects.select_related(
+        "build__category__organization"
+    )
     serializer_class = BatchUpgradeRescheduleSerializer
     permission_classes = (
         IsOrganizationManager,
-        PostRequiresChangePermission,
+        UpgradeActionPermission,
     )
     lookup_field = "pk"
     organization_field = "build__category__organization"
@@ -522,26 +523,7 @@ class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
         },
     )
     def post(self, request, pk):
-        data = request.data
-        tz_name = data.get("scheduled_at_tz")
-        if tz_name is not None:
-            field = NaiveSplitDateTimeField(required=False)
-            try:
-                parsed = field.clean(
-                    [data.get("scheduled_at_0"), data.get("scheduled_at_1")]
-                )
-                scheduled_at = (
-                    reinterpret_in_timezone(parsed, tz_name) if parsed else None
-                )
-            except ValidationError as error:
-                return _error_response(error.messages[0], status.HTTP_400_BAD_REQUEST)
-            data = {
-                key: value
-                for key, value in data.items()
-                if key not in ("scheduled_at_0", "scheduled_at_1", "scheduled_at_tz")
-            }
-            data["scheduled_at"] = scheduled_at
-        serializer = self.get_serializer(data=data, partial=True)
+        serializer = self.get_serializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         if not serializer.validated_data:
             return _error_response(
@@ -577,11 +559,13 @@ class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
 
 
 class BatchUpgradeCancelView(ProtectedAPIMixin, generics.GenericAPIView):
-    queryset = BatchUpgradeOperation.objects.all()
+    queryset = BatchUpgradeOperation.objects.select_related(
+        "build__category__organization"
+    )
     serializer_class = serializers.Serializer
     permission_classes = (
         IsOrganizationManager,
-        PostRequiresChangePermission,
+        UpgradeActionPermission,
     )
     lookup_field = "pk"
     organization_field = "build__category__organization"

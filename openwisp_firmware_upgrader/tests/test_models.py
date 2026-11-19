@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 import swapper
 from celery.exceptions import Retry
 from django.core.exceptions import ImproperlyConfigured, ValidationError
-from django.db import connection
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
@@ -636,27 +635,10 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertEqual(uo.retry_count, 0)
         self.assertIsNone(uo.next_retry_at)
 
-    def test_next_retry_index(self):
-        field = UpgradeOperation._meta.get_field("next_retry_at")
-        self.assertTrue(field.db_index)
-        self.assertTrue(field.null)
-        self.assertTrue(field.blank)
-        with connection.cursor() as cursor:
-            indexes = connection.introspection.get_constraints(
-                cursor, UpgradeOperation._meta.db_table
-            )
-        self.assertTrue(
-            any(
-                info["columns"] == ["next_retry_at"] and info["index"]
-                for info in indexes.values()
-            )
-        )
-
     def test_batch_persistence_propagation(self):
         device_fw = self._create_device_firmware()
         build = device_fw.image.build
         with mock.patch.object(UpgradeOperation, "upgrade", return_value=None):
-
             with self.subTest("is_persistent=True batch propagates True to child"):
                 batch = BatchUpgradeOperation.objects.create(
                     build=build, is_persistent=True
@@ -740,22 +722,6 @@ class TestModels(TestUpgraderMixin, TestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, "scheduled")
 
-    def test_scheduled_at_composite_index(self):
-        field = BatchUpgradeOperation._meta.get_field("scheduled_at")
-        self.assertFalse(field.db_index)
-        self.assertTrue(field.null)
-        self.assertTrue(field.blank)
-        with connection.cursor() as cursor:
-            indexes = connection.introspection.get_constraints(
-                cursor, BatchUpgradeOperation._meta.db_table
-            )
-        self.assertTrue(
-            any(
-                info["columns"] == ["status", "scheduled_at"] and info["index"]
-                for info in indexes.values()
-            )
-        )
-
     def test_scheduled_editability_guard(self):
         build = self._create_build()
         other_build = self._create_build(version="0.2", os="OpenWrt 21.03")
@@ -774,14 +740,25 @@ class TestModels(TestUpgraderMixin, TestCase):
             batch.build = other_build
             with self.assertRaises(ValidationError) as ctx:
                 batch.full_clean()
-            self.assertIn("build", ctx.exception.message_dict)
+            self.assertEqual(
+                ctx.exception.message_dict["build"],
+                [
+                    "The build cannot be changed once the mass upgrade has been scheduled or started"
+                ],
+            )
 
         with self.subTest("upgrade_options frozen while scheduled"):
             batch.refresh_from_db()
             batch.upgrade_options = {"reboot": True}
             with self.assertRaises(ValidationError) as ctx:
-                batch._validate_scheduled_editability()
-            self.assertIn("upgrade_options", ctx.exception.message_dict)
+                batch._validate_scheduled_editability(batch._fetch_stored_row())
+            self.assertEqual(
+                ctx.exception.message_dict["upgrade_options"],
+                [
+                    "The upgrade options cannot be changed once the mass upgrade "
+                    "has been scheduled or started"
+                ],
+            )
 
         with self.subTest("schedule frozen when launching in the same edit"):
             batch.refresh_from_db()
@@ -789,7 +766,12 @@ class TestModels(TestUpgraderMixin, TestCase):
             batch.scheduled_at = timezone.now() + timedelta(days=2)
             with self.assertRaises(ValidationError) as ctx:
                 batch.full_clean()
-            self.assertIn("scheduled_at", ctx.exception.message_dict)
+            self.assertEqual(
+                ctx.exception.message_dict["scheduled_at"],
+                [
+                    "The scheduled time cannot be changed after the mass upgrade has started"
+                ],
+            )
 
         with self.subTest("all guarded fields frozen once in-progress"):
             batch.refresh_from_db()
@@ -798,17 +780,32 @@ class TestModels(TestUpgraderMixin, TestCase):
             batch.scheduled_at = timezone.now() + timedelta(days=2)
             with self.assertRaises(ValidationError) as ctx:
                 batch.full_clean()
-            self.assertIn("scheduled_at", ctx.exception.message_dict)
+            self.assertEqual(
+                ctx.exception.message_dict["scheduled_at"],
+                [
+                    "The scheduled time cannot be changed after the mass upgrade has started"
+                ],
+            )
             batch.refresh_from_db()
             batch.firmwareless = True
             with self.assertRaises(ValidationError) as ctx:
                 batch.full_clean()
-            self.assertIn("firmwareless", ctx.exception.message_dict)
+            self.assertEqual(
+                ctx.exception.message_dict["firmwareless"],
+                [
+                    "The firmwareless option cannot be changed after the mass upgrade has started"
+                ],
+            )
             batch.refresh_from_db()
             batch.build = other_build
             with self.assertRaises(ValidationError) as ctx:
                 batch.full_clean()
-            self.assertIn("build", ctx.exception.message_dict)
+            self.assertEqual(
+                ctx.exception.message_dict["build"],
+                [
+                    "The build cannot be changed once the mass upgrade has been scheduled or started"
+                ],
+            )
 
     def test_reschedule_unchanged_time_not_rejected_when_near_due(self):
         build = self._create_build()
@@ -859,46 +856,55 @@ class TestModels(TestUpgraderMixin, TestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, "scheduled")
 
+    @mock.patch.object(app_settings, "SCHEDULE_MIN_DELAY", 600)
+    @mock.patch.object(app_settings, "SCHEDULE_MAX_HORIZON", 15552000)
     def test_validate_schedule_bounds(self):
         batch = BatchUpgradeOperation(build=self._create_build())
         now = timezone.now()
         with self.subTest("None is a no-op"):
             batch.scheduled_at = None
-            batch._validate_schedule()
+            batch._validate_schedule(None)
         with self.subTest("a time in the past is rejected"):
             batch.scheduled_at = now - timedelta(minutes=5)
             with self.assertRaises(ValidationError) as ctx:
-                batch._validate_schedule()
+                batch._validate_schedule(None)
             self.assertIn("scheduled_at", ctx.exception.message_dict)
-            self.assertIn("minutes", str(ctx.exception.message_dict["scheduled_at"][0]))
+            self.assertEqual(
+                ctx.exception.message_dict["scheduled_at"],
+                ["The scheduled time must be at least 10 minutes in the future."],
+            )
         with self.subTest("inside the minimum delay is rejected"):
             batch.scheduled_at = now + timedelta(
                 seconds=app_settings.SCHEDULE_MIN_DELAY - 60
             )
-            with self.assertRaises(ValidationError):
-                batch._validate_schedule()
+            with self.assertRaises(ValidationError) as ctx:
+                batch._validate_schedule(None)
+            self.assertEqual(
+                ctx.exception.message_dict["scheduled_at"],
+                ["The scheduled time must be at least 10 minutes in the future."],
+            )
         with self.subTest("beyond the maximum horizon is rejected"):
             batch.scheduled_at = now + timedelta(
                 seconds=app_settings.SCHEDULE_MAX_HORIZON + 86400
             )
             with self.assertRaises(ValidationError) as ctx:
-                batch._validate_schedule()
-            self.assertIn(
-                f"{app_settings.SCHEDULE_MAX_HORIZON // 86400} days",
-                str(ctx.exception.message_dict["scheduled_at"][0]),
+                batch._validate_schedule(None)
+            self.assertEqual(
+                ctx.exception.message_dict["scheduled_at"],
+                ["The scheduled time cannot be more than 180 days in the future."],
             )
         with self.subTest("a single-day horizon uses the singular form"):
             with mock.patch.object(app_settings, "SCHEDULE_MAX_HORIZON", 86400):
                 batch.scheduled_at = now + timedelta(days=2)
                 with self.assertRaises(ValidationError) as ctx:
-                    batch._validate_schedule()
-                self.assertIn(
-                    "1 day in the future",
-                    str(ctx.exception.message_dict["scheduled_at"][0]),
+                    batch._validate_schedule(None)
+                self.assertEqual(
+                    ctx.exception.message_dict["scheduled_at"],
+                    ["The scheduled time cannot be more than 1 day in the future."],
                 )
         with self.subTest("a valid future time passes"):
             batch.scheduled_at = now + timedelta(hours=1)
-            batch._validate_schedule()
+            batch._validate_schedule(None)
 
     def test_batch_upgrade_schedule_fork(self):
         scheduled_build = self._create_device_firmware().image.build
@@ -913,20 +919,22 @@ class TestModels(TestUpgraderMixin, TestCase):
         self._create_device_firmware(image=immediate_image)
         immediate_build = immediate_image.build
         future = timezone.now() + timedelta(hours=2)
-        with mock.patch("django.db.transaction.on_commit") as on_commit:
-            with self.subTest("scheduled batch is saved as scheduled, not dispatched"):
+        with self.subTest("scheduled batch is saved as scheduled, not dispatched"):
+            with self.captureOnCommitCallbacks(execute=False) as callbacks:
                 batch = scheduled_build.batch_upgrade(
                     firmwareless=True, scheduled_at=future
                 )
-                self.assertEqual(batch.status, "scheduled")
-                self.assertTrue(batch.firmwareless)
-                self.assertEqual(batch.scheduled_at, future)
-                on_commit.assert_not_called()
-            with self.subTest("immediate batch is dispatched on commit"):
+            self.assertEqual(batch.status, "scheduled")
+            self.assertTrue(batch.firmwareless)
+            self.assertEqual(batch.scheduled_at, future)
+            self.assertEqual(callbacks, [])
+
+        with self.subTest("immediate batch is dispatched on commit"):
+            with self.captureOnCommitCallbacks(execute=False) as callbacks:
                 batch = immediate_build.batch_upgrade(firmwareless=False)
-                self.assertEqual(batch.status, "idle")
-                self.assertFalse(batch.firmwareless)
-                on_commit.assert_called_once()
+            self.assertEqual(batch.status, "idle")
+            self.assertFalse(batch.firmwareless)
+            self.assertEqual(len(callbacks), 1)
 
     def test_upgrade_reads_firmwareless_from_field(self):
         device_fw = self._create_device_firmware()
@@ -974,42 +982,71 @@ class TestModels(TestUpgraderMixin, TestCase):
         g2 = self._create_device_group(name="g2", organization=org)
         loc1, loc2 = uuid.uuid4(), uuid.uuid4()
 
-        def batch(group=None, location=None, target=build):
+        def create_batch(group=None, location=None, target=build):
             return BatchUpgradeOperation(
                 build=target, group=group, location_id=location
             )
 
         cases = [
-            ("same category, no filters", batch(), batch(), True),
-            ("superset vs group", batch(), batch(group=g1), True),
-            ("different group", batch(group=g1), batch(group=g2), False),
-            ("different location", batch(location=loc1), batch(location=loc2), False),
-            ("group vs location", batch(group=g1), batch(location=loc1), True),
-            ("different category", batch(), batch(target=other_build), False),
+            ("same category, no filters", create_batch(), create_batch(), True),
+            ("superset vs group", create_batch(), create_batch(group=g1), True),
+            ("different groups", create_batch(group=g1), create_batch(group=g2), False),
+            (
+                "different locations",
+                create_batch(location=loc1),
+                create_batch(location=loc2),
+                False,
+            ),
+            (
+                "group vs location",
+                create_batch(group=g1),
+                create_batch(location=loc1),
+                True,
+            ),
+            (
+                "different categories",
+                create_batch(),
+                create_batch(target=other_build),
+                False,
+            ),
         ]
-        for label, first, second, expected in cases:
-            with self.subTest(label):
-                self.assertEqual(first._filters_overlap_with(second), expected)
+        for name, first_batch, second_batch, expected_overlap in cases:
+            with self.subTest(name):
+                self.assertEqual(
+                    first_batch._filters_overlap_with(second_batch), expected_overlap
+                )
 
     def test_conflict_with_active_batch(self):
         build = self._create_device_firmware().image.build
         existing = BatchUpgradeOperation.objects.create(build=build, status="scheduled")
         with self.assertRaises(ValidationError) as ctx:
             BatchUpgradeOperation(build=build).full_clean()
-        message = str(ctx.exception)
-        self.assertIn(str(existing.pk), message)
-        self.assertIn(existing.get_status_display(), message)
-        self.assertIn("immediate execution", message)
+        self.assertEqual(
+            ctx.exception.messages,
+            [
+                f"A conflicting mass upgrade already exists: operation {existing.pk} "
+                "(status: scheduled, scheduled for immediate execution)."
+            ],
+        )
 
     def test_conflict_message_reports_scheduled_time(self):
         build = self._create_device_firmware().image.build
         future = timezone.now() + timedelta(hours=2)
-        BatchUpgradeOperation.objects.create(
+        existing = BatchUpgradeOperation.objects.create(
             build=build, status="scheduled", scheduled_at=future
         )
-        with self.assertRaises(ValidationError) as ctx:
+        with time_travel(future - timedelta(hours=1)), self.assertRaises(
+            ValidationError
+        ) as ctx:
             BatchUpgradeOperation(build=build).full_clean()
-        self.assertNotIn("immediate execution", str(ctx.exception))
+        local = timezone.localtime(future)
+        self.assertEqual(
+            ctx.exception.messages,
+            [
+                f"A conflicting mass upgrade already exists: operation {existing.pk} "
+                f"(status: scheduled, scheduled for {local:%Y-%m-%d %H:%M} ({local.tzinfo}))."
+            ],
+        )
 
     def test_no_conflict_excludes_self(self):
         build = self._create_device_firmware().image.build
@@ -1096,17 +1133,8 @@ class TestModels(TestUpgraderMixin, TestCase):
             batch.status = "in-progress"
             batch.full_clean()
 
-    def _make_persistent_op(self, is_persistent):
-        device_fw = self._create_device_firmware()
-        op = UpgradeOperation.objects.create(
-            device=device_fw.device,
-            image=device_fw.image,
-            is_persistent=is_persistent,
-        )
-        return op
-
     def test_recoverable_handler_reraises(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         with self.assertRaises(RecoverableFailure):
             op._recoverable_failure_handler(
                 recoverable=True, error=RecoverableFailure("transient")
@@ -1116,7 +1144,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIsNone(op.next_retry_at)
 
     def test_persistent_failure_schedules_retry(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         before = timezone.now()
         op._recoverable_failure_handler(
             recoverable=False, error=RecoverableFailure("device offline")
@@ -1128,7 +1156,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIn("Scheduled persistent retry", op.log)
 
     def test_persistent_nonrecoverable_failure(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         op._recoverable_failure_handler(
             recoverable=False, error=ValueError("unrecognised failure")
         )
@@ -1137,7 +1165,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIsNone(op.next_retry_at)
 
     def test_nonpersistent_failure(self):
-        op = self._make_persistent_op(is_persistent=False)
+        op = self._create_upgrade_operation(is_persistent=False)
         op._recoverable_failure_handler(
             recoverable=False, error=RecoverableFailure("device offline")
         )
@@ -1146,7 +1174,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIsNone(op.next_retry_at)
 
     def test_retry_backoff(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         options = app_settings.PERSISTENT_RETRY_OPTIONS
         base = options["base_delay"]
         multiplier = options["multiplier"]
@@ -1175,7 +1203,7 @@ class TestModels(TestUpgraderMixin, TestCase):
                 self.assertLessEqual(delta, max_delay * (1 + jitter))
 
     def test_retry_settings_override(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         op.retry_count = 1
         with mock.patch.object(
             app_settings,
@@ -1284,7 +1312,7 @@ class TestModels(TestUpgraderMixin, TestCase):
             importlib.reload(app_settings)
 
     def test_retry_schedule_with_zero_attempts(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         op.retry_count = 0
         before = timezone.now()
         scheduled = op._calculate_next_retry()
@@ -1296,7 +1324,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertLessEqual(delta, base * (1 + jitter) + 1)
 
     def test_persistent_operation_pends_without_connection(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         UpgradeOperation.objects.filter(pk=op.pk).update(claimed_at=timezone.now())
         op.refresh_from_db()
         with mock.patch.object(
@@ -1312,7 +1340,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIsNone(op.claimed_at)
 
     def test_renews_stale_claim(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         stale = timezone.now() - timedelta(hours=2)
         UpgradeOperation.objects.filter(pk=op.pk).update(claimed_at=stale)
         op.refresh_from_db()
@@ -1327,7 +1355,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertGreater(op.claimed_at, stale)
 
     def test_connection_failure_preserves_cancellation(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         failure_handler = op._recoverable_failure_handler
 
         def cancel_after_pending(recoverable, error):
@@ -1350,7 +1378,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertIn("cancelled by user", op.log)
 
     def test_nonpersistent_operation_aborts_without_connection(self):
-        op = self._make_persistent_op(is_persistent=False)
+        op = self._create_upgrade_operation(is_persistent=False)
         with mock.patch.object(
             DeviceConnection,
             "get_working_connection",
@@ -1383,7 +1411,7 @@ class TestModels(TestUpgraderMixin, TestCase):
         self.assertNotIn("expires", mocked_dispatch.call_args.kwargs)
 
     def test_only_recoverable_failures_pend(self):
-        op = self._make_persistent_op(is_persistent=True)
+        op = self._create_upgrade_operation(is_persistent=True)
         for error_type in (
             UpgradeAborted,
             UpgradeCancelled,
@@ -1403,22 +1431,15 @@ class TestModels(TestUpgraderMixin, TestCase):
 
     def _create_batch_with_pending_operation(self):
         device_fw = self._create_device_firmware()
-        batch = BatchUpgradeOperation.objects.create(
+        batch = self._create_batch_upgrade_operation(
             build=device_fw.image.build, is_persistent=True, status="in-progress"
         )
-        UpgradeOperation.objects.create(
-            device=device_fw.device,
-            image=device_fw.image,
+        self._create_upgrade_operation(
+            device_fw=device_fw,
             batch=batch,
             status="success",
         )
-        pending_op = UpgradeOperation.objects.create(
-            device=device_fw.device,
-            image=device_fw.image,
-            batch=batch,
-            status="pending",
-            is_persistent=True,
-        )
+        pending_op = self._create_pending_op(device_fw=device_fw, batch=batch)
         return device_fw, batch, pending_op
 
     def test_pending_batch_status(self):

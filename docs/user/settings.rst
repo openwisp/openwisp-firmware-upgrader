@@ -129,6 +129,8 @@ The Beat task that drives these reminders
 ``CELERY_BEAT_SCHEDULE``; see the docker-openwisp and ansible-openwisp2
 recipes for the snippet.
 
+.. _firmware_upgrader_schedule_min_delay:
+
 ``OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MIN_DELAY``
 -------------------------------------------------
 
@@ -143,6 +145,8 @@ rejected; the floor keeps a schedule from slipping past before the scanner
 runs again. The validation bound and its error message are derived from
 the configured value: with the default of 600 seconds the message reads
 *The scheduled time must be at least 10 minutes in the future.*
+
+.. _firmware_upgrader_schedule_max_horizon:
 
 ``OPENWISP_FIRMWARE_UPGRADER_SCHEDULE_MAX_HORIZON``
 ---------------------------------------------------

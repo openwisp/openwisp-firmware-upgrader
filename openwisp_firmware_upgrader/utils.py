@@ -1,8 +1,6 @@
-import datetime
 import logging
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from django import forms
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.module_loading import import_string
@@ -14,6 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 def reinterpret_in_timezone(dt, tz_name):
+    """Interpret the entered date and time in the user's browser timezone.
+
+    For example, 02:00 entered in India must mean 02:00 in India, even when
+    the server uses UTC. Reject times skipped or repeated by a daylight
+    saving change, so an upgrade cannot run at an unintended time.
+    """
     try:
         tz = ZoneInfo(tz_name)
     except (ZoneInfoNotFoundError, ValueError, TypeError):
@@ -35,21 +39,6 @@ def reinterpret_in_timezone(dt, tz_name):
             )
         )
     return timezone.make_aware(naive, tz)
-
-
-class NaiveSplitDateTimeField(forms.SplitDateTimeField):
-    def compress(self, data_list):
-        if data_list:
-            if data_list[0] in self.empty_values:
-                raise ValidationError(
-                    self.error_messages["invalid_date"], code="invalid_date"
-                )
-            if data_list[1] in self.empty_values:
-                raise ValidationError(
-                    self.error_messages["invalid_time"], code="invalid_time"
-                )
-            return datetime.datetime.combine(*data_list)
-        return None
 
 
 def get_upgrader_schema_for_device(device):

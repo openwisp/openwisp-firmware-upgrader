@@ -108,10 +108,9 @@ Get Mass Upgrade Operation Detail
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/
 
-The response exposes ``scheduled_at`` and the ``status`` field, so a
-client can poll a scheduled batch as it moves from ``scheduled`` to
-``in-progress`` (or to ``failed`` if the execution-time re-validation
-finds no eligible devices).
+The response includes the scheduled launch time (``scheduled_at``) and
+current ``status``. See :doc:`scheduled-mass-upgrades` for launch behavior
+and :doc:`upgrade-status` for the individual device upgrade statuses.
 
 Reschedule a Mass Upgrade
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -120,11 +119,17 @@ Reschedule a Mass Upgrade
 
     POST /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/reschedule/
 
-Edits a batch while it is in the ``scheduled`` status. The editable fields
-are ``scheduled_at``, ``group``, ``location``, ``is_persistent`` and
-``upgrade_all`` (the firmwareless option); ``build`` and
-``upgrade_options`` cannot be changed. A body with only ``scheduled_at``
-just moves the launch time.
+Edits a batch while it is in the ``scheduled`` status. You can change:
+
+- ``scheduled_at``: when the upgrade should run
+- ``group``: limit the upgrade to a device group
+- ``location``: limit the upgrade to a location
+- ``is_persistent``: whether to keep retrying offline devices
+- ``upgrade_all``: whether to include devices with no firmware on record
+
+The ``build`` and ``upgrade_options`` cannot be changed. Send only
+``scheduled_at`` to move the launch time without changing the other
+fields.
 
 .. note::
 
@@ -138,9 +143,14 @@ Cancel a Mass Upgrade
 
     POST /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/cancel/
 
-Cancels a batch while it is ``scheduled`` or ``in-progress``. A scheduled
-batch is marked ``cancelled`` and never runs; an in-progress batch cancels
-the operations that have not yet started reflashing.
+Use this endpoint to stop a planned upgrade or prevent remaining devices
+from being upgraded in a running batch:
+
+- A ``scheduled`` batch is marked ``cancelled`` and will not run.
+- An ``in-progress`` batch cancels device operations that have not yet
+  started flashing, including offline devices waiting for retry. Devices
+  already flashing are left running, because interrupting them could make
+  the device unusable.
 
 .. note::
 
@@ -294,13 +304,15 @@ Example scheduling the upgrade for later:
 .. code-block:: json
 
     {
-        "scheduled_at": "{future_iso8601_datetime}"
+        "scheduled_at": "2026-12-15T02:00:00+05:30"
     }
 
 The ``scheduled_at`` value must be a timezone-aware ISO 8601 timestamp in
-the future that satisfies the configured minimum delay and maximum
-scheduling horizon (see :doc:`scheduled-mass-upgrades`). Naive timestamps
-(without a UTC offset) are rejected with an HTTP 400 response.
+the future that satisfies the configured :ref:`minimum delay
+<firmware_upgrader_schedule_min_delay>` and :ref:`maximum scheduling
+horizon <firmware_upgrader_schedule_max_horizon>`. Replace the example
+date with your future maintenance window. Naive timestamps (without a UTC
+offset) are rejected with an HTTP 400 response.
 
 Dry-run Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~

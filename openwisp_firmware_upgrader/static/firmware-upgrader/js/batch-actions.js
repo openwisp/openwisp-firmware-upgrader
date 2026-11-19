@@ -1,14 +1,17 @@
 "use strict";
 
 django.jQuery(function ($) {
+  const browserTimezone = getBrowserTimezone();
+  let actionPending = false;
+
+  /** Prefer server validation messages; network failures may have no JSON body. */
   function extractErrorMessage(xhr) {
     const body = xhr.responseJSON;
     if (body) {
       if (body.error) {
         return body.error;
       }
-      // DRF serializer field errors are keyed by field name (e.g. an invalid
-      // group/location pk or an unparseable datetime); surface the first one.
+      // Field errors are keyed by field name; show the first actionable message.
       for (const key of Object.keys(body)) {
         const value = body[key];
         if (Array.isArray(value) && value.length) {
@@ -22,7 +25,18 @@ django.jQuery(function ($) {
     return gettext("The request could not be completed.");
   }
 
-  function post(url, data) {
+  /** Reload after a successful mutation so actions reflect the latest batch state. */
+  function submitBatchAction(url, data) {
+    // Cancellation and rescheduling mutate the same batch. Do not allow either
+    // action to race with a request that is already in flight.
+    if (actionPending) {
+      return;
+    }
+    actionPending = true;
+    const buttons = $(
+      "#batch-cancel-btn, #batch-reschedule-save, .ow-batch-cancel-confirm",
+    );
+    buttons.prop("disabled", true);
     $("#ow-loading").show();
     $.ajax({
       url: url,
@@ -34,188 +48,162 @@ django.jQuery(function ($) {
         window.location.reload();
       },
       error: function (xhr) {
+        actionPending = false;
+        buttons.prop("disabled", false);
         $("#ow-loading").hide();
         alert(extractErrorMessage(xhr));
       },
     });
   }
 
-  let batchCancelLastFocused = null;
-
-  function hideBatchCancelModal() {
-    $("#ow-batch-cancel-modal").addClass("ow-hide");
-    if (batchCancelLastFocused) {
-      $(batchCancelLastFocused).trigger("focus");
-      batchCancelLastFocused = null;
+  /** Keep keyboard focus inside the confirmation dialog and return it on dismissal. */
+  function initializeCancelDialog() {
+    const modal = $("#ow-batch-cancel-modal");
+    if (!modal.length) {
+      return;
     }
-  }
+    const confirmButton = modal.find(".ow-batch-cancel-confirm");
+    let lastFocused = null;
 
-  function showBatchCancelModal() {
-    if ($("#ow-batch-cancel-modal").length === 0) {
-      createBatchCancelModal();
+    function hideModal() {
+      modal.addClass("ow-hide");
+      if (lastFocused) {
+        $(lastFocused).trigger("focus");
+        lastFocused = null;
+      }
     }
-    batchCancelLastFocused = document.activeElement;
-    $("#ow-batch-cancel-modal").removeClass("ow-hide");
-    $("#ow-batch-cancel-modal .ow-batch-cancel-confirm").trigger("focus");
-  }
 
-  function createBatchCancelModal() {
-    const modalHtml = `
-      <div id="ow-batch-cancel-modal" class="ow-overlay ow-overlay-notification ow-overlay-inner ow-hide">
-        <div class="ow-dialog-notification ow-cancel-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="ow-batch-cancel-title">
-          <button type="button" class="ow-dialog-close ow-dialog-close-x" aria-label="${gettext("Close")}">&times;</button>
-          <div class="ow-cancel-confirmation-header">
-            <h2 id="ow-batch-cancel-title" class="ow-cancel-confirmation-title">${gettext("Cancel mass upgrade")}</h2>
-          </div>
-          <div class="ow-cancel-confirmation-content">
-            <p>${gettext("Are you sure you want to cancel this mass upgrade?")}</p>
-          </div>
-          <div class="ow-dialog-buttons ow-cancel-confirmation-buttons">
-            <button class="ow-batch-cancel-confirm button default danger-btn">
-              ${gettext("Yes")}
-            </button>
-            <button class="ow-dialog-close button default">
-              ${gettext("No")}
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-    $("body").append(modalHtml);
-    $("#ow-batch-cancel-modal .ow-dialog-close").on("click", function () {
-      hideBatchCancelModal();
+    $("#batch-cancel-btn").on("click", function () {
+      lastFocused = document.activeElement;
+      modal.removeClass("ow-hide");
+      confirmButton.trigger("focus");
     });
-    $("#ow-batch-cancel-modal .ow-batch-cancel-confirm").on("click", function () {
-      hideBatchCancelModal();
-      post(owBatchCancelUrl, {});
+
+    modal.find(".ow-dialog-close").on("click", hideModal);
+    confirmButton.on("click", function () {
+      hideModal();
+      submitBatchAction(owBatchCancelUrl, {});
     });
-    $(document).on("keyup", function (e) {
-      if (e.keyCode === 27 && $("#ow-batch-cancel-modal").is(":visible")) {
-        hideBatchCancelModal();
+    modal.on("click", function (event) {
+      if (event.target === this) {
+        hideModal();
       }
     });
-    $("#ow-batch-cancel-modal").on("keydown", function (e) {
-      if (e.key !== "Tab") {
+    modal.on("keydown", function (event) {
+      // Escape dismisses the dialog without confirming the cancellation.
+      if (event.key === "Escape") {
+        event.preventDefault();
+        hideModal();
         return;
       }
-      const focusable = $(this)
+      if (event.key !== "Tab") {
+        return;
+      }
+      // Tab must stay inside the open dialog, not reach the page behind it.
+      const focusable = modal
         .find(
           "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
         )
-        .filter(":visible");
+        .filter(":visible:not(:disabled)");
       if (!focusable.length) {
         return;
       }
       const first = focusable.first()[0];
       const last = focusable.last()[0];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
+      // Wrap backward from the first control and forward from the last one.
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
         first.focus();
       }
     });
-    $("#ow-batch-cancel-modal").on("click", function (e) {
-      if (e.target === this) {
-        hideBatchCancelModal();
-      }
-    });
   }
 
-  $("#batch-cancel-btn").on("click", function () {
-    showBatchCancelModal();
-  });
-
-  let browserTz = "";
-  try {
-    browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch (error) {
-    browserTz = "";
-  }
-
-  const scheduledAt = $(".ow-scheduled-at");
-  const scheduledInstant = scheduledAt.length
-    ? new Date(scheduledAt.data("scheduled-utc"))
-    : null;
-  if (scheduledInstant && !isNaN(scheduledInstant.getTime())) {
-    const text = scheduledInstant.toLocaleString(window.djangoLocale || undefined, {
+  function initializeScheduledTimeDisplay() {
+    const scheduledAt = $(".ow-scheduled-at");
+    // Without a browser timezone, keep the server-rendered value and its label.
+    if (!scheduledAt.length || !browserTimezone) {
+      return;
+    }
+    const scheduledDate = new Date(scheduledAt.data("scheduled-utc"));
+    if (isNaN(scheduledDate.getTime())) {
+      return;
+    }
+    const text = scheduledDate.toLocaleString(window.djangoLocale || undefined, {
       dateStyle: "medium",
       timeStyle: "short",
     });
-    scheduledAt.text(browserTz ? text + " (" + browserTz + ")" : text);
+    scheduledAt.text(text + " (" + browserTimezone + ")");
   }
 
-  const form = $("#batch-reschedule-form");
-  if (!form.length) {
-    return;
-  }
-
-  document.body.removeAttribute("data-admin-utc-offset");
-
-  const toggle = $("#batch-reschedule-btn");
-  const dateInput = form.find('input[name="scheduled_at_0"]');
-  const timeInput = form.find('input[name="scheduled_at_1"]');
-
-  function pad(value) {
-    return String(value).padStart(2, "0");
-  }
-
-  function formatDate(date) {
-    const isoDate =
-      date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
-    const pattern =
-      typeof get_format === "function" ? get_format("DATE_INPUT_FORMATS")[0] : null;
-    if (!pattern) {
-      return isoDate;
+  /** Initialize editable values once; Discard restores this saved-page snapshot. */
+  function initializeReschedulePanel() {
+    const panel = $("#batch-reschedule-form");
+    if (!panel.length) {
+      return;
     }
-    const tokens = {
-      "%d": pad(date.getDate()),
-      "%m": pad(date.getMonth() + 1),
-      "%Y": String(date.getFullYear()),
-      "%y": pad(date.getFullYear() % 100),
-    };
-    return pattern.replace(/%[dmYy]/g, (token) => tokens[token] || token);
-  }
+    const toggle = $("#batch-reschedule-btn");
+    const dateInput = panel.find('input[name="scheduled_at_0"]');
+    const timeInput = panel.find('input[name="scheduled_at_1"]');
+    labelScheduleTimezone(panel, browserTimezone);
 
-  const scheduledUtc = form.data("scheduled-utc");
-  if (scheduledUtc) {
-    const local = new Date(scheduledUtc);
-    if (!isNaN(local.getTime())) {
-      dateInput.val(formatDate(local));
-      timeInput.val(pad(local.getHours()) + ":" + pad(local.getMinutes()));
+    const scheduledDate = new Date(panel.data("scheduled-utc"));
+    if (browserTimezone && !isNaN(scheduledDate.getTime())) {
+      // Use the same localized format as Django's calendar widget and parser.
+      // The input is a wall-clock time; scheduled_at_tz tells the server its zone.
+      dateInput.val(scheduledDate.strftime(get_format("DATE_INPUT_FORMATS")[0]));
+      timeInput.val(scheduledDate.strftime("%H:%M"));
     }
-  }
-  const serverTz = form.data("server-tz") || "";
-  let tzText = interpolate(gettext("Entered in your timezone (%s)."), [browserTz]);
-  if (serverTz) {
-    tzText += " " + interpolate(gettext("The server runs in %s."), [serverTz]);
-  }
-  form.find(".ow-schedule-tz-note").text(tzText);
+    // This panel is a div, not a form. Snapshot its controls without resetting
+    // Django's surrounding admin form or relying on server-time default values.
+    const initialValues = panel
+      .find("input, select")
+      .get()
+      .map(function (element) {
+        return { element: element, value: $(element).val(), checked: element.checked };
+      });
 
-  toggle.on("click", function () {
-    const opening = form.hasClass("ow-hide");
-    form.toggleClass("ow-hide", !opening);
-    toggle.attr("aria-expanded", String(opening));
-    if (opening) {
-      dateInput.trigger("focus");
+    function setPanelOpen(opening) {
+      panel.toggleClass("ow-hide", !opening);
+      toggle.attr("aria-expanded", String(opening));
+      (opening ? dateInput : toggle).trigger("focus");
     }
-  });
 
-  $("#batch-reschedule-cancel").on("click", function () {
-    form.addClass("ow-hide");
-    toggle.attr("aria-expanded", "false").trigger("focus");
-  });
-
-  $("#batch-reschedule-save").on("click", function () {
-    post(owBatchRescheduleUrl, {
-      scheduled_at_0: dateInput.val() || null,
-      scheduled_at_1: timeInput.val() || null,
-      scheduled_at_tz: browserTz,
-      group: $("#batch-reschedule-group").val() || null,
-      location: $("#batch-reschedule-location").val() || null,
-      is_persistent: $("#batch-reschedule-persistent").is(":checked"),
-      upgrade_all: $("#batch-reschedule-firmwareless").is(":checked"),
+    toggle.on("click", function () {
+      setPanelOpen(panel.hasClass("ow-hide"));
     });
-  });
+    panel.find("#batch-reschedule-cancel").on("click", function () {
+      initialValues.forEach(function (initial) {
+        const input = $(initial.element);
+        if (initial.element.type === "checkbox") {
+          input.prop("checked", initial.checked);
+        } else {
+          input.val(initial.value);
+        }
+        // Select2 maintains its own display, so restoring the select is not enough.
+        if (initial.element.tagName === "SELECT") {
+          input.trigger("change");
+        }
+      });
+      setPanelOpen(false);
+    });
+    panel.find("#batch-reschedule-save").on("click", function () {
+      submitBatchAction(owBatchRescheduleUrl, {
+        scheduled_at_0: dateInput.val() || null,
+        scheduled_at_1: timeInput.val() || null,
+        scheduled_at_tz: browserTimezone,
+        group: panel.find("#batch-reschedule-group").val() || null,
+        location: panel.find("#batch-reschedule-location").val() || null,
+        is_persistent: panel.find("#batch-reschedule-persistent").is(":checked"),
+        // The action endpoint calls the firmwareless option "upgrade_all".
+        upgrade_all: panel.find("#batch-reschedule-firmwareless").is(":checked"),
+      });
+    });
+  }
+
+  initializeCancelDialog();
+  initializeScheduledTimeDisplay();
+  initializeReschedulePanel();
 });

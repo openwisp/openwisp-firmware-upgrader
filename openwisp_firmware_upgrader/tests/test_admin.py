@@ -240,6 +240,8 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(r, 'name="scheduled_at_1"')
         self.assertContains(r, 'class="vDateField"')
         self.assertContains(r, 'class="vTimeField"')
+        self.assertContains(r, 'aria-label="Scheduled date"')
+        self.assertContains(r, 'aria-label="Scheduled time"')
 
     @mock.patch(
         "django.utils.timezone.now",
@@ -448,6 +450,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             r = get_change(batch)
             self.assertContains(r, 'id="batch-reschedule-btn"')
             self.assertContains(r, 'id="batch-cancel-btn"')
+            self.assertContains(r, 'id="ow-batch-cancel-modal"')
             self.assertContains(r, f"batchupgradeoperation/{batch.pk}/reschedule/")
             self.assertContains(r, 'id="batch-reschedule-group"')
             self.assertContains(r, 'id="batch-reschedule-location"')
@@ -464,6 +467,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             r = get_change(batch)
             self.assertNotContains(r, 'id="batch-reschedule-btn"')
             self.assertContains(r, 'id="batch-cancel-btn"')
+            self.assertContains(r, 'id="ow-batch-cancel-modal"')
             batch.delete()
 
         with self.subTest("terminal shows neither"):
@@ -471,6 +475,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
             r = get_change(batch)
             self.assertNotContains(r, 'id="batch-cancel-btn"')
             self.assertNotContains(r, 'id="batch-reschedule-btn"')
+            self.assertNotContains(r, 'id="ow-batch-cancel-modal"')
 
     def test_scheduled_batch_renders_operations_table(self):
         self._login()
@@ -521,6 +526,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertNotContains(r, 'id="batch-cancel-btn"')
         self.assertNotContains(r, 'id="batch-reschedule-btn"')
         self.assertNotContains(r, "batch-actions.js")
+        self.assertNotContains(r, 'id="ow-batch-cancel-modal"')
 
     @mock.patch(
         "django.utils.timezone.now",
@@ -752,11 +758,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_batch_change_page_retry_columns(self):
         self._login()
         env = self._create_upgrade_env()
-        batch = BatchUpgradeOperation.objects.create(
+        batch = self._create_batch_upgrade_operation(
             build=env["build1"], status="in-progress", is_persistent=True
         )
-        UpgradeOperation.objects.create(
-            device=env["d1"], image=env["image1a"], batch=batch, status="pending"
+        self._create_upgrade_operation(
+            device_fw=env["device_fw1"], batch=batch, status="pending"
         )
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
@@ -768,11 +774,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_batch_change_page_retry_columns_without_pending(self):
         self._login()
         env = self._create_upgrade_env()
-        batch = BatchUpgradeOperation.objects.create(
+        batch = self._create_batch_upgrade_operation(
             build=env["build1"], status="in-progress", is_persistent=True
         )
-        UpgradeOperation.objects.create(
-            device=env["d1"], image=env["image1a"], batch=batch, status="in-progress"
+        self._create_upgrade_operation(
+            device_fw=env["device_fw1"], batch=batch, status="in-progress"
         )
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
@@ -784,14 +790,14 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_batch_change_page_retry_columns_when_filtered(self):
         self._login()
         env = self._create_upgrade_env()
-        batch = BatchUpgradeOperation.objects.create(
+        batch = self._create_batch_upgrade_operation(
             build=env["build1"], status="in-progress", is_persistent=True
         )
-        UpgradeOperation.objects.create(
-            device=env["d1"], image=env["image1a"], batch=batch, status="success"
+        self._create_upgrade_operation(
+            device_fw=env["device_fw1"], batch=batch, status="success"
         )
-        UpgradeOperation.objects.create(
-            device=env["d2"], image=env["image1b"], batch=batch, status="pending"
+        self._create_upgrade_operation(
+            device_fw=env["device_fw2"], batch=batch, status="pending"
         )
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
@@ -803,11 +809,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_batch_change_page_hides_retry_columns(self):
         self._login()
         env = self._create_upgrade_env()
-        batch = BatchUpgradeOperation.objects.create(
+        batch = self._create_batch_upgrade_operation(
             build=env["build1"], status="in-progress", is_persistent=False
         )
-        UpgradeOperation.objects.create(
-            device=env["d1"], image=env["image1a"], batch=batch, status="pending"
+        self._create_upgrade_operation(
+            device_fw=env["device_fw1"], batch=batch, status="pending"
         )
         url = reverse(
             f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]

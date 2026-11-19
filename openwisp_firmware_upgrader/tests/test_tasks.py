@@ -22,19 +22,23 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
     _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
-    @mock.patch(_mock_upgrade, side_effect=SoftTimeLimitExceeded())
-    @mock.patch(
-        "openwisp_firmware_upgrader.base.models.AbstractUpgradeOperation.upgrade",
-        side_effect=SoftTimeLimitExceeded(),
-    )
-    @capture_any_output()
-    def test_upgrade_firmware_timeout(self, *args):
-        with mock.patch(self._mock_connect, return_value=True):
+    @mock.patch("openwisp_firmware_upgrader.tasks.logger.warning")
+    @mock.patch.object(UpgradeOperation, "upgrade", side_effect=SoftTimeLimitExceeded())
+    def test_upgrade_firmware_timeout(self, mocked_upgrade, mocked_warning):
+        with mock.patch.object(tasks.upgrade_firmware, "apply_async"):
             device_fw = self._create_device_firmware(upgrade=True)
-            self.assertEqual(UpgradeOperation.objects.count(), 1)
-            uo = device_fw.image.upgradeoperation_set.first()
-            self.assertEqual(uo.status, "failed")
-            self.assertIn("Operation timed out.", uo.log)
+        self.assertEqual(UpgradeOperation.objects.count(), 1)
+        operation = device_fw.image.upgradeoperation_set.get()
+        timed_out_at = timezone.now() + timedelta(hours=1)
+        with time_travel(timed_out_at):
+            tasks.upgrade_firmware.run(operation.pk)
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "failed")
+        self.assertEqual(operation.log, "Operation timed out.")
+        self.assertEqual(operation.modified, timed_out_at)
+        mocked_warning.assert_called_once_with(
+            "SoftTimeLimitExceeded raised in upgrade_firmware task"
+        )
 
     @mock.patch(_mock_upgrade, return_value=True)
     @mock.patch(
@@ -148,12 +152,8 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
     def _create_pending_op(
         self, device_fw=None, retry_count=1, next_retry_at=None, is_persistent=True
     ):
-        if device_fw is None:
-            device_fw = self._create_device_firmware()
-        return UpgradeOperation.objects.create(
-            device=device_fw.device,
-            image=device_fw.image,
-            status="pending",
+        return super()._create_pending_op(
+            device_fw=device_fw,
             is_persistent=is_persistent,
             retry_count=retry_count,
             next_retry_at=next_retry_at or timezone.now() - timedelta(minutes=1),
@@ -402,9 +402,8 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
     def _create_scheduled_batch(self, build, when=None, firmwareless=False):
         if when is None:
             when = timezone.now() - timedelta(minutes=1)
-        return BatchUpgradeOperation.objects.create(
+        return super()._create_scheduled_batch(
             build=build,
-            status="scheduled",
             scheduled_at=when,
             firmwareless=firmwareless,
         )

@@ -16,6 +16,7 @@ from selenium.common.exceptions import (
     TimeoutException,
 )
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
@@ -684,6 +685,53 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         self.assertEqual(time_input.get_attribute("class"), "vTimeField")
         self.assertTrue(date_input.get_attribute("value"))
         self.assertTrue(time_input.get_attribute("value"))
+        original_date = date_input.get_attribute("value")
+        original_time = time_input.get_attribute("value")
+        date_input.clear()
+        date_input.send_keys("01/01/2030")
+        time_input.clear()
+        time_input.send_keys("03:45")
+        self.web_driver.execute_script(
+            "django.jQuery('#batch-reschedule-group').val(arguments[0]).trigger('change');"
+            "django.jQuery('#batch-reschedule-location').val(arguments[1]).trigger('change');",
+            str(group.pk),
+            str(location.pk),
+        )
+        self.find_element(By.ID, "batch-reschedule-persistent").click()
+        self.find_element(By.ID, "batch-reschedule-firmwareless").click()
+        self.find_element(By.ID, "batch-reschedule-cancel").click()
+        self.assertEqual(toggle.get_attribute("aria-expanded"), "false")
+        self.assertEqual(self.web_driver.switch_to.active_element, toggle)
+        toggle.click()
+        self.assertEqual(self.web_driver.switch_to.active_element, date_input)
+        self.assertEqual(date_input.get_attribute("value"), original_date)
+        self.assertEqual(time_input.get_attribute("value"), original_time)
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-group")
+            ).first_selected_option.get_attribute("value"),
+            "",
+        )
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-location")
+            ).first_selected_option.get_attribute("value"),
+            "",
+        )
+        self.assertEqual(
+            self.web_driver.find_elements(
+                By.CSS_SELECTOR, "#batch-reschedule-form .select2-selection__clear"
+            ),
+            [],
+        )
+        self.assertEqual(
+            self.find_element(By.ID, "batch-reschedule-persistent").is_selected(),
+            batch.is_persistent,
+        )
+        self.assertEqual(
+            self.find_element(By.ID, "batch-reschedule-firmwareless").is_selected(),
+            batch.firmwareless,
+        )
         self.assertGreaterEqual(
             len(self.web_driver.find_elements(By.CSS_SELECTOR, ".select2-container")),
             2,
@@ -784,19 +832,147 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             True,
         )
         cancel_button = self.find_element(By.ID, "batch-cancel-btn")
-        self.web_driver.execute_script("arguments[0].click();", cancel_button)
+        cancel_button.click()
         modal = self.wait_for_visibility(
             By.CSS_SELECTOR, "#ow-batch-cancel-modal.ow-overlay-notification"
         )
         self.assertTrue(modal.is_displayed())
-        self.find_element(
+        confirm_button = self.find_element(
             By.CSS_SELECTOR, "#ow-batch-cancel-modal .ow-batch-cancel-confirm"
-        ).click()
+        )
+        close_button = self.find_element(
+            By.CSS_SELECTOR, "#ow-batch-cancel-modal .ow-dialog-close-x"
+        )
+        decline_button = self.find_element(
+            By.CSS_SELECTOR,
+            "#ow-batch-cancel-modal .ow-dialog-buttons .ow-dialog-close",
+        )
+        self.assertEqual(self.web_driver.switch_to.active_element, confirm_button)
+        decline_button.send_keys(Keys.TAB)
+        self.assertEqual(self.web_driver.switch_to.active_element, close_button)
+        close_button.send_keys(Keys.SHIFT, Keys.TAB)
+        self.assertEqual(self.web_driver.switch_to.active_element, decline_button)
+        decline_button.send_keys(Keys.ESCAPE)
+        self.assertEqual(modal.is_displayed(), False)
+        self.assertEqual(self.web_driver.switch_to.active_element, cancel_button)
+        cancel_button.click()
+        decline_button.click()
+        self.assertEqual(modal.is_displayed(), False)
+        self.assertEqual(self.web_driver.switch_to.active_element, cancel_button)
+        cancel_button.click()
+        confirm_button.click()
         self.wait_until(EC.staleness_of(cancel_button))
         self.hide_loading_overlay()
         batch.refresh_from_db()
         self.assertEqual(batch.status, "cancelled")
         self.assertEqual(self.web_driver.find_elements(By.ID, "batch-cancel-btn"), [])
+        self._assert_no_js_errors(ignore_websockets=True)
+
+    def test_batch_schedule_uses_server_timezone_when_browser_timezone_unavailable(
+        self,
+    ):
+        _, _, _, build, _, _, _ = self._set_up_env()
+        scheduled = (timezone.now() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        batch = BatchUpgradeOperation.objects.create(
+            build=build, status="scheduled", scheduled_at=scheduled
+        )
+        self.login()
+        # Simulate timezone detection failing before either page initializer runs.
+        script = self.web_driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": "Intl.DateTimeFormat = function () {"
+                "throw new Error('Timezone detection unavailable'); };"
+            },
+        )
+        try:
+            self.open(
+                reverse(
+                    f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                    args=[batch.pk],
+                )
+            )
+        finally:
+            self.web_driver.execute_cdp_cmd(
+                "Page.removeScriptToEvaluateOnNewDocument", script
+            )
+        self.hide_loading_overlay()
+        self.find_element(By.ID, "batch-reschedule-btn").click()
+        self.assertEqual(
+            self.find_element(By.CSS_SELECTOR, ".ow-schedule-tz-note").text,
+            "Entered in the server timezone (Europe/Rome).",
+        )
+        date_format = self.web_driver.execute_script(
+            "return get_format('DATE_INPUT_FORMATS')[0];"
+        )
+        date_input = self.find_element(By.NAME, "scheduled_at_0")
+        self.assertEqual(
+            date_input.get_attribute("value"),
+            timezone.localtime(scheduled).strftime(date_format),
+        )
+        self.assertEqual(
+            self.find_element(By.NAME, "scheduled_at_1").get_attribute("value"),
+            timezone.localtime(scheduled).strftime("%H:%M:%S"),
+        )
+        self.find_element(By.ID, "batch-reschedule-save").click()
+        self.wait_until(EC.staleness_of(date_input))
+        batch.refresh_from_db()
+        self.assertEqual(batch.scheduled_at, scheduled)
+        self._assert_no_js_errors(ignore_websockets=True)
+
+    def test_batch_actions_block_duplicate_requests_and_allow_retry(self):
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(),
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        self.login()
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                args=[batch.pk],
+            )
+        )
+        self.hide_loading_overlay()
+        self.find_element(By.ID, "batch-reschedule-btn").click()
+        # Hold the transport open so repeated handlers run before a response.
+        request_count = self.web_driver.execute_script("""
+            const $ = django.jQuery;
+            const originalAjax = $.ajax;
+            let requestCount = 0;
+            $.ajax = function (options) {
+              requestCount += 1;
+              window.pendingBatchAction = options;
+            };
+            try {
+              $('#batch-reschedule-save').trigger('click').trigger('click');
+              $('#ow-batch-cancel-modal .ow-batch-cancel-confirm').trigger('click');
+            } finally {
+              $.ajax = originalAjax;
+            }
+            return requestCount;
+            """)
+        self.assertEqual(request_count, 1)
+        save_button = self.find_element(By.ID, "batch-reschedule-save")
+        self.assertEqual(save_button.is_enabled(), False)
+        self.assertEqual(
+            self.find_element(By.ID, "batch-cancel-btn").is_enabled(), False
+        )
+        self.web_driver.execute_script("window.pendingBatchAction.error({});")
+        alert = self.wait_until(EC.alert_is_present())
+        message = alert.text
+        alert.accept()
+        self.assertEqual(message, "The request could not be completed.")
+        self.assertEqual(save_button.is_enabled(), True)
+        self.assertEqual(
+            self.find_element(By.ID, "batch-cancel-btn").is_enabled(), True
+        )
+        save_button.click()
+        self.wait_until(EC.staleness_of(save_button))
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "scheduled")
         self._assert_no_js_errors(ignore_websockets=True)
 
     def test_scheduled_snapshot_reveals_completed_results(self):

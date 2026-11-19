@@ -16,27 +16,13 @@ django.jQuery(function ($) {
 
   const scheduleRow = $("#schedule-row");
   if (scheduleRow.length) {
-    document.body.removeAttribute("data-admin-utc-offset");
+    // Date/time inputs carry no offset. Send the browser's zone separately so
+    // the server interprets the maintenance window as the user's wall clock.
     const form = scheduleRow.closest("form");
-    const browserTz = labelScheduleTimezone(scheduleRow);
+    const browserTz = getBrowserTimezone();
+    labelScheduleTimezone(scheduleRow, browserTz);
     const tzInput = $('<input type="hidden" name="scheduled_at_tz">');
     tzInput.val(browserTz);
     form.append(tzInput);
   }
 });
-
-function labelScheduleTimezone(container) {
-  let browserTz = "";
-  try {
-    browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch (error) {
-    browserTz = "";
-  }
-  const serverTz = container.data("server-tz") || "";
-  let text = interpolate(gettext("Entered in your timezone (%s)."), [browserTz]);
-  if (serverTz) {
-    text += " " + interpolate(gettext("The server runs in %s."), [serverTz]);
-  }
-  container.find(".ow-schedule-tz-note").text(text);
-  return browserTz;
-}
