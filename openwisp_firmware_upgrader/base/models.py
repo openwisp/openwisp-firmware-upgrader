@@ -1564,19 +1564,51 @@ class AbstractBatchUpgradeOperation(
         )
 
     def _initiator_can_launch(self):
+        """Check whether the scheduling user can still start this mass upgrade.
+
+        A user may lose permissions after scheduling an upgrade. The scheduler
+        and worker check the user's current permissions before creating any
+        device upgrades. If the user no longer has access, the batch cannot start.
+        Shared builds require access to every organization targeted by the batch.
+        """
+        # A deleted or inactive account cannot authorize an upgrade, even if
+        # it had sufficient permissions when the batch was scheduled.
         user = self.initiated_by
-        # The User is None only when the user has been deleted.
-        # At this point, we cannot not check if the user who queued this had permissions.
         if user is None or not user.is_active:
             return False
+        # Active superusers can launch upgrades across all organizations.
         if user.is_superuser:
             return True
-        org_id = self.build.category.organization_id
-        if org_id is not None and str(org_id) not in [
-            str(managed) for managed in user.organizations_managed
-        ]:
+        # Organization membership alone does not grant permission to start
+        # mass upgrades; the user must also have the model permission.
+        if not user.has_perm(f"{self._meta.app_label}.add_{self._meta.model_name}"):
             return False
-        return user.has_perm(f"{self._meta.app_label}.add_{self._meta.model_name}")
+        # Organization-owned builds require continued access to their organization.
+        managed_org_ids = [str(org_id) for org_id in user.organizations_managed]
+        build_org_id = self.build.category.organization_id
+        if build_org_id is not None:
+            return str(build_org_id) in managed_org_ids
+        # Shared builds can target several organizations. Recheck the actual
+        # targets because the user's access may change while the batch is queued.
+        targets = self.dry_run(
+            build=self.build, group=self.group, location=self.location
+        )
+        # Reject the whole batch if any device with recorded firmware belongs
+        # to an organization the user no longer manages.
+        unmanaged_firmwares = targets["device_firmwares"].exclude(
+            device__organization_id__in=managed_org_ids
+        )
+        if unmanaged_firmwares.exists():
+            return False
+        # Devices without recorded firmware are additional targets only when
+        # the batch explicitly enables firmwareless upgrades.
+        if self.firmwareless:
+            unmanaged_devices = targets["devices"].exclude(
+                organization_id__in=managed_org_ids
+            )
+            if unmanaged_devices.exists():
+                return False
+        return True
 
     @classmethod
     def fail_scheduled_on_target_delete(cls, sender, instance, **kwargs):

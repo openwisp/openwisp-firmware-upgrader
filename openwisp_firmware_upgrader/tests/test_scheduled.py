@@ -16,6 +16,7 @@ from .base import TestUpgraderMixin, time_travel
 UpgradeOperation = load_model("UpgradeOperation")
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Location = swapper.load_model("geo", "Location")
+OrganizationUser = swapper.load_model("openwisp_users", "OrganizationUser")
 
 _upgrade_dispatch = "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async"
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
@@ -252,9 +253,10 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         device_fw = self._create_device_firmware()
         org = device_fw.image.build.category.organization
         admin = self._create_administrator(organizations=[org])
+        # TransactionTestCase flushes the grants installed by data migrations.
         admin.user_permissions.add(
             Permission.objects.get(
-                codename="add_batchupgradeoperation",
+                codename=f"add_{BatchUpgradeOperation._meta.model_name}",
                 content_type__app_label=BatchUpgradeOperation._meta.app_label,
             )
         )
@@ -449,3 +451,69 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(batch.status, "in-progress")
         self.assertEqual(batch.upgradeoperation_set.count(), 2)
         self.assertEqual(publish.call_count, 2)
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_worker_rechecks_shared_build_target_organizations(self, dispatch):
+        managed_org = self._get_org()
+        revoked_org = self._create_org(name="Revoked", slug="revoked")
+        category = self._create_category(organization=None)
+        env = self._create_upgrade_env(category=category, organization=managed_org)
+        env["d2"].organization = revoked_org
+        env["d2"].save()
+        administrator = self._create_administrator(
+            organizations=[managed_org, revoked_org]
+        )
+        # TransactionTestCase flushes the grants installed by data migrations.
+        administrator.user_permissions.add(
+            Permission.objects.get(
+                codename=f"add_{BatchUpgradeOperation._meta.model_name}",
+                content_type__app_label=BatchUpgradeOperation._meta.app_label,
+            )
+        )
+        batch = self._create_scheduled_batch(
+            build=env["build2"], initiated_by=administrator
+        )
+        with time_travel(batch.scheduled_at + timedelta(seconds=1)):
+            tasks.execute_scheduled_upgrades.run()
+        dispatch.assert_called_once()
+        OrganizationUser.objects.filter(
+            user=administrator, organization=revoked_org
+        ).delete()
+        with mock.patch(_upgrade_dispatch) as publish:
+            tasks.batch_upgrade_operation.run(batch.pk, False)
+        publish.assert_not_called()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+        self.assertEqual(batch.upgradeoperation_set.count(), 0)
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_launch_rechecks_shared_firmwareless_target_organizations(self, dispatch):
+        managed_org = self._get_org()
+        revoked_org = self._create_org(name="Revoked", slug="revoked")
+        category = self._create_category(organization=None)
+        env = self._create_upgrade_env(
+            category=category, organization=managed_org, device_firmware=False
+        )
+        env["d2"].organization = revoked_org
+        env["d2"].save()
+        operator = self._create_operator(organizations=[managed_org, revoked_org])
+        # Isolate batch creation from Build management using a custom role.
+        operator.user_permissions.add(
+            Permission.objects.get(
+                codename=f"add_{BatchUpgradeOperation._meta.model_name}",
+                content_type__app_label=BatchUpgradeOperation._meta.app_label,
+            )
+        )
+        batch = self._create_scheduled_batch(
+            build=env["build2"], initiated_by=operator, firmwareless=True
+        )
+        self.assertEqual(batch._initiator_can_launch(), True)
+        OrganizationUser.objects.filter(
+            user=operator, organization=revoked_org
+        ).delete()
+        with time_travel(batch.scheduled_at + timedelta(seconds=1)):
+            tasks.execute_scheduled_upgrades.run()
+        dispatch.assert_not_called()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+        self.assertEqual(batch.upgradeoperation_set.count(), 0)
