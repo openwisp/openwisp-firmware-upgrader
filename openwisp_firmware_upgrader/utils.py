@@ -1,4 +1,5 @@
 import logging
+import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.core.exceptions import ValidationError
@@ -86,3 +87,12 @@ class UpgradeProgress:
     COMPLETE = 100
 
     CANCELLATION_THRESHOLD = REFLASHING
+
+
+def escape_notification_message(message):
+    """Keep plain text literal through notification formatting and Markdown.
+
+    HTML entities also prevent names from becoming Markdown links or Python
+    format fields. HTML escaping alone would still allow javascript: links.
+    """
+    return re.sub(r"[^\w ]", lambda match: f"&#{ord(match.group())};", str(message))

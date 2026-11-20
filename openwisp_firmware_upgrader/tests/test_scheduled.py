@@ -1,4 +1,5 @@
 from datetime import timedelta
+from html import unescape
 from unittest import mock
 
 import swapper
@@ -198,7 +199,7 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
                 tasks.batch_upgrade_operation.run(batch.pk, batch.firmwareless)
             notify.assert_called_once()
             self.assertEqual(
-                str(notify.call_args.kwargs["message"]),
+                unescape(str(notify.call_args.kwargs["message"])),
                 f"Scheduled mass upgrade {batch} was not started: "
                 "the user who scheduled it no longer has permission to run it",
             )

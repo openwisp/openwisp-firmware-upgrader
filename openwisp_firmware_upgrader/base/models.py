@@ -52,6 +52,7 @@ from ..tasks import (
 )
 from ..utils import (
     UpgradeProgress,
+    escape_notification_message,
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
@@ -1057,7 +1058,7 @@ class AbstractBatchUpgradeOperation(
                         sender=batch,
                         type="generic_message",
                         target=batch,
-                        message=description,
+                        message=escape_notification_message(description),
                         target_url_suffix="?status=pending",
                     )
                 )
@@ -1141,7 +1142,7 @@ class AbstractBatchUpgradeOperation(
                 sender=self,
                 type="generic_message",
                 target=self,
-                message=description,
+                message=escape_notification_message(description),
             )
         )
 
@@ -1353,7 +1354,7 @@ class AbstractBatchUpgradeOperation(
                 sender=instance,
                 type="generic_message",
                 target=instance,
-                message=description,
+                message=escape_notification_message(description),
             )
         )
         instance._previous_status = instance.status
@@ -1538,7 +1539,7 @@ class AbstractBatchUpgradeOperation(
                 sender=self,
                 type="generic_message",
                 target=self,
-                message=description,
+                message=escape_notification_message(description),
             )
         )
 
@@ -1558,7 +1559,7 @@ class AbstractBatchUpgradeOperation(
                 sender=self,
                 type="generic_message",
                 target=self,
-                message=description,
+                message=escape_notification_message(description),
             )
         )
 
@@ -1907,7 +1908,7 @@ class AbstractUpgradeOperation(
                 type="generic_message",
                 target=instance.device,
                 target_url_suffix="#upgradeoperation_set-group",
-                message=description,
+                message=escape_notification_message(description),
             )
         )
         instance._previous_status = instance.status

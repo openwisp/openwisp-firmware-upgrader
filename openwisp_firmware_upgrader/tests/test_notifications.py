@@ -1,10 +1,12 @@
 from datetime import timedelta
+from html import unescape
 from unittest import mock
 
 import swapper
 from django.db import transaction
 from django.test import TransactionTestCase
 from django.utils import timezone
+from django.utils.html import escape
 
 from .. import settings as app_settings
 from .. import tasks
@@ -59,7 +61,7 @@ class TestPendingUpgradeReminders(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(kwargs["target"], batch)
         self.assertEqual(kwargs["type"], "generic_message")
         self.assertEqual(
-            str(kwargs["message"]),
+            unescape(str(kwargs["message"])),
             f"1 device is still pending in mass upgrade {batch}.",
         )
         self.assertEqual(kwargs["target_url_suffix"], "?status=pending")
@@ -197,7 +199,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         self.assertEqual(kwargs.get("target_url_suffix"), "#upgradeoperation_set-group")
 
         self.assertEqual(
-            str(kwargs["message"]),
+            unescape(str(kwargs["message"])),
             f"Persistent upgrade for device {op.device} failed.",
         )
 
@@ -209,7 +211,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         op.save()
         self.assertEqual(mocked_notify.call_count, 1)
         self.assertEqual(
-            str(mocked_notify.call_args.kwargs["message"]),
+            unescape(str(mocked_notify.call_args.kwargs["message"])),
             f"Persistent upgrade for device {op.device} failed.",
         )
 
@@ -259,7 +261,7 @@ class TestFailedPersistentUpgradeNotification(TestUpgraderMixin, TransactionTest
         self.assertEqual(op.status, "failed")
         self.assertEqual(mocked_notify.call_count, 1)
         self.assertEqual(
-            str(mocked_notify.call_args.kwargs["message"]),
+            unescape(str(mocked_notify.call_args.kwargs["message"])),
             f"Persistent upgrade for device {op.device} failed.",
         )
 
@@ -424,3 +426,66 @@ class TestScheduledUpgradeNotifications(TestUpgraderMixin, TransactionTestCase):
         batch._scheduled_started()
         self.assertEqual(Notification.objects.filter(recipient=admin).count(), 1)
         self.assertEqual(Notification.objects.filter(recipient=superuser).count(), 1)
+
+    def test_notification_messages_render_names_as_literal_text(self):
+        Notification = swapper.load_model("openwisp_notifications", "Notification")
+        superuser = self._create_admin()
+        category_name = "<img src=x onerror=alert(1)> **category** {notification}"
+        build_version = '[x](javascript:alert(1)) & "v"'
+        category = self._create_category(name=category_name)
+        build = self._create_build(category=category, version=build_version)
+        batch = self._create_scheduled_batch(build=build, is_persistent=True)
+        batch_label = str(batch)
+
+        def assert_message(expected):
+            notification = Notification.objects.filter(recipient=superuser).get()
+            Notification.objects.all().delete()
+            self.assertHTMLEqual(notification.message, f"<p>{escape(expected)}</p>")
+            self.assertEqual(notification.email_message, notification.message)
+
+        with self.subTest(notification="scheduled start"):
+            batch._scheduled_started()
+            assert_message(f"Scheduled mass upgrade {batch_label} has started.")
+
+        with self.subTest(notification="scheduled validation failure"):
+            batch._scheduled_validation_failed(reason=category_name)
+            assert_message(
+                f"Scheduled mass upgrade {batch_label} was not started: {category_name}"
+            )
+
+        with self.subTest(notification="no eligible devices"):
+            batch._launch_without_eligible_devices()
+            assert_message(
+                f"Mass upgrade {batch_label} failed to start: no selected device could "
+                "be upgraded with the target build."
+            )
+
+        device_fw = self._create_device_firmware(
+            image=self._create_firmware_image(build=build)
+        )
+        operation = self._create_pending_op(batch=batch, device_fw=device_fw)
+        batch.status = "in-progress"
+        batch.save()
+
+        with self.subTest(notification="pending reminder"):
+            BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
+                created=timezone.now()
+                - timedelta(seconds=app_settings.PERSISTENT_REMINDER_PERIOD + 1)
+            )
+            batch.refresh_from_db()
+            batch_label = str(batch)
+            tasks.send_pending_upgrade_reminders.run()
+            assert_message(f"1 device is still pending in mass upgrade {batch_label}.")
+
+        with self.subTest(notification="batch completion"):
+            operation.status = "success"
+            operation.save()
+            batch.refresh_from_db()
+            assert_message(f"Mass upgrade {batch_label} {batch.get_status_display()}.")
+
+        with self.subTest(notification="persistent device failure"):
+            device = device_fw.device
+            operation = self._create_pending_op(device_fw=device_fw)
+            operation.status = "failed"
+            operation.save()
+            assert_message(f"Persistent upgrade for device {device} failed.")
