@@ -16,6 +16,7 @@ from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
+from kombu.exceptions import OperationalError
 from openwisp_notifications.signals import notify
 from private_storage.fields import PrivateFileField
 
@@ -523,19 +524,13 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if batch:
             operation.batch = batch
             operation.is_persistent = batch.is_persistent
-        dispatch_kwargs = {}
         if operation.is_persistent:
             operation.claimed_at = timezone.now()
-            dispatch_kwargs["expires"] = app_settings.PERSISTENT_RETRY_OPTIONS[
-                "claim_timeout"
-            ]
         operation.full_clean()
         operation.save()
         # launch ``upgrade_firmware`` in the background (celery)
         # once changes are committed to the database
-        transaction.on_commit(
-            partial(upgrade_firmware.apply_async, (operation.pk,), **dispatch_kwargs)
-        )
+        transaction.on_commit(operation.dispatch)
         return operation
 
     @classmethod
@@ -2208,3 +2203,18 @@ class AbstractUpgradeOperation(
     @property
     def upgrader_class(self):
         return get_upgrader_class_for_device(self.device)
+
+    def dispatch(self):
+        """Publish this operation without blocking later batch publications."""
+        kwargs = {}
+        if self.is_persistent:
+            kwargs["expires"] = app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"]
+        try:
+            upgrade_firmware.apply_async((self.pk,), **kwargs)
+        except OperationalError:
+            if not self.batch_id:
+                raise
+            # The operation has already committed. Log the publication failure
+            # without skipping the remaining children's on-commit callbacks.
+            # This does not recover the failed publication or replay the batch.
+            logger.exception("Could not dispatch upgrade operation %s", self.pk)

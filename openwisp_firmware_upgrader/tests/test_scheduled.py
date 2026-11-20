@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models.signals import post_save
 from django.test import TransactionTestCase
 from django.utils import timezone
+from kombu.exceptions import OperationalError
 
 from .. import tasks
 from ..swapper import load_model
@@ -804,3 +805,75 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         )
         self.assertEqual(batch.upgradeoperation_set.get().device_id, env["d1"].pk)
         publish.assert_called_once()
+
+    @mock.patch(_upgrade_dispatch)
+    def test_broker_failure_does_not_skip_later_child_dispatch(self, publish):
+        env = self._create_upgrade_env()
+        self._create_device_with_connection(
+            name="third-device",
+            mac_address="00:22:bb:33:cc:66",
+            model=env["image2a"].boards[0],
+            organization=env["d1"].organization,
+        )
+        batch = self._create_scheduled_batch(
+            build=env["build2"],
+            initiated_by=self._create_admin(),
+            firmwareless=True,
+            is_persistent=False,
+            status="in-progress",
+        )
+        publish.side_effect = [None, OperationalError("broker unavailable"), None]
+        with self.assertLogs(
+            "openwisp_firmware_upgrader.base.models", level="ERROR"
+        ) as logs:
+            batch.upgrade()
+        self.assertEqual(publish.call_count, 3)
+        operations = batch.upgradeoperation_set
+        self.assertEqual(operations.count(), 3)
+        self.assertEqual(operations.filter(status="in-progress").count(), 3)
+        self.assertSetEqual(
+            {call.args[0][0] for call in publish.call_args_list},
+            set(operations.values_list("pk", flat=True)),
+        )
+        failed_operation_id = publish.call_args_list[1].args[0][0]
+        self.assertIn(str(failed_operation_id), logs.output[0])
+        self.assertIn("broker unavailable", logs.output[0])
+        batch.upgrade()
+        self.assertEqual(publish.call_count, 3)
+        self.assertEqual(operations.count(), 3)
+
+    @mock.patch(_upgrade_dispatch, side_effect=OperationalError("broker unavailable"))
+    def test_standalone_dispatch_propagates_broker_failure(self, publish):
+        device_firmware = self._create_device_firmware()
+        with self.assertRaisesRegex(OperationalError, "broker unavailable"):
+            device_firmware.create_upgrade_operation(batch=None, upgrade_options={})
+        publish.assert_called_once()
+        self.assertEqual(UpgradeOperation.objects.count(), 1)
+
+    @mock.patch(_upgrade_dispatch, side_effect=RuntimeError("unexpected worker error"))
+    def test_batch_dispatch_propagates_non_broker_failure(self, publish):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(
+            build=env["build2"],
+            initiated_by=self._create_admin(),
+            status="in-progress",
+        )
+        with self.assertRaisesRegex(RuntimeError, "unexpected worker error"):
+            batch.upgrade()
+        publish.assert_called_once()
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+
+    @mock.patch(_upgrade_dispatch)
+    def test_rolled_back_batch_does_not_dispatch(self, publish):
+        env = self._create_upgrade_env()
+        batch = self._create_scheduled_batch(
+            build=env["build2"],
+            initiated_by=self._create_admin(),
+            status="in-progress",
+        )
+        with transaction.atomic():
+            batch.upgrade()
+            self.assertEqual(batch.upgradeoperation_set.count(), 2)
+            transaction.set_rollback(True)
+        publish.assert_not_called()
+        self.assertEqual(batch.upgradeoperation_set.count(), 0)
