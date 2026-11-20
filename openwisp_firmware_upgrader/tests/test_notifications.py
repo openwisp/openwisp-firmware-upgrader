@@ -345,6 +345,82 @@ class TestBatchCompletionNotification(TestUpgraderMixin, TransactionTestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, "in-progress")
 
+    @mock.patch(
+        "openwisp_notifications.signals.notify.send",
+        side_effect=RuntimeError("notification backend unavailable"),
+    )
+    @mock.patch(
+        "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade",
+        return_value=True,
+    )
+    def test_notification_failure_preserves_installation_metadata(self, flash, notify):
+        device_firmware = self._create_device_firmware(installed=False)
+        batch = self._create_batch_upgrade_operation(
+            build=device_firmware.image.build, status="in-progress"
+        )
+        operation = self._create_upgrade_operation(
+            device_fw=device_firmware, batch=batch
+        )
+        DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+        with mock.patch.object(
+            DeviceConnection, "connect", return_value=True
+        ), self.assertRaisesRegex(RuntimeError, "notification backend unavailable"):
+            operation.upgrade()
+        device_firmware.refresh_from_db()
+        operation.refresh_from_db()
+        batch.refresh_from_db()
+        self.assertEqual(operation.status, "success")
+        self.assertEqual(batch.status, "success")
+        self.assertEqual(
+            device_firmware.installed,
+            True,
+            "A notification failure must not lose the committed installation result.",
+        )
+        self.assertEqual(device_firmware.image_id, operation.image_id)
+        notify.assert_called_once()
+        flash.assert_called_once()
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_rolled_back_result_preserves_uninstalled_firmware(self, notify):
+        device_firmware = self._create_device_firmware(installed=False)
+        batch = self._create_batch_upgrade_operation(
+            build=device_firmware.image.build, status="in-progress"
+        )
+        operation = self._create_upgrade_operation(
+            device_fw=device_firmware, batch=batch
+        )
+        operation.status = "success"
+        with transaction.atomic():
+            self.assertEqual(operation._commit_result(installed=True), True)
+            device_firmware.refresh_from_db()
+            self.assertEqual(device_firmware.installed, True)
+            transaction.set_rollback(True)
+        device_firmware.refresh_from_db()
+        operation.refresh_from_db()
+        batch.refresh_from_db()
+        self.assertEqual(device_firmware.installed, False)
+        self.assertEqual(operation.status, "in-progress")
+        self.assertEqual(batch.status, "in-progress")
+        notify.assert_not_called()
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_rejected_result_preserves_uninstalled_firmware(self, notify):
+        device_firmware = self._create_device_firmware(installed=False)
+        batch = self._create_batch_upgrade_operation(
+            build=device_firmware.image.build, status="in-progress"
+        )
+        operation = self._create_upgrade_operation(
+            device_fw=device_firmware, batch=batch
+        )
+        UpgradeOperation.objects.filter(pk=operation.pk).update(status="cancelled")
+        operation.status = "success"
+        self.assertEqual(operation._commit_result(installed=True), False)
+        device_firmware.refresh_from_db()
+        operation.refresh_from_db()
+        self.assertEqual(device_firmware.installed, False)
+        self.assertEqual(operation.status, "cancelled")
+        notify.assert_not_called()
+
 
 class TestScheduledUpgradeNotifications(TestUpgraderMixin, TransactionTestCase):
     @mock.patch("openwisp_notifications.signals.notify.send")

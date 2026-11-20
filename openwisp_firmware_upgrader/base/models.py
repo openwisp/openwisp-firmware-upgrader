@@ -2016,7 +2016,7 @@ class AbstractUpgradeOperation(
             save=False,
         )
 
-    def _commit_result(self):
+    def _commit_result(self, installed=False):
         with transaction.atomic():
             # Serialize child results before either write or aggregation, so
             # the last completion sees the other children's committed results.
@@ -2040,6 +2040,11 @@ class AbstractUpgradeOperation(
             if not claimed:
                 self.refresh_from_db()
                 return False
+            if installed:
+                # Commit installation metadata with the result, before a failing
+                # completion notification can interrupt the caller after commit.
+                self.device.devicefirmware.installed = True
+                self.device.devicefirmware.save(upgrade=False)
             self.claimed_at = None
             self.save(
                 update_fields=[
@@ -2174,10 +2179,7 @@ class AbstractUpgradeOperation(
             installed = True
             self.status = "success"
             self.update_progress(100, save=False)
-        committed = self._commit_result()
-        if committed and installed:
-            self.device.devicefirmware.installed = True
-            self.device.devicefirmware.save(upgrade=False)
+        self._commit_result(installed=installed)
 
     def validate_upgrade_options(self):
         """Validate options only for new upgrade operations.
