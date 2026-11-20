@@ -517,3 +517,65 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, "failed")
         self.assertEqual(batch.upgradeoperation_set.count(), 0)
+
+    @mock.patch(_upgrade_dispatch)
+    def test_queued_batch_fails_when_target_deleted(self, publish):
+        device_firmware = self._create_device_firmware()
+        build = device_firmware.image.build
+        initiator = self._create_admin()
+        due = timezone.now() - timedelta(minutes=1)
+
+        with self.subTest("device group deleted while waiting for the worker"):
+            group = self._create_device_group(organization=build.category.organization)
+            batch = self._create_scheduled_batch(
+                build=build,
+                group=group,
+                initiated_by=initiator,
+                scheduled_at=due,
+                status="in-progress",
+            )
+            group.delete()
+            batch.refresh_from_db()
+            self.assertEqual(batch.group_id, None)
+            self.assertEqual(batch.status, "failed")
+            tasks.batch_upgrade_operation.run(batch.pk, False)
+            batch.refresh_from_db()
+            self.assertEqual(batch.status, "failed")
+            self.assertEqual(batch.upgradeoperation_set.count(), 0)
+            publish.assert_not_called()
+
+        with self.subTest("location deleted while waiting for the worker"):
+            location = Location.objects.create(
+                name="Office", organization=build.category.organization
+            )
+            batch = self._create_scheduled_batch(
+                build=build,
+                location=location,
+                initiated_by=initiator,
+                scheduled_at=due,
+                status="in-progress",
+            )
+            location.delete()
+            batch.refresh_from_db()
+            self.assertEqual(batch.location_id, None)
+            self.assertEqual(batch.status, "failed")
+            tasks.batch_upgrade_operation.run(batch.pk, False)
+            batch.refresh_from_db()
+            self.assertEqual(batch.status, "failed")
+            self.assertEqual(batch.upgradeoperation_set.count(), 0)
+            publish.assert_not_called()
+
+    def test_target_deletion_after_child_creation_preserves_batch(self):
+        device_firmware = self._create_device_firmware()
+        build = device_firmware.image.build
+        group = self._create_device_group(organization=build.category.organization)
+        batch = self._create_scheduled_batch(
+            build=build, group=group, status="in-progress"
+        )
+        operation = self._create_upgrade_operation(
+            device_fw=device_firmware, batch=batch
+        )
+        group.delete()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
+        self.assertEqual(batch.upgradeoperation_set.get().pk, operation.pk)

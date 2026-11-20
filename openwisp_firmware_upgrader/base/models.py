@@ -1612,20 +1612,30 @@ class AbstractBatchUpgradeOperation(
 
     @classmethod
     def fail_scheduled_on_target_delete(cls, sender, instance, **kwargs):
+        """Stop unstarted scheduled batches before deletion removes their filter."""
         field = (
             "group"
             if sender is swapper.load_model("config", "DeviceGroup")
             else "location"
         )
-        scheduled = cls.objects.filter(
-            status="scheduled", **{field: instance}
-        ).select_related("build__category")
-        for batch in scheduled.iterator():
-            failed = cls.objects.filter(pk=batch.pk, status="scheduled").update(
-                status="failed", modified=timezone.now()
+        # The worker holds this lock until all device upgrades are created.
+        # Deletion must either stop the launch or leave those upgrades unchanged.
+        with transaction.atomic():
+            batches = (
+                cls.objects.select_for_update(of=("self",))
+                .filter(
+                    status__in=("scheduled", "in-progress"),
+                    scheduled_at__isnull=False,
+                    **{field: instance},
+                )
+                .select_related("build__category")
+                .order_by("pk")
             )
-            if failed:
+            for batch in batches.iterator():
+                if batch.upgradeoperation_set.exists():
+                    continue
                 batch.status = "failed"
+                batch.save(update_fields=["status", "modified"])
                 batch._scheduled_validation_failed(
                     reason=_(
                         "a device group or location it targeted was deleted, which "
