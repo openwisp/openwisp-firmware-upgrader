@@ -1121,9 +1121,17 @@ class AbstractBatchUpgradeOperation(
                     # reload each device so its organization cannot change
                     # between this check and committing the child operation.
                     Device = swapper.load_model("config", "Device")
-                    device = Device.objects.select_for_update().get(
-                        pk=device_fw.device_id
-                    )
+                    try:
+                        device = Device.objects.select_for_update().get(
+                            pk=device_fw.device_id
+                        )
+                    except Device.DoesNotExist:
+                        logger.warning(
+                            "Skipped device %s in mass upgrade %s: device was deleted",
+                            device_fw.device_id,
+                            self,
+                        )
+                        return False
                     user = self.initiated_by
                     if user is None or not user.is_active:
                         return False

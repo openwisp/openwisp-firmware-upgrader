@@ -877,3 +877,54 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
             transaction.set_rollback(True)
         publish.assert_not_called()
         self.assertEqual(batch.upgradeoperation_set.count(), 0)
+
+    @mock.patch(_upgrade_dispatch)
+    def test_worker_skips_device_deleted_after_selection(self, publish):
+        environment = self._create_upgrade_env()
+        deleted_device = self._create_device(
+            name="device-deleted-during-launch",
+            mac_address="00:22:bb:33:cc:66",
+            model=environment["image2a"].boards[0],
+            organization=environment["d1"].organization,
+        )
+        batch = self._create_scheduled_batch(
+            build=environment["build2"],
+            initiated_by=self._create_admin(),
+            firmwareless=True,
+            status="in-progress",
+        )
+        deleted_device_id = deleted_device.pk
+        launch = BatchUpgradeOperation._launch_device_firmware
+
+        def delete_device_then_launch(instance, device_firmware):
+            if device_firmware.device_id == deleted_device_id:
+                deleted_device.deactivate()
+                # Deactivation queues cache invalidation with this instance.
+                # Delete a fresh copy so Django doesn't clear the callback's PK.
+                type(deleted_device).objects.get(pk=deleted_device_id).delete()
+            return launch(instance, device_firmware)
+
+        with mock.patch.object(
+            BatchUpgradeOperation,
+            "_launch_device_firmware",
+            autospec=True,
+            side_effect=delete_device_then_launch,
+        ):
+            with self.assertLogs(
+                "openwisp_firmware_upgrader.base.models", level="WARNING"
+            ) as logs:
+                batch.upgrade()
+        self.assertEqual(
+            [entry.getMessage() for entry in logs.records],
+            [
+                f"Skipped device {deleted_device_id} in mass upgrade {batch}: "
+                "device was deleted",
+            ],
+        )
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
+        self.assertSetEqual(
+            set(batch.upgradeoperation_set.values_list("device_id", flat=True)),
+            {environment["d1"].pk, environment["d2"].pk},
+        )
+        self.assertEqual(publish.call_count, 2)
