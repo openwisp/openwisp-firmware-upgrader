@@ -1797,6 +1797,14 @@ class AbstractUpgradeOperation(
     def cancel(self):
         """Cancels the upgrade operation if conditions are met, atomically."""
         with transaction.atomic():
+            # Always lock the batch before its child.
+            # Reversing this order can deadlock cancellation against completion.
+            if self.batch_id:
+                self.batch = (
+                    load_model("BatchUpgradeOperation")
+                    .objects.select_for_update()
+                    .get(pk=self.batch_id)
+                )
             # A concurrent upgrade worker can change status/progress
             # between fetch and save(), so cancellation can succeed
             # or fail incorrectly.
@@ -2010,6 +2018,14 @@ class AbstractUpgradeOperation(
 
     def _commit_result(self):
         with transaction.atomic():
+            # Serialize child results before either write or aggregation, so
+            # the last completion sees the other children's committed results.
+            if self.batch_id:
+                self.batch = (
+                    load_model("BatchUpgradeOperation")
+                    .objects.select_for_update()
+                    .get(pk=self.batch_id)
+                )
             claimed = self._meta.model.objects.filter(
                 pk=self.pk, status="in-progress"
             ).update(

@@ -2185,3 +2185,77 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             "Upgrade operations are not allowed for deactivated devices.",
             str(cm.exception),
         )
+
+    @mock.patch("openwisp_notifications.signals.notify.send")
+    def test_batch_result_locks_batch_before_child_update(self, notify):
+        env = self._create_upgrade_env()
+        batch = self._create_batch_upgrade_operation(
+            build=env["build2"], status="in-progress"
+        )
+        first_operation = self._create_upgrade_operation(
+            device_fw=env["device_fw1"], batch=batch
+        )
+        last_operation = self._create_upgrade_operation(
+            device_fw=env["device_fw2"], batch=batch
+        )
+        select_for_update = BatchUpgradeOperation.objects.select_for_update
+
+        def lock_batch():
+            stored_operation = UpgradeOperation.objects.get(pk=first_operation.pk)
+            self.assertEqual(
+                stored_operation.status,
+                "in-progress",
+                "The batch lock must be requested before saving the child result.",
+            )
+            return select_for_update()
+
+        first_operation.status = "success"
+        with mock.patch.object(
+            BatchUpgradeOperation.objects,
+            "select_for_update",
+            side_effect=lock_batch,
+        ) as batch_lock:
+            self.assertEqual(first_operation._commit_result(), True)
+        batch_lock.assert_called_once_with()
+        first_operation.refresh_from_db()
+        self.assertEqual(first_operation.status, "success")
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
+        notify.assert_not_called()
+        last_operation.status = "success"
+        self.assertEqual(last_operation._commit_result(), True)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "success")
+        notify.assert_called_once()
+
+    @capture_any_output()
+    def test_batch_cancellation_locks_batch_before_child_update(self):
+        device_firmware = self._create_device_firmware()
+        batch = self._create_batch_upgrade_operation(
+            build=device_firmware.image.build, status="in-progress"
+        )
+        operation = self._create_upgrade_operation(
+            device_fw=device_firmware, batch=batch
+        )
+        select_for_update = BatchUpgradeOperation.objects.select_for_update
+
+        def lock_batch():
+            stored_operation = UpgradeOperation.objects.get(pk=operation.pk)
+            self.assertEqual(
+                stored_operation.status,
+                "in-progress",
+                "The batch lock must be requested before cancelling the child.",
+            )
+            return select_for_update()
+
+        with mock.patch.object(
+            BatchUpgradeOperation.objects,
+            "select_for_update",
+            side_effect=lock_batch,
+        ) as batch_lock:
+            operation.cancel()
+        batch_lock.assert_called_once_with()
+        operation.refresh_from_db()
+        batch.refresh_from_db()
+        self.assertEqual(operation.status, "cancelled")
+        self.assertEqual(batch.status, "cancelled")
