@@ -406,6 +406,7 @@ class TestTasks(TestUpgraderMixin, TransactionTestCase):
             build=build,
             scheduled_at=when,
             firmwareless=firmwareless,
+            initiated_by=self._get_admin(),
         )
 
     @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")

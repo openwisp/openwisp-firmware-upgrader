@@ -33,7 +33,10 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         env = self._create_upgrade_env()
         future = timezone.now() + timedelta(days=1)
         batch = env["build2"].batch_upgrade(
-            firmwareless=False, scheduled_at=future, is_persistent=True
+            firmwareless=False,
+            scheduled_at=future,
+            is_persistent=True,
+            initiated_by=self._create_admin(),
         )
         offline_device = env["d2"]
 
@@ -94,7 +97,9 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         device_fw = self._create_device_firmware()
         build = device_fw.image.build
         future = timezone.now() + timedelta(days=1)
-        batch = build.batch_upgrade(firmwareless=False, scheduled_at=future)
+        batch = build.batch_upgrade(
+            firmwareless=False, scheduled_at=future, initiated_by=self._create_admin()
+        )
         UpgradeOperation.objects.create(
             device=device_fw.device,
             image=device_fw.image,
@@ -116,7 +121,9 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         device_fw = self._create_device_firmware()
         build = device_fw.image.build
         future = timezone.now() + timedelta(days=1)
-        batch = build.batch_upgrade(firmwareless=False, scheduled_at=future)
+        batch = build.batch_upgrade(
+            firmwareless=False, scheduled_at=future, initiated_by=self._create_admin()
+        )
         with time_travel(future + timedelta(seconds=1)):
             tasks.execute_scheduled_upgrades.run()
         mocked_dispatch.assert_called_once()
@@ -140,7 +147,9 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         device_fw = self._create_device_firmware()
         build = device_fw.image.build
         future = timezone.now() + timedelta(days=1)
-        batch = build.batch_upgrade(firmwareless=False, scheduled_at=future)
+        batch = build.batch_upgrade(
+            firmwareless=False, scheduled_at=future, initiated_by=self._create_admin()
+        )
         with time_travel(future + timedelta(seconds=1)), mock.patch(
             "openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay",
             side_effect=RuntimeError("broker down"),
@@ -378,3 +387,65 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         self.assertIn("failed", seen)
         batch.refresh_from_db()
         self.assertEqual(batch.status, "failed")
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_scheduler_rejects_missing_initiator(self, dispatch):
+        device_firmware = self._create_device_firmware()
+        build = device_firmware.image.build
+
+        with self.subTest("no initiator was supplied"):
+            batch = self._create_scheduled_batch(build=build)
+            with time_travel(batch.scheduled_at + timedelta(seconds=1)):
+                tasks.execute_scheduled_upgrades.run()
+            batch.refresh_from_db()
+            self.assertEqual(batch.status, "failed")
+            self.assertEqual(batch.upgradeoperation_set.count(), 0)
+            dispatch.assert_not_called()
+        batch.delete()
+
+        with self.subTest("the initiator was deleted"):
+            initiator = self._create_admin()
+            batch = self._create_scheduled_batch(build=build, initiated_by=initiator)
+            initiator.delete()
+            batch.refresh_from_db()
+            self.assertEqual(batch.initiated_by_id, None)
+            self.assertEqual(batch.status, "scheduled")
+            with time_travel(batch.scheduled_at + timedelta(seconds=1)):
+                tasks.execute_scheduled_upgrades.run()
+            batch.refresh_from_db()
+            self.assertEqual(batch.status, "failed")
+            self.assertEqual(batch.upgradeoperation_set.count(), 0)
+            dispatch.assert_not_called()
+
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_worker_rejects_initiator_deleted_after_dispatch(self, dispatch):
+        device_firmware = self._create_device_firmware()
+        initiator = self._create_admin()
+        batch = self._create_scheduled_batch(
+            build=device_firmware.image.build, initiated_by=initiator
+        )
+        with time_travel(batch.scheduled_at + timedelta(seconds=1)):
+            tasks.execute_scheduled_upgrades.run()
+        dispatch.assert_called_once()
+        initiator.delete()
+        batch.refresh_from_db()
+        self.assertEqual(batch.initiated_by_id, None)
+        self.assertEqual(batch.status, "in-progress")
+        with mock.patch(_upgrade_dispatch) as publish:
+            tasks.batch_upgrade_operation.run(batch.pk, False)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+        self.assertEqual(batch.upgradeoperation_set.count(), 0)
+        publish.assert_not_called()
+
+    @mock.patch(_upgrade_dispatch)
+    def test_immediate_batch_without_initiator_still_launches(self, publish):
+        environment = self._create_upgrade_env()
+        batch = self._create_batch_upgrade_operation(build=environment["build2"])
+        self.assertEqual(batch.initiated_by_id, None)
+        self.assertEqual(batch.scheduled_at, None)
+        batch.upgrade(firmwareless=False)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+        self.assertEqual(publish.call_count, 2)

@@ -114,3 +114,12 @@ organization's administrators and superusers:
 
 The completion notification fires for every mass upgrade, immediate ones
 included, not only scheduled batches.
+
+Deleting the scheduling user
+----------------------------
+
+If the account of the user who scheduled an upgrade is deleted before
+device upgrades are created, the scheduled upgrade is marked as failed
+when it attempts to start. No devices are upgraded by that batch.
+
+Device upgrades that have already been created continue unchanged.

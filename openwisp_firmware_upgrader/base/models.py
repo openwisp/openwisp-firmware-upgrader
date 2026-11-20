@@ -1565,9 +1565,9 @@ class AbstractBatchUpgradeOperation(
 
     def _initiator_can_launch(self):
         user = self.initiated_by
-        if user is None:
-            return True
-        if not user.is_active:
+        # The User is None only when the user has been deleted.
+        # At this point, we cannot not check if the user who queued this had permissions.
+        if user is None or not user.is_active:
             return False
         if user.is_superuser:
             return True
