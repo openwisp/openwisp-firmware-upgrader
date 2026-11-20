@@ -680,6 +680,24 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(response, "This field is required.")
         self.assertFalse(DeviceFirmware.objects.filter(device=device).exists())
 
+    def test_batch_upgrade_operation_detail_live_row_url(self):
+        env = self._create_upgrade_env()
+        batch = env["build2"].batch_upgrade(firmwareless=False)
+        operation_path = reverse(
+            f"admin:{self.app_label}_upgradeoperation_change",
+            args=["00000000-0000-0000-0000-000000000000"],
+        )
+        self._login()
+        response = self.client.get(
+            reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change",
+                args=[batch.pk],
+            )
+        )
+        self.assertContains(
+            response, f'var owDeviceUpgradeOperationUrl = "{operation_path}";'
+        )
+
     def test_batch_upgrade_operation_detail_organization_filter(self):
         category = self._create_category(name="Shared", organization=None)
         env = self._create_upgrade_env(category=category)

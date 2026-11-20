@@ -672,6 +672,11 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                         request.GET.get(param) for param in ["status", "organization"]
                     ),
                     "upgrade_operation_app_label": upgrade_operation_app_label,
+                    # used by batch-upgrade-progress.js for rows added by live updates
+                    "upgrade_operation_path": reverse(
+                        f"admin:{upgrade_operation_app_label}_upgradeoperation_change",
+                        args=["00000000-0000-0000-0000-000000000000"],
+                    ),
                 }
             )
         return super().change_view(request, object_id, extra_context=extra_context)
