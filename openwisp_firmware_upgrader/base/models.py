@@ -860,6 +860,22 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         if hasattr(self, "device") and self.device and self.device.is_deactivated():
             raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
 
+    def _save_without_image(self):
+        """Saves all fields except ``image``.
+
+        The image may have been deleted after this instance was
+        loaded: writing back its stale ID would fail (#506).
+        """
+        if self._state.adding:
+            self.save()
+            return
+        update_fields = [
+            field.name
+            for field in self._meta.concrete_fields
+            if not field.primary_key and field.name != "image"
+        ]
+        self.save(update_fields=update_fields)
+
     def log_line(self, line, save=True):
         if self.log:
             self.log += f"\n{line}"
@@ -867,7 +883,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.log = line
         logger.info(f"# {line}")
         if save:
-            self.save()
+            self._save_without_image()
             firmware_upgrader_log_updated.send(
                 sender=self.__class__, instance=self, line=line
             )
@@ -886,7 +902,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             )
         self.progress = int(progress)
         if save:
-            self.save()
+            self._save_without_image()
 
     def cancel(self):
         """Cancels the upgrade operation if conditions are met, atomically."""
@@ -942,7 +958,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                 _("Upgrade aborted because the device has been deactivated."),
                 save=False,
             )
-            self.save()
+            self._save_without_image()
             return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:
@@ -974,7 +990,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                     )
                 ),
             )
-            self.save()
+            self._save_without_image()
             return
         installed = False
         # prevent multiple upgrade operations for
@@ -989,7 +1005,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             logger.warning(message)
             self.log_line(message, save=False)
             self.status = "aborted"
-            self.save()
+            self._save_without_image()
             return
         upgrader_class = get_upgrader_class_from_device_connection(conn)
         if not upgrader_class:
@@ -1036,7 +1052,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             installed = True
             self.status = "success"
             self.update_progress(100, save=False)
-        self.save()
+        self._save_without_image()
         # if the firmware has been successfully installed,
         # or if it was already installed
         # set `instaleld` to `True` on the devicefirmware instance
