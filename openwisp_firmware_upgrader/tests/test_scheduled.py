@@ -738,3 +738,69 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         self.assertEqual(env["device_fw1"].image_id, env["image1a"].pk)
         self.assertEqual(batch.upgradeoperation_set.get().device_id, env["d2"].pk)
         publish.assert_called_once()
+
+    @mock.patch(_upgrade_dispatch)
+    @mock.patch("openwisp_firmware_upgrader.tasks.batch_upgrade_operation.delay")
+    def test_worker_uses_rescheduled_option_when_old_task_is_replayed(
+        self, dispatch, publish
+    ):
+        env = self._create_upgrade_env()
+        env["device_fw2"].delete()
+        batch = self._create_scheduled_batch(
+            build=env["build2"],
+            initiated_by=self._create_admin(),
+            firmwareless=True,
+        )
+        first_launch = batch.scheduled_at + timedelta(seconds=1)
+        with time_travel(first_launch):
+            tasks.execute_scheduled_upgrades.run()
+        dispatch.assert_called_once_with(batch.pk, True)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
+        recovered_at = first_launch + timedelta(days=1)
+        with time_travel(recovered_at):
+            BatchUpgradeOperation._recover_orphaned_launches(recovered_at)
+            batch.refresh_from_db()
+            self.assertEqual(batch.status, "scheduled")
+            new_due = recovered_at + timedelta(hours=1)
+            batch.reschedule(scheduled_at=new_due, firmwareless=False)
+        with time_travel(new_due + timedelta(seconds=1)):
+            tasks.execute_scheduled_upgrades.run()
+            self.assertEqual(dispatch.call_count, 2)
+            self.assertEqual(dispatch.call_args.args, (batch.pk, False))
+            tasks.batch_upgrade_operation.run(batch.pk, True)
+        batch.refresh_from_db()
+        self.assertEqual(batch.firmwareless, False)
+        self.assertEqual(
+            batch.upgradeoperation_set.count(),
+            1,
+            "The replayed task must respect the disabled firmwareless selection.",
+        )
+        self.assertEqual(batch.upgradeoperation_set.get().device_id, env["d1"].pk)
+        self.assertEqual(
+            load_model("DeviceFirmware").objects.filter(device=env["d2"]).exists(),
+            False,
+        )
+        publish.assert_called_once()
+
+    @mock.patch(_upgrade_dispatch)
+    def test_worker_reloads_saved_firmwareless_option_before_launch(self, publish):
+        env = self._create_upgrade_env()
+        env["device_fw2"].delete()
+        batch = self._create_scheduled_batch(
+            build=env["build2"],
+            initiated_by=self._create_admin(),
+            firmwareless=True,
+            status="in-progress",
+        )
+        BatchUpgradeOperation.objects.filter(pk=batch.pk).update(firmwareless=False)
+        batch.upgrade()
+        batch.refresh_from_db()
+        self.assertEqual(batch.firmwareless, False)
+        self.assertEqual(
+            batch.upgradeoperation_set.count(),
+            1,
+            "A stale batch instance must use the saved firmwareless selection.",
+        )
+        self.assertEqual(batch.upgradeoperation_set.get().device_id, env["d1"].pk)
+        publish.assert_called_once()

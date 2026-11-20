@@ -977,8 +977,6 @@ class AbstractBatchUpgradeOperation(
         Read the saved batch while holding its database lock, so two workers
         cannot start the same batch at the same time.
         """
-        if firmwareless is None:
-            firmwareless = self.firmwareless
         with transaction.atomic():
             # Cancelled or completed batches must not be restarted by a queued task.
             locked = (
@@ -989,6 +987,10 @@ class AbstractBatchUpgradeOperation(
             if locked is None or locked.upgradeoperation_set.exists():
                 return
             self.refresh_from_db()
+            # Recovered scheduled launches may replay tasks with old options.
+            # Use the saved selection for both authorization and child creation.
+            if self.scheduled_at is not None or firmwareless is None:
+                firmwareless = self.firmwareless
             # Authorization may change while a scheduled launch waits in the queue.
             if self.scheduled_at is not None and not self._initiator_can_launch():
                 self.status = "failed"
