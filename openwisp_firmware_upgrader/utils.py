@@ -95,4 +95,4 @@ def escape_notification_message(message):
     HTML entities also prevent names from becoming Markdown links or Python
     format fields. HTML escaping alone would still allow javascript: links.
     """
-    return re.sub(r"[^\w ]", lambda match: f"&#{ord(match.group())};", str(message))
+    return re.sub(r"[^\w ]|_", lambda match: f"&#{ord(match.group())};", str(message))

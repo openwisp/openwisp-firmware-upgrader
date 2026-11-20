@@ -387,7 +387,9 @@ class TestScheduledUpgradeNotifications(TestUpgraderMixin, TransactionTestCase):
     def test_due_batch_fires_started_once(self, mocked_notify, mocked_delay):
         env = self._create_upgrade_env()
         self._create_scheduled_batch(
-            build=env["build2"], scheduled_at=timezone.now() - timedelta(minutes=1)
+            build=env["build2"],
+            scheduled_at=timezone.now() - timedelta(minutes=1),
+            initiated_by=self._create_admin(),
         )
         tasks.execute_scheduled_upgrades.run()
         tasks.execute_scheduled_upgrades.run()
@@ -405,7 +407,8 @@ class TestScheduledUpgradeNotifications(TestUpgraderMixin, TransactionTestCase):
         self, mocked_notify, mocked_delay
     ):
         batch = self._create_scheduled_batch(
-            scheduled_at=timezone.now() - timedelta(minutes=1)
+            scheduled_at=timezone.now() - timedelta(minutes=1),
+            initiated_by=self._create_admin(),
         )
         tasks.execute_scheduled_upgrades.run()
         mocked_delay.assert_not_called()
@@ -430,7 +433,7 @@ class TestScheduledUpgradeNotifications(TestUpgraderMixin, TransactionTestCase):
     def test_notification_messages_render_names_as_literal_text(self):
         Notification = swapper.load_model("openwisp_notifications", "Notification")
         superuser = self._create_admin()
-        category_name = "<img src=x onerror=alert(1)> **category** {notification}"
+        category_name = "<img src=x> **category** {notification} _router_ __router__"
         build_version = '[x](javascript:alert(1)) & "v"'
         category = self._create_category(name=category_name)
         build = self._create_build(category=category, version=build_version)
@@ -485,7 +488,18 @@ class TestScheduledUpgradeNotifications(TestUpgraderMixin, TransactionTestCase):
 
         with self.subTest(notification="persistent device failure"):
             device = device_fw.device
+            device.name = "<img src=x onerror=alert(1)> **device** _router_ __router__"
+            # Seed a legacy name without rendering it as a configuration hostname.
+            type(device).objects.filter(pk=device.pk).update(name=device.name)
             operation = self._create_pending_op(device_fw=device_fw)
             operation.status = "failed"
             operation.save()
             assert_message(f"Persistent upgrade for device {device} failed.")
+
+        with self.subTest(notification="ordinary device name"):
+            device.name = "Router 123"
+            type(device).objects.filter(pk=device.pk).update(name=device.name)
+            operation = self._create_pending_op(device_fw=device_fw)
+            operation.status = "failed"
+            operation.save()
+            assert_message("Persistent upgrade for device Router 123 failed.")
