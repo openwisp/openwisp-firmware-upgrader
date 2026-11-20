@@ -1119,6 +1119,22 @@ class AbstractBatchUpgradeOperation(
     def _launch_device_firmware(self, device_fw):
         try:
             with transaction.atomic():
+                if self.scheduled_at is not None:
+                    # Targets can appear after preflight authorization. Lock and
+                    # reload each device so its organization cannot change
+                    # between this check and committing the child operation.
+                    Device = swapper.load_model("config", "Device")
+                    device = Device.objects.select_for_update().get(
+                        pk=device_fw.device_id
+                    )
+                    user = self.initiated_by
+                    if user is None or not user.is_active:
+                        return False
+                    if not user.is_superuser and str(device.organization_id) not in {
+                        str(org_id) for org_id in user.organizations_managed
+                    }:
+                        return False
+                    device_fw.device = device
                 device_fw.full_clean()
                 device_fw.save(self, upgrade_options=self.upgrade_options)
         except ValidationError as error:

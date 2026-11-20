@@ -579,3 +579,162 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, "in-progress")
         self.assertEqual(batch.upgradeoperation_set.get().pk, operation.pk)
+
+    @mock.patch(_upgrade_dispatch)
+    def test_worker_skips_unmanaged_firmwareless_device_added_after_authorization(
+        self, publish
+    ):
+        managed_org = self._get_org()
+        unmanaged_org = self._create_org(name="Unmanaged", slug="unmanaged")
+        category = self._create_category(organization=None)
+        env = self._create_upgrade_env(
+            category=category, organization=managed_org, device_firmware=False
+        )
+        administrator = self._create_administrator(organizations=[managed_org])
+        # TransactionTestCase flushes the grants installed by data migrations.
+        administrator.user_permissions.add(
+            Permission.objects.get(
+                codename=f"add_{BatchUpgradeOperation._meta.model_name}",
+                content_type__app_label=BatchUpgradeOperation._meta.app_label,
+            )
+        )
+        batch = self._create_scheduled_batch(
+            build=env["build2"],
+            initiated_by=administrator,
+            firmwareless=True,
+            status="in-progress",
+        )
+        authorize = BatchUpgradeOperation._initiator_can_launch
+        added_devices = []
+
+        def authorize_then_add_device(instance):
+            self.assertEqual(authorize(instance), True)
+            device = self._create_device(
+                name="unmanaged-device",
+                mac_address="00:22:bb:33:cc:55",
+                organization=unmanaged_org,
+                model=env["image2a"].boards[0],
+            )
+            self._create_config(device=device)
+            self._create_device_connection(
+                device=device, credentials=self._get_credentials(organization=None)
+            )
+            added_devices.append(device)
+            return True
+
+        with mock.patch.object(
+            BatchUpgradeOperation,
+            "_initiator_can_launch",
+            autospec=True,
+            side_effect=authorize_then_add_device,
+        ):
+            batch.upgrade()
+        device = added_devices[0]
+        DeviceFirmware = load_model("DeviceFirmware")
+        self.assertEqual(DeviceFirmware.objects.filter(device=device).exists(), False)
+        self.assertEqual(
+            batch.upgradeoperation_set.filter(device=device).exists(), False
+        )
+        self.assertSetEqual(
+            set(batch.upgradeoperation_set.values_list("device_id", flat=True)),
+            {env["d1"].pk, env["d2"].pk},
+        )
+        self.assertEqual(publish.call_count, 2)
+
+    @mock.patch(_upgrade_dispatch)
+    def test_worker_skips_unmanaged_related_firmware_added_after_authorization(
+        self, publish
+    ):
+        managed_org = self._get_org()
+        unmanaged_org = self._create_org(name="Unmanaged", slug="unmanaged")
+        category = self._create_category(organization=None)
+        env = self._create_upgrade_env(category=category, organization=managed_org)
+        administrator = self._create_administrator(organizations=[managed_org])
+        # TransactionTestCase flushes the grants installed by data migrations.
+        administrator.user_permissions.add(
+            Permission.objects.get(
+                codename=f"add_{BatchUpgradeOperation._meta.model_name}",
+                content_type__app_label=BatchUpgradeOperation._meta.app_label,
+            )
+        )
+        batch = self._create_scheduled_batch(
+            build=env["build2"], initiated_by=administrator, status="in-progress"
+        )
+        authorize = BatchUpgradeOperation._initiator_can_launch
+        added_firmwares = []
+
+        def authorize_then_add_firmware(instance):
+            self.assertEqual(authorize(instance), True)
+            device = self._create_device(
+                name="unmanaged-device",
+                mac_address="00:22:bb:33:cc:55",
+                organization=unmanaged_org,
+                model=env["image1a"].boards[0],
+            )
+            self._create_config(device=device)
+            device_firmware = self._create_device_firmware(
+                device=device, image=env["image1a"], installed=True
+            )
+            added_firmwares.append(device_firmware)
+            return True
+
+        with mock.patch.object(
+            BatchUpgradeOperation,
+            "_initiator_can_launch",
+            autospec=True,
+            side_effect=authorize_then_add_firmware,
+        ):
+            batch.upgrade()
+        device_firmware = added_firmwares[0]
+        device_firmware.refresh_from_db()
+        self.assertEqual(device_firmware.image_id, env["image1a"].pk)
+        self.assertEqual(device_firmware.installed, True)
+        self.assertEqual(
+            batch.upgradeoperation_set.filter(device=device_firmware.device).exists(),
+            False,
+        )
+        self.assertSetEqual(
+            set(batch.upgradeoperation_set.values_list("device_id", flat=True)),
+            {env["d1"].pk, env["d2"].pk},
+        )
+        self.assertEqual(publish.call_count, 2)
+
+    @mock.patch(_upgrade_dispatch)
+    def test_worker_reloads_device_organization_before_creating_child(self, publish):
+        managed_org = self._get_org()
+        unmanaged_org = self._create_org(name="Unmanaged", slug="unmanaged")
+        category = self._create_category(organization=None)
+        env = self._create_upgrade_env(category=category, organization=managed_org)
+        administrator = self._create_administrator(organizations=[managed_org])
+        # TransactionTestCase flushes the grants installed by data migrations.
+        administrator.user_permissions.add(
+            Permission.objects.get(
+                codename=f"add_{BatchUpgradeOperation._meta.model_name}",
+                content_type__app_label=BatchUpgradeOperation._meta.app_label,
+            )
+        )
+        batch = self._create_scheduled_batch(
+            build=env["build2"], initiated_by=administrator, status="in-progress"
+        )
+        launch = BatchUpgradeOperation._launch_device_firmware
+
+        def move_device_then_launch(instance, device_firmware):
+            if device_firmware.device_id == env["d1"].pk:
+                # Cache the old relation to ensure launch reloads persisted state.
+                self.assertEqual(device_firmware.device.organization_id, managed_org.pk)
+                type(env["d1"]).objects.filter(pk=env["d1"].pk).update(
+                    organization=unmanaged_org
+                )
+            return launch(instance, device_firmware)
+
+        with mock.patch.object(
+            BatchUpgradeOperation,
+            "_launch_device_firmware",
+            autospec=True,
+            side_effect=move_device_then_launch,
+        ):
+            batch.upgrade()
+        env["device_fw1"].refresh_from_db()
+        self.assertEqual(env["device_fw1"].image_id, env["image1a"].pk)
+        self.assertEqual(batch.upgradeoperation_set.get().device_id, env["d2"].pk)
+        publish.assert_called_once()
