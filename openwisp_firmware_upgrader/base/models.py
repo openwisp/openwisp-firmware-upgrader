@@ -1135,6 +1135,9 @@ class AbstractBatchUpgradeOperation(
                 device_fw.full_clean()
                 device_fw.save(self, upgrade_options=self.upgrade_options)
         except ValidationError as error:
+            # Batch results cover only upgrades that were queued. If a device
+            # loses its connection before launch, log the skip without creating
+            # a failed operation for an upgrade that never started.
             logger.warning(
                 "Skipped device %s in mass upgrade %s: %s",
                 device_fw.device,
