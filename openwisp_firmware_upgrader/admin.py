@@ -848,6 +848,15 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
             data = json.loads(request.body or "{}")
         except json.JSONDecodeError:
             return JsonResponse({"error": _("Invalid request body.")}, status=400)
+        for field_name in ("is_persistent", "upgrade_all"):
+            if field_name in data and not isinstance(data[field_name], bool):
+                return JsonResponse(
+                    {
+                        "error": _("%(field)s must be a boolean.")
+                        % {"field": field_name}
+                    },
+                    status=400,
+                )
         tz_name = data.get("scheduled_at_tz") or get_current_timezone_name()
         field = NaiveSplitDateTimeField(required=False)
         fields = {}
@@ -878,9 +887,9 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                 {"error": _("The selected group or location is not valid.")}, status=400
             )
         if "is_persistent" in data:
-            fields["is_persistent"] = bool(data["is_persistent"])
+            fields["is_persistent"] = data["is_persistent"]
         if "upgrade_all" in data:
-            fields["firmwareless"] = bool(data["upgrade_all"])
+            fields["firmwareless"] = data["upgrade_all"]
         try:
             batch.reschedule(**fields)
         except ValueError as error:

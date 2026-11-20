@@ -1829,6 +1829,57 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'var owUpgradeOperationCancelUrl = "";')
 
+    def test_reschedule_rejects_string_booleans(self):
+        self._login()
+        batch = self._create_scheduled_batch(is_persistent=False, firmwareless=False)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_reschedule", args=[batch.pk]
+        )
+
+        with self.subTest("persistence must be a JSON boolean"):
+            response = self.client.post(
+                url,
+                data={"is_persistent": "false", "upgrade_all": True},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(
+                response.json(), {"error": "is_persistent must be a boolean."}
+            )
+            batch.refresh_from_db()
+            self.assertEqual(batch.is_persistent, False)
+            self.assertEqual(batch.firmwareless, False)
+
+        with self.subTest("firmwareless selection must be a JSON boolean"):
+            response = self.client.post(
+                url,
+                data={"is_persistent": True, "upgrade_all": "false"},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(
+                response.json(), {"error": "upgrade_all must be a boolean."}
+            )
+            batch.refresh_from_db()
+            self.assertEqual(batch.is_persistent, False)
+            self.assertEqual(batch.firmwareless, False)
+
+    def test_reschedule_accepts_true_booleans(self):
+        self._login()
+        batch = self._create_scheduled_batch(is_persistent=False, firmwareless=False)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_reschedule", args=[batch.pk]
+        )
+        response = self.client.post(
+            url,
+            data={"is_persistent": True, "upgrade_all": True},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        batch.refresh_from_db()
+        self.assertEqual(batch.is_persistent, True)
+        self.assertEqual(batch.firmwareless, True)
+
 
 class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
     _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
