@@ -300,9 +300,11 @@ class BuildAdmin(BaseAdmin):
 
     @admin.action(
         description=_("Mass-upgrade devices related to the selected build"),
-        permissions=["change"],
+        permissions=["batch_upgrade"],
     )
     def upgrade_selected(self, request, queryset):
+        if not self.has_batch_upgrade_permission(request):
+            raise PermissionDenied
         opts = self.model._meta
         app_label = opts.app_label
         # multiple concurrent batch upgrades are not supported
@@ -439,11 +441,17 @@ class BuildAdmin(BaseAdmin):
         app_label = self.model._meta.app_label
         extra_context = extra_context or {}
         upgrade_url = f"{app_label}_build_changelist"
-        extra_context.update({"upgrade_url": upgrade_url})
+        extra_context["upgrade_url"] = (
+            upgrade_url if self.has_batch_upgrade_permission(request) else None
+        )
         extra_context["django_locale"] = get_language()
         return super().change_view(
             request, object_id, extra_context=extra_context, **kwargs
         )
+
+    def has_batch_upgrade_permission(self, request):
+        opts = BatchUpgradeOperation._meta
+        return request.user.has_perm(f"{opts.app_label}.add_{opts.model_name}")
 
 
 class UpgradeOperationForm(forms.ModelForm):

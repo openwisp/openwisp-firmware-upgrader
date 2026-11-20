@@ -136,12 +136,21 @@ class BuildDetailView(ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIView):
     organization_field = "category__organization"
 
 
+class BatchUpgradePermission(DjangoModelPermissions):
+    def get_required_permissions(self, method, model_cls):
+        """Authorize batch creation while retaining the Build's read permissions."""
+        if method == "POST":
+            model_cls = BatchUpgradeOperation
+        return super().get_required_permissions(method, model_cls)
+
+
 class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
     model = Build
     queryset = Build.objects.all().select_related("category")
     serializer_class = BatchUpgradeSerializer
     lookup_fields = ["pk"]
     organization_field = "category__organization"
+    permission_classes = (IsOrganizationManager, BatchUpgradePermission)
 
     def post(self, request, pk):
         """

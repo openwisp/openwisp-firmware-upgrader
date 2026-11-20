@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import swapper
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -12,6 +13,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils.formats import get_format
 from packaging.version import parse as parse_version
 from rest_framework import VERSION as REST_FRAMEWORK_VERSION
+from rest_framework import status
 
 from openwisp_firmware_upgrader.api.serializers import (
     BatchUpgradeOperationListSerializer,
@@ -783,6 +785,61 @@ class TestBuildViews(TestAPIUpgraderMixin, TestCase):
             self.assertEqual(r.status_code, 201)
             batch = BatchUpgradeOperation.objects.get(pk=r.data["batch"])
             self.assertTrue(batch.is_persistent)
+
+    def test_api_batch_upgrade_requires_batch_add_permission(self):
+        environment = self._create_upgrade_env()
+        build = environment["build2"]
+        url = reverse("upgrader:api_build_batch_upgrade", args=[build.pk])
+
+        with self.subTest("Anonymous users cannot create a batch"):
+            response = Client().post(url)
+            self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+
+        # Custom roles must separate batch creation from Build management;
+        # the default Administrator group grants both.
+        self.operator.user_permissions.add(
+            *Permission.objects.filter(
+                content_type__app_label=build._meta.app_label,
+                codename__in=("add_build", "change_build"),
+            )
+        )
+        self._login(username=self.operator.username)
+
+        with self.subTest("Build permissions do not authorize batch creation"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            response = self.client.post(url)
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+        self.operator.user_permissions.clear()
+        self.operator.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label=BatchUpgradeOperation._meta.app_label,
+                codename=f"add_{BatchUpgradeOperation._meta.model_name}",
+            )
+        )
+        self._login(username=self.operator.username)
+
+        with self.subTest("Batch creation does not require Build management"):
+            response = self.client.post(url)
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            batch = BatchUpgradeOperation.objects.get(pk=response.data["batch"])
+            self.assertEqual(batch.build, build)
+            self.assertEqual(batch.initiated_by, self.operator)
+
+        unmanaged_org = self._create_org(name="Unmanaged", slug="unmanaged")
+        unmanaged_build = self._create_build(organization=unmanaged_org)
+
+        with self.subTest("Batch permission does not grant cross-organization access"):
+            response = self.client.post(
+                reverse("upgrader:api_build_batch_upgrade", args=[unmanaged_build.pk])
+            )
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+            self.assertEqual(BatchUpgradeOperation.objects.count(), 1)
+            self.assertEqual(UpgradeOperation.objects.count(), 0)
 
 
 class TestCategoryViews(TestAPIUpgraderMixin, TestCase):

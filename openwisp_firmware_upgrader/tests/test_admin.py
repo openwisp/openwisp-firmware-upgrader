@@ -31,7 +31,7 @@ from openwisp_firmware_upgrader.admin import (
     admin,
 )
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
-from openwisp_utils.tests import AdminActionPermTestMixin, capture_stderr
+from openwisp_utils.tests import capture_stderr
 
 from .. import settings as app_settings
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
@@ -1830,9 +1830,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertContains(response, 'var owUpgradeOperationCancelUrl = "";')
 
 
-class TestAdminTransaction(
-    BaseTestAdmin, AdminActionPermTestMixin, TransactionTestCase
-):
+class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
     _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
@@ -1840,32 +1838,98 @@ class TestAdminTransaction(
     def test_upgrade_selected_action_perms(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             env = self._create_upgrade_env()
-            org = env["d1"].organization
-            self._create_firmwareless_device(organization=org)
-            user = self._create_user(is_staff=True)
-            self._create_org_user(user=user, organization=org, is_admin=True)
-            # The user is redirected to the BatchUpgradeOperation page after success operation.
-            # Thus, we need to add the permission to the user.
-            user.user_permissions.add(
-                Permission.objects.get(
-                    codename=f"change_{BatchUpgradeOperation._meta.model_name}"
+            build = env["build2"]
+            operator = self._create_operator(
+                organizations=[build.category.organization]
+            )
+            # Default groups cannot express batch creation independently of
+            # Build management, so exercise custom roles explicitly.
+            operator.user_permissions.add(
+                *Permission.objects.filter(
+                    content_type__app_label=Build._meta.app_label,
+                    codename__in=("add_build", "change_build"),
                 )
             )
-            self._test_action_permission(
-                path=self.build_list_url,
-                action="upgrade_selected",
-                user=user,
-                obj=env["build1"],
-                message=(
-                    "You can track the progress of this mass upgrade operation "
-                    "in this page."
-                ),
-                required_perms=["change"],
-                extra_payload={
-                    "upgrade_all": "upgrade_all",
-                    "upgrade_options": '{"c": true}',
-                },
+            self.client.force_login(operator)
+            detail_url = reverse(
+                f"admin:{self.app_label}_build_change", args=[build.pk]
             )
+            payload = {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (build.pk,),
+                "upgrade_related": "upgrade_related",
+            }
+
+            with self.subTest("Build permissions do not authorize batch creation"):
+                response = self.client.get(self.build_list_url)
+                self.assertNotContains(response, '<option value="upgrade_selected">')
+                response = self.client.get(detail_url)
+                self.assertNotContains(response, "Launch mass upgrade operation")
+                response = self.client.post(self.build_list_url, payload, follow=True)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+                self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+            operator.user_permissions.clear()
+            operator.user_permissions.add(
+                Permission.objects.get(
+                    content_type__app_label=BatchUpgradeOperation._meta.app_label,
+                    codename=f"add_{BatchUpgradeOperation._meta.model_name}",
+                ),
+                Permission.objects.get(
+                    content_type__app_label=BatchUpgradeOperation._meta.app_label,
+                    codename=f"view_{BatchUpgradeOperation._meta.model_name}",
+                ),
+                Permission.objects.get(
+                    content_type__app_label=Build._meta.app_label,
+                    codename=f"view_{Build._meta.model_name}",
+                ),
+            )
+
+            with self.subTest("Batch creation does not require Build management"):
+                response = self.client.get(self.build_list_url)
+                self.assertContains(response, '<option value="upgrade_selected">')
+                response = self.client.get(detail_url)
+                self.assertContains(response, "Launch mass upgrade operation")
+                response = self.client.post(self.build_list_url, payload, follow=True)
+                self.assertContains(
+                    response,
+                    (
+                        "You can track the progress of this mass upgrade operation "
+                        "in this page."
+                    ),
+                )
+                batch = BatchUpgradeOperation.objects.get()
+                self.assertEqual(batch.initiated_by, operator)
+                self.assertEqual(batch.build, build)
+                self.assertEqual(batch.status, "success")
+
+            unmanaged_org = self._create_org(name="Unmanaged", slug="unmanaged")
+            unmanaged_build = self._create_build(organization=unmanaged_org)
+
+            with self.subTest(
+                "Batch permission does not grant cross-organization access"
+            ):
+                response = self.client.post(
+                    self.build_list_url,
+                    {
+                        **payload,
+                        ACTION_CHECKBOX_NAME: (
+                            env["build1"].pk,
+                            unmanaged_build.pk,
+                        ),
+                    },
+                    follow=True,
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, str(unmanaged_build.pk))
+                self.assertEqual(BatchUpgradeOperation.objects.count(), 2)
+                self.assertEqual(
+                    BatchUpgradeOperation.objects.filter(
+                        build=unmanaged_build
+                    ).exists(),
+                    False,
+                )
 
     @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_related(self, *args):
