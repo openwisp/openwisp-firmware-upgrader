@@ -64,6 +64,16 @@ def get_api_urls(api_views=views):
                         name="api_batchupgradeoperation_detail",
                     ),
                     path(
+                        "batch-upgrade-operation/<uuid:pk>/reschedule/",
+                        get_view("batch_upgrade_operation_reschedule"),
+                        name="api_batchupgradeoperation_reschedule",
+                    ),
+                    path(
+                        "batch-upgrade-operation/<uuid:pk>/cancel/",
+                        get_view("batch_upgrade_operation_cancel"),
+                        name="api_batchupgradeoperation_cancel",
+                    ),
+                    path(
                         "upgrade-operation/",
                         get_view("upgrade_operation_list"),
                         name="api_upgradeoperation_list",

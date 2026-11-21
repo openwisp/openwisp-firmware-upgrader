@@ -1,15 +1,20 @@
 import json
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
+from datetime import timezone as datetime_timezone
 from unittest import mock, skipUnless
+from zoneinfo import ZoneInfo
 
 import django
 import swapper
+from django.conf import settings
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.formats import get_format, localize
 from django.utils.timezone import localtime
 
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
@@ -22,16 +27,17 @@ from openwisp_firmware_upgrader.admin import (
     DeviceFirmwareInline,
     DeviceUpgradeOperationInline,
     FirmwareImageInline,
+    UpgradeOperationAdmin,
     admin,
 )
 from openwisp_users.tests.utils import TestMultitenantAdminMixin
-from openwisp_utils.tests import AdminActionPermTestMixin, capture_stderr
+from openwisp_utils.tests import capture_stderr
 
 from .. import settings as app_settings
 from ..hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from ..swapper import load_model
 from ..upgraders.openwisp import OpenWisp1
-from .base import TestUpgraderMixin
+from .base import TestUpgraderMixin, time_travel
 
 User = get_user_model()
 
@@ -204,6 +210,652 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         r = self.client.get(url)
         self.assertContains(r, str(device_fw.image_id))
+
+    def test_confirmation_persistence(self):
+        self._login()
+        env = self._create_upgrade_env()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(r, 'name="is_persistent"')
+        self.assertTrue(r.context["form"].fields["is_persistent"].initial)
+
+    def test_confirmation_schedule(self):
+        self._login()
+        env = self._create_upgrade_env()
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+            },
+            follow=True,
+        )
+        self.assertContains(r, 'name="scheduled_at_0"')
+        self.assertContains(r, 'name="scheduled_at_1"')
+        self.assertContains(r, 'class="vDateField"')
+        self.assertContains(r, 'class="vTimeField"')
+        self.assertContains(r, 'aria-label="Scheduled date"')
+        self.assertContains(r, 'aria-label="Scheduled time"')
+
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_scheduled_upgrade_creates_batch(self, mocked_now):
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        self.assertContains(r, "This mass upgrade has been scheduled")
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.status, "scheduled")
+        self.assertTrue(batch.firmwareless)
+        self.assertEqual(batch.scheduled_at, due)
+
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_schedule_past_rejected(self, mocked_now):
+        self._login()
+        env = self._create_upgrade_env()
+        past = timezone.localtime() - timedelta(hours=1)
+        r = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": past.strftime("%Y-%m-%d"),
+                "scheduled_at_1": past.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "in the future")
+        self.assertFalse(
+            BatchUpgradeOperation.objects.filter(build=env["build2"]).exists()
+        )
+
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_scheduled_upgrade_related_persists_firmwareless_false(self, mocked_now):
+        self._login()
+        env = self._create_upgrade_env()
+        due = timezone.localtime() + timedelta(days=1)
+        self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_related": "on",
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.status, "scheduled")
+        self.assertFalse(batch.firmwareless)
+
+    @override_settings(TIME_ZONE="Asia/Kolkata")
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_schedule_server_timezone(self, mocked_now):
+        # The admin datetime widget submits a naive wall-clock; it must be read
+        # in the server timezone, not as UTC. Kolkata's +05:30 offset makes a
+        # UTC misinterpretation land on a different instant.
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+            },
+            follow=True,
+        )
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.scheduled_at, due)
+
+    @override_settings(TIME_ZONE="Asia/Kolkata")
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_schedule_browser_timezone(self, mocked_now):
+        self._login()
+        env = self._create_upgrade_env()
+        browser_tz = ZoneInfo("America/New_York")
+        due = (timezone.now().astimezone(browser_tz) + timedelta(days=1)).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
+        date_format = get_format("DATE_INPUT_FORMATS")[0]
+        self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": due.strftime(date_format),
+                "scheduled_at_1": due.strftime("%H:%M"),
+                "scheduled_at_tz": "America/New_York",
+            },
+            follow=True,
+        )
+        batch = BatchUpgradeOperation.objects.get(build=env["build2"])
+        self.assertEqual(batch.scheduled_at, due)
+
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_schedule_invalid_timezone_rejected(self, mocked_now):
+        self._login()
+        env = self._create_upgrade_env()
+        due = (timezone.localtime() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        response = self.client.post(
+            self.build_list_url,
+            {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                "upgrade_all": "on",
+                "scheduled_at_0": due.strftime("%Y-%m-%d"),
+                "scheduled_at_1": due.strftime("%H:%M"),
+                "scheduled_at_tz": "Not/AZone",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Invalid timezone")
+        self.assertFalse(
+            BatchUpgradeOperation.objects.filter(build=env["build2"]).exists()
+        )
+
+    def test_batch_list_schedule(self):
+        self._login()
+        env = self._create_upgrade_env()
+        due = timezone.now() + timedelta(days=1)
+        scheduled = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="scheduled", scheduled_at=due
+        )
+        idle = BatchUpgradeOperation.objects.create(build=env["build2"])
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        r = self.client.get(url)
+        self.assertContains(r, f"({settings.TIME_ZONE})")
+        self.assertContains(r, "field-firmwareless")
+        self.assertContains(r, "field-scheduled_at_display")
+        r = self.client.get(url, {"status__exact": "scheduled"})
+        self.assertContains(r, str(scheduled.pk))
+        self.assertNotContains(r, str(idle.pk))
+
+    def test_batch_detail_schedule(self):
+        self._login()
+        build = self._create_build()
+        due = timezone.now() + timedelta(days=1)
+        batch = BatchUpgradeOperation.objects.create(
+            build=build, status="scheduled", scheduled_at=due, firmwareless=True
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, localize(localtime(due)))
+
+    def test_batch_action_buttons(self):
+        self._login()
+        build = self._create_build()
+        due = timezone.now() + timedelta(days=1)
+
+        def get_change(batch):
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
+            return self.client.get(url)
+
+        with self.subTest("scheduled shows edit and cancel"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build, status="scheduled", scheduled_at=due
+            )
+            r = get_change(batch)
+            self.assertContains(r, 'id="batch-reschedule-btn"')
+            self.assertContains(r, 'id="batch-cancel-btn"')
+            self.assertContains(r, 'id="ow-batch-cancel-modal"')
+            self.assertContains(r, f"batchupgradeoperation/{batch.pk}/reschedule/")
+            self.assertContains(r, 'id="batch-reschedule-group"')
+            self.assertContains(r, 'id="batch-reschedule-location"')
+            self.assertContains(r, 'id="batch-reschedule-persistent"')
+            self.assertContains(r, 'id="batch-reschedule-firmwareless"')
+            self.assertContains(r, "select2-input")
+            self.assertContains(r, "mass-upgrade-select2.js")
+            batch.delete()
+
+        with self.subTest("in-progress shows cancel only"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build, status="in-progress"
+            )
+            r = get_change(batch)
+            self.assertNotContains(r, 'id="batch-reschedule-btn"')
+            self.assertContains(r, 'id="batch-cancel-btn"')
+            self.assertContains(r, 'id="ow-batch-cancel-modal"')
+            batch.delete()
+
+        with self.subTest("terminal shows neither"):
+            batch = BatchUpgradeOperation.objects.create(build=build, status="success")
+            r = get_change(batch)
+            self.assertNotContains(r, 'id="batch-cancel-btn"')
+            self.assertNotContains(r, 'id="batch-reschedule-btn"')
+            self.assertNotContains(r, 'id="ow-batch-cancel-modal"')
+
+    def test_scheduled_batch_renders_operations_table(self):
+        self._login()
+        build = self._create_build()
+
+        def get_change(batch):
+            url = reverse(
+                f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+            )
+            return self.client.get(url)
+
+        with self.subTest("scheduled keeps the table in the DOM but hidden"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build,
+                status="scheduled",
+                scheduled_at=timezone.now() + timedelta(days=1),
+            )
+            r = get_change(batch)
+            self.assertContains(r, 'id="upgrade-operations-section" class="ow-hide"')
+            self.assertContains(r, 'id="result_list"')
+            batch.delete()
+
+        with self.subTest("in-progress shows the operations section"):
+            batch = BatchUpgradeOperation.objects.create(
+                build=build, status="in-progress"
+            )
+            r = get_change(batch)
+            self.assertContains(r, 'id="upgrade-operations-section"')
+            self.assertNotContains(r, 'id="upgrade-operations-section" class="ow-hide"')
+            self.assertContains(r, 'id="result_list"')
+            self.assertContains(r, 'class="search-section"')
+
+    def test_batch_actions_hidden_for_view_only_user(self):
+        org = self._get_org()
+        build = self._create_build(organization=org)
+        batch = BatchUpgradeOperation.objects.create(
+            build=build,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        operator = self._create_operator(organizations=[org])
+        self.client.force_login(operator)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'id="batch-cancel-btn"')
+        self.assertNotContains(r, 'id="batch-reschedule-btn"')
+        self.assertNotContains(r, "batch-actions.js")
+        self.assertNotContains(r, 'id="ow-batch-cancel-modal"')
+
+    @mock.patch(
+        "django.utils.timezone.now",
+        return_value=datetime(2026, 1, 15, 12, tzinfo=datetime_timezone.utc),
+    )
+    def test_batch_actions_without_api(self, mocked_now):
+        self._login()
+        build = self._create_build()
+        group = self._create_device_group(organization=build.category.organization)
+        location = Location.objects.create(
+            name="Office",
+            address="123 Main St",
+            organization=build.category.organization,
+        )
+        batch = BatchUpgradeOperation.objects.create(
+            build=build,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+            group=group,
+            location=location,
+            is_persistent=True,
+            firmwareless=True,
+        )
+        change_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        reschedule_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_reschedule", args=[batch.pk]
+        )
+        cancel_url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_cancel", args=[batch.pk]
+        )
+        with mock.patch(
+            "openwisp_firmware_upgrader.admin.app_settings.FIRMWARE_UPGRADER_API",
+            False,
+        ):
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, 'id="batch-cancel-btn"')
+            self.assertContains(response, "batch-actions.js")
+            new_time = (timezone.localtime() + timedelta(days=2)).replace(
+                second=0, microsecond=0
+            )
+            response = self.client.post(
+                reschedule_url,
+                data=json.dumps(
+                    {
+                        "scheduled_at_0": new_time.strftime("%Y-%m-%d"),
+                        "scheduled_at_1": new_time.strftime("%H:%M"),
+                        "scheduled_at_tz": "",
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            batch.refresh_from_db()
+            self.assertEqual(batch.scheduled_at, new_time)
+            self.assertEqual(batch.group, group)
+            self.assertEqual(batch.location, location)
+            self.assertEqual(batch.is_persistent, True)
+            self.assertEqual(batch.firmwareless, True)
+            unmanaged_org = self._create_org(name="Unmanaged organization")
+            unmanaged_group = self._create_device_group(organization=unmanaged_org)
+            unmanaged_location = Location.objects.create(
+                name="Unmanaged office",
+                address="456 Main St",
+                organization=unmanaged_org,
+            )
+
+            with self.subTest("group from another organization is rejected"):
+                response = self.client.post(
+                    reschedule_url,
+                    data=json.dumps({"group": str(unmanaged_group.pk)}),
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json(),
+                    {"error": "The selected group or location is not valid."},
+                )
+                batch.refresh_from_db()
+                self.assertEqual(batch.group, group)
+
+            with self.subTest("location from another organization is rejected"):
+                response = self.client.post(
+                    reschedule_url,
+                    data=json.dumps({"location": str(unmanaged_location.pk)}),
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json(),
+                    {"error": "The selected group or location is not valid."},
+                )
+                batch.refresh_from_db()
+                self.assertEqual(batch.location, location)
+            response = self.client.post(
+                reschedule_url,
+                data=json.dumps(
+                    {
+                        "group": None,
+                        "location": None,
+                        "is_persistent": False,
+                        "upgrade_all": False,
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            batch.refresh_from_db()
+            self.assertEqual(batch.scheduled_at, new_time)
+            self.assertEqual(batch.group, None)
+            self.assertEqual(batch.location, None)
+            self.assertEqual(batch.is_persistent, False)
+            self.assertEqual(batch.firmwareless, False)
+            cancelled_at = timezone.now() + timedelta(hours=1)
+            with time_travel(cancelled_at):
+                response = self.client.post(
+                    cancel_url, data="{}", content_type="application/json"
+                )
+            self.assertEqual(response.status_code, 200)
+            batch.refresh_from_db()
+            self.assertEqual(batch.status, "cancelled")
+            self.assertEqual(batch.modified, cancelled_at)
+
+    def test_upgrade_operation_filter_by_persistence(self):
+        self._login()
+        env = self._create_upgrade_env()
+        persistent_op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="in-progress",
+            is_persistent=True,
+        )
+        non_persistent_op = UpgradeOperation.objects.create(
+            device=env["d2"],
+            image=env["image1b"],
+            status="in-progress",
+            is_persistent=False,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        r = self.client.get(url, {"is_persistent__exact": "1"})
+        self.assertContains(r, str(persistent_op.pk))
+        self.assertNotContains(r, str(non_persistent_op.pk))
+
+    def test_upgrade_operation_filter_by_pending(self):
+        self._login()
+        env = self._create_upgrade_env()
+        pending_op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="pending",
+            is_persistent=True,
+        )
+        running_op = UpgradeOperation.objects.create(
+            device=env["d2"],
+            image=env["image1b"],
+            status="in-progress",
+            is_persistent=True,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_changelist")
+        r = self.client.get(url, {"status__exact": "pending"})
+        self.assertContains(r, str(pending_op.pk))
+        self.assertNotContains(r, str(running_op.pk))
+
+    def test_upgrade_operation_detail_persistence(self):
+        self._login()
+        env = self._create_upgrade_env()
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="pending",
+            is_persistent=True,
+            retry_count=3,
+            next_retry_at=localtime() + timedelta(minutes=10),
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
+        r = self.client.get(url)
+        self.assertContains(r, "field-is_persistent")
+        self.assertContains(r, "field-retry_count")
+        self.assertContains(r, "field-next_retry_at")
+
+    def test_upgrade_operation_detail_empty_next_retry(self):
+        self._login()
+        env = self._create_upgrade_env()
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="in-progress",
+            is_persistent=True,
+            retry_count=1,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
+        r = self.client.get(url)
+        self.assertContains(r, "field-retry_count")
+        self.assertContains(r, "field-next_retry_at")
+
+    def test_upgrade_operation_detail_hides_retry_fields(self):
+        self._login()
+        env = self._create_upgrade_env()
+        op = UpgradeOperation.objects.create(
+            device=env["d1"],
+            image=env["image1a"],
+            status="failed",
+            is_persistent=False,
+        )
+        url = reverse(f"admin:{self.app_label}_upgradeoperation_change", args=[op.pk])
+        r = self.client.get(url)
+        self.assertNotContains(r, "field-retry_count")
+        self.assertNotContains(r, "field-next_retry_at")
+
+    def test_upgrade_operation_retry_count_display(self):
+        model_admin = UpgradeOperationAdmin(UpgradeOperation, admin.site)
+        persistent = UpgradeOperation(is_persistent=True, retry_count=7)
+        non_persistent = UpgradeOperation(is_persistent=False, retry_count=0)
+        self.assertEqual(model_admin.retry_count_display(persistent), 7)
+        self.assertEqual(model_admin.retry_count_display(non_persistent), "")
+
+    def test_batch_list_persistence(self):
+        self._login()
+        env = self._create_upgrade_env()
+        BatchUpgradeOperation.objects.create(
+            build=env["build2"], status="in-progress", is_persistent=True
+        )
+        url = reverse(f"admin:{self.app_label}_batchupgradeoperation_changelist")
+        r = self.client.get(url)
+        self.assertContains(r, "column-is_persistent")
+
+    def test_batch_change_page_retry_columns(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = self._create_batch_upgrade_operation(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        self._create_upgrade_operation(
+            device_fw=env["device_fw1"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, "Retry Count")
+        self.assertContains(r, "Next Retry")
+
+    def test_batch_change_page_retry_columns_without_pending(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = self._create_batch_upgrade_operation(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        self._create_upgrade_operation(
+            device_fw=env["device_fw1"], batch=batch, status="in-progress"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertContains(r, "Retry Count")
+        self.assertContains(r, "Next Retry")
+
+    def test_batch_change_page_retry_columns_when_filtered(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = self._create_batch_upgrade_operation(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        self._create_upgrade_operation(
+            device_fw=env["device_fw1"], batch=batch, status="success"
+        )
+        self._create_upgrade_operation(
+            device_fw=env["device_fw2"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url, {"status": "success"})
+        self.assertContains(r, "Retry Count")
+        self.assertContains(r, "Next Retry")
+
+    def test_batch_change_page_hides_retry_columns(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = self._create_batch_upgrade_operation(
+            build=env["build1"], status="in-progress", is_persistent=False
+        )
+        self._create_upgrade_operation(
+            device_fw=env["device_fw1"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertNotContains(r, "Retry Count")
+        self.assertNotContains(r, "Next Retry")
+
+    def test_batch_change_page_tenant_isolation(self):
+        env = self._create_upgrade_env()
+        org1 = env["d1"].organization
+        org2 = self._create_org(name="org2", slug="org2")
+        org2_device = self._create_device(
+            name="org2dev",
+            organization=org2,
+            mac_address="00:22:bb:33:cc:99",
+            model=env["image1a"].boards[0],
+        )
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build1"], status="in-progress", is_persistent=True
+        )
+        UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image1a"], batch=batch, status="success"
+        )
+        UpgradeOperation.objects.create(
+            device=org2_device, image=env["image1a"], batch=batch, status="pending"
+        )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+
+        with self.subTest("Org admin does not see pending op from another org"):
+            org1_admin = self._create_administrator(organizations=[org1])
+            self.client.force_login(org1_admin)
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            self.assertNotContains(r, org2_device.name)
+
+        with self.subTest("Superuser sees the pending op"):
+            self._login()
+            r = self.client.get(url)
+            self.assertContains(r, org2_device.name)
 
     def test_firmware_image_has_change_permission(self):
         request = MockRequest()
@@ -902,6 +1554,13 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertNotContains(response, delete_url)
 
+        with self.subTest("pending operation does not show delete button"):
+            operation.status = "pending"
+            operation.save(update_fields=["status"])
+            response = self.client.get(change_url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, delete_url)
+
         with self.subTest("failed operation can be deleted"):
             operation.status = "failed"
             operation.save(update_fields=["status"])
@@ -916,6 +1575,9 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self._login()
         device = self._create_device_with_connection()
         operation = UpgradeOperation.objects.create(device=device)
+        pending_operation = UpgradeOperation.objects.create(
+            device=device, status="pending"
+        )
         failed_operation = UpgradeOperation.objects.create(
             device=device, status="failed"
         )
@@ -924,7 +1586,11 @@ class TestAdmin(BaseTestAdmin, TestCase):
             url,
             data={
                 "action": "delete_selected",
-                ACTION_CHECKBOX_NAME: [str(operation.pk), str(failed_operation.pk)],
+                ACTION_CHECKBOX_NAME: [
+                    str(operation.pk),
+                    str(pending_operation.pk),
+                    str(failed_operation.pk),
+                ],
                 "post": "yes",
             },
             follow=True,
@@ -937,8 +1603,36 @@ class TestAdmin(BaseTestAdmin, TestCase):
         )
         self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
         self.assertTrue(
+            UpgradeOperation.objects.filter(pk=pending_operation.pk).exists()
+        )
+        self.assertTrue(
             UpgradeOperation.objects.filter(pk=failed_operation.pk).exists()
         )
+
+        with self.subTest("pending is the only protected status"):
+            response = self.client.post(
+                url,
+                data={
+                    "action": "delete_selected",
+                    ACTION_CHECKBOX_NAME: [
+                        str(pending_operation.pk),
+                        str(failed_operation.pk),
+                    ],
+                    "post": "yes",
+                },
+                follow=True,
+            )
+            self.assertContains(
+                response,
+                "Some selected operations are still in progress and cannot be deleted. "
+                "Remove them from the selection and try again.",
+            )
+            self.assertEqual(
+                UpgradeOperation.objects.filter(pk=pending_operation.pk).exists(), True
+            )
+            self.assertEqual(
+                UpgradeOperation.objects.filter(pk=failed_operation.pk).exists(), True
+            )
 
     def test_batch_upgrade_operation_admin_delete_selected_action_present(self):
         self._login()
@@ -1049,6 +1743,25 @@ class TestAdmin(BaseTestAdmin, TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
 
+        with self.subTest("pending operation cannot be deleted inline"):
+            operation.status = "pending"
+            operation.save(update_fields=["status"])
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            delete_input = self._get_input_tag(
+                response.content.decode(), "upgradeoperation_set-0-DELETE"
+            )
+            self.assertIn("disabled", delete_input)
+            response = self.client.post(
+                url,
+                data=self._get_device_upgrade_operation_delete_params(
+                    device, device_conn, device_fw, operation
+                ),
+                follow=True,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(UpgradeOperation.objects.filter(pk=operation.pk).exists())
+
         with self.subTest("failed operation can be deleted inline"):
             operation.status = "failed"
             operation.save(update_fields=["status"])
@@ -1116,10 +1829,59 @@ class TestAdmin(BaseTestAdmin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'var owUpgradeOperationCancelUrl = "";')
 
+    def test_reschedule_rejects_string_booleans(self):
+        self._login()
+        batch = self._create_scheduled_batch(is_persistent=False, firmwareless=False)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_reschedule", args=[batch.pk]
+        )
 
-class TestAdminTransaction(
-    BaseTestAdmin, AdminActionPermTestMixin, TransactionTestCase
-):
+        with self.subTest("persistence must be a JSON boolean"):
+            response = self.client.post(
+                url,
+                data={"is_persistent": "false", "upgrade_all": True},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(
+                response.json(), {"error": "is_persistent must be a boolean."}
+            )
+            batch.refresh_from_db()
+            self.assertEqual(batch.is_persistent, False)
+            self.assertEqual(batch.firmwareless, False)
+
+        with self.subTest("firmwareless selection must be a JSON boolean"):
+            response = self.client.post(
+                url,
+                data={"is_persistent": True, "upgrade_all": "false"},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(
+                response.json(), {"error": "upgrade_all must be a boolean."}
+            )
+            batch.refresh_from_db()
+            self.assertEqual(batch.is_persistent, False)
+            self.assertEqual(batch.firmwareless, False)
+
+    def test_reschedule_accepts_true_booleans(self):
+        self._login()
+        batch = self._create_scheduled_batch(is_persistent=False, firmwareless=False)
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_reschedule", args=[batch.pk]
+        )
+        response = self.client.post(
+            url,
+            data={"is_persistent": True, "upgrade_all": True},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        batch.refresh_from_db()
+        self.assertEqual(batch.is_persistent, True)
+        self.assertEqual(batch.firmwareless, True)
+
+
+class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
     _mock_upgrade = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt.upgrade"
     _mock_connect = "openwisp_controller.connection.models.DeviceConnection.connect"
 
@@ -1127,32 +1889,98 @@ class TestAdminTransaction(
     def test_upgrade_selected_action_perms(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             env = self._create_upgrade_env()
-            org = env["d1"].organization
-            self._create_firmwareless_device(organization=org)
-            user = self._create_user(is_staff=True)
-            self._create_org_user(user=user, organization=org, is_admin=True)
-            # The user is redirected to the BatchUpgradeOperation page after success operation.
-            # Thus, we need to add the permission to the user.
-            user.user_permissions.add(
-                Permission.objects.get(
-                    codename=f"change_{BatchUpgradeOperation._meta.model_name}"
+            build = env["build2"]
+            operator = self._create_operator(
+                organizations=[build.category.organization]
+            )
+            # Default groups cannot express batch creation independently of
+            # Build management, so exercise custom roles explicitly.
+            operator.user_permissions.add(
+                *Permission.objects.filter(
+                    content_type__app_label=Build._meta.app_label,
+                    codename__in=("add_build", "change_build"),
                 )
             )
-            self._test_action_permission(
-                path=self.build_list_url,
-                action="upgrade_selected",
-                user=user,
-                obj=env["build1"],
-                message=(
-                    "You can track the progress of this mass upgrade operation "
-                    "in this page."
-                ),
-                required_perms=["change"],
-                extra_payload={
-                    "upgrade_all": "upgrade_all",
-                    "upgrade_options": '{"c": true}',
-                },
+            self.client.force_login(operator)
+            detail_url = reverse(
+                f"admin:{self.app_label}_build_change", args=[build.pk]
             )
+            payload = {
+                "action": "upgrade_selected",
+                ACTION_CHECKBOX_NAME: (build.pk,),
+                "upgrade_related": "upgrade_related",
+            }
+
+            with self.subTest("Build permissions do not authorize batch creation"):
+                response = self.client.get(self.build_list_url)
+                self.assertNotContains(response, '<option value="upgrade_selected">')
+                response = self.client.get(detail_url)
+                self.assertNotContains(response, "Launch mass upgrade operation")
+                response = self.client.post(self.build_list_url, payload, follow=True)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
+                self.assertEqual(UpgradeOperation.objects.count(), 0)
+
+            operator.user_permissions.clear()
+            operator.user_permissions.add(
+                Permission.objects.get(
+                    content_type__app_label=BatchUpgradeOperation._meta.app_label,
+                    codename=f"add_{BatchUpgradeOperation._meta.model_name}",
+                ),
+                Permission.objects.get(
+                    content_type__app_label=BatchUpgradeOperation._meta.app_label,
+                    codename=f"view_{BatchUpgradeOperation._meta.model_name}",
+                ),
+                Permission.objects.get(
+                    content_type__app_label=Build._meta.app_label,
+                    codename=f"view_{Build._meta.model_name}",
+                ),
+            )
+
+            with self.subTest("Batch creation does not require Build management"):
+                response = self.client.get(self.build_list_url)
+                self.assertContains(response, '<option value="upgrade_selected">')
+                response = self.client.get(detail_url)
+                self.assertContains(response, "Launch mass upgrade operation")
+                response = self.client.post(self.build_list_url, payload, follow=True)
+                self.assertContains(
+                    response,
+                    (
+                        "You can track the progress of this mass upgrade operation "
+                        "in this page."
+                    ),
+                )
+                batch = BatchUpgradeOperation.objects.get()
+                self.assertEqual(batch.initiated_by, operator)
+                self.assertEqual(batch.build, build)
+                self.assertEqual(batch.status, "success")
+
+            unmanaged_org = self._create_org(name="Unmanaged", slug="unmanaged")
+            unmanaged_build = self._create_build(organization=unmanaged_org)
+
+            with self.subTest(
+                "Batch permission does not grant cross-organization access"
+            ):
+                response = self.client.post(
+                    self.build_list_url,
+                    {
+                        **payload,
+                        ACTION_CHECKBOX_NAME: (
+                            env["build1"].pk,
+                            unmanaged_build.pk,
+                        ),
+                    },
+                    follow=True,
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, str(unmanaged_build.pk))
+                self.assertEqual(BatchUpgradeOperation.objects.count(), 2)
+                self.assertEqual(
+                    BatchUpgradeOperation.objects.filter(
+                        build=unmanaged_build
+                    ).exists(),
+                    False,
+                )
 
     @mock.patch(_mock_upgrade, return_value=True)
     def test_upgrade_related(self, *args):
@@ -1834,7 +2662,7 @@ class TestAdminTransaction(
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(23):
+                with self.assertNumQueries(22):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")
@@ -1986,7 +2814,7 @@ class TestAdminTransaction(
             )
             with self.subTest("Test actual batch upgrade with location"):
                 with mock.patch(
-                    "openwisp_firmware_upgrader.tasks.upgrade_firmware.delay"
+                    "openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async"
                 ):
                     response = self.client.post(url, data, follow=True)
                     self.assertEqual(response.status_code, 200)
@@ -2141,6 +2969,53 @@ class TestAdminTransaction(
             initial_total_upgrade_op_count,
             "Total UpgradeOperation count should remain unchanged",
         )
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_persistent_upgrade(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
+            self._login()
+            env = self._create_upgrade_env()
+            r = self.client.post(
+                self.build_list_url,
+                {
+                    "action": "upgrade_selected",
+                    "upgrade_related": "upgrade_related",
+                    "is_persistent": "on",
+                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(r, '<li class="success">')
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertTrue(batch.is_persistent)
+            child_flags = list(
+                batch.upgradeoperation_set.values_list("is_persistent", flat=True)
+            )
+            self.assertTrue(child_flags)
+            self.assertTrue(all(child_flags))
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_nonpersistent_upgrade(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
+            self._login()
+            env = self._create_upgrade_env()
+            r = self.client.post(
+                self.build_list_url,
+                {
+                    "action": "upgrade_selected",
+                    "upgrade_related": "upgrade_related",
+                    ACTION_CHECKBOX_NAME: (env["build2"].pk,),
+                },
+                follow=True,
+            )
+            self.assertContains(r, '<li class="success">')
+            batch = BatchUpgradeOperation.objects.first()
+            self.assertFalse(batch.is_persistent)
+            child_flags = list(
+                batch.upgradeoperation_set.values_list("is_persistent", flat=True)
+            )
+            self.assertTrue(child_flags)
+            self.assertFalse(any(child_flags))
 
 
 class TestUpgradeOperationInlineDeletePermission(BaseTestAdmin, TestCase):

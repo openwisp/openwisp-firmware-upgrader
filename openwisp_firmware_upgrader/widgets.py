@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.admin.widgets import AdminSplitDateTime
 from django.utils.translation import gettext_lazy as _
 
 from openwisp_controller.config.widgets import JsonSchemaWidget as BaseJsonSchemaWidget
@@ -7,6 +8,14 @@ from .swapper import load_model
 
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
+
+
+class ScheduledDateTimeWidget(AdminSplitDateTime):
+    def __init__(self, attrs=None):
+        super().__init__(attrs=attrs)
+        date_widget, time_widget = self.widgets
+        date_widget.attrs["aria-label"] = _("Scheduled date")
+        time_widget.attrs["aria-label"] = _("Scheduled time")
 
 
 class FirmwareSchemaWidget(BaseJsonSchemaWidget):

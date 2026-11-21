@@ -284,6 +284,16 @@ For more information about the usage of celery in django, please refer to
 the `"First steps with Django" section in the celery documentation
 <https://docs.celeryproject.org/en/master/django/first-steps-with-django.html>`_.
 
+Persistent Mass Upgrade Tasks
+-----------------------------
+
+Deployments that use persistent mass upgrades must schedule
+``check_pending_upgrades`` and ``send_pending_upgrade_reminders`` with
+Celery Beat. The `test project settings
+<https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/tests/openwisp2/settings.py#L200-L209>`_
+show the reference task names and intervals. Production installers own the
+Celery Beat configuration, so adapt that reference to the deployment.
+
 13. Import the Automated Tests
 ------------------------------
 
