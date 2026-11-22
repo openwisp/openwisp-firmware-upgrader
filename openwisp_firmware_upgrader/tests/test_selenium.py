@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import swapper
@@ -7,6 +8,7 @@ from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.management import call_command
 from django.test import tag
 from django.urls import reverse
+from django.utils import timezone
 from reversion.models import Version
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -14,8 +16,9 @@ from selenium.common.exceptions import (
     TimeoutException,
 )
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from openwisp_firmware_upgrader.hardware import REVERSE_FIRMWARE_IMAGE_MAP
 from openwisp_firmware_upgrader.tests.base import SeleniumTestMixin, TestUpgraderMixin
@@ -30,6 +33,7 @@ from ..upgraders.openwisp import OpenWrt
 
 Device = swapper.load_model("config", "Device")
 DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+Location = swapper.load_model("geo", "Location")
 Build = load_model("Build")
 UpgradeOperation = load_model("UpgradeOperation")
 DeviceFirmware = load_model("DeviceFirmware")
@@ -331,6 +335,40 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
         )
 
     @patch(_mock_upgrade, return_value=True)
+    def test_persistence_checkbox_propagates(self, *args):
+        with patch(self._mock_connect, return_value=True):
+            _, _, _, build2, _, _, _ = self._set_up_env()
+            self.login()
+            self.open(
+                reverse(
+                    f"admin:{self.firmware_app_label}_build_change", args=[build2.id]
+                )
+            )
+            # Launch mass upgrade operation
+            self.find_element(
+                by=By.CSS_SELECTOR,
+                value='.title-wrapper .object-tools form button[type="submit"]',
+            ).click()
+            # the persistent checkbox is rendered pre-checked
+            checkbox = self.wait_for_presence(By.NAME, "is_persistent")
+            self.assertTrue(checkbox.is_selected())
+            # Upgrade all devices
+            self.find_element(
+                by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
+            ).click()
+            try:
+                WebDriverWait(self.web_driver, 5).until(
+                    EC.url_contains("batchupgradeoperation")
+                )
+            except TimeoutException:
+                self.fail("User was not redirected to Mass upgrade operations page")
+            batch = BatchUpgradeOperation.objects.get(build=build2)
+            self.assertTrue(batch.is_persistent)
+            children = batch.upgradeoperation_set.all()
+            self.assertTrue(children.exists())
+            self.assertTrue(all(op.is_persistent for op in children))
+
+    @patch(_mock_upgrade, return_value=True)
     @patch.object(OpenWrt, "SCHEMA", None)
     def test_upgrader_with_unsupported_upgrade_options(self, *args):
         with patch(self._mock_connect, return_value=True):
@@ -395,6 +433,40 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
                 self.assertEqual(
                     BatchUpgradeOperation.objects.filter(upgrade_options={}).count(), 1
                 )
+
+    def test_pending_cancel_button(self):
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+        UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="pending",
+            is_persistent=True,
+            progress=0,
+        )
+        self.login()
+        self.open(
+            "{}#upgradeoperation_set-group".format(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
+            )
+        )
+        self.hide_loading_overlay()
+        self.wait_for_presence(By.ID, "upgradeoperation_set-group")
+        # the pending operation renders the dedicated pending progress fill
+        WebDriverWait(self.web_driver, 5).until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".upgrade-status-container .upgrade-progress-fill.pending",
+                )
+            )
+        )
+        # and exposes the cancel button (pending is cancellable)
+        cancel_button = WebDriverWait(self.web_driver, 5).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
+        )
+        self.assertTrue(cancel_button.is_displayed())
 
     def test_upgrade_cancel_modal(self):
         """Test upgrade cancel modal functionality"""
@@ -482,6 +554,46 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             EC.invisibility_of_element_located((By.ID, "ow-cancel-confirmation-modal"))
         )
 
+    def test_pending_cancellation(self):
+        org, category, build1, build2, image1, image2, device = self._set_up_env()
+        operation = UpgradeOperation.objects.create(
+            device=device,
+            image=image2,
+            status="pending",
+            is_persistent=True,
+            progress=0,
+        )
+        self.login()
+        self.open(
+            "{}#upgradeoperation_set-group".format(
+                reverse(
+                    f"admin:{self.config_app_label}_device_change", args=[device.id]
+                )
+            )
+        )
+        self.hide_loading_overlay()
+        self.wait_for_presence(By.ID, "upgradeoperation_set-group")
+        cancel_button = WebDriverWait(self.web_driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".upgrade-cancel-btn"))
+        )
+        self.web_driver.execute_script("arguments[0].click();", cancel_button)
+        yes_button = WebDriverWait(self.web_driver, 10).until(
+            EC.element_to_be_clickable(
+                (
+                    By.CSS_SELECTOR,
+                    "#ow-cancel-confirmation-modal .ow-cancel-btn-confirm",
+                )
+            )
+        )
+        self.web_driver.execute_script("arguments[0].click();", yes_button)
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: UpgradeOperation.objects.filter(
+                pk=operation.pk, status="cancelled"
+            ).exists()
+        )
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "cancelled")
+
     def test_mass_upgrade_confirmation_page_widgets(self):
         """Test mass upgrade confirmation page loads without JS errors and Select2 widgets are initialized"""
         _, _, _, build2, _, _, _ = self._set_up_env()
@@ -501,6 +613,461 @@ class TestDeviceAdmin(TestUpgraderMixin, SeleniumTestMixin, StaticLiveServerTest
             >= 2,
             "Both group and location Select2 widgets are initialized",
         )
+
+    @patch(_mock_upgrade, return_value=True)
+    def test_mass_upgrade_schedule_widget(self, *args):
+        with patch(self._mock_connect, return_value=True):
+            _, _, _, build2, _, _, _ = self._set_up_env()
+            self.login()
+            self.open(
+                reverse(
+                    f"admin:{self.firmware_app_label}_build_change", args=[build2.id]
+                )
+            )
+            self.find_element(
+                by=By.CSS_SELECTOR,
+                value='.title-wrapper .object-tools form button[type="submit"]',
+            ).click()
+            date_input = self.wait_for_presence(By.NAME, "scheduled_at_0")
+            time_input = self.find_element(By.NAME, "scheduled_at_1")
+            self.assertEqual(date_input.get_attribute("class"), "vDateField")
+            self.assertEqual(time_input.get_attribute("class"), "vTimeField")
+            self._assert_no_js_errors(ignore_websockets=True)
+            scheduled = (timezone.localtime() + timedelta(days=1)).replace(
+                hour=12, minute=0, second=0, microsecond=0
+            )
+            date_input.send_keys(scheduled.strftime("%Y-%m-%d"))
+            time_input.send_keys(scheduled.strftime("%H:%M"))
+            expected_iso = self.web_driver.execute_script(
+                "return new Date(arguments[0] + 'T' + arguments[1]).toISOString();",
+                scheduled.strftime("%Y-%m-%d"),
+                scheduled.strftime("%H:%M"),
+            )
+            submit = self.find_element(
+                by=By.CSS_SELECTOR, value='input[name="upgrade_all"]'
+            )
+            self.web_driver.execute_script("arguments[0].click();", submit)
+            WebDriverWait(self.web_driver, 5).until(
+                EC.url_contains("batchupgradeoperation")
+            )
+            batch = BatchUpgradeOperation.objects.get(build=build2)
+            self.assertEqual(batch.status, "scheduled")
+            self.assertEqual(
+                batch.scheduled_at,
+                datetime.fromisoformat(expected_iso.replace("Z", "+00:00")),
+            )
+
+    def test_batch_reschedule_panel_widgets(self):
+        org, _, _, build2, _, _, _ = self._set_up_env()
+        group = self._create_device_group(organization=org)
+        location = Location.objects.create(
+            name="Office", address="123 Main St", organization=org
+        )
+        batch = BatchUpgradeOperation.objects.create(
+            build=build2,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        self.login()
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                args=[batch.id],
+            )
+        )
+        self.hide_loading_overlay()
+        toggle = self.find_element(By.ID, "batch-reschedule-btn")
+        self.web_driver.execute_script("arguments[0].click();", toggle)
+        self.wait_for_visibility(By.ID, "batch-reschedule-form")
+        date_input = self.find_element(By.NAME, "scheduled_at_0")
+        time_input = self.find_element(By.NAME, "scheduled_at_1")
+        self.assertEqual(date_input.get_attribute("class"), "vDateField")
+        self.assertEqual(time_input.get_attribute("class"), "vTimeField")
+        self.assertTrue(date_input.get_attribute("value"))
+        self.assertTrue(time_input.get_attribute("value"))
+        original_date = date_input.get_attribute("value")
+        original_time = time_input.get_attribute("value")
+        date_input.clear()
+        date_input.send_keys("01/01/2030")
+        time_input.clear()
+        time_input.send_keys("03:45")
+        self.web_driver.execute_script(
+            "django.jQuery('#batch-reschedule-group').val(arguments[0]).trigger('change');"
+            "django.jQuery('#batch-reschedule-location').val(arguments[1]).trigger('change');",
+            str(group.pk),
+            str(location.pk),
+        )
+        self.find_element(By.ID, "batch-reschedule-persistent").click()
+        self.find_element(By.ID, "batch-reschedule-firmwareless").click()
+        self.find_element(By.ID, "batch-reschedule-cancel").click()
+        self.assertEqual(toggle.get_attribute("aria-expanded"), "false")
+        self.assertEqual(self.web_driver.switch_to.active_element, toggle)
+        toggle.click()
+        self.assertEqual(self.web_driver.switch_to.active_element, date_input)
+        self.assertEqual(date_input.get_attribute("value"), original_date)
+        self.assertEqual(time_input.get_attribute("value"), original_time)
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-group")
+            ).first_selected_option.get_attribute("value"),
+            "",
+        )
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-location")
+            ).first_selected_option.get_attribute("value"),
+            "",
+        )
+        self.assertEqual(
+            self.web_driver.find_elements(
+                By.CSS_SELECTOR, "#batch-reschedule-form .select2-selection__clear"
+            ),
+            [],
+        )
+        self.assertEqual(
+            self.find_element(By.ID, "batch-reschedule-persistent").is_selected(),
+            batch.is_persistent,
+        )
+        self.assertEqual(
+            self.find_element(By.ID, "batch-reschedule-firmwareless").is_selected(),
+            batch.firmwareless,
+        )
+        self.assertGreaterEqual(
+            len(self.web_driver.find_elements(By.CSS_SELECTOR, ".select2-container")),
+            2,
+            "Both group and location Select2 widgets are initialized",
+        )
+        self._assert_no_js_errors(ignore_websockets=True)
+        scheduled = (timezone.localtime() + timedelta(days=2)).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
+        expected_iso = self.web_driver.execute_script(
+            "return new Date(arguments[0] + 'T' + arguments[1]).toISOString();",
+            scheduled.strftime("%Y-%m-%d"),
+            scheduled.strftime("%H:%M"),
+        )
+        date_format = self.web_driver.execute_script(
+            "return get_format('DATE_INPUT_FORMATS')[0];"
+        )
+        scheduled_date = scheduled.strftime(date_format)
+        self.web_driver.execute_script(
+            "django.jQuery('#batch-reschedule-group').val(arguments[0]).trigger('change');"
+            "django.jQuery('#batch-reschedule-location').val(arguments[1]).trigger('change');",
+            str(group.pk),
+            str(location.pk),
+        )
+        persistent = self.find_element(By.ID, "batch-reschedule-persistent")
+        firmwareless = self.find_element(By.ID, "batch-reschedule-firmwareless")
+        persistent.click()
+        firmwareless.click()
+        date_input.clear()
+        invalid_date = (timezone.localtime() - timedelta(days=1)).strftime(date_format)
+        date_input.send_keys(invalid_date)
+        time_input.clear()
+        time_input.send_keys(scheduled.strftime("%H:%M"))
+        self.find_element(By.ID, "batch-reschedule-save").click()
+        alert = self.wait_until(EC.alert_is_present())
+        message = alert.text
+        alert.accept()
+        self.assertEqual(
+            message, "The scheduled time must be at least 10 minutes in the future."
+        )
+        self.assertEqual(date_input.get_attribute("value"), invalid_date)
+        self.assertEqual(time_input.get_attribute("value"), scheduled.strftime("%H:%M"))
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-group")
+            ).first_selected_option.get_attribute("value"),
+            str(group.pk),
+        )
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-location")
+            ).first_selected_option.get_attribute("value"),
+            str(location.pk),
+        )
+        self.assertEqual(persistent.is_selected(), False)
+        self.assertEqual(firmwareless.is_selected(), True)
+        date_input.clear()
+        date_input.send_keys(scheduled_date)
+        self.find_element(By.ID, "batch-reschedule-save").click()
+        self.wait_until(EC.staleness_of(date_input))
+        self.hide_loading_overlay()
+        batch.refresh_from_db()
+        self.assertEqual(
+            batch.scheduled_at,
+            datetime.fromisoformat(expected_iso.replace("Z", "+00:00")),
+        )
+        self.assertEqual(batch.group, group)
+        self.assertEqual(batch.location, location)
+        self.assertEqual(batch.is_persistent, False)
+        self.assertEqual(batch.firmwareless, True)
+        self.find_element(By.ID, "batch-reschedule-btn").click()
+        self.wait_for_visibility(By.ID, "batch-reschedule-form")
+        self.assertEqual(
+            self.find_element(By.NAME, "scheduled_at_0").get_attribute("value"),
+            scheduled_date,
+        )
+        self.assertEqual(
+            self.find_element(By.NAME, "scheduled_at_1").get_attribute("value"),
+            scheduled.strftime("%H:%M"),
+        )
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-group")
+            ).first_selected_option.get_attribute("value"),
+            str(group.pk),
+        )
+        self.assertEqual(
+            Select(
+                self.find_element(By.ID, "batch-reschedule-location")
+            ).first_selected_option.get_attribute("value"),
+            str(location.pk),
+        )
+        self.assertEqual(
+            self.find_element(By.ID, "batch-reschedule-persistent").is_selected(), False
+        )
+        self.assertEqual(
+            self.find_element(By.ID, "batch-reschedule-firmwareless").is_selected(),
+            True,
+        )
+        cancel_button = self.find_element(By.ID, "batch-cancel-btn")
+        cancel_button.click()
+        modal = self.wait_for_visibility(
+            By.CSS_SELECTOR, "#ow-batch-cancel-modal.ow-overlay-notification"
+        )
+        self.assertTrue(modal.is_displayed())
+        confirm_button = self.find_element(
+            By.CSS_SELECTOR, "#ow-batch-cancel-modal .ow-batch-cancel-confirm"
+        )
+        close_button = self.find_element(
+            By.CSS_SELECTOR, "#ow-batch-cancel-modal .ow-dialog-close-x"
+        )
+        decline_button = self.find_element(
+            By.CSS_SELECTOR,
+            "#ow-batch-cancel-modal .ow-dialog-buttons .ow-dialog-close",
+        )
+        self.assertEqual(self.web_driver.switch_to.active_element, confirm_button)
+        decline_button.send_keys(Keys.TAB)
+        self.assertEqual(self.web_driver.switch_to.active_element, close_button)
+        close_button.send_keys(Keys.SHIFT, Keys.TAB)
+        self.assertEqual(self.web_driver.switch_to.active_element, decline_button)
+        decline_button.send_keys(Keys.ESCAPE)
+        self.assertEqual(modal.is_displayed(), False)
+        self.assertEqual(self.web_driver.switch_to.active_element, cancel_button)
+        cancel_button.click()
+        decline_button.click()
+        self.assertEqual(modal.is_displayed(), False)
+        self.assertEqual(self.web_driver.switch_to.active_element, cancel_button)
+        cancel_button.click()
+        confirm_button.click()
+        self.wait_until(EC.staleness_of(cancel_button))
+        self.hide_loading_overlay()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "cancelled")
+        self.assertEqual(self.web_driver.find_elements(By.ID, "batch-cancel-btn"), [])
+        self._assert_no_js_errors(ignore_websockets=True)
+
+    def test_batch_schedule_uses_server_timezone_when_browser_timezone_unavailable(
+        self,
+    ):
+        _, _, _, build, _, _, _ = self._set_up_env()
+        scheduled = (timezone.now() + timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+        batch = BatchUpgradeOperation.objects.create(
+            build=build, status="scheduled", scheduled_at=scheduled
+        )
+        self.login()
+        # Simulate timezone detection failing before either page initializer runs.
+        script = self.web_driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": "Intl.DateTimeFormat = function () {"
+                "throw new Error('Timezone detection unavailable'); };"
+            },
+        )
+        try:
+            self.open(
+                reverse(
+                    f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                    args=[batch.pk],
+                )
+            )
+        finally:
+            self.web_driver.execute_cdp_cmd(
+                "Page.removeScriptToEvaluateOnNewDocument", script
+            )
+        self.hide_loading_overlay()
+        self.find_element(By.ID, "batch-reschedule-btn").click()
+        self.assertEqual(
+            self.find_element(By.CSS_SELECTOR, ".ow-schedule-tz-note").text,
+            "Entered in the server timezone (Europe/Rome).",
+        )
+        date_format = self.web_driver.execute_script(
+            "return get_format('DATE_INPUT_FORMATS')[0];"
+        )
+        date_input = self.find_element(By.NAME, "scheduled_at_0")
+        self.assertEqual(
+            date_input.get_attribute("value"),
+            timezone.localtime(scheduled).strftime(date_format),
+        )
+        self.assertEqual(
+            self.find_element(By.NAME, "scheduled_at_1").get_attribute("value"),
+            timezone.localtime(scheduled).strftime("%H:%M:%S"),
+        )
+        self.find_element(By.ID, "batch-reschedule-save").click()
+        self.wait_until(EC.staleness_of(date_input))
+        batch.refresh_from_db()
+        self.assertEqual(batch.scheduled_at, scheduled)
+        self._assert_no_js_errors(ignore_websockets=True)
+
+    def test_batch_actions_block_duplicate_requests_and_allow_retry(self):
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(),
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        self.login()
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                args=[batch.pk],
+            )
+        )
+        self.hide_loading_overlay()
+        self.find_element(By.ID, "batch-reschedule-btn").click()
+        # Hold the transport open so repeated handlers run before a response.
+        request_count = self.web_driver.execute_script("""
+            const $ = django.jQuery;
+            const originalAjax = $.ajax;
+            let requestCount = 0;
+            $.ajax = function (options) {
+              requestCount += 1;
+              window.pendingBatchAction = options;
+            };
+            try {
+              $('#batch-reschedule-save').trigger('click').trigger('click');
+              $('#ow-batch-cancel-modal .ow-batch-cancel-confirm').trigger('click');
+            } finally {
+              $.ajax = originalAjax;
+            }
+            return requestCount;
+            """)
+        self.assertEqual(request_count, 1)
+        save_button = self.find_element(By.ID, "batch-reschedule-save")
+        self.assertEqual(save_button.is_enabled(), False)
+        self.assertEqual(
+            self.find_element(By.ID, "batch-cancel-btn").is_enabled(), False
+        )
+        self.web_driver.execute_script("window.pendingBatchAction.error({});")
+        alert = self.wait_until(EC.alert_is_present())
+        message = alert.text
+        alert.accept()
+        self.assertEqual(message, "The request could not be completed.")
+        self.assertEqual(save_button.is_enabled(), True)
+        self.assertEqual(
+            self.find_element(By.ID, "batch-cancel-btn").is_enabled(), True
+        )
+        save_button.click()
+        self.wait_until(EC.staleness_of(save_button))
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "scheduled")
+        self._assert_no_js_errors(ignore_websockets=True)
+
+    def test_scheduled_snapshot_reveals_completed_results(self):
+        _, _, _, build2, _, image2, device = self._set_up_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=build2,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        self.login()
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                args=[batch.pk],
+            )
+        )
+        self.hide_loading_overlay()
+        self.wait_for_presence(By.ID, "batch-reschedule-btn")
+        self.web_driver.execute_script("window.batchUpgradeProgressWebSocket.close();")
+        self.assertEqual(
+            self.find_element(
+                By.ID, "upgrade-operations-section", wait_for="presence"
+            ).is_displayed(),
+            False,
+        )
+        self.assertEqual(
+            self.find_element(
+                By.CSS_SELECTOR,
+                ".batch-main-progress .upgrade-progress-fill",
+                wait_for="presence",
+            ).get_attribute("class"),
+            "upgrade-progress-fill scheduled",
+        )
+        self.assertEqual(
+            self.find_element(By.CSS_SELECTOR, ".field-status .readonly").text,
+            "scheduled",
+        )
+        self.web_driver.execute_script(
+            "window.snapshotSocket = {addEventListener(type, handler) {"
+            "if (type === 'message') {this.message = handler;}}, open() {}};"
+            "initBatchUpgradeProgressWebSockets(django.jQuery, window.snapshotSocket);"
+            "window.snapshotSocket.message({data: JSON.stringify({type: 'batch_state',"
+            "batch_status: {status: 'scheduled', total: 0, completed: 0}, operations: []})});"
+        )
+        self.assertEqual(
+            self.find_element(
+                By.CSS_SELECTOR,
+                ".batch-main-progress .upgrade-progress-fill",
+                wait_for="presence",
+            ).get_attribute("class"),
+            "upgrade-progress-fill scheduled",
+        )
+        self.assertEqual(
+            self.find_element(By.CSS_SELECTOR, ".field-status .readonly").text,
+            "scheduled",
+        )
+        operation = UpgradeOperation.objects.create(
+            device=device, image=image2, batch=batch, status="success", progress=100
+        )
+        self.web_driver.execute_script(
+            "window.snapshotSocket.message({data: JSON.stringify(arguments[0])});",
+            {
+                "type": "batch_state",
+                "batch_status": {"status": "success", "total": 1, "completed": 1},
+                "operations": [
+                    {
+                        "id": str(operation.pk),
+                        "status": "success",
+                        "progress": 100,
+                        "device_id": str(device.pk),
+                        "device_name": device.name,
+                        "image_name": str(image2),
+                    }
+                ],
+            },
+        )
+        self.wait_for_visibility(By.ID, "upgrade-operations-section")
+        self.assertEqual(
+            len(
+                self.web_driver.find_elements(
+                    By.CSS_SELECTOR, "#result_list tbody td.status-cell"
+                )
+            ),
+            1,
+        )
+        self.assertEqual(
+            self.web_driver.find_elements(By.CSS_SELECTOR, ".batch-actions"), []
+        )
+        self.assertEqual(
+            self.find_element(
+                By.CSS_SELECTOR, "#result_list .upgrade-progress-fill"
+            ).get_attribute("class"),
+            "upgrade-progress-fill success",
+        )
+        self._assert_no_js_errors(ignore_websockets=True)
 
     @patch(_mock_upgrade, return_value=True)
     def test_upgrade_operation_admin_no_submit_row(self, *args):
@@ -1047,6 +1614,132 @@ class TestRealTimeProgress(
         self.assertIn("width: 100%", style)
         self._assert_no_js_errors()
 
+    def test_scheduled_batch_reveals_operations_when_started(self):
+        """A scheduled batch keeps the operations table in the DOM but hidden.
+        When it leaves the scheduled state, the page reveals the table and pulls
+        the current-state snapshot over the websocket, so the device operations
+        appear live without a manual refresh."""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2,
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        self.login(username=self.admin.username, password=self.admin_password)
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_batchupgradeoperation_change",
+                args=[batch_operation.pk],
+            )
+        )
+        self.hide_loading_overlay()
+        self._wait_for_realtime_script(
+            "return window.batchUpgradeProgressWebSocket && "
+            "window.batchUpgradeProgressWebSocket.readyState === 1;",
+        )
+        self.assertFalse(
+            self.find_element(By.ID, "upgrade-operations-section").is_displayed(),
+            "The operations table should be hidden while the batch is scheduled",
+        )
+        batch_operation.status = "in-progress"
+        batch_operation.save(update_fields=["status"])
+        UpgradeOperation.objects.create(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+            progress=0,
+        )
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        publisher.publish_batch_status(status="in-progress", completed=0, total=1)
+        self._wait_for_realtime_update(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "#result_list tbody tr.row1 .device-link")
+            )
+        )
+        self.assertTrue(
+            self.find_element(By.ID, "upgrade-operations-section").is_displayed()
+        )
+        self.assertEqual(
+            len(self.find_elements(By.CSS_SELECTOR, "#result_list tbody tr.row1")),
+            1,
+        )
+        self._assert_no_js_errors(ignore_websockets=True)
+
+    def test_pending_completion_text(self):
+        """Check initial and WebSocket-updated completion text with pending operations."""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="success",
+        )
+        UpgradeOperation.objects.create(
+            device=self.device2,
+            image=self.image2,
+            batch=batch_operation,
+            status="in-progress",
+        )
+        UpgradeOperation.objects.create(
+            device=self.device3,
+            image=self.image2,
+            batch=batch_operation,
+            status="pending",
+            is_persistent=True,
+        )
+        self._prepare_batch(batch_operation)
+        WebDriverWait(self.web_driver, 10).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".field-completed .readonly"),
+                "1 complete, 1 pending",
+            )
+        )
+        publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
+        publisher.publish_batch_status(
+            status="in-progress", completed=1, total=3, pending=2
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".field-completed .readonly"),
+                "1 complete, 2 pending",
+            )
+        )
+        publisher.publish_batch_status(
+            status="success", completed=3, total=3, pending=0
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, ".field-completed .readonly"),
+                "3 out of 3",
+            )
+        )
+        self._assert_no_js_errors()
+
+    def test_pending_indicator(self):
+        """Render pending operations with the orange status indicator."""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        UpgradeOperation.objects.create(
+            device=self.device1,
+            image=self.image2,
+            batch=batch_operation,
+            status="pending",
+            is_persistent=True,
+        )
+        self._prepare_batch(batch_operation)
+        WebDriverWait(self.web_driver, 10).until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    "#result_list .status-cell .upgrade-progress-fill.pending",
+                )
+            )
+        )
+        self._assert_no_js_errors()
+
     def test_individual_operation_progress_updates(self):
         """Test individual operation progress updates within batch upgrade"""
         batch_operation = BatchUpgradeOperation.objects.create(
@@ -1232,6 +1925,133 @@ class TestRealTimeProgress(
             log = self.find_element(By.CSS_SELECTOR, ".field-log .readonly").text
             self.assertEqual(log, "Succeeded because you're very smart!")
             self._assert_no_js_errors()
+
+    def test_batch_retry_details_update_live(self):
+        batch = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress", is_persistent=True
+        )
+        operation = UpgradeOperation.objects.create(
+            device=self.device1,
+            image=self.image2,
+            batch=batch,
+            status="in-progress",
+            is_persistent=True,
+            retry_count=0,
+        )
+        UpgradeOperation.objects.filter(pk=operation.pk).update(
+            modified=timezone.now() - timedelta(hours=1)
+        )
+        operation.refresh_from_db()
+        self._prepare_batch(batch)
+        row_selector = f'#result_list .status-cell[data-operation-id="{operation.pk}"]'
+        original_modified = (
+            self.find_element(By.CSS_SELECTOR, row_selector)
+            .find_element(By.XPATH, "..")
+            .find_element(By.CSS_SELECTOR, "td.last-updated-cell")
+            .text
+        )
+        next_retry_at = timezone.now() + timedelta(hours=1)
+        operation.status = "pending"
+        operation.retry_count = 2
+        operation.next_retry_at = next_retry_at
+        operation.save()
+        expected_next_retry = self.web_driver.execute_script(
+            "return getFormattedDateTimeString(arguments[0]);",
+            next_retry_at.isoformat(),
+        )
+        expected_modified = self.web_driver.execute_script(
+            "return getFormattedDateTimeString(arguments[0]);",
+            operation.modified.isoformat(),
+        )
+
+        def retry_details_are_updated(driver):
+            row = driver.find_element(By.CSS_SELECTOR, row_selector).find_element(
+                By.XPATH, ".."
+            )
+            retry_count = row.find_element(By.CSS_SELECTOR, "td.retry-count-cell").text
+            next_retry = row.find_element(By.CSS_SELECTOR, "td.next-retry-cell").text
+            modified = row.find_element(By.CSS_SELECTOR, "td.last-updated-cell").text
+            return (
+                retry_count == "2"
+                and next_retry == expected_next_retry
+                and modified == expected_modified
+                and modified != original_modified
+            )
+
+        WebDriverWait(self.web_driver, 10).until(retry_details_are_updated)
+        self._assert_no_js_errors()
+
+    def test_detail_retry_fields_update_live(self):
+        operation = UpgradeOperation.objects.create(
+            device=self.device,
+            image=self.image2,
+            status="in-progress",
+            is_persistent=True,
+            retry_count=0,
+        )
+        self.login(username=self.admin.username, password=self.admin_password)
+        self.open(
+            reverse(
+                f"admin:{self.firmware_app_label}_upgradeoperation_change",
+                args=[operation.pk],
+            )
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: driver.execute_script(
+                "return window.upgradeProgressWebSocket && window.upgradeProgressWebSocket.readyState === 1;"
+            )
+        )
+        # A persistent operation without retries does not show retry details.
+        retry_count_row = self.web_driver.find_element(
+            By.CSS_SELECTOR, ".field-retry_count"
+        )
+        next_retry_row = self.web_driver.find_element(
+            By.CSS_SELECTOR, ".field-next_retry_at"
+        )
+        self.assertFalse(retry_count_row.is_displayed())
+        self.assertFalse(next_retry_row.is_displayed())
+        # A scheduled retry reveals and populates both fields.
+        next_retry_at = timezone.now() + timedelta(hours=1)
+        operation.status = "pending"
+        operation.retry_count = 1
+        operation.next_retry_at = next_retry_at
+        operation.save()
+        expected_next_retry = self.web_driver.execute_script(
+            "return getFormattedDateTimeString(arguments[0]);",
+            next_retry_at.isoformat(),
+        )
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: (
+                driver.find_element(
+                    By.CSS_SELECTOR, ".field-retry_count"
+                ).is_displayed()
+                and driver.find_element(
+                    By.CSS_SELECTOR, ".field-retry_count .readonly"
+                ).text
+                == "1"
+                and driver.find_element(
+                    By.CSS_SELECTOR, ".field-next_retry_at"
+                ).is_displayed()
+                and driver.find_element(
+                    By.CSS_SELECTOR, ".field-next_retry_at .readonly"
+                ).text
+                == expected_next_retry
+            )
+        )
+        # Dispatching the retry clears both fields again.
+        operation.status = "in-progress"
+        operation.retry_count = 0
+        operation.next_retry_at = None
+        operation.save()
+        WebDriverWait(self.web_driver, 10).until(
+            lambda driver: not driver.find_element(
+                By.CSS_SELECTOR, ".field-retry_count"
+            ).is_displayed()
+            and not driver.find_element(
+                By.CSS_SELECTOR, ".field-next_retry_at"
+            ).is_displayed()
+        )
+        self._assert_no_js_errors()
 
     def test_batch_completion_with_mixed_results(self):
         """Test batch completion with partial success scenario"""

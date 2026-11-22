@@ -1,10 +1,45 @@
 import logging
+import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 from django.utils.module_loading import import_string
+from django.utils.translation import gettext_lazy as _
 
 from . import settings as app_settings
 
 logger = logging.getLogger(__name__)
+
+
+def reinterpret_in_timezone(dt, tz_name):
+    """Interpret the entered date and time in the user's browser timezone.
+
+    For example, 02:00 entered in India must mean 02:00 in India, even when
+    the server uses UTC. Reject times skipped or repeated by a daylight
+    saving change, so an upgrade cannot run at an unintended time.
+    """
+    try:
+        tz = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        raise ValidationError(_("Invalid timezone."))
+    naive = dt.replace(tzinfo=None)
+    aware = naive.replace(tzinfo=tz)
+    if aware.astimezone(ZoneInfo("UTC")).astimezone(tz).replace(tzinfo=None) != naive:
+        raise ValidationError(
+            _(
+                "The selected time does not exist in the chosen timezone "
+                "because of a daylight saving time change."
+            )
+        )
+    if aware.utcoffset() != aware.replace(fold=1).utcoffset():
+        raise ValidationError(
+            _(
+                "The selected time is ambiguous in the chosen timezone "
+                "because of a daylight saving time change; pick another time."
+            )
+        )
+    return timezone.make_aware(naive, tz)
 
 
 def get_upgrader_schema_for_device(device):
@@ -52,3 +87,12 @@ class UpgradeProgress:
     COMPLETE = 100
 
     CANCELLATION_THRESHOLD = REFLASHING
+
+
+def escape_notification_message(message):
+    """Keep plain text literal through notification formatting and Markdown.
+
+    HTML entities also prevent names from becoming Markdown links or Python
+    format fields. HTML escaping alone would still allow javascript: links.
+    """
+    return re.sub(r"[^\w ]|_", lambda match: f"&#{ord(match.group())};", str(message))

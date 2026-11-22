@@ -83,7 +83,12 @@ List Mass Upgrade Operations
 The list of batch upgrade operations provides the following filters:
 
 - ``build`` (Firmware build ID)
-- ``status`` (One of: idle, in-progress, success, failed, cancelled)
+- ``status`` (One of: idle, scheduled, in-progress, success, failed,
+  cancelled)
+- ``is_persistent`` (true or false)
+- ``scheduled_at`` (launch time of a scheduled batch); also accepts the
+  ``scheduled_at__gte`` and ``scheduled_at__lte`` range lookups
+- ``created`` (creation timestamp of the batch)
 
 Here's a few examples:
 
@@ -91,6 +96,10 @@ Here's a few examples:
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?build={build_id}
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status={status}
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?is_persistent=true
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?status=scheduled
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?ordering=scheduled_at
+    GET /api/v1/firmware-upgrader/batch-upgrade-operation/?scheduled_at__gte={from_iso8601}&scheduled_at__lte={to_iso8601}
 
 Get Mass Upgrade Operation Detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -98,6 +107,55 @@ Get Mass Upgrade Operation Detail
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/
+
+The response includes the scheduled launch time (``scheduled_at``) and
+current ``status``. See :doc:`scheduled-mass-upgrades` for launch behavior
+and :doc:`upgrade-status` for the individual device upgrade statuses.
+
+Reschedule a Mass Upgrade
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/reschedule/
+
+Edits a batch while it is in the ``scheduled`` status. You can change:
+
+- ``scheduled_at``: when the upgrade should run
+- ``group``: limit the upgrade to a device group
+- ``location``: limit the upgrade to a location
+- ``is_persistent``: whether to keep retrying offline devices
+- ``upgrade_all``: whether to include devices with no firmware on record
+
+The ``build`` and ``upgrade_options`` cannot be changed. Send only
+``scheduled_at`` to move the launch time without changing the other
+fields.
+
+.. note::
+
+    This endpoint returns a 409 status code if the batch has already left
+    the ``scheduled`` status.
+
+Cancel a Mass Upgrade
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+    POST /api/v1/firmware-upgrader/batch-upgrade-operation/{id}/cancel/
+
+Use this endpoint to stop a planned upgrade or prevent remaining devices
+from being upgraded in a running batch:
+
+- A ``scheduled`` batch is marked ``cancelled`` and will not run.
+- An ``in-progress`` batch cancels device operations that have not yet
+  started flashing, including offline devices waiting for retry. Devices
+  already flashing are left running, because interrupting them could make
+  the device unusable.
+
+.. note::
+
+    This endpoint returns a 409 status code if the batch is already in a
+    terminal state.
 
 List Firmware Builds
 ~~~~~~~~~~~~~~~~~~~~
@@ -201,6 +259,8 @@ Download Firmware Image
 
     GET /api/v1/firmware-upgrader/build/{build_id}/image/{id}/download/
 
+.. _firmware_upgrader_perform_batch_upgrade:
+
 Perform Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -219,6 +279,16 @@ the request body:
   specific group
 - ``location`` (Location ID): limit the upgrade to devices at a specific
   geographic location
+- ``is_persistent`` (boolean, default ``true``): keep retrying offline
+  devices until they come back online or the operation is cancelled. See
+  :doc:`persistent-mass-upgrades`.
+- ``upgrade_all`` (boolean, default ``false``): also upgrade devices that
+  have no firmware image on record, letting the system pick an image from
+  the hardware model
+- ``scheduled_at`` (ISO 8601 datetime with timezone offset): run the
+  upgrade at this time instead of immediately. The batch is created in the
+  ``scheduled`` status and launched when the time arrives. Omit it to
+  upgrade now.
 
 Example with filters:
 
@@ -228,6 +298,21 @@ Example with filters:
         "group": "{group_id}",
         "location": "{location_id}"
     }
+
+Example scheduling the upgrade for later:
+
+.. code-block:: json
+
+    {
+        "scheduled_at": "2026-12-15T02:00:00+05:30"
+    }
+
+The ``scheduled_at`` value must be a timezone-aware ISO 8601 timestamp in
+the future that satisfies the configured :ref:`minimum delay
+<firmware_upgrader_schedule_min_delay>` and :ref:`maximum scheduling
+horizon <firmware_upgrader_schedule_max_horizon>`. Replace the example
+date with your future maintenance window. Naive timestamps (without a UTC
+offset) are rejected with an HTTP 400 response.
 
 Dry-run Batch Upgrade
 ~~~~~~~~~~~~~~~~~~~~~
@@ -318,7 +403,8 @@ The list of upgrade operations provides the following filters:
 - ``device__organization_slug`` (Organization slug of the device)
 - ``device`` (Device ID)
 - ``image`` (Firmware image ID)
-- ``status`` (One of: in-progress, success, failed, aborted, cancelled)
+- ``status`` (One of: in-progress, pending, success, failed, aborted,
+  cancelled)
 
 Here's a few examples:
 
@@ -359,11 +445,13 @@ List Device Upgrade Operations
 **Available filters**
 
 The list of device upgrade operations can be filtered by ``status`` (one
-of: in-progress, success, failed, aborted, cancelled).
+of: in-progress, pending, success, failed, aborted, cancelled).
 
 .. code-block:: text
 
     GET /api/v1/firmware-upgrader/device/{device_id}/upgrade-operation/?status={status}
+
+.. _firmware_upgrader_create_device_firmware:
 
 Create Device Firmware
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -374,6 +462,11 @@ firmware if it does not already exist.
 .. code-block:: text
 
     PUT /api/v1/firmware-upgrader/device/{device_id}/firmware/
+
+The request body accepts an optional ``is_persistent`` (boolean, default
+``false``) flag; when enabled, the resulting upgrade keeps retrying the
+device until it comes back online or the operation is cancelled. See
+:doc:`persistent-mass-upgrades`.
 
 Get Device Firmware Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
