@@ -10,7 +10,7 @@ import swapper
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator
-from django.db import models, transaction
+from django.db import models, router, transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -1278,33 +1278,35 @@ class AbstractBatchUpgradeOperation(
         - 'success': If all operations completed successfully
         - Otherwise: Maintain current status
         """
-        stats = self.get_status_stats()
-        # Determine overall batch status based on individual operation statuses
-        if stats["in_progress"] > 0 or stats["pending"] > 0:
-            new_status = "in-progress"
-        elif stats["failed"] > 0 or stats["aborted"] > 0:
-            new_status = "failed"
-        elif stats["cancelled"] > 0:
-            new_status = "cancelled"
-        elif (
-            stats["successful"] > 0
-            and stats["completed"] == stats["total_operations"]
-            and stats["total_operations"] > 0
-        ):
-            new_status = "success"
-        else:
-            new_status = self.status
-        if self.status != new_status:
-            with transaction.atomic():
-                claimed = self._meta.model.objects.filter(
-                    pk=self.pk, status=self.status
-                ).update(status=new_status)
-                if claimed:
+        model = type(self)
+        using = router.db_for_write(model, instance=self)
+        batch = model._base_manager.using(using).filter(pk=self.pk)
+        while True:
+            stats = self.get_status_stats()
+            if stats["in_progress"] > 0 or stats["pending"] > 0:
+                new_status = "in-progress"
+            elif stats["failed"] > 0 or stats["aborted"] > 0:
+                new_status = "failed"
+            elif stats["cancelled"] > 0:
+                new_status = "cancelled"
+            elif (
+                stats["successful"] > 0
+                and stats["completed"] == stats["total_operations"]
+                and stats["total_operations"] > 0
+            ):
+                new_status = "success"
+            else:
+                new_status = self.status
+            if self.status == new_status:
+                return self.status, stats
+            with transaction.atomic(using=using):
+                # Lock the matching row before running the normal save hooks.
+                if batch.filter(status=self.status).update(status=models.F("status")):
                     self.status = new_status
-                    self.save(update_fields=["status"])
-                else:
-                    self.refresh_from_db(fields=["status"])
-        return self.status, stats
+                    self.save(using=using, update_fields=["status", "modified"])
+                    return self.status, stats
+            self.refresh_from_db(using=using, fields=["status", "modified"])
+            self._previous_status = self.status
 
     def get_status_stats(self):
         return self.upgradeoperation_set.aggregate(

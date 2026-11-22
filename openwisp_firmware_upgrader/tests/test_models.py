@@ -2,7 +2,7 @@ import importlib
 import io
 import uuid
 from contextlib import redirect_stdout
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -614,6 +614,63 @@ class TestModels(TestUpgraderMixin, TestCase):
         batch = BatchUpgradeOperation.objects.create(build=build)
         expected = f"{build} ({timezone.localtime(batch.created).strftime('%Y-%m-%d %H:%M:%S')})"
         self.assertEqual(str(batch), expected)
+
+    @patch("model_utils.fields.now")
+    def test_batch_modified_updates_on_status_change(self, now):
+        started_at = datetime(2026, 1, 1, tzinfo=UTC)
+        completed_at = started_at + timedelta(hours=1)
+        now.return_value = started_at
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(),
+            status="in-progress",
+            created=started_at,
+            modified=started_at,
+        )
+        operation = UpgradeOperation.objects.create(
+            device=self._create_device(), batch=batch
+        )
+        stale_batch = BatchUpgradeOperation.objects.get(pk=batch.pk)
+
+        now.return_value = completed_at
+        operation.status = "success"
+        operation.save()
+        batch.refresh_from_db()
+
+        self.assertEqual(batch.status, "success")
+        self.assertEqual(batch.modified, completed_at)
+
+        now.return_value = completed_at + timedelta(hours=1)
+        for instance in (batch, stale_batch):
+            with self.subTest(status=instance.status):
+                status, _ = instance.calculate_and_update_status()
+                self.assertEqual(status, "success")
+                self.assertEqual(instance.modified, completed_at)
+                instance.refresh_from_db()
+                self.assertEqual(instance.modified, completed_at)
+
+    @patch("model_utils.fields.now")
+    def test_batch_retries_status_change_after_conflict(self, now):
+        completed_at = datetime(2026, 1, 1, tzinfo=UTC)
+        now.return_value = completed_at
+        batch = BatchUpgradeOperation.objects.create(
+            build=self._create_build(), status="idle"
+        )
+        stale_batch = BatchUpgradeOperation.objects.get(pk=batch.pk)
+        operation = UpgradeOperation.objects.create(
+            device=self._create_device(), batch=batch, status="in-progress"
+        )
+        BatchUpgradeOperation.objects.filter(pk=batch.pk).update(
+            status="in-progress", modified=completed_at - timedelta(hours=1)
+        )
+        UpgradeOperation.objects.filter(pk=operation.pk).update(status="success")
+
+        status, stats = stale_batch.calculate_and_update_status()
+
+        self.assertEqual(status, "success")
+        self.assertEqual(stats["successful"], 1)
+        stale_batch.refresh_from_db()
+        self.assertEqual(stale_batch.status, "success")
+        self.assertEqual(stale_batch.modified, completed_at)
 
     def test_batch_loaded_from_database_tracks_status(self):
         batch = BatchUpgradeOperation.objects.create(build=self._create_build())
