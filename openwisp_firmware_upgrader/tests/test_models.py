@@ -310,6 +310,20 @@ class TestModels(TestUpgraderMixin, TestCase):
         uo.refresh_from_db()
         self.assertEqual(uo.log, "line1\nline2")
 
+    def test_upgrade_operation_progress_persist_after_organization_disabled(self):
+        device_fw = self._create_device_firmware()
+        uo = UpgradeOperation(device=device_fw.device, image=device_fw.image)
+        uo.full_clean()
+        uo.save()
+        org = device_fw.device.organization
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        uo.log_line("line1")
+        uo.update_progress(50)
+        uo.refresh_from_db()
+        self.assertEqual(uo.log, "line1")
+        self.assertEqual(uo.progress, 50)
+
     def test_upgrade_operation_update_progress(self):
         self._create_device_firmware(upgrade=True)
         uo = UpgradeOperation.objects.first()
@@ -363,6 +377,23 @@ class TestModels(TestUpgraderMixin, TestCase):
         operation.refresh_from_db()
         self.assertEqual(operation.status, "aborted")
         self.assertIn("deactivated", operation.log)
+
+    def test_upgrade_operation_aborts_when_organization_disabled_before_worker_runs(
+        self,
+    ):
+        device_fw = self._create_device_firmware()
+        operation = UpgradeOperation(device=device_fw.device, image=device_fw.image)
+        operation.full_clean()
+        operation.save()
+        org = device_fw.device.organization
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        with mock.patch.object(DeviceConnection, "get_working_connection") as mocked:
+            operation.upgrade()
+        mocked.assert_not_called()
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, "aborted")
+        self.assertIn("disabled", operation.log)
 
     def test_concurrent_cancellation_race_condition(self):
         """Test that concurrent cancellation attempts don't cause errors."""
@@ -608,6 +639,19 @@ class TestModels(TestUpgraderMixin, TestCase):
         mock_logger.info.assert_called_once_with(
             "Deleted firmware file: %s", "firmware.bin"
         )
+
+    def test_batch_upgrade_disabled_organization(self):
+        env = self._create_upgrade_env()
+        org = env["category"].organization
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        with self.assertRaises(ValidationError) as cm:
+            env["build2"].batch_upgrade(firmwareless=False)
+        self.assertIn(
+            "Firmware upgrades are not allowed for disabled organizations.",
+            str(cm.exception),
+        )
+        self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
     def test_batch_upgrade_operation_str(self):
         build = self._create_build()
@@ -1642,6 +1686,22 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(batch.build, env["build2"])
             self.assertEqual(batch.status, "success")
 
+    @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.apply_async")
+    def test_upgrade_related_devices_query_count(self, _mocked_delay):
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(build=env["build2"])
+        with self.assertNumQueries(54):
+            batch.upgrade(firmwareless=False)
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+
+    @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.apply_async")
+    def test_upgrade_firmwareless_devices_query_count(self, _mocked_delay):
+        env = self._create_upgrade_env(device_firmware=False)
+        batch = BatchUpgradeOperation.objects.create(build=env["build2"])
+        with self.assertNumQueries(54):
+            batch.upgrade(firmwareless=True)
+        self.assertEqual(batch.upgradeoperation_set.count(), 2)
+
     @mock.patch("openwisp_notifications.signals.notify.send")
     @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.apply_async")
     def test_batch_waits_for_operations(self, mocked_upgrade, mocked_notify):
@@ -1749,6 +1809,58 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         batch = BatchUpgradeOperation.objects.first()
         self.assertEqual(batch.status, "in-progress")
 
+    def test_upgrade_retry_aborts_after_deactivation_or_disabled_org(self):
+        cases = (
+            ("deactivated-device", lambda device: device.deactivate()),
+            (
+                "disabled-organization",
+                lambda device: (
+                    setattr(device.organization, "is_active", False),
+                    device.organization.save(update_fields=["is_active"]),
+                ),
+            ),
+        )
+        for label, disable in cases:
+            with self.subTest(label):
+                # Each case needs its own org/build/device: reusing the
+                # defaults across subTests would hit their unique_together
+                # constraints, since this is a TransactionTestCase and
+                # nothing is rolled back between subTests.
+                org = self._create_org(name=label, slug=label)
+                category = self._create_category(name=label, organization=org)
+                build = self._create_build(category=category, version="0.1")
+                image = self._create_firmware_image(build=build)
+                device = self._create_device(
+                    name=label, organization=org, model=image.boards[0]
+                )
+                self._create_config(device=device)
+                self._create_device_connection(device=device)
+                device_fw = DeviceFirmware(device=device, image=image)
+                device_fw.full_clean()
+                device_fw.save(upgrade=False)
+                operation = UpgradeOperation(
+                    device=device_fw.device, image=device_fw.image
+                )
+                operation.full_clean()
+                operation.save()
+                with mock.patch.object(
+                    DeviceConnection,
+                    "get_working_connection",
+                    side_effect=RecoverableFailure("connection error"),
+                ):
+                    with self.assertRaises(RecoverableFailure):
+                        operation.upgrade()
+                operation.refresh_from_db()
+                self.assertEqual(operation.status, "in-progress")
+                disable(device_fw.device)
+                with mock.patch.object(
+                    DeviceConnection, "get_working_connection"
+                ) as mocked:
+                    operation.upgrade()
+                mocked.assert_not_called()
+                operation.refresh_from_db()
+                self.assertEqual(operation.status, "aborted")
+
     def test_device_fw_not_created_on_device_connection_save(self):
         org = self._get_org()
         category = self._get_category(organization=org)
@@ -1847,6 +1959,26 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         org.delete()
         # Check that the file was deleted
         self.assertEqual(file_storage_backend.exists(file_name), False)
+
+    def test_delete_firmware_files_of_disabled_organization(self):
+        file_storage_backend = FirmwareImage.file.field.storage
+        org = self._create_org(name="disabled-org")
+        category = self._create_category(organization=org)
+        build = self._create_build(category=category)
+        image = self._create_firmware_image(build=build)
+        file_name = image.file.name
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+
+        with self.subTest("Direct image delete still removes the file"):
+            image.delete()
+            self.assertEqual(file_storage_backend.exists(file_name), False)
+
+        with self.subTest("Build delete of a disabled org still schedules cleanup"):
+            image2 = self._create_firmware_image(build=build)
+            file_name2 = image2.file.name
+            build.delete()
+            self.assertEqual(file_storage_backend.exists(file_name2), False)
 
     @mock.patch(_mock_updrade, return_value=True)
     def test_batch_upgrade_with_group_filtering(self, *_args):
@@ -2109,6 +2241,123 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
     )
     @mock.patch("openwisp_firmware_upgrader.websockets._run_coroutine_safely")
     @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
+    def test_batch_upgrade_excludes_disabled_organization_devices(self, *args):
+        shared_category = self._create_category(organization=None)
+        active_org = self._get_org()
+        disabled_org = self._create_org(name="disabled-org")
+        build = self._create_build(category=shared_category, version="0.1")
+        image = self._create_firmware_image(build=build)
+        self._create_credentials(organization=None, auto_add=True)
+        active_device = self._create_device(
+            name="active-device",
+            organization=active_org,
+            model=image.boards[0],
+            mac_address="00:11:22:33:66:01",
+        )
+        disabled_org_device = self._create_device(
+            name="disabled-org-device",
+            organization=disabled_org,
+            model=image.boards[0],
+            mac_address="00:11:22:33:66:02",
+        )
+        self._create_config(device=active_device)
+        self._create_config(device=disabled_org_device)
+        disabled_org.is_active = False
+        disabled_org.save(update_fields=["is_active"])
+
+        with self.subTest("firmwareless target resolution"):
+            result = BatchUpgradeOperation.dry_run(build=build)
+            self.assertEqual(result["devices"].count(), 1)
+            result_device = result["devices"].first()
+            self.assertEqual(result_device.pk, active_device.pk)
+            self.assertNotEqual(result_device.pk, disabled_org_device.pk)
+
+        with self.subTest("related device_firmware target resolution"):
+            build2 = self._create_build(category=shared_category, version="0.2")
+            with mock.patch(
+                "openwisp_firmware_upgrader.base.models."
+                "AbstractDeviceFirmware.create_upgrade_operation"
+            ):
+                DeviceFirmware.objects.create(
+                    device=active_device, image=image, installed=True
+                )
+                DeviceFirmware.objects.create(
+                    device=disabled_org_device, image=image, installed=True
+                )
+            result = BatchUpgradeOperation.dry_run(build=build2)
+            device_ids = [
+                fw.device.pk
+                for fw in result["device_firmwares"].select_related("device")
+            ]
+            self.assertIn(active_device.pk, device_ids)
+            self.assertNotIn(disabled_org_device.pk, device_ids)
+
+    @mock.patch(
+        "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
+    )
+    def test_batch_status_recalculated_with_existing_operations_after_org_disabled(
+        self, *_args
+    ):
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(build=env["build2"])
+        op1 = UpgradeOperation.objects.create(
+            device=env["d1"], image=env["image2a"], batch=batch, status="in-progress"
+        )
+        op2 = UpgradeOperation.objects.create(
+            device=env["d2"], image=env["image2b"], batch=batch, status="in-progress"
+        )
+        org = env["category"].organization
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+
+        op1.status = "success"
+        op1.save()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "in-progress")
+
+        op2.status = "success"
+        op2.save()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "success")
+
+    @mock.patch(
+        "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
+    )
+    def test_batch_upgrade_cancelled_when_organization_disabled_before_worker_runs(
+        self, *_args
+    ):
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation(build=env["build2"])
+        batch.full_clean()
+        batch.save()
+        org = env["category"].organization
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        batch.upgrade(firmwareless=False)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "cancelled")
+        self.assertEqual(batch.upgradeoperation_set.count(), 0)
+
+    @mock.patch(
+        "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
+    )
+    def test_batch_upgrade_zero_operations_marked_failed(self, *_args):
+        env = self._create_upgrade_env()
+        env["d1"].deactivate()
+        env["d2"].deactivate()
+        batch = BatchUpgradeOperation(build=env["build2"])
+        batch.full_clean()
+        batch.save()
+        batch.upgrade(firmwareless=False)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, "failed")
+        self.assertEqual(batch.upgradeoperation_set.count(), 0)
+
+    @mock.patch(
+        "openwisp_controller.connection.apps.ConnectionConfig._launch_update_config"
+    )
+    @mock.patch("openwisp_firmware_upgrader.websockets._run_coroutine_safely")
+    @mock.patch("openwisp_firmware_upgrader.tasks.upgrade_firmware.apply_async")
     def test_batch_upgrade_excludes_deactivated_devices(self, *args):
         env = self._create_upgrade_env()
         # Test firmwareless=False case (devices with existing DeviceFirmware)
@@ -2185,6 +2434,50 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             "Upgrade operations are not allowed for deactivated devices.",
             str(cm.exception),
         )
+
+    def test_disabled_organization_validation(self):
+        device_fw = self._create_device_firmware()
+        device = device_fw.device
+        org = device.organization
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+
+        with self.subTest("DeviceFirmware validation"):
+            with self.assertRaises(ValidationError) as cm:
+                new_device_fw = DeviceFirmware(device=device, image=device_fw.image)
+                new_device_fw.full_clean()
+            self.assertIn(
+                "Firmware upgrades are not allowed for disabled organizations.",
+                str(cm.exception),
+            )
+
+        with self.subTest("UpgradeOperation validation"):
+            with self.assertRaises(ValidationError) as cm:
+                operation = UpgradeOperation(device=device, image=device_fw.image)
+                operation.full_clean()
+            self.assertIn(
+                "Upgrade operations are not allowed for disabled organizations.",
+                str(cm.exception),
+            )
+
+        with self.subTest("DeviceFirmware.save(upgrade=True) raises and creates no op"):
+            uo_count = UpgradeOperation.objects.count()
+            previous_image_id = device_fw.image_id
+            previous_installed = device_fw.installed
+            build = self._create_build(
+                category=device_fw.image.build.category, version="0.2"
+            )
+            device_fw.image = self._create_firmware_image(build=build)
+            with self.assertRaises(ValidationError) as cm:
+                device_fw.save(upgrade=True)
+            self.assertIn(
+                "Upgrade operations are not allowed for disabled organizations.",
+                str(cm.exception),
+            )
+            self.assertEqual(UpgradeOperation.objects.count(), uo_count)
+            device_fw.refresh_from_db()
+            self.assertEqual(device_fw.image_id, previous_image_id)
+            self.assertEqual(device_fw.installed, previous_installed)
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     def test_batch_result_locks_batch_before_child_update(self, notify):

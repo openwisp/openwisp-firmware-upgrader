@@ -68,8 +68,8 @@ DeviceGroup = swapper.load_model("config", "DeviceGroup")
 
 
 def scoped_group_and_location_querysets(user, organization_id):
-    groups = DeviceGroup.objects.all()
-    locations = Location.objects.all()
+    groups = DeviceGroup.objects.filter(organization__is_active=True)
+    locations = Location.objects.filter(organization__is_active=True)
     if organization_id:
         groups = groups.filter(organization_id=organization_id)
         locations = locations.filter(organization_id=organization_id)
@@ -321,6 +321,14 @@ class BuildAdmin(BaseAdmin):
             )
             # returning None will display the change list page again
             return None
+        build = queryset.first()
+        if build.category.organization_id and not build.category.organization.is_active:
+            self.message_user(
+                request,
+                _("Cannot start a mass upgrade for a disabled organization."),
+                messages.ERROR,
+            )
+            return None
         upgrade_all = request.POST.get("upgrade_all")
         upgrade_related = request.POST.get("upgrade_related")
         upgrade_options = request.POST.get("upgrade_options")
@@ -329,7 +337,6 @@ class BuildAdmin(BaseAdmin):
         is_persistent = request.POST.get("is_persistent")
         scheduled_at_date = request.POST.get("scheduled_at_0")
         scheduled_at_time = request.POST.get("scheduled_at_1")
-        build = queryset.first()
         form = BatchUpgradeConfirmationForm(initial={"build": build}, user=request.user)
         # upgrade has been confirmed
         if upgrade_all or upgrade_related:
@@ -1173,7 +1180,9 @@ class DeviceUpgradeOperationForm(UpgradeOperationForm):
         super().__init__(*args, **kwargs)
 
 
-class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperationInline):
+class DeviceUpgradeOperationInline(
+    DeactivatedDeviceReadOnlyMixin, ReadonlyUpgradeOptionsMixin, UpgradeOperationInline
+):
     verbose_name = _("Recent Firmware Upgrades")
     verbose_name_plural = verbose_name
     formset = DeviceUpgradeOperationFormSet

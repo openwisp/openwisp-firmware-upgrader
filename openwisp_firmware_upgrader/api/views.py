@@ -14,10 +14,13 @@ from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
 
 from openwisp_firmware_upgrader import private_storage
-from openwisp_firmware_upgrader.constants import DEACTIVATED_DEVICE_FIRMWARE_ERROR
+from openwisp_firmware_upgrader.constants import (
+    DEACTIVATED_DEVICE_FIRMWARE_ERROR,
+    DISABLED_ORGANIZATION_FIRMWARE_ERROR,
+)
 from openwisp_users.api.mixins import FilterByOrganizationManaged, IsOrganizationManager
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
-from openwisp_users.api.permissions import DjangoModelPermissions
+from openwisp_users.api.permissions import DisabledOrgReadOnly, DjangoModelPermissions
 from openwisp_utils.api.pagination import OpenWispPagination
 
 from ..swapper import load_model
@@ -150,7 +153,11 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
     serializer_class = BatchUpgradeSerializer
     lookup_fields = ["pk"]
     organization_field = "category__organization"
-    permission_classes = (IsOrganizationManager, BatchUpgradePermission)
+    permission_classes = (
+        IsOrganizationManager,
+        BatchUpgradePermission,
+        DisabledOrgReadOnly,
+    )
 
     def post(self, request, pk):
         """
@@ -361,7 +368,9 @@ class DeviceFirmwareDetailView(
     RelatedDeviceAPIMixin, generics.RetrieveUpdateDestroyAPIView
 ):
     serializer_class = DeviceFirmwareSerializer
-    queryset = DeviceFirmware.objects.select_related("device", "image")
+    queryset = DeviceFirmware.objects.select_related(
+        "device", "device__organization", "image"
+    )
     lookup_field = "device"
     lookup_url_kwarg = "pk"
     organization_field = "device__organization"
@@ -444,13 +453,19 @@ class DeviceFirmwareDetailView(
                 self.assert_parent_exists()
                 if self._device.is_deactivated():
                     raise PermissionDenied(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
+                if not self._device.organization.is_active:
+                    raise PermissionDenied(DISABLED_ORGANIZATION_FIRMWARE_ERROR)
                 self.check_permissions(clone_request(self.request, "POST"))
                 return None
             else:
                 # PATCH requests where the object does not exist should still
                 # return a 404 response.
                 raise
-        if self.request.method not in ("GET", "HEAD") and obj.device.is_deactivated():
+        if (
+            self.request.method not in ("GET", "HEAD")
+            and obj.device.is_deactivated()
+            and obj.device.organization.is_active
+        ):
             raise PermissionDenied(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
         return obj
 
@@ -517,6 +532,7 @@ class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
     permission_classes = (
         IsOrganizationManager,
         UpgradeActionPermission,
+        DisabledOrgReadOnly,
     )
     lookup_field = "pk"
     organization_field = "build__category__organization"

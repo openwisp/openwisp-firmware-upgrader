@@ -7,6 +7,7 @@ from openwisp_firmware_upgrader.tests.test_admin import TestAdmin as BaseTestAdm
 from openwisp_firmware_upgrader.tests.test_admin import (
     TestAdminTransaction as BaseTestAdminTransaction,
 )
+from openwisp_firmware_upgrader.tests.test_api import TestApiMisc as BaseTestApiMisc
 from openwisp_firmware_upgrader.tests.test_api import (
     TestBatchUpgradeOperationViews as BaseTestBatchUpgradeOperationViews,
 )
@@ -14,10 +15,25 @@ from openwisp_firmware_upgrader.tests.test_api import (
     TestBuildViews as BaseTestBuildViews,
 )
 from openwisp_firmware_upgrader.tests.test_api import (
+    TestBuildViewsTransaction as BaseTestBuildViewsTransaction,
+)
+from openwisp_firmware_upgrader.tests.test_api import (
     TestCategoryViews as BaseTestCategoryViews,
 )
 from openwisp_firmware_upgrader.tests.test_api import (
+    TestCategoryViewsTransaction as BaseTestCategoryViewsTransaction,
+)
+from openwisp_firmware_upgrader.tests.test_api import (
+    TestDeviceFirmwareImageViews as BaseTestDeviceFirmwareImageViews,
+)
+from openwisp_firmware_upgrader.tests.test_api import (
+    TestDeviceFirmwareImageViewsTransaction as BaseTestDeviceFirmwareImageViewsTransaction,
+)
+from openwisp_firmware_upgrader.tests.test_api import (
     TestFirmwareImageViews as BaseTestFirmwareImageViews,
+)
+from openwisp_firmware_upgrader.tests.test_api import (
+    TestFirmwareImageViewsTransaction as BaseTestFirmwareImageViewsTransaction,
 )
 from openwisp_firmware_upgrader.tests.test_api import (
     TestOrgAPIMixin as BaseTestOrgAPIMixin,
@@ -46,6 +62,9 @@ from openwisp_firmware_upgrader.tests.test_openwrt_upgrader import (
 )
 from openwisp_firmware_upgrader.tests.test_private_storage import (
     TestPrivateStorage as BaseTestPrivateStorage,
+)
+from openwisp_firmware_upgrader.tests.test_private_storage import (
+    TestPrivateStorageTransaction as BaseTestPrivateStorageTransaction,
 )
 from openwisp_firmware_upgrader.tests.test_scheduled import (
     TestScheduledExecution as BaseTestScheduledExecution,
@@ -159,6 +178,10 @@ class TestPrivateStorage(BaseTestPrivateStorage):
     pass
 
 
+class TestPrivateStorageTransaction(BaseTestPrivateStorageTransaction):
+    pass
+
+
 class TestDeviceAdmin(BaseTestDeviceAdmin):
     _mock_connect = "openwisp2.sample_connection.models.DeviceConnection.connect"
     pass
@@ -199,7 +222,15 @@ class TestBuildViews(BaseTestBuildViews):
     pass
 
 
+class TestBuildViewsTransaction(BaseTestBuildViewsTransaction):
+    pass
+
+
 class TestCategoryViews(BaseTestCategoryViews):
+    pass
+
+
+class TestCategoryViewsTransaction(BaseTestCategoryViewsTransaction):
     pass
 
 
@@ -211,7 +242,25 @@ class TestFirmwareImageViews(BaseTestFirmwareImageViews):
     pass
 
 
+class TestFirmwareImageViewsTransaction(BaseTestFirmwareImageViewsTransaction):
+    pass
+
+
 class TestOrgAPIMixin(BaseTestOrgAPIMixin):
+    pass
+
+
+class TestDeviceFirmwareImageViews(BaseTestDeviceFirmwareImageViews):
+    pass
+
+
+class TestDeviceFirmwareImageViewsTransaction(
+    BaseTestDeviceFirmwareImageViewsTransaction
+):
+    pass
+
+
+class TestApiMisc(BaseTestApiMisc):
     pass
 
 
@@ -227,20 +276,27 @@ class TestCustomApiViews(SimpleTestCase):
                 )
 
 
-# this is necessary to avoid excuting the base test suites
+# this is necessary to avoid executing the base test suites
 del BaseTestModels
 del BaseTestAdmin
 del BaseTestAdminTransaction
 del BaseTestModelsTransaction
 del BaseTestOpenwrtUpgrader
 del BaseTestPrivateStorage
+del BaseTestPrivateStorageTransaction
 del BaseTestDeviceAdmin
 del BaseTestTasks
 del BaseTestBuildViews
+del BaseTestBuildViewsTransaction
 del BaseTestCategoryViews
+del BaseTestCategoryViewsTransaction
 del BaseTestBatchUpgradeOperationViews
 del BaseTestFirmwareImageViews
+del BaseTestFirmwareImageViewsTransaction
 del BaseTestOrgAPIMixin
+del BaseTestDeviceFirmwareImageViews
+del BaseTestDeviceFirmwareImageViewsTransaction
+del BaseTestApiMisc
 del BaseTestScheduledExecution
 del BaseTestMonitoringSignalHandler
 del BaseTestPendingUpgradeReminders

@@ -4,6 +4,7 @@ from unittest import mock
 
 import swapper
 from django.contrib.auth.models import Permission
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.test import TransactionTestCase
@@ -928,3 +929,17 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
             {environment["d1"].pk, environment["d2"].pk},
         )
         self.assertEqual(publish.call_count, 2)
+
+    def test_reschedule_rejects_disabled_organization(self):
+        build = self._create_build()
+        batch = self._create_scheduled_batch(build=build)
+        original_time = batch.scheduled_at
+        organization = build.category.organization
+        type(organization).objects.filter(pk=organization.pk).update(is_active=False)
+
+        with self.assertRaises(ValidationError):
+            batch.reschedule(scheduled_at=timezone.now() + timedelta(days=2))
+
+        batch.refresh_from_db()
+        self.assertEqual(batch.scheduled_at, original_time)
+        self.assertEqual(batch.status, "scheduled")
