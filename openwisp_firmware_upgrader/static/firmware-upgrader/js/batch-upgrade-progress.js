@@ -109,13 +109,24 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
       if (data.type === "batch_state") {
         updateBatchProgress(data.batch_status);
         if (data.operations && Array.isArray(data.operations)) {
+          // Replay the initial snapshot onto each existing row.
+          const mayAdd = snapshotMayAddRows($);
           data.operations.forEach(function (operation) {
-            updateBatchOperationProgress({
-              operation_id: operation.id,
-              status: operation.status,
-              progress: operation.progress,
-              modified: operation.modified,
-            });
+            updateBatchOperationProgress(
+              {
+                operation_id: operation.id,
+                status: operation.status,
+                progress: operation.progress,
+                modified: operation.modified,
+                is_persistent: operation.is_persistent,
+                retry_count: operation.retry_count,
+                next_retry_at: operation.next_retry_at,
+                device_id: operation.device_id,
+                device_name: operation.device_name,
+                image_name: operation.image_name,
+              },
+              mayAdd,
+            );
           });
         }
       } else if (data.type === "batch_status") {
@@ -128,6 +139,9 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
           status: data.operation.status,
           progress: data.operation.progress,
           modified: data.operation.modified,
+          is_persistent: data.operation.is_persistent,
+          retry_count: data.operation.retry_count,
+          next_retry_at: data.operation.next_retry_at,
         });
       }
     } catch (error) {
@@ -138,6 +152,18 @@ function initBatchUpgradeProgressWebSockets($, batchUpgradeProgressWebSocket) {
 }
 function updateBatchProgress(data) {
   let $ = django.jQuery;
+  if (data.status && FW_STATUS_HELPERS.isCompleted(data.status)) {
+    // A terminal batch can no longer be cancelled or rescheduled.
+    $(".batch-actions").remove();
+    $("#upgrade-operations-section").removeClass("ow-hide");
+  } else if (data.status && data.status !== "scheduled") {
+    $("#batch-reschedule-btn, #batch-reschedule-form").remove();
+    let $section = $("#upgrade-operations-section");
+    if ($section.hasClass("ow-hide")) {
+      $section.removeClass("ow-hide");
+      requestCurrentBatchState(window.batchUpgradeProgressWebSocket);
+    }
+  }
   let mainProgressElement = $(".batch-main-progress");
   if (mainProgressElement.length > 0) {
     let progressPercentage =
@@ -145,41 +171,51 @@ function updateBatchProgress(data) {
     let showPercentageText = true;
     let statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS; // Safe default
 
-    if (data.status === FW_UPGRADE_STATUS.SUCCESS) {
-      progressPercentage = 100;
-      statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
-      showPercentageText = true;
-    } else if (data.status === FW_UPGRADE_STATUS.CANCELLED) {
-      progressPercentage = 100;
-      statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
-      showPercentageText = false;
-    } else if (data.status === FW_UPGRADE_STATUS.FAILED) {
-      let successfulOpsCount = $("#result_list tbody tr").filter(function () {
-        let statusText = $(this).find(".status-cell .status-content").text().trim();
-        return FW_STATUS_GROUPS.SUCCESS.has(statusText);
-      }).length;
-      // Also check individual operation containers for success
-      if (successfulOpsCount === 0) {
-        $("#result_list tbody tr").each(function () {
-          let statusContainer = $(this).find(".upgrade-status-container");
-          if (
-            statusContainer.length &&
-            statusContainer.find(".upgrade-progress-fill.success").length
-          ) {
-            successfulOpsCount++;
-          }
-        });
-      }
-      if (successfulOpsCount > 0) {
-        // Some operations succeeded - partial success (orange)
-        progressPercentage = 100;
-        statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
+    switch (data.status) {
+      case FW_UPGRADE_STATUS.SCHEDULED:
+        progressPercentage = 0;
+        statusClass = FW_UPGRADE_CSS_CLASSES.SCHEDULED;
         showPercentageText = false;
-      } else {
-        // All operations failed - total failure (red)
+        break;
+      case FW_UPGRADE_STATUS.SUCCESS:
         progressPercentage = 100;
-        statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
+        statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
+        showPercentageText = true;
+        break;
+      case FW_UPGRADE_STATUS.CANCELLED:
+        progressPercentage = 100;
+        statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
         showPercentageText = false;
+        break;
+      case FW_UPGRADE_STATUS.FAILED: {
+        let successfulOpsCount = $("#result_list tbody tr").filter(function () {
+          let statusText = $(this).find(".status-cell .status-content").text().trim();
+          return FW_STATUS_GROUPS.SUCCESS.has(statusText);
+        }).length;
+        // Also check individual operation containers for success
+        if (successfulOpsCount === 0) {
+          $("#result_list tbody tr").each(function () {
+            let statusContainer = $(this).find(".upgrade-status-container");
+            if (
+              statusContainer.length &&
+              statusContainer.find(".upgrade-progress-fill.success").length
+            ) {
+              successfulOpsCount++;
+            }
+          });
+        }
+        if (successfulOpsCount > 0) {
+          // Some operations succeeded - partial success (orange)
+          progressPercentage = 100;
+          statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
+          showPercentageText = false;
+        } else {
+          // All operations failed - total failure (red)
+          progressPercentage = 100;
+          statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
+          showPercentageText = false;
+        }
+        break;
       }
     }
     let progressHtml = `
@@ -200,21 +236,42 @@ function updateBatchProgress(data) {
   if (data.total !== undefined && data.completed !== undefined) {
     let completedInfo = $(".field-completed .readonly");
     if (completedInfo.length > 0) {
-      completedInfo.text(`${data.completed} out of ${data.total}`);
+      let pending = data.pending !== undefined ? data.pending : 0;
+      if (pending > 0) {
+        completedInfo.text(
+          gettext("%(completed)s complete, %(pending)s pending")
+            .replace("%(completed)s", data.completed)
+            .replace("%(pending)s", pending),
+        );
+      } else {
+        completedInfo.text(
+          gettext("%(completed)s out of %(total)s")
+            .replace("%(completed)s", data.completed)
+            .replace("%(total)s", data.total),
+        );
+      }
     }
   }
 
   let statusField = $(".field-status .readonly");
   if (statusField.length > 0 && data.status) {
     let displayStatus = data.status;
-    if (data.status === FW_UPGRADE_STATUS.SUCCESS) {
-      displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY;
-    } else if (data.status === FW_UPGRADE_STATUS.CANCELLED) {
-      displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_CANCELLATIONS;
-    } else if (data.status === FW_UPGRADE_STATUS.FAILED) {
-      displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_FAILURES;
-    } else if (data.status === FW_UPGRADE_STATUS.IN_PROGRESS) {
-      displayStatus = FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS;
+    switch (data.status) {
+      case FW_UPGRADE_STATUS.SUCCESS:
+        displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY;
+        break;
+      case FW_UPGRADE_STATUS.CANCELLED:
+        displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_CANCELLATIONS;
+        break;
+      case FW_UPGRADE_STATUS.FAILED:
+        displayStatus = FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_FAILURES;
+        break;
+      case FW_UPGRADE_STATUS.IN_PROGRESS:
+        displayStatus = FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS;
+        break;
+      case FW_UPGRADE_STATUS.SCHEDULED:
+        displayStatus = FW_UPGRADE_DISPLAY_STATUS.SCHEDULED;
+        break;
     }
     let progressBar = statusField.find(".batch-main-progress");
     let statusText = statusField
@@ -232,7 +289,18 @@ function updateBatchProgress(data) {
   }
 }
 
-function updateBatchOperationProgress(data) {
+function snapshotMayAddRows($) {
+  let params = new URLSearchParams(window.location.search);
+  let filtered =
+    params.has("status") ||
+    params.has("organization") ||
+    params.has("q") ||
+    params.has("page");
+  let paginated = $(".pagination").length > 0;
+  return !filtered && !paginated;
+}
+
+function updateBatchOperationProgress(data, allowAdd = true) {
   let $ = django.jQuery;
   let found = false;
   $("#result_list tbody tr").each(function () {
@@ -248,13 +316,24 @@ function updateBatchOperationProgress(data) {
         progress: data.progress,
       };
       renderOperationProgressBarInCell(statusCell, operation);
-      if (data.modified) {
-        let modifiedCell = row.find("td:nth-child(4)");
-        modifiedCell.text(getFormattedDateTimeString(data.modified));
+      if ("retry_count" in data) {
+        row.find("td.retry-count-cell").text(data.retry_count);
+      }
+      if ("next_retry_at" in data) {
+        let nextRetry =
+          data.status === "pending" && data.next_retry_at
+            ? getFormattedDateTimeString(data.next_retry_at)
+            : "";
+        row.find("td.next-retry-cell").text(nextRetry);
+      }
+      if ("modified" in data && data.modified) {
+        row
+          .find("td.last-updated-cell")
+          .text(getFormattedDateTimeString(data.modified));
       }
     }
   });
-  if (!found) {
+  if (!found && allowAdd) {
     addNewOperationRow(data);
   }
 }
@@ -291,8 +370,24 @@ function addNewOperationRow(data) {
   let $statusContent = $("<div>").addClass("status-content").text(data.status); // SAFE
   $statusTd.append($statusContent);
   let $imageTd = $("<td>").text(imageDisplay);
-  let $modifiedTd = $("<td>").text(modifiedTime);
-  $row.append($deviceTd, $statusTd, $imageTd, $modifiedTd);
+  $row.append($deviceTd, $statusTd, $imageTd);
+  // add the retry columns present in the header, if any
+  let extraColumns = $("#result_list thead th").length - 4;
+  if (extraColumns >= 1) {
+    $row.append(
+      $("<td>")
+        .addClass("retry-count-cell")
+        .text(data.retry_count != null ? data.retry_count : ""),
+    );
+  }
+  if (extraColumns >= 2) {
+    let nextRetry =
+      data.status === "pending" && data.next_retry_at
+        ? getFormattedDateTimeString(data.next_retry_at)
+        : "";
+    $row.append($("<td>").addClass("next-retry-cell").text(nextRetry));
+  }
+  $row.append($("<td>").addClass("last-updated-cell").text(modifiedTime));
   tbody.append($row);
 
   let operation = {
@@ -334,6 +429,9 @@ function getBatchUpgradeIdFromUrl() {
 function initializeMainProgressBar($) {
   let statusField = $(".field-status .readonly");
   if (statusField.length > 0) {
+    if (!statusField.find(".batch-main-progress").length) {
+      statusField.append('<div class="batch-main-progress"></div>');
+    }
     let currentStatusText = statusField
       .contents()
       .filter(function () {
@@ -348,26 +446,32 @@ function initializeMainProgressBar($) {
       let statusClass = "";
       let showPercentageText;
 
-      if (currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY) {
-        statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
-        showPercentageText = true;
-      } else if (
-        currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_CANCELLATIONS
-      ) {
-        statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
-        showPercentageText = false;
-      } else if (
-        currentStatusText === FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_FAILURES
-      ) {
-        statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
-        showPercentageText = false;
-      } else if (currentStatusText === FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS) {
-        statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
-        showPercentageText = true;
-        progressPercentage = 0;
-      } else {
-        statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
-        showPercentageText = false;
+      switch (currentStatusText) {
+        case FW_UPGRADE_DISPLAY_STATUS.SCHEDULED:
+          statusClass = FW_UPGRADE_CSS_CLASSES.SCHEDULED;
+          showPercentageText = false;
+          progressPercentage = 0;
+          break;
+        case FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY:
+          statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
+          showPercentageText = true;
+          break;
+        case FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_CANCELLATIONS:
+          statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
+          showPercentageText = false;
+          break;
+        case FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_FAILURES:
+          statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
+          showPercentageText = false;
+          break;
+        case FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS:
+          statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
+          showPercentageText = true;
+          progressPercentage = 0;
+          break;
+        default:
+          statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
+          showPercentageText = false;
       }
       let progressHtml = `
         <div class="upgrade-progress-bar">

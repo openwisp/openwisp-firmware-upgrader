@@ -1,5 +1,7 @@
-from django.urls import reverse
+from django.test import SimpleTestCase
+from django.urls import resolve, reverse
 
+from openwisp_firmware_upgrader.api import views as api_views
 from openwisp_firmware_upgrader.swapper import load_model
 from openwisp_firmware_upgrader.tests.test_admin import TestAdmin as BaseTestAdmin
 from openwisp_firmware_upgrader.tests.test_admin import (
@@ -36,9 +38,24 @@ from openwisp_firmware_upgrader.tests.test_api import (
 from openwisp_firmware_upgrader.tests.test_api import (
     TestOrgAPIMixin as BaseTestOrgAPIMixin,
 )
+from openwisp_firmware_upgrader.tests.test_handlers import (
+    TestMonitoringSignalHandler as BaseTestMonitoringSignalHandler,
+)
 from openwisp_firmware_upgrader.tests.test_models import TestModels as BaseTestModels
 from openwisp_firmware_upgrader.tests.test_models import (
     TestModelsTransaction as BaseTestModelsTransaction,
+)
+from openwisp_firmware_upgrader.tests.test_notifications import (
+    TestBatchCompletionNotification as BaseTestBatchCompletionNotification,
+)
+from openwisp_firmware_upgrader.tests.test_notifications import (
+    TestFailedPersistentUpgradeNotification as BaseTestFailedPersistentUpgradeNotification,
+)
+from openwisp_firmware_upgrader.tests.test_notifications import (
+    TestPendingUpgradeReminders as BaseTestPendingUpgradeReminders,
+)
+from openwisp_firmware_upgrader.tests.test_notifications import (
+    TestScheduledUpgradeNotifications as BaseTestScheduledUpgradeNotifications,
 )
 from openwisp_firmware_upgrader.tests.test_openwrt_upgrader import (
     TestOpenwrtUpgrader as BaseTestOpenwrtUpgrader,
@@ -49,10 +66,15 @@ from openwisp_firmware_upgrader.tests.test_private_storage import (
 from openwisp_firmware_upgrader.tests.test_private_storage import (
     TestPrivateStorageTransaction as BaseTestPrivateStorageTransaction,
 )
+from openwisp_firmware_upgrader.tests.test_scheduled import (
+    TestScheduledExecution as BaseTestScheduledExecution,
+)
 from openwisp_firmware_upgrader.tests.test_selenium import (
     TestDeviceAdmin as BaseTestDeviceAdmin,
 )
 from openwisp_firmware_upgrader.tests.test_tasks import TestTasks as BaseTestTasks
+
+from .api import views as custom_api_views
 
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
 Build = load_model("Build")
@@ -170,6 +192,32 @@ class TestTasks(BaseTestTasks):
     pass
 
 
+class TestScheduledExecution(BaseTestScheduledExecution):
+    pass
+
+
+class TestMonitoringSignalHandler(BaseTestMonitoringSignalHandler):
+    pass
+
+
+class TestPendingUpgradeReminders(BaseTestPendingUpgradeReminders):
+    pass
+
+
+class TestFailedPersistentUpgradeNotification(
+    BaseTestFailedPersistentUpgradeNotification
+):
+    pass
+
+
+class TestBatchCompletionNotification(BaseTestBatchCompletionNotification):
+    pass
+
+
+class TestScheduledUpgradeNotifications(BaseTestScheduledUpgradeNotifications):
+    pass
+
+
 class TestBuildViews(BaseTestBuildViews):
     pass
 
@@ -216,6 +264,18 @@ class TestApiMisc(BaseTestApiMisc):
     pass
 
 
+class TestCustomApiViews(SimpleTestCase):
+    def test_overrides_and_fallbacks(self):
+        for url_name, view_class in (
+            ("api_build_list", custom_api_views.BuildListView),
+            ("api_category_list", api_views.CategoryListView),
+        ):
+            with self.subTest(url_name=url_name):
+                self.assertIs(
+                    resolve(reverse(f"upgrader:{url_name}")).func.cls, view_class
+                )
+
+
 # this is necessary to avoid executing the base test suites
 del BaseTestModels
 del BaseTestAdmin
@@ -237,3 +297,9 @@ del BaseTestOrgAPIMixin
 del BaseTestDeviceFirmwareImageViews
 del BaseTestDeviceFirmwareImageViewsTransaction
 del BaseTestApiMisc
+del BaseTestScheduledExecution
+del BaseTestMonitoringSignalHandler
+del BaseTestPendingUpgradeReminders
+del BaseTestFailedPersistentUpgradeNotification
+del BaseTestBatchCompletionNotification
+del BaseTestScheduledUpgradeNotifications
