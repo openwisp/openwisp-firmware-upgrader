@@ -176,8 +176,8 @@ subsets of your device fleet.
 
 Devices without enabled credentials with a supported update strategy are
 listed at the end of this page and are skipped by the mass upgrade: assign
-credentials to them, or enable their existing credentials, to include them
-in future upgrades.
+or enable credentials with a supported update strategy to include them in
+future upgrades.
 
 After reviewing the selection and setting any desired filters, you can
 either confirm the operation or cancel.

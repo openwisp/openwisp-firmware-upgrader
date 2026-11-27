@@ -1647,17 +1647,19 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
         env = self._create_upgrade_env()
         credentials = DeviceConnection.objects.first().credentials
         DeviceFirmware.objects.filter(device=env["d2"]).delete()
-        # the pk order of connections is random, repeat to make failures certain
-        for i in range(8):
-            with self.subTest(i=i):
+        low, high = uuid.UUID(int=1), uuid.UUID(int=2)
+        # first() orders by pk, so cover both orderings of the two connections
+        for firmwareless_pk, related_pk in ((low, high), (high, low)):
+            with self.subTest(firmwareless_first=firmwareless_pk == low):
                 DeviceConnection.objects.all().delete()
                 self._create_device_connection(
+                    pk=firmwareless_pk,
                     device=env["d2"],
                     credentials=credentials,
                     update_strategy=conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0],
                 )
                 self._create_device_connection(
-                    device=env["d1"], credentials=credentials
+                    pk=related_pk, device=env["d1"], credentials=credentials
                 )
                 batch = BatchUpgradeOperation.objects.create(
                     build=env["build2"], status="idle"
