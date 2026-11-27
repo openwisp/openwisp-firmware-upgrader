@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import timedelta
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TESTING = os.environ.get("TESTING", False) or sys.argv[1:2] == ["test"]
@@ -110,7 +111,7 @@ if not TESTING or "--exclude-tag=selenium_tests" not in sys.argv:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [f"{REDIS_URL}/7"]},
+            "CONFIG": {"hosts": [f"{REDIS_URL}/3"]},
         }
     }
 else:
@@ -122,7 +123,6 @@ TIME_ZONE = "Europe/Rome"
 LANGUAGE_CODE = "en-gb"
 USE_TZ = True
 USE_I18N = False
-USE_L10N = False
 STATIC_URL = "/static/"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = "{0}/media/".format(BASE_DIR)
@@ -165,27 +165,51 @@ if TESTING:
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
             "LOCATION": "firmware-upgrader",
-        }
+        },
+        "sessions": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "firmware-upgrader-sessions",
+        },
     }
 else:
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"{REDIS_URL}/6",
+            "LOCATION": f"{REDIS_URL}/0",
             "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
-        }
+        },
+        "sessions": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"{REDIS_URL}/1",
+            "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+        },
     }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
-SESSION_CACHE_ALIAS = "default"
+SESSION_CACHE_ALIAS = "sessions"
 # Force Redis for development to ensure async task execution
 if not TESTING:
-    CELERY_BROKER_URL = f"{REDIS_URL}/1"
+    CELERY_BROKER_URL = f"{REDIS_URL}/2"
 else:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
     CELERY_BROKER_URL = "memory://"
     CELERY_RESULT_BACKEND = "cache+memory://"
+
+CELERY_BEAT_SCHEDULE = {
+    "check_pending_upgrades": {
+        "task": "openwisp_firmware_upgrader.tasks.check_pending_upgrades",
+        "schedule": timedelta(seconds=600),
+    },
+    "execute_scheduled_upgrades": {
+        "task": "openwisp_firmware_upgrader.tasks.execute_scheduled_upgrades",
+        "schedule": timedelta(seconds=60),
+    },
+    "send_pending_upgrade_reminders": {
+        "task": "openwisp_firmware_upgrader.tasks.send_pending_upgrade_reminders",
+        "schedule": timedelta(seconds=604800),
+    },
+}
 
 LOGGING = {
     "version": 1,
@@ -199,8 +223,8 @@ LOGGING = {
     },
     "loggers": {
         "py.warnings": {"handlers": ["console"]},
-        "celery": {"handlers": ["console"], "level": "DEBUG"},
-        "celery.task": {"handlers": ["console"], "level": "DEBUG"},
+        "celery": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "celery.task": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "openwisp_firmware_upgrader.websockets": {
             "handlers": ["console"],
             "level": "DEBUG",
@@ -213,6 +237,13 @@ OPENWISP_CUSTOM_OPENWRT_IMAGES = (
     (
         "customimage-squashfs-sysupgrade.bin",
         {"label": "Custom WAP-1200", "boards": ("CWAP1200",)},
+    ),
+    (
+        "x86-64-generic-squashfs-combined.img.gz",
+        {
+            "label": "Generic x86/64 (BIOS)",
+            "boards": ("x86_64", "innotek-gmbh-virtualbox"),
+        },
     ),
 )
 OPENWISP_USERS_AUTH_API = True
@@ -239,6 +270,19 @@ if os.environ.get("SAMPLE_APP", False):
     FIRMWARE_UPGRADER_UPGRADEOPERATION_MODEL = (
         "sample_firmware_upgrader.UpgradeOperation"
     )
+
+    # For controller extended apps:
+    # Replace Connection
+    connection_index = INSTALLED_APPS.index("openwisp_controller.connection")
+    INSTALLED_APPS.remove("openwisp_controller.connection")
+    INSTALLED_APPS.insert(connection_index, "openwisp2.sample_connection")
+    # Extended apps
+    EXTENDED_APPS.append("openwisp_controller.connection")
+    # Swapper
+    CONNECTION_CREDENTIALS_MODEL = "sample_connection.Credentials"
+    CONNECTION_DEVICECONNECTION_MODEL = "sample_connection.DeviceConnection"
+    CONNECTION_COMMAND_MODEL = "sample_connection.Command"
+
 
 TEST_RUNNER = "openwisp_utils.tests.TimeLoggingTestRunner"
 

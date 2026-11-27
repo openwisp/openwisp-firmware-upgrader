@@ -242,22 +242,29 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
             if batch_operation:
                 # Get operations list
                 operations_list = await sync_to_async(list)(
-                    batch_operation.upgrade_operations.all()
+                    batch_operation.upgrade_operations.select_related(
+                        "device", "image__build__category"
+                    ).all()
                 )
-                # Serialize operations using the existing serializer
-                operations_data = await sync_to_async(
-                    lambda: UpgradeOperationSerializer(operations_list, many=True).data
-                )()
-                batch_status, stats = await sync_to_async(
-                    batch_operation.calculate_and_update_status
-                )()
+
+                def _serialize():
+                    data = UpgradeOperationSerializer(operations_list, many=True).data
+                    for op_data, op in zip(data, operations_list):
+                        op_data["device_id"] = str(op.device_id)
+                        op_data["device_name"] = op.device.name
+                        op_data["image_name"] = str(op.image) if op.image_id else None
+                    return data
+
+                operations_data = await sync_to_async(_serialize)()
+                stats = await sync_to_async(batch_operation.get_status_stats)()
                 # Send everything in ONE message
                 await self.send_json(
                     {
                         "type": "batch_state",
                         "batch_status": {
-                            "status": batch_status,
+                            "status": batch_operation.status,
                             "completed": stats["completed"],
+                            "pending": stats["pending"],
                             "total": stats["total_operations"],
                             "successful": stats["successful"],
                             "failed": stats["failed"],
@@ -329,6 +336,7 @@ class DeviceUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                         device_id=self.pk_,
                         status__in=[
                             "in-progress",
+                            "pending",
                             "success",
                             "failed",
                             "aborted",
@@ -443,6 +451,8 @@ class UpgradeProgressPublisher:
                     getattr(instance, "progress", 0),
                     instance.modified,
                     device_info,
+                    instance.retry_count,
+                    instance.next_retry_at,
                 )
                 batch_publisher.update_batch_status(instance.batch)
         except (ConnectionError, TimeoutError):
@@ -478,7 +488,14 @@ class BatchUpgradeProgressPublisher:
         _run_coroutine_safely(_send_message)
 
     def publish_operation_progress(
-        self, operation_id, status, progress, modified=None, device_info=None
+        self,
+        operation_id,
+        status,
+        progress,
+        modified=None,
+        device_info=None,
+        retry_count=None,
+        next_retry_at=None,
     ):
         progress_data = {
             "type": "operation_progress",
@@ -486,6 +503,8 @@ class BatchUpgradeProgressPublisher:
             "status": status,
             "progress": progress,
             "modified": modified.isoformat() if modified else None,
+            "retry_count": retry_count,
+            "next_retry_at": next_retry_at.isoformat() if next_retry_at else None,
         }
         # Add device information if available
         if device_info:
@@ -503,6 +522,7 @@ class BatchUpgradeProgressPublisher:
         status,
         completed,
         total,
+        pending=0,
         successful=0,
         failed=0,
         aborted=0,
@@ -513,6 +533,7 @@ class BatchUpgradeProgressPublisher:
                 "type": "batch_status",
                 "status": status,
                 "completed": completed,
+                "pending": pending,
                 "total": total,
                 "successful": successful,
                 "failed": failed,
@@ -529,6 +550,7 @@ class BatchUpgradeProgressPublisher:
             batch_status,
             stats["completed"],
             stats["total_operations"],
+            stats["pending"],
             successful=stats["successful"],
             failed=stats["failed"],
             aborted=stats["aborted"],

@@ -17,3 +17,6 @@
 #devicefirmware-group .form-row.field-upgrade_options {
   display: none;
 }
+.dynamic-upgradeoperation_set .delete:has(input[type="checkbox"][disabled]) {
+  display: none;
+}

@@ -1,3 +1,5 @@
+import os
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -5,15 +7,43 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path, reverse_lazy
 from django.views.generic import RedirectView
 
+from openwisp_controller.connection.api.urls import (
+    get_api_urls as get_connection_api_urls,
+)
+from openwisp_firmware_upgrader.urls import get_urls as get_firmware_upgrader_urls
 from openwisp_users.api.urls import get_api_urls
+
+from .sample_connection.api import views as connection_api_views
+from .sample_firmware_upgrader.api import views as firmware_upgrader_api_views
 
 redirect_view = RedirectView.as_view(url=reverse_lazy("admin:index"))
 
-urlpatterns = [
+urlpatterns = []
+
+if os.environ.get("SAMPLE_APP", False):
+    urlpatterns += [
+        path(
+            "",
+            include(
+                (
+                    get_connection_api_urls(connection_api_views),
+                    "connection_api",
+                ),
+                namespace="connection_api",
+            ),
+        ),
+    ]
+    # the sample app overrides only some of the API views, the
+    # remaining ones fall back to the standard implementation
+    firmware_upgrader_urls = get_firmware_upgrader_urls(firmware_upgrader_api_views)
+else:
+    firmware_upgrader_urls = "openwisp_firmware_upgrader.urls"
+
+urlpatterns += [
     path("admin/", admin.site.urls),
     path("", redirect_view, name="index"),
     path("", include("openwisp_controller.urls")),
-    path("", include("openwisp_firmware_upgrader.urls")),
+    path("", include(firmware_upgrader_urls)),
     # token auth API
     path("api/v1/", include((get_api_urls(), "users"), namespace="users")),
     # needed for API docs

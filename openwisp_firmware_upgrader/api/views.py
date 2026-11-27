@@ -4,25 +4,28 @@ import swapper
 from django.core.exceptions import ValidationError
 from django.http import Http404
 from django.utils.translation import gettext_lazy as _
-from django_filters.rest_framework import DjangoFilterBackend
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import filters, generics, pagination, serializers, status
+from rest_framework import filters, generics, serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.request import clone_request
 from rest_framework.response import Response
 from rest_framework.utils.serializer_helpers import ReturnDict
 
 from openwisp_firmware_upgrader import private_storage
+from openwisp_firmware_upgrader.constants import DEACTIVATED_DEVICE_FIRMWARE_ERROR
 from openwisp_users.api.mixins import FilterByOrganizationManaged, IsOrganizationManager
 from openwisp_users.api.mixins import ProtectedAPIMixin as BaseProtectedAPIMixin
 from openwisp_users.api.permissions import DjangoModelPermissions
+from openwisp_utils.api.pagination import OpenWispPagination
 
 from ..swapper import load_model
 from .filters import DeviceUpgradeOperationFilter, UpgradeOperationFilter
 from .serializers import (
     BatchUpgradeOperationListSerializer,
     BatchUpgradeOperationSerializer,
+    BatchUpgradeRescheduleSerializer,
     BatchUpgradeSerializer,
     BuildSerializer,
     CategorySerializer,
@@ -43,15 +46,41 @@ DeviceFirmware = load_model("DeviceFirmware")
 Device = swapper.load_model("config", "Device")
 
 
-class ListViewPagination(pagination.PageNumberPagination):
-    page_size = 10
-    page_size_query_param = "page_size"
-    max_page_size = 100
+def _message_response(description):
+    return openapi.Response(
+        description=description,
+        schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "message": openapi.Schema(
+                    type=openapi.TYPE_STRING, description=_("Success message")
+                )
+            },
+        ),
+    )
+
+
+def _error_response_schema(description):
+    return openapi.Response(
+        description=description,
+        schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "error": openapi.Schema(
+                    type=openapi.TYPE_STRING, description=_("Error message")
+                )
+            },
+        ),
+    )
+
+
+def _error_response(message, status_code):
+    return Response({"error": message}, status=status_code)
 
 
 class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
     throttle_scope = "firmware_upgrader"
-    pagination_class = ListViewPagination
+    pagination_class = OpenWispPagination
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -64,6 +93,30 @@ class ProtectedAPIMixin(BaseProtectedAPIMixin, FilterByOrganizationManaged):
             # when uuid is not valid
             qs = []
         return qs
+
+
+class RelatedDeviceAPIMixin(ProtectedAPIMixin):
+    """
+    Resolve and cache the device used by nested device firmware API views.
+    """
+
+    def get_device(self):
+        device = getattr(self, "_device", None)
+        if device is not None:
+            return device
+        parent_queryset = self.get_parent_queryset()
+        if not self.request.user.is_superuser:
+            parent_queryset = parent_queryset.filter(
+                organization__in=self.request.user.organizations_managed
+            )
+        device = parent_queryset.first()
+        self._device = device
+        return device
+
+    def assert_parent_exists(self):
+        device = self.get_device()
+        if not device:
+            raise NotFound(detail=_("device not found"))
 
 
 class BuildListView(ProtectedAPIMixin, generics.ListCreateAPIView):
@@ -83,12 +136,21 @@ class BuildDetailView(ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIView):
     organization_field = "category__organization"
 
 
+class BatchUpgradePermission(DjangoModelPermissions):
+    def get_required_permissions(self, method, model_cls):
+        """Authorize batch creation while retaining the Build's read permissions."""
+        if method == "POST":
+            model_cls = BatchUpgradeOperation
+        return super().get_required_permissions(method, model_cls)
+
+
 class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
     model = Build
     queryset = Build.objects.all().select_related("category")
     serializer_class = BatchUpgradeSerializer
     lookup_fields = ["pk"]
     organization_field = "category__organization"
+    permission_classes = (IsOrganizationManager, BatchUpgradePermission)
 
     def post(self, request, pk):
         """
@@ -100,11 +162,18 @@ class BuildBatchUpgradeView(ProtectedAPIMixin, generics.GenericAPIView):
         )
         serializer.is_valid(raise_exception=True)
         upgrade_all = serializer.validated_data.get("upgrade_all", False)
+        is_persistent = serializer.validated_data.get("is_persistent", True)
         group = serializer.validated_data.get("group")
         location = serializer.validated_data.get("location")
+        scheduled_at = serializer.validated_data.get("scheduled_at")
         try:
             batch = instance.batch_upgrade(
-                firmwareless=upgrade_all, group=group, location=location
+                firmwareless=upgrade_all,
+                group=group,
+                location=location,
+                is_persistent=is_persistent,
+                scheduled_at=scheduled_at,
+                initiated_by=request.user,
             )
         except ValidationError as e:
             return Response(
@@ -148,6 +217,18 @@ class CategoryDetailView(ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIVie
     organization_field = "organization"
 
 
+class BatchUpgradeOperationFilter(FilterSet):
+    class Meta:
+        model = BatchUpgradeOperation
+        fields = {
+            "build": ["exact"],
+            "status": ["exact"],
+            "is_persistent": ["exact"],
+            "created": ["exact"],
+            "scheduled_at": ["exact", "gte", "lte"],
+        }
+
+
 class BatchUpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     queryset = BatchUpgradeOperation.objects.all().select_related(
         "build", "build__category"
@@ -155,8 +236,8 @@ class BatchUpgradeOperationListView(ProtectedAPIMixin, generics.ListAPIView):
     serializer_class = BatchUpgradeOperationListSerializer
     organization_field = "build__category__organization"
     filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
-    filterset_fields = ["build", "status", "created"]
-    ordering_fields = ["created", "modified"]
+    filterset_class = BatchUpgradeOperationFilter
+    ordering_fields = ["created", "modified", "scheduled_at"]
     ordering = ["-created"]
 
 
@@ -277,7 +358,7 @@ class DeviceUpgradeOperationListView(DeviceUpgradeOperationMixin, generics.ListA
 
 
 class DeviceFirmwareDetailView(
-    ProtectedAPIMixin, generics.RetrieveUpdateDestroyAPIView
+    RelatedDeviceAPIMixin, generics.RetrieveUpdateDestroyAPIView
 ):
     serializer_class = DeviceFirmwareSerializer
     queryset = DeviceFirmware.objects.select_related("device", "image")
@@ -285,36 +366,32 @@ class DeviceFirmwareDetailView(
     lookup_url_kwarg = "pk"
     organization_field = "device__organization"
 
-    def get_object(self):
-        obj = super().get_object()
-        if self.request.method not in ("GET", "HEAD") and obj.device.is_deactivated():
-            raise PermissionDenied
-        return obj
-
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context.update({"device_id": self.kwargs["pk"]})
+        context.update({"device": getattr(self, "_device", None)})
         return context
+
+    def get_parent_queryset(self):
+        return Device.objects.filter(pk=self.kwargs["pk"])
 
     def get_serializer(self, *args, **kwargs):
         serializer = super().get_serializer(*args, **kwargs)
-        if kwargs.get("instance"):
+        instance = kwargs.get("instance") or (args[0] if args else None)
+        if instance:
+            serializer.context["device"] = instance.device
             image_qs = self._get_image_queryset(
-                kwargs.get("instance"), kwargs.get("instance").device
+                instance,
+                instance.device,
             )
             serializer.fields["image"].queryset = image_qs
         else:
-            device = self._get_device_object(serializer.context.get("device_id"))
+            device = serializer.context.get("device")
+            if device is None:
+                device = self.get_device()
+                serializer.context["device"] = device
             image_qs = self._get_image_queryset(device=device)
             serializer.fields["image"].queryset = image_qs
         return serializer
-
-    def _get_device_object(self, device_id):
-        try:
-            device = Device.objects.get(id=device_id)
-            return device
-        except Device.DoesNotExist:
-            return None
 
     def _get_image_queryset(self, device_firmware=None, device=None):
         if not device_firmware and not device:
@@ -329,13 +406,13 @@ class DeviceFirmwareDetailView(
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
-        instance = self.get_object_or_none()
+        instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
         if instance is None:
             self.perform_create(serializer)
-            instance = self.get_object_or_none()
+            instance = self.get_object()
             uo = instance.device.upgradeoperation_set.latest("created")
             data = self._get_response_data(serializer, uo)
             image_qs = self._get_image_queryset(uo, instance.device)
@@ -355,23 +432,30 @@ class DeviceFirmwareDetailView(
     def perform_update(self, serializer):
         serializer.save()
 
-    def get_object_or_none(self):
+    def get_object(self):
         try:
-            return self.get_object()
+            obj = super().get_object()
         except Http404:
             if self.request.method == "PUT":
                 # For PUT-as-create operation, we need to ensure that we have
                 # relevant permissions, as if this was a POST request. This
                 # will either raise a PermissionDenied exception, or simply
                 # return None.
+                self.assert_parent_exists()
+                if self._device.is_deactivated():
+                    raise PermissionDenied(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
                 self.check_permissions(clone_request(self.request, "POST"))
+                return None
             else:
                 # PATCH requests where the object does not exist should still
                 # return a 404 response.
                 raise
+        if self.request.method not in ("GET", "HEAD") and obj.device.is_deactivated():
+            raise PermissionDenied(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
+        return obj
 
 
-class UpgradeOperationCancelPermission(DjangoModelPermissions):
+class UpgradeActionPermission(DjangoModelPermissions):
     perms_map = {
         **DjangoModelPermissions.perms_map,
         "POST": ["%(app_label)s.change_%(model_name)s"],
@@ -383,7 +467,7 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
     serializer_class = serializers.Serializer
     permission_classes = (
         IsOrganizationManager,
-        UpgradeOperationCancelPermission,
+        UpgradeActionPermission,
     )
     lookup_field = "pk"
     organization_field = "device__organization"
@@ -392,31 +476,9 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
         operation_description=_("Cancel an upgrade operation"),
         operation_summary=_("Cancel upgrade operation"),
         responses={
-            200: openapi.Response(
-                description=_("Upgrade operation cancelled successfully"),
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "message": openapi.Schema(
-                            type=openapi.TYPE_STRING, description=_("Success message")
-                        )
-                    },
-                ),
-            ),
-            409: openapi.Response(
-                description=_("Operation cannot be cancelled"),
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "error": openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description=_(
-                                "Error message explaining why cancellation is not allowed"
-                            ),
-                        )
-                    },
-                ),
-            ),
+            200: _message_response(_("Upgrade operation cancelled successfully")),
+            404: _error_response_schema(_("Upgrade operation not found")),
+            409: _error_response_schema(_("Operation cannot be cancelled")),
         },
     )
     def post(self, request, pk):
@@ -424,17 +486,17 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
         try:
             operation = self.get_object()
         except Http404:
-            return self._error_response(
-                "Upgrade operation not found", status.HTTP_404_NOT_FOUND
+            return _error_response(
+                _("Upgrade operation not found"), status.HTTP_404_NOT_FOUND
             )
         try:
             operation.cancel()
         except ValueError as e:
-            return self._error_response(str(e), status.HTTP_409_CONFLICT)
+            return _error_response(str(e), status.HTTP_409_CONFLICT)
         except Exception:
             logger.exception("Failed to cancel upgrade operation %s", pk)
-            return self._error_response(
-                "Failed to cancel upgrade operation",
+            return _error_response(
+                _("Failed to cancel upgrade operation"),
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         else:
@@ -442,13 +504,115 @@ class UpgradeOperationCancelView(ProtectedAPIMixin, generics.GenericAPIView):
                 f"Upgrade operation {pk} cancelled successfully by user {request.user}"
             )
             return Response(
-                {"message": "Upgrade operation cancelled successfully"},
+                {"message": _("Upgrade operation cancelled successfully")},
                 status=status.HTTP_200_OK,
             )
 
-    def _error_response(self, message, status_code):
-        """Helper method to create consistent error responses."""
-        return Response({"error": message}, status=status_code)
+
+class BatchUpgradeRescheduleView(ProtectedAPIMixin, generics.GenericAPIView):
+    queryset = BatchUpgradeOperation.objects.select_related(
+        "build__category__organization"
+    )
+    serializer_class = BatchUpgradeRescheduleSerializer
+    permission_classes = (
+        IsOrganizationManager,
+        UpgradeActionPermission,
+    )
+    lookup_field = "pk"
+    organization_field = "build__category__organization"
+
+    @swagger_auto_schema(
+        operation_description=_("Reschedule or edit a scheduled mass upgrade"),
+        operation_summary=_("Reschedule mass upgrade"),
+        responses={
+            200: _message_response(_("Mass upgrade rescheduled")),
+            400: _error_response_schema(_("Invalid schedule or field")),
+            404: _error_response_schema(_("Mass upgrade not found")),
+            409: _error_response_schema(_("Mass upgrade is no longer scheduled")),
+        },
+    )
+    def post(self, request, pk):
+        serializer = self.get_serializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data:
+            return _error_response(
+                _("No editable fields were provided."),
+                status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            batch = self.get_object()
+        except Http404:
+            return _error_response(
+                _("Mass upgrade not found"), status.HTTP_404_NOT_FOUND
+            )
+        try:
+            batch.reschedule(**serializer.validated_data)
+        except ValueError as e:
+            return _error_response(str(e), status.HTTP_409_CONFLICT)
+        except ValidationError as e:
+            return _error_response(str(e.messages[0]), status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("Failed to reschedule mass upgrade %s", pk)
+            return _error_response(
+                _("Failed to reschedule mass upgrade"),
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        else:
+            logger.info(
+                f"Mass upgrade {pk} rescheduled successfully by user {request.user}"
+            )
+            return Response(
+                {"message": _("Mass upgrade rescheduled successfully")},
+                status=status.HTTP_200_OK,
+            )
+
+
+class BatchUpgradeCancelView(ProtectedAPIMixin, generics.GenericAPIView):
+    queryset = BatchUpgradeOperation.objects.select_related(
+        "build__category__organization"
+    )
+    serializer_class = serializers.Serializer
+    permission_classes = (
+        IsOrganizationManager,
+        UpgradeActionPermission,
+    )
+    lookup_field = "pk"
+    organization_field = "build__category__organization"
+
+    @swagger_auto_schema(
+        operation_description=_("Cancel a mass upgrade"),
+        operation_summary=_("Cancel mass upgrade"),
+        responses={
+            200: _message_response(_("Mass upgrade cancelled")),
+            404: _error_response_schema(_("Mass upgrade not found")),
+            409: _error_response_schema(_("Mass upgrade cannot be cancelled")),
+        },
+    )
+    def post(self, request, pk):
+        try:
+            batch = self.get_object()
+        except Http404:
+            return _error_response(
+                _("Mass upgrade not found"), status.HTTP_404_NOT_FOUND
+            )
+        try:
+            batch.cancel()
+        except ValueError as e:
+            return _error_response(str(e), status.HTTP_409_CONFLICT)
+        except Exception:
+            logger.exception("Failed to cancel mass upgrade %s", pk)
+            return _error_response(
+                _("Failed to cancel mass upgrade"),
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        else:
+            logger.info(
+                f"Mass upgrade {pk} cancelled successfully by user {request.user}"
+            )
+            return Response(
+                {"message": _("Mass upgrade cancelled successfully")},
+                status=status.HTTP_200_OK,
+            )
 
 
 build_list = BuildListView.as_view()
@@ -458,6 +622,8 @@ category_list = CategoryListView.as_view()
 category_detail = CategoryDetailView.as_view()
 batch_upgrade_operation_list = BatchUpgradeOperationListView.as_view()
 batch_upgrade_operation_detail = BatchUpgradeOperationDetailView.as_view()
+batch_upgrade_operation_reschedule = BatchUpgradeRescheduleView.as_view()
+batch_upgrade_operation_cancel = BatchUpgradeCancelView.as_view()
 firmware_image_list = FirmwareImageListView.as_view()
 firmware_image_detail = FirmwareImageDetailView.as_view()
 firmware_image_download = FirmwareImageDownloadView.as_view()

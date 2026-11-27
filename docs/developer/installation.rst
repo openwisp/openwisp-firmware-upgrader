@@ -3,6 +3,23 @@ Developer Installation Instructions
 
 .. include:: ../partials/developer-docs.rst
 
+The following diagram illustrates the role of the Firmware Upgrader module
+within the OpenWISP architecture.
+
+.. figure:: ../images/architecture-v2-openwisp-firmware-upgrader.png
+    :target: ../../_images/architecture-v2-openwisp-firmware-upgrader.png
+    :align: center
+    :alt: OpenWISP Architecture: Firmware Upgrader module
+
+    **OpenWISP Architecture: highlighted firmware upgrader module**
+
+.. important::
+
+    For an enhanced viewing experience, open the image above in a new
+    browser tab.
+
+    Refer to :doc:`/general/architecture` for more information.
+
 .. contents:: **Table of contents**:
     :depth: 2
     :local:
@@ -10,7 +27,7 @@ Developer Installation Instructions
 Requirements
 ------------
 
-- Python >= 3.8
+- Python >= 3.11
 - :doc:`OpenWISP Controller (and its dependencies)
   </controller/developer/installation>` >= 1.0.0
 
@@ -24,14 +41,20 @@ Install spatialite and sqlite:
     sudo apt-get install sqlite3 libsqlite3-dev openssl libssl-dev
     sudo apt-get install gdal-bin libproj-dev libgeos-dev libspatialite-dev libsqlite3-mod-spatialite
 
+    # For running E2E Selenium tests (Firefox is the default browser)
+    sudo apt install firefox chromium
+
 Installing for Development
 --------------------------
 
-Fork and clone the forked repository:
+Fork the `openwisp-firmware-upgrader repository
+<https://github.com/openwisp/openwisp-firmware-upgrader>`_ on GitHub, then
+clone your fork. Replace ``YOUR_GITHUB_USERNAME`` with your GitHub
+username:
 
 .. code-block:: shell
 
-    git clone git://github.com/<your_fork>/openwisp-firmware-upgrader
+    git clone git@github.com:YOUR_GITHUB_USERNAME/openwisp-firmware-upgrader.git
 
 Navigate into the cloned repository:
 

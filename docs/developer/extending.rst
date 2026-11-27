@@ -62,7 +62,7 @@ been removed:
 
 For more information about how to work with django projects and django
 apps, please refer to the `django documentation
-<https://docs.djangoproject.com/en/4.2/intro/tutorial01/>`_.
+<https://docs.djangoproject.com/en/5.2/intro/tutorial01/>`_.
 
 2. Install ``openwisp-firmware-upgrader``
 -----------------------------------------
@@ -138,7 +138,7 @@ You have to replicate and adapt that code in your project.
 
 For more information regarding the concept of ``AppConfig`` please refer
 to the `"Applications" section in the django documentation
-<https://docs.djangoproject.com/en/4.2/ref/applications/>`_.
+<https://docs.djangoproject.com/en/5.2/ref/applications/>`_.
 
 7. Create your Custom Models
 ----------------------------
@@ -153,7 +153,7 @@ You can add fields in a similar way in your ``models.py`` file.
 
     If you have questions about using, extending, or developing models,
     refer to the `"Models" section of the Django documentation
-    <https://docs.djangoproject.com/en/4.2/topics/db/models/>`_.
+    <https://docs.djangoproject.com/en/5.2/topics/db/models/>`_.
 
 8. Add Swapper Configurations
 -----------------------------
@@ -185,7 +185,7 @@ Create and apply database migrations:
 
 For more information, refer to the `"Migrations" section in the django
 documentation
-<https://docs.djangoproject.com/en/4.2/topics/migrations/>`_.
+<https://docs.djangoproject.com/en/5.2/topics/migrations/>`_.
 
 10. Create the Admin
 --------------------
@@ -199,7 +199,7 @@ are described below.
 For more information regarding how the django admin works, or how it can
 be customized, please refer to `"The django admin site" section in the
 django documentation
-<https://docs.djangoproject.com/en/4.2/ref/contrib/admin/>`_.
+<https://docs.djangoproject.com/en/5.2/ref/contrib/admin/>`_.
 
 1. Monkey Patching
 ~~~~~~~~~~~~~~~~~~
@@ -271,7 +271,7 @@ file in the test project.
 
 For more information about URL configuration in django, please refer to
 the `"URL dispatcher" section in the django documentation
-<https://docs.djangoproject.com/en/4.2/topics/http/urls/>`_.
+<https://docs.djangoproject.com/en/5.2/topics/http/urls/>`_.
 
 12. Create ``celery.py``
 ------------------------
@@ -283,6 +283,16 @@ file in the test project.
 For more information about the usage of celery in django, please refer to
 the `"First steps with Django" section in the celery documentation
 <https://docs.celeryproject.org/en/master/django/first-steps-with-django.html>`_.
+
+Persistent Mass Upgrade Tasks
+-----------------------------
+
+Deployments that use persistent mass upgrades must schedule
+``check_pending_upgrades`` and ``send_pending_upgrade_reminders`` with
+Celery Beat. The `test project settings
+<https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/tests/openwisp2/settings.py#L200-L209>`_
+show the reference task names and intervals. Production installers own the
+Celery Beat configuration, so adapt that reference to the deployment.
 
 13. Import the Automated Tests
 ------------------------------
@@ -310,7 +320,7 @@ Substitute ``myupgrader`` with the name you chose in step 1.
 
 For more information about automated tests in django, please refer to
 `"Testing in Django"
-<https://docs.djangoproject.com/en/4.2/topics/testing/>`_.
+<https://docs.djangoproject.com/en/5.2/topics/testing/>`_.
 
 Other Base Classes That Can be Inherited and Extended
 -----------------------------------------------------
@@ -373,7 +383,7 @@ Step 3: add an URL route pointing to your custom view in ``urls.py`` file:
 
 For more information regarding django views, please refer to the `"Class
 based views" section in the django documentation
-<https://docs.djangoproject.com/en/4.2/topics/class-based-views/>`_.
+<https://docs.djangoproject.com/en/5.2/topics/class-based-views/>`_.
 
 API Views
 ---------
@@ -389,6 +399,76 @@ The API code is stored in `openwisp_firmware_upgrader.api
 <https://github.com/openwisp/openwisp-firmware-upgrader/blob/master/openwisp_firmware_upgrader/api/>`_
 and is built using `django-rest-framework
 <http://openwisp.io/docs/developer/hacking-openwisp-python-django.html#why-django-rest-framework>`_
+
+The API URL helpers accept a custom views module: ``get_api_urls``
+(imported from ``openwisp_firmware_upgrader.api.urls``) and ``get_urls``
+(imported from ``openwisp_firmware_upgrader.urls``).
+
+The custom views module only needs to define the views you want to
+customize: whenever a view is missing, the helper falls back to the
+standard view, so there is no need to duplicate the full set of views. The
+default API URLs are already loaded automatically by the app with the
+standard views. Projects mount them with the default include ``path("",
+include("openwisp_firmware_upgrader.urls"))``. When customizing the API
+views, replace that include with the following one (do not add both), so
+the custom URLs take precedence:
+
+.. code-block:: python
+
+    from django.urls import include, path
+
+    from openwisp_firmware_upgrader.urls import get_urls
+    from myupgrader.api import views as api_views
+
+    urlpatterns = [
+        # ... other urls in your project ...
+        path("", include(get_urls(api_views))),
+    ]
+
+The views module may define only a subset of the views, for example:
+
+.. code-block:: python
+
+    # in myupgrader/api/views.py
+    from openwisp_firmware_upgrader.api.views import (
+        BuildListView as BaseBuildListView,
+    )
+
+
+    class BuildListView(BaseBuildListView):
+        pass
+
+
+    build_list = BuildListView.as_view()
+
+All other views (categories, firmware images, upgrade operations, etc.)
+fall back to the standard implementation. The custom views module must use
+the same attribute names used in ``openwisp_firmware_upgrader.api.views``.
+
+If you want to mount only the API URLs (without the private storage
+routes), use ``get_api_urls`` instead:
+
+.. code-block:: python
+
+    from django.urls import include, path
+
+    from openwisp_firmware_upgrader.api.urls import get_api_urls
+    from myupgrader.api import views as api_views
+
+    urlpatterns = [
+        path(
+            "api/v1/",
+            include(
+                (get_api_urls(api_views), "upgrader"),
+                namespace="upgrader",
+            ),
+        ),
+    ]
+
+``get_api_urls`` preserves the URL paths and names, while the ``upgrader``
+namespace is declared by the caller's ``include``, as shown above. Use
+``get_urls`` to also get the private storage routes and the
+``FIRMWARE_UPGRADER_API`` setting behavior.
 
 For more information regarding Django REST Framework API views, please
 refer to the `"Generic views" section in the Django REST Framework

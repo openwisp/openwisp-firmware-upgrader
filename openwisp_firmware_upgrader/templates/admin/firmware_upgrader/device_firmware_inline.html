@@ -5,5 +5,5 @@ var firmwareUpgraderSchema = {{ inline_admin_formset.formset.extra_context | def
 var owFirmwareUpgraderApiHost = {
     host: "{{ request.get_host|escapejs }}"
 };
-var owUpgradeOperationCancelUrl = "{% url 'upgrader:api_upgradeoperation_cancel' '00000000-0000-0000-0000-000000000000' %}";
+var owUpgradeOperationCancelUrl = "{{ inline_admin_formset.formset.upgrade_operation_cancel_url }}";
 </script>

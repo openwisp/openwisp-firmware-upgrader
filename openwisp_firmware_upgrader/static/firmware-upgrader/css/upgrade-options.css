@@ -8,6 +8,8 @@
 .readonly-upgrade-options li img {
   margin-right: 5px;
 }
-#upgradeoperation_form .submit-row {
+#upgradeoperation_form .submit-row:first-child,
+/* hide empty submit rows */
+#upgradeoperation_form .submit-row:not(:has(*)) {
   display: none;
 }

@@ -1,0 +1,21 @@
+name: Issue Assignment Bot
+on:
+  issue_comment: # zizmor: ignore[dangerous-triggers] Comments are the assignment interface; trusted bot code validates requests and issues.
+    types: [created]
+permissions: {}
+concurrency:
+  group: bot-autoassign-issue-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: true
+jobs:
+  respond-to-assign-request:
+    if: >
+      github.repository == 'openwisp/openwisp-firmware-upgrader' &&
+      github.event.issue.pull_request == null
+    permissions:
+      contents: read
+    uses: openwisp/openwisp-actions/.github/workflows/reusable-bot-autoassign.yml@d6cc603701fe96a84115b060d34e8844a969cc41 # 0.3.0
+    with:
+      bot_command: issue_assignment
+    secrets:
+      OPENWISP_BOT_APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
+      OPENWISP_BOT_PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}

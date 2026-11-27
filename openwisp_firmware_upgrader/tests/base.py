@@ -1,4 +1,6 @@
 import os
+from contextlib import contextmanager
+from datetime import timedelta
 from unittest import mock
 
 import swapper
@@ -7,6 +9,7 @@ from django.contrib.auth import get_permission_codename
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 
 from openwisp_controller.connection.tests.utils import CreateConnectionsMixin
 from openwisp_utils.tests.selenium import SeleniumTestMixin
@@ -17,9 +20,21 @@ Build = load_model("Build")
 Category = load_model("Category")
 FirmwareImage = load_model("FirmwareImage")
 DeviceFirmware = load_model("DeviceFirmware")
+BatchUpgradeOperation = load_model("BatchUpgradeOperation")
+UpgradeOperation = load_model("UpgradeOperation")
 Credentials = swapper.load_model("connection", "Credentials")
 DeviceGroup = swapper.load_model("config", "DeviceGroup")
 OrganizationUser = swapper.load_model("openwisp_users", "OrganizationUser")
+
+
+@contextmanager
+def time_travel(moment):
+    """Freeze ``timezone.now()`` at ``moment`` so backoff, the Beat scan
+    window and reminder cadence are deterministic."""
+    with mock.patch.object(timezone, "now", return_value=moment), mock.patch(
+        "model_utils.fields.now", return_value=moment
+    ):
+        yield moment
 
 
 class TestUpgraderMixin(CreateConnectionsMixin):
@@ -117,6 +132,34 @@ class TestUpgraderMixin(CreateConnectionsMixin):
         device_fw.full_clean()
         device_fw.save(upgrade=upgrade)
         return device_fw
+
+    def _create_batch_upgrade_operation(self, **kwargs):
+        if "build" not in kwargs:
+            kwargs["build"] = self._create_build()
+        return BatchUpgradeOperation.objects.create(**kwargs)
+
+    def _create_scheduled_batch(self, build=None, **kwargs):
+        if build is not None:
+            kwargs["build"] = build
+        opts = dict(
+            status="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+        )
+        opts.update(kwargs)
+        return self._create_batch_upgrade_operation(**opts)
+
+    def _create_upgrade_operation(self, device_fw=None, **kwargs):
+        if device_fw is None:
+            device_fw = self._create_device_firmware()
+        opts = dict(device=device_fw.device, image=device_fw.image)
+        opts.update(kwargs)
+        # Keep model validation separate so tests can prepare intermediate states.
+        return UpgradeOperation.objects.create(**opts)
+
+    def _create_pending_op(self, device_fw=None, **kwargs):
+        opts = dict(status="pending", is_persistent=True)
+        opts.update(kwargs)
+        return self._create_upgrade_operation(device_fw=device_fw, **opts)
 
     def _create_upgrade_env(
         self, device_firmware=True, upgrade_operation=False, **kwargs
@@ -219,15 +262,12 @@ class TestUpgraderMixin(CreateConnectionsMixin):
 class SeleniumTestMixin(SeleniumTestMixin):
     def _assert_no_js_errors(self, ignore_websockets=False):
         browser_logs = []
-        for log in self.get_browser_logs():
-            # capture SEVERE-level entries from both JS runtime and console API
-            if log.get("level") == "SEVERE" and log.get("source") in (
-                "javascript",
-                "console-api",
-            ):
-                if ignore_websockets and "websocket" in log.get("message", "").lower():
-                    continue
-                browser_logs.append(log)
+        for log in self.get_browser_errors():
+            if log.get("source") not in (None, "javascript", "console-api"):
+                continue
+            if ignore_websockets and "websocket" in log.get("message", "").lower():
+                continue
+            browser_logs.append(log)
         self.assertEqual(browser_logs, [])
 
 

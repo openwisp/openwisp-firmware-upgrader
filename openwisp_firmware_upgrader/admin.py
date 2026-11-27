@@ -7,25 +7,35 @@ import swapper
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
+from django.contrib.admin.actions import delete_selected
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import InvalidPage, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
-from django.shortcuts import redirect
+from django.forms.formsets import DELETION_FIELD_NAME
+from django.http import Http404, JsonResponse
+from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.templatetags.static import static
-from django.urls import resolve, reverse
+from django.urls import path, resolve, reverse
+from django.utils.formats import localize
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-from django.utils.timezone import localtime
+from django.utils.timezone import get_current_timezone_name, localtime
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 from reversion.admin import VersionAdmin
 
 from openwisp_controller.config.admin import DeactivatedDeviceReadOnlyMixin, DeviceAdmin
 from openwisp_users.multitenancy import MultitenantAdminMixin, MultitenantOrgFilter
-from openwisp_utils.admin import ReadOnlyAdmin, TimeReadonlyAdminMixin
+from openwisp_utils.admin import (
+    BlockDeleteAllowCascadeMixin,
+    ReadOnlyAdmin,
+    TimeReadonlyAdminMixin,
+)
 
+from . import settings as app_settings
+from .fields import NaiveSplitDateTimeField
 from .filters import (
     BuildCategoryFilter,
     BuildCategoryOrganizationFilter,
@@ -36,8 +46,12 @@ from .filters import (
     LocationFilter,
 )
 from .swapper import load_model
-from .utils import get_upgrader_schema_for_device
-from .widgets import FirmwareSchemaWidget, MassUpgradeSelect2Widget
+from .utils import get_upgrader_schema_for_device, reinterpret_in_timezone
+from .widgets import (
+    FirmwareSchemaWidget,
+    MassUpgradeSelect2Widget,
+    ScheduledDateTimeWidget,
+)
 
 logger = logging.getLogger(__name__)
 BatchUpgradeOperation = load_model("BatchUpgradeOperation")
@@ -51,6 +65,26 @@ DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 Organization = swapper.load_model("openwisp_users", "Organization")
 Location = swapper.load_model("geo", "Location")
 DeviceGroup = swapper.load_model("config", "DeviceGroup")
+
+
+def scoped_group_and_location_querysets(user, organization_id):
+    groups = DeviceGroup.objects.all()
+    locations = Location.objects.all()
+    if organization_id:
+        groups = groups.filter(organization_id=organization_id)
+        locations = locations.filter(organization_id=organization_id)
+    if not user.is_superuser:
+        managed = user.organizations_managed
+        groups = groups.filter(organization_id__in=managed)
+        locations = locations.filter(organization_id__in=managed)
+    return groups, locations
+
+
+IN_PROGRESS_DELETE_MESSAGE = _(
+    "Some selected operations are still in progress and cannot be deleted. "
+    "Remove them from the selection and try again."
+)
+IN_PROGRESS_STATUS = UpgradeOperation.CANCELLABLE_STATUS
 
 
 class BaseAdmin(MultitenantAdminMixin, TimeReadonlyAdminMixin, admin.ModelAdmin):
@@ -117,48 +151,130 @@ class BatchUpgradeConfirmationForm(forms.ModelForm):
         help_text=_("Limit the upgrade to devices at this location"),
         widget=MassUpgradeSelect2Widget(placeholder=_("Select a location")),
     )
+    is_persistent = forms.BooleanField(
+        initial=True,
+        required=False,
+        label=_(
+            "Keep retrying offline devices in the background "
+            "until they come online or the operation is cancelled"
+        ),
+    )
+    scheduled_at = NaiveSplitDateTimeField(
+        required=False,
+        widget=ScheduledDateTimeWidget(),
+        help_text=_(
+            "Leave empty to execute immediately, or pick a future date and "
+            "time to schedule this mass upgrade."
+        ),
+    )
 
     class Meta:
         model = BatchUpgradeOperation
-        fields = ("build", "group", "location", "upgrade_options")
+        fields = (
+            "build",
+            "group",
+            "location",
+            "upgrade_options",
+            "is_persistent",
+            "scheduled_at",
+        )
 
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop("user")
         super().__init__(*args, **kwargs)
         build = self.initial.get("build")
-        device_group_qs = DeviceGroup.objects
-        location_qs = Location.objects
-        organization_id = None
-        if build:
-            organization_id = build.category.organization_id
-        if organization_id:
-            device_group_qs = device_group_qs.filter(organization_id=organization_id)
-            location_qs = location_qs.filter(organization_id=organization_id)
-        if not self.user.is_superuser:
-            device_group_qs = device_group_qs.filter(
-                organization_id__in=self.user.organizations_managed
-            )
-            location_qs = location_qs.filter(
-                organization_id__in=self.user.organizations_managed
-            )
+        organization_id = build.category.organization_id if build else None
+        device_group_qs, location_qs = scoped_group_and_location_querysets(
+            self.user, organization_id
+        )
         self.fields["group"].queryset = device_group_qs
         self.fields["location"].queryset = location_qs
+
+    def clean(self):
+        cleaned_data = super().clean()
+        scheduled_at = cleaned_data.get("scheduled_at")
+        if scheduled_at:
+            tz_name = self.data.get("scheduled_at_tz") or get_current_timezone_name()
+            try:
+                cleaned_data["scheduled_at"] = reinterpret_in_timezone(
+                    scheduled_at, tz_name
+                )
+            except ValidationError as error:
+                self.add_error("scheduled_at", error)
+        return cleaned_data
 
     class Media:
         # We don't need to include any select2 JS/CSS files as they are
         # included by the JSONSchemaWidget used for upgrade_options.
         js = [
             "admin/js/jquery.init.js",
+            "firmware-upgrader/js/schedule-utils.js",
             "firmware-upgrader/js/upgrade-selected-confirmation.js",
             "firmware-upgrader/js/mass-upgrade-select2.js",
         ]
         css = {
             "all": [
                 "admin/css/forms.css",
+                "admin/css/widgets.css",
                 "admin/css/autocomplete.css",
                 "admin/css/ow-auto-filter.css",
                 "firmware-upgrader/css/upgrade-selected-confirmation.css",
             ]
+        }
+
+
+class BatchRescheduleForm(forms.Form):
+    scheduled_at = NaiveSplitDateTimeField(
+        required=False,
+        widget=ScheduledDateTimeWidget(),
+    )
+    group = forms.ModelChoiceField(
+        queryset=DeviceGroup.objects.none(),
+        required=False,
+        widget=MassUpgradeSelect2Widget(
+            attrs={"id": "batch-reschedule-group"},
+            placeholder=_("All groups"),
+        ),
+    )
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.none(),
+        required=False,
+        widget=MassUpgradeSelect2Widget(
+            attrs={"id": "batch-reschedule-location"},
+            placeholder=_("All locations"),
+        ),
+    )
+
+    def __init__(self, *args, user, organization_id=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        device_group_qs, location_qs = scoped_group_and_location_querysets(
+            user, organization_id
+        )
+        self.fields["group"].queryset = device_group_qs
+        self.fields["location"].queryset = location_qs
+
+    class Media:
+        extra = "" if getattr(settings, "DEBUG", False) else ".min"
+        i18n_name = admin.widgets.SELECT2_TRANSLATIONS.get(get_language())
+        i18n_file = (
+            ("admin/js/vendor/select2/i18n/%s.js" % i18n_name,) if i18n_name else ()
+        )
+        js = (
+            (
+                "admin/js/vendor/jquery/jquery%s.js" % extra,
+                "admin/js/vendor/select2/select2.full%s.js" % extra,
+            )
+            + i18n_file
+            + (
+                "admin/js/jquery.init.js",
+                "firmware-upgrader/js/mass-upgrade-select2.js",
+            )
+        )
+        css = {
+            "screen": (
+                "admin/css/vendor/select2/select2%s.css" % extra,
+                "admin/css/autocomplete.css",
+            )
         }
 
 
@@ -184,9 +300,11 @@ class BuildAdmin(BaseAdmin):
 
     @admin.action(
         description=_("Mass-upgrade devices related to the selected build"),
-        permissions=["change"],
+        permissions=["batch_upgrade"],
     )
     def upgrade_selected(self, request, queryset):
+        if not self.has_batch_upgrade_permission(request):
+            raise PermissionDenied
         opts = self.model._meta
         app_label = opts.app_label
         # multiple concurrent batch upgrades are not supported
@@ -208,6 +326,9 @@ class BuildAdmin(BaseAdmin):
         upgrade_options = request.POST.get("upgrade_options")
         group_id = request.POST.get("group")
         location_id = request.POST.get("location")
+        is_persistent = request.POST.get("is_persistent")
+        scheduled_at_date = request.POST.get("scheduled_at_0")
+        scheduled_at_time = request.POST.get("scheduled_at_1")
         build = queryset.first()
         form = BatchUpgradeConfirmationForm(initial={"build": build}, user=request.user)
         # upgrade has been confirmed
@@ -218,6 +339,10 @@ class BuildAdmin(BaseAdmin):
                     "build": build,
                     "group": group_id,
                     "location": location_id,
+                    "is_persistent": is_persistent,
+                    "scheduled_at_0": scheduled_at_date,
+                    "scheduled_at_1": scheduled_at_time,
+                    "scheduled_at_tz": request.POST.get("scheduled_at_tz"),
                 },
                 user=request.user,
             )
@@ -226,18 +351,27 @@ class BuildAdmin(BaseAdmin):
                 upgrade_options = form.cleaned_data["upgrade_options"]
                 group = form.cleaned_data.get("group")
                 location = form.cleaned_data.get("location")
+                scheduled_at = form.cleaned_data.get("scheduled_at")
                 try:
                     batch = build.batch_upgrade(
                         firmwareless=upgrade_all,
                         upgrade_options=upgrade_options,
                         group=group,
                         location=location,
+                        is_persistent=form.cleaned_data["is_persistent"],
+                        scheduled_at=scheduled_at,
+                        initiated_by=request.user,
                     )
-                    # Success message for when batch upgrade starts successfully
-                    text = _(
-                        "You can track the progress of this mass upgrade operation "
-                        "in this page."
-                    )
+                    if scheduled_at:
+                        text = _(
+                            "This mass upgrade has been scheduled. You can review "
+                            "or edit the schedule on this page."
+                        )
+                    else:
+                        text = _(
+                            "You can track the progress of this mass upgrade "
+                            "operation in this page."
+                        )
                     self.message_user(request, mark_safe(text), messages.SUCCESS)
                     url = reverse(
                         f"admin:{app_label}_batchupgradeoperation_change",
@@ -286,6 +420,9 @@ class BuildAdmin(BaseAdmin):
                 "opts": opts,
                 "action_checkbox_name": ACTION_CHECKBOX_NAME,
                 "media": self.media + form.media,
+                "schedule_min_delay": app_settings.SCHEDULE_MIN_DELAY,
+                "schedule_max_horizon": app_settings.SCHEDULE_MAX_HORIZON,
+                "server_timezone": settings.TIME_ZONE,
             }
         )
         request.current_app = self.admin_site.name
@@ -304,11 +441,17 @@ class BuildAdmin(BaseAdmin):
         app_label = self.model._meta.app_label
         extra_context = extra_context or {}
         upgrade_url = f"{app_label}_build_changelist"
-        extra_context.update({"upgrade_url": upgrade_url})
+        extra_context["upgrade_url"] = (
+            upgrade_url if self.has_batch_upgrade_permission(request) else None
+        )
         extra_context["django_locale"] = get_language()
         return super().change_view(
             request, object_id, extra_context=extra_context, **kwargs
         )
+
+    def has_batch_upgrade_permission(self, request):
+        opts = BatchUpgradeOperation._meta
+        return request.user.has_perm(f"{opts.app_label}.add_{opts.model_name}")
 
 
 class UpgradeOperationForm(forms.ModelForm):
@@ -322,9 +465,6 @@ class UpgradeOperationInline(admin.StackedInline):
     form = UpgradeOperationForm
     readonly_fields = UpgradeOperationForm.Meta.fields
     extra = 0
-
-    def has_delete_permission(self, request, obj):
-        return False
 
     def has_add_permission(self, request, obj):
         return False
@@ -362,18 +502,86 @@ class ReadonlyUpgradeOptionsMixin:
         )
 
 
+class BaseUpgradeAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+    actions = ["delete_selected"]
+
+    def get_actions(self, request, action_location=None):
+        # skip ReadOnlyAdmin
+        # for Django <= 6.0, which does not accept action_location
+        kwargs = {"action_location": action_location} if action_location else {}
+        return super(ReadOnlyAdmin, self).get_actions(request, **kwargs)
+
+    def delete_model(self, request, obj):
+        # skip ReadOnlyAdmin
+        super(ReadOnlyAdmin, self).delete_model(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        # allow deleting except if in-progress, in which case operation must
+        # be cancelled first or wait until resolved (success/failed).
+        if not super(ReadOnlyAdmin, self).has_delete_permission(request, obj):
+            return False
+        if obj and obj.status in IN_PROGRESS_STATUS:
+            if BlockDeleteAllowCascadeMixin.is_admin_cascade_delete_request(
+                self, request
+            ):
+                self._add_in_progress_upgrade_delete_error(request)
+            return False
+        return True
+
+    def _add_in_progress_upgrade_delete_error(self, request):
+        if getattr(request, "_in_progress_upgrade_delete_error", False):
+            return
+        self.message_user(
+            request,
+            _(
+                "This deletion is blocked because one or more upgrade operations are "
+                "in progress. Cancel them or wait for them to finish before "
+                "continuing."
+            ),
+            messages.ERROR,
+        )
+        request._in_progress_upgrade_delete_error = True
+
+    @admin.action(description=delete_selected.short_description, permissions=["delete"])
+    def delete_selected(self, request, queryset):
+        """Overrides default delete_selected action of from Django admin"""
+        if queryset.filter(status__in=IN_PROGRESS_STATUS).exists():
+            self.message_user(request, IN_PROGRESS_DELETE_MESSAGE, messages.ERROR)
+            return None
+        return delete_selected(self, request, queryset)
+
+
 @admin.register(UpgradeOperation)
-class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
+class UpgradeOperationAdmin(BaseUpgradeAdmin):
     form = UpgradeOperationForm
-    list_display = ["device", "status", "image", "modified"]
-    list_filter = ["status"]
+    list_display = [
+        "device",
+        "status",
+        "image",
+        "is_persistent",
+        "retry_count_display",
+        "modified",
+    ]
+    list_filter = ["status", "is_persistent"]
     search_fields = ["device__name"]
-    readonly_fields = ["device", "image", "status", "log", "modified"]
+    readonly_fields = [
+        "device",
+        "image",
+        "status",
+        "log",
+        "is_persistent",
+        "retry_count",
+        "next_retry_at",
+        "modified",
+    ]
     ordering = ["-modified"]
     fields = [
         "device",
         "image",
         "status",
+        "is_persistent",
+        "retry_count",
+        "next_retry_at",
         "log",
         "readonly_upgrade_options",
         "modified",
@@ -400,12 +608,20 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
 
     def change_view(self, request, object_id, extra_context=None, **kwargs):
         extra_context = extra_context or {}
-        extra_context["upgrade_operation_cancel_url"] = reverse(
-            "upgrader:api_upgradeoperation_cancel",
-            args=["00000000-0000-0000-0000-000000000000"],
+        extra_context["upgrade_operation_cancel_url"] = (
+            reverse(
+                "upgrader:api_upgradeoperation_cancel",
+                args=["00000000-0000-0000-0000-000000000000"],
+            )
+            if app_settings.FIRMWARE_UPGRADER_API
+            else ""
         )
         extra_context["django_locale"] = get_language()
         obj = self.get_object(request, object_id)
+        extra_context["upgrade_operation_state"] = {
+            "retry_count": obj.retry_count if obj else 0,
+            "next_retry_at": obj.next_retry_at if obj else None,
+        }
         # for custom breadcrumbs
         if obj and obj.batch_id:
             batch_opts = BatchUpgradeOperation._meta
@@ -442,21 +658,37 @@ class UpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmi
         fields = super().get_fields(request, obj).copy()
         if self._should_display_batch(obj, fields):
             fields.insert(1, "batch")
-        return fields
+        if not obj or obj.is_persistent:
+            return fields
+        return [
+            field for field in fields if field not in ("retry_count", "next_retry_at")
+        ]
+
+    @admin.display(description=_("retry count"), ordering="retry_count")
+    def retry_count_display(self, obj):
+        return obj.retry_count if obj.is_persistent else ""
 
     def has_add_permission(self, request):
         return False
 
-    def has_delete_permission(self, request, obj=None):
-        return False
-
 
 @admin.register(BatchUpgradeOperation)
-class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, BaseAdmin):
-    list_display = ["build", "organization", "status", "created", "modified"]
+class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
+    list_display = [
+        "build",
+        "organization",
+        "status",
+        "scheduled_at_display",
+        "is_persistent",
+        "firmwareless",
+        "created",
+        "modified",
+    ]
     list_filter = [
         BuildCategoryOrganizationFilter,
         "status",
+        "is_persistent",
+        "scheduled_at",
         BuildCategoryFilter,
         BuildFilter,
         GroupFilter,
@@ -470,7 +702,10 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         "build",
         "group",
         "location",
+        "is_persistent",
+        "firmwareless",
         "status",
+        "scheduled_at_display",
         "completed",
         "success_rate",
         "failed_rate",
@@ -482,6 +717,9 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     ]
     autocomplete_fields = ["build", "group", "location"]
     readonly_fields = [
+        "is_persistent",
+        "firmwareless",
+        "scheduled_at_display",
         "completed",
         "success_rate",
         "failed_rate",
@@ -517,6 +755,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
         status_choices = []
         # build a base QueryDict with all current GET params
         params = request.GET.copy()
+        params.pop("page", None)
 
         # generic choice builder used by both status and organization filters
         def _make_choice(current_value, display, param_name, value):
@@ -527,7 +766,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
             if value:
                 q[param_name] = value
             qs = q.urlencode()
-            query_string = f"?{qs}" if qs else ""
+            query_string = f"?{qs}"
             return {
                 "display": display,
                 "selected": current_value == value,
@@ -577,6 +816,118 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
             page_obj = paginator.page(1)
         return page_obj, paginator, page_obj.object_list
 
+    def get_urls(self):
+        opts = self.model._meta
+        prefix = f"{opts.app_label}_{opts.model_name}"
+        custom = [
+            path(
+                "<path:object_id>/reschedule/",
+                self.admin_site.admin_view(self.reschedule_view),
+                name=f"{prefix}_reschedule",
+            ),
+            path(
+                "<path:object_id>/cancel/",
+                self.admin_site.admin_view(self.cancel_view),
+                name=f"{prefix}_cancel",
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def _get_batch_for_action(self, request, object_id):
+        if request.method != "POST":
+            raise Http404
+        if not request.user.has_perm(
+            f"{self.model._meta.app_label}.change_batchupgradeoperation"
+        ):
+            raise PermissionDenied
+        return get_object_or_404(self.get_queryset(request), pk=object_id)
+
+    def reschedule_view(self, request, object_id):
+        batch = self._get_batch_for_action(request, object_id)
+        try:
+            data = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": _("Invalid request body.")}, status=400)
+        for field_name in ("is_persistent", "upgrade_all"):
+            if field_name in data and not isinstance(data[field_name], bool):
+                return JsonResponse(
+                    {
+                        "error": _("%(field)s must be a boolean.")
+                        % {"field": field_name}
+                    },
+                    status=400,
+                )
+        tz_name = data.get("scheduled_at_tz") or get_current_timezone_name()
+        field = NaiveSplitDateTimeField(required=False)
+        fields = {}
+        try:
+            if "scheduled_at_0" in data or "scheduled_at_1" in data:
+                parsed = field.clean(
+                    [data.get("scheduled_at_0"), data.get("scheduled_at_1")]
+                )
+                fields["scheduled_at"] = (
+                    reinterpret_in_timezone(parsed, tz_name) if parsed else None
+                )
+        except ValidationError as error:
+            return JsonResponse({"error": error.messages[0]}, status=400)
+        groups, locations = scoped_group_and_location_querysets(
+            request.user, batch.build.category.organization_id
+        )
+        try:
+            if "group" in data:
+                fields["group"] = (
+                    groups.get(pk=data["group"]) if data.get("group") else None
+                )
+            if "location" in data:
+                fields["location"] = (
+                    locations.get(pk=data["location"]) if data.get("location") else None
+                )
+        except (DeviceGroup.DoesNotExist, Location.DoesNotExist, ValidationError):
+            return JsonResponse(
+                {"error": _("The selected group or location is not valid.")}, status=400
+            )
+        if "is_persistent" in data:
+            fields["is_persistent"] = data["is_persistent"]
+        if "upgrade_all" in data:
+            fields["firmwareless"] = data["upgrade_all"]
+        try:
+            batch.reschedule(**fields)
+        except ValueError as error:
+            return JsonResponse({"error": str(error)}, status=409)
+        except ValidationError as error:
+            return JsonResponse({"error": error.messages[0]}, status=400)
+        return JsonResponse({"message": _("Mass upgrade rescheduled")})
+
+    def cancel_view(self, request, object_id):
+        batch = self._get_batch_for_action(request, object_id)
+        try:
+            batch.cancel()
+        except ValueError as error:
+            return JsonResponse({"error": str(error)}, status=409)
+        return JsonResponse({"message": _("Mass upgrade cancelled")})
+
+    def _get_batch_action_context(self, request, obj):
+        opts = self.model._meta
+        can_change = request.user.has_perm(f"{opts.app_label}.change_{opts.model_name}")
+        show_actions = can_change and obj.status in ("scheduled", "in-progress")
+        context = {"show_batch_actions": show_actions}
+        if not show_actions:
+            return context
+        prefix = f"admin:{opts.app_label}_{opts.model_name}"
+        context["batch_reschedule_url"] = reverse(f"{prefix}_reschedule", args=[obj.pk])
+        context["batch_cancel_url"] = reverse(f"{prefix}_cancel", args=[obj.pk])
+        if obj.status == "scheduled":
+            context["reschedule_form"] = BatchRescheduleForm(
+                user=request.user,
+                organization_id=obj.build.category.organization_id,
+                initial={
+                    "scheduled_at": obj.scheduled_at,
+                    "group": obj.group_id,
+                    "location": obj.location_id,
+                },
+            )
+        return context
+
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra_context = extra_context or {}
         obj = self.get_object(request, object_id)
@@ -593,6 +944,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
                 upgrades_qs = upgrades_qs.filter(status=current_status)
             if current_org:
                 upgrades_qs = upgrades_qs.filter(device__organization_id=current_org)
+            show_next_retry = obj.is_persistent
             # build filter specs and paginate results
             filter_specs = self._build_filter_specs(
                 request, obj, current_status, current_org
@@ -611,8 +963,13 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
                         request.GET.get(param) for param in ["status", "organization"]
                     ),
                     "upgrade_operation_app_label": upgrade_operation_app_label,
+                    "is_persistent": obj.is_persistent,
+                    "show_next_retry": show_next_retry,
+                    "batch": obj,
+                    "server_timezone": settings.TIME_ZONE,
                 }
             )
+            extra_context.update(self._get_batch_action_context(request, obj))
         return super().change_view(request, object_id, extra_context=extra_context)
 
     def get_readonly_fields(self, request, obj=None):
@@ -639,6 +996,17 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     def cancelled_rate(self, obj):
         return self.__get_rate(obj.cancelled_rate)
 
+    def scheduled_at_display(self, obj):
+        if not obj.scheduled_at:
+            return _("N/A")
+        local = localtime(obj.scheduled_at)
+        return format_html(
+            '<span class="ow-scheduled-at" data-scheduled-utc="{}">{} ({})</span>',
+            obj.scheduled_at.isoformat(),
+            localize(local),
+            local.tzinfo,
+        )
+
     def __get_rate(self, value):
         if value:
             return f"{value}%"
@@ -649,6 +1017,7 @@ class BatchUpgradeOperationAdmin(ReadonlyUpgradeOptionsMixin, ReadOnlyAdmin, Bas
     failed_rate.short_description = _("failure rate")
     aborted_rate.short_description = _("abortion rate")
     cancelled_rate.short_description = _("cancellation rate")
+    scheduled_at_display.short_description = _("scheduled at")
 
 
 class DeviceFirmwareForm(forms.ModelForm):
@@ -668,7 +1037,24 @@ class DeviceFirmwareForm(forms.ModelForm):
             device, device_firmware=self.instance
         )
 
+    def _has_credentials_in_form(self):
+        if not self.data:
+            return False
+        try:
+            total = int(self.data.get("deviceconnection_set-TOTAL_FORMS", 0))
+        except (TypeError, ValueError):
+            return False
+        for i in range(total):
+            prefix = f"deviceconnection_set-{i}"
+            has_cred = self.data.get(f"{prefix}-credentials")
+            is_deleted = self.data.get(f"{prefix}-DELETE")
+            if has_cred and not is_deleted:
+                return True
+        return False
+
     def full_clean(self):
+        if self._has_credentials_in_form():
+            self.instance._skip_connection_check = True
         super().full_clean()
         if not self.is_bound:
             return
@@ -711,6 +1097,19 @@ class DeviceFormSet(forms.BaseInlineFormSet):
         return kwargs
 
 
+class DeviceUpgradeOperationFormSet(DeviceFormSet):
+    """Disable inline deletion of in-progress operations server-side."""
+
+    def add_fields(self, form, index):
+        super().add_fields(form, index)
+        if (
+            form.instance.pk
+            and form.instance.status in IN_PROGRESS_STATUS
+            and DELETION_FIELD_NAME in form.fields
+        ):
+            form.fields[DELETION_FIELD_NAME].disabled = True
+
+
 class DeviceFirmwareInline(
     MultitenantAdminMixin, DeactivatedDeviceReadOnlyMixin, admin.StackedInline
 ):
@@ -747,6 +1146,13 @@ class DeviceFirmwareInline(
 
     def get_formset(self, request, obj=None, **kwargs):
         formset = super().get_formset(request, obj=obj, **kwargs)
+        if app_settings.FIRMWARE_UPGRADER_API:
+            formset.upgrade_operation_cancel_url = reverse(
+                "upgrader:api_upgradeoperation_cancel",
+                args=["00000000-0000-0000-0000-000000000000"],
+            )
+        else:
+            formset.upgrade_operation_cancel_url = ""
         if obj:
             try:
                 schema = get_upgrader_schema_for_device(obj)
@@ -770,7 +1176,7 @@ class DeviceUpgradeOperationForm(UpgradeOperationForm):
 class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperationInline):
     verbose_name = _("Recent Firmware Upgrades")
     verbose_name_plural = verbose_name
-    formset = DeviceFormSet
+    formset = DeviceUpgradeOperationFormSet
     form = DeviceUpgradeOperationForm
     # hack for openwisp-monitoring integration
     # TODO: remove when this issue solved:
@@ -812,7 +1218,7 @@ class DeviceUpgradeOperationInline(ReadonlyUpgradeOptionsMixin, UpgradeOperation
                 device_id=resolved.kwargs["object_id"], created__gte=seven_days
             ).order_by("-created")
         if select_related:
-            qs = qs.select_related()
+            qs = qs.select_related("device__organization")
         return qs
 
     def _get_conditional_queryset(self, request, obj, select_related=False):

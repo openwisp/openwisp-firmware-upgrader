@@ -1,0 +1,68 @@
+name: CI Failure Bot
+
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] Privileged analysis follows failed PR CI and treats PR code and logs as data only.
+    workflows: ["OpenWISP Firmware Upgrader CI Build"]
+    types:
+      - completed
+
+permissions: {}
+
+concurrency:
+  group: ci-failure-${{ github.repository }}-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  find-pr:
+    name: Find failed CI pull request
+    runs-on: ubuntu-latest
+    if: >
+      github.repository == 'openwisp/openwisp-firmware-upgrader' &&
+      github.event.workflow_run.name == 'OpenWISP Firmware Upgrader CI Build' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+    permissions:
+      contents: read # Checks out the pinned PR lookup script.
+      pull-requests: read # Locates the pull request associated with the failed workflow run.
+    outputs:
+      pr_number: ${{ steps.pr.outputs.number }}
+      pr_author: ${{ steps.pr.outputs.author }}
+    steps:
+      - name: Checkout pinned CI failure scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openwisp/openwisp-actions
+          ref: d6cc603701fe96a84115b060d34e8844a969cc41 # 0.3.0
+          path: openwisp-actions
+          persist-credentials: false
+
+      - name: Find PR Number
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER_PAYLOAD: ${{ github.event.workflow_run.pull_requests[0].number }}
+          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          EVENT_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/caller/find_pr.sh
+
+  call-ci-failure-bot:
+    needs: find-pr
+    if: ${{ needs.find-pr.outputs.pr_number != '' }}
+    permissions:
+      contents: read
+    uses: openwisp/openwisp-actions/.github/workflows/reusable-bot-ci-failure.yml@d6cc603701fe96a84115b060d34e8844a969cc41 # 0.3.0
+    with:
+      pr_number: ${{ needs.find-pr.outputs.pr_number }}
+      head_sha: ${{ github.event.workflow_run.head_sha }}
+      base_sha: ${{ github.event.workflow_run.pull_requests[0].base.sha }}
+      head_repo: ${{ github.event.workflow_run.head_repository.full_name }}
+      base_repo: ${{ github.repository }}
+      run_id: ${{ format('{0}', github.event.workflow_run.id) }}
+      pr_author: ${{ needs.find-pr.outputs.pr_author }}
+      actor: ${{ github.event.workflow_run.actor.login }}
+    secrets:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
+      PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}

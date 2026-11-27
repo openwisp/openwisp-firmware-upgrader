@@ -179,3 +179,10 @@ either confirm the operation or cancel.
 
 Once the operation is confirmed you will be redirected to a page in which
 you can monitor the progress of the upgrade operations in real time.
+
+.. note::
+
+    Mass upgrades require permission to add batch upgrade operations, in
+    addition to access to the selected build. If the mass-upgrade action
+    is missing, ask your administrator to grant this permission to your
+    role.

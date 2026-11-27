@@ -1,0 +1,21 @@
+name: PR Issue Auto-Assignment
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] Required for issue assignment on fork PRs; the workflow runs trusted bot code only.
+    types: [opened, reopened, closed, edited, ready_for_review]
+permissions: {}
+concurrency:
+  group: bot-autoassign-pr-link-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  auto-assign-issue:
+    if: >
+      github.repository == 'openwisp/openwisp-firmware-upgrader' &&
+      (github.event.action != 'closed' || github.event.pull_request.merged == false)
+    permissions:
+      contents: read
+    uses: openwisp/openwisp-actions/.github/workflows/reusable-bot-autoassign.yml@d6cc603701fe96a84115b060d34e8844a969cc41 # 0.3.0
+    with:
+      bot_command: issue_assignment
+    secrets:
+      OPENWISP_BOT_APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
+      OPENWISP_BOT_PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}

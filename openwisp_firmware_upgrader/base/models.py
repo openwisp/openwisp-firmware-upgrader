@@ -1,10 +1,13 @@
 import logging
+import random
+from datetime import timedelta
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
 
 import jsonschema
 import swapper
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator
 from django.db import models, transaction
@@ -12,6 +15,9 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
+from kombu.exceptions import OperationalError
+from openwisp_notifications.signals import notify
 from private_storage.fields import PrivateFileField
 
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
@@ -19,6 +25,10 @@ from openwisp_users.mixins import ShareableOrgMixin
 from openwisp_utils.base import TimeStampedEditableModel
 
 from .. import settings as app_settings
+from ..constants import (
+    DEACTIVATED_DEVICE_FIRMWARE_ERROR,
+    DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR,
+)
 from ..exceptions import (
     FirmwareUpgradeOptionsException,
     ReconnectionFailed,
@@ -38,10 +48,12 @@ from ..tasks import (
     batch_upgrade_operation,
     create_all_device_firmwares,
     create_device_firmware,
+    retry_pending_upgrade,
     upgrade_firmware,
 )
 from ..utils import (
     UpgradeProgress,
+    escape_notification_message,
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
@@ -50,6 +62,10 @@ from ..utils import (
 logger = logging.getLogger(__name__)
 PROGRESS_MIN = 0
 PROGRESS_MAX = 100
+
+
+def lock_category(category_id):
+    load_model("Category").objects.select_for_update().filter(pk=category_id).first()
 
 
 class UpgradeOptionsMixin(models.Model):
@@ -61,12 +77,18 @@ class UpgradeOptionsMixin(models.Model):
     def validate_upgrade_options(self):
         if not self.upgrade_options:
             return
-        if not getattr(self.upgrader_class, "SCHEMA"):
+        try:
+            upgrader_class = self.upgrader_class
+        except ObjectDoesNotExist:
+            raise ValidationError(
+                _("No related connection or credentials found for this device.")
+            )
+        if not getattr(upgrader_class, "SCHEMA"):
             raise ValidationError(
                 _("Using upgrade options is not allowed with this upgrader.")
             )
         try:
-            self.upgrader_class.validate_upgrade_options(self.upgrade_options)
+            upgrader_class.validate_upgrade_options(self.upgrade_options)
         except jsonschema.ValidationError:
             raise ValidationError("The upgrade options are invalid")
         except FirmwareUpgradeOptionsException as error:
@@ -75,6 +97,15 @@ class UpgradeOptionsMixin(models.Model):
     def clean(self):
         super().clean()
         self.validate_upgrade_options()
+
+
+class StatusTrackingMixin:
+    @classmethod
+    def from_db(cls, db, field_names, values, **kwargs):
+        instance = super().from_db(db, field_names, values, **kwargs)
+        if "status" in field_names:
+            instance._previous_status = instance.status
+        return instance
 
 
 class AbstractCategory(ShareableOrgMixin, TimeStampedEditableModel):
@@ -162,9 +193,17 @@ class AbstractBuild(TimeStampedEditableModel):
             )
 
     def batch_upgrade(
-        self, firmwareless, upgrade_options=None, group=None, location=None
+        self,
+        firmwareless,
+        upgrade_options=None,
+        group=None,
+        location=None,
+        is_persistent=True,
+        scheduled_at=None,
+        initiated_by=None,
     ):
         upgrade_options = upgrade_options or {}
+        firmwareless = bool(firmwareless)
         # Check if there are any devices to upgrade with the given filters
         dry_run_result = load_model("BatchUpgradeOperation").dry_run(
             build=self, group=group, location=location
@@ -181,10 +220,22 @@ class AbstractBuild(TimeStampedEditableModel):
                 )
             )
         batch = load_model("BatchUpgradeOperation")(
-            build=self, upgrade_options=upgrade_options, group=group, location=location
+            build=self,
+            upgrade_options=upgrade_options,
+            group=group,
+            location=location,
+            is_persistent=is_persistent,
+            firmwareless=firmwareless,
+            scheduled_at=scheduled_at,
+            initiated_by=initiated_by,
+            status="scheduled" if scheduled_at else "idle",
         )
-        batch.full_clean()
-        batch.save()
+        with transaction.atomic():
+            lock_category(self.category_id)
+            batch.full_clean()
+            batch.save()
+        if scheduled_at:
+            return batch
         transaction.on_commit(
             partial(batch_upgrade_operation.delay, batch.pk, firmwareless)
         )
@@ -206,6 +257,7 @@ class AbstractBuild(TimeStampedEditableModel):
             .select_related(*related)
             .filter(image__build__category_id=self.category_id)
             .exclude(image__build=self, installed=True)
+            .exclude(device___is_deactivated=True)
             .order_by("-created")
         )
         if group:
@@ -227,7 +279,7 @@ class AbstractBuild(TimeStampedEditableModel):
         qs = Device.objects.filter(
             devicefirmware__isnull=True,
             model__in=boards,
-        )
+        ).exclude(_is_deactivated=True)
         if self.category.organization_id:
             qs = qs.filter(organization_id=self.category.organization_id)
         if group:
@@ -391,6 +443,8 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def clean(self):
         if not hasattr(self, "image") or not hasattr(self, "device"):
             return
+        if self.device.is_deactivated():
+            raise ValidationError(DEACTIVATED_DEVICE_FIRMWARE_ERROR)
         if (
             self.image.build.category.organization is not None
             and self.image.build.category.organization != self.device.organization
@@ -403,7 +457,19 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
                     )
                 }
             )
-        if self.device.deviceconnection_set.count() < 1:
+        # When an admin adds credentials and changes the firmware image in the
+        # same save, the new credentials haven't been persisted yet at the time
+        # this check runs, so without `_skip_connection_check` the form would
+        # wrongly reject the change with "please add credentials".
+        # `DeviceFirmwareForm` sets the flag when it sees credentials in the
+        # submitted data.
+        skip_connection_check = getattr(self, "_skip_connection_check", False)
+        will_start_upgrade = self.image_has_changed or not self.installed
+        if (
+            will_start_upgrade
+            and not skip_connection_check
+            and self.device.deviceconnection_set.count() < 1
+        ):
             raise ValidationError(
                 _(
                     "This device does not have a related connection object defined "
@@ -418,13 +484,25 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
     def image_has_changed(self):
         return self._state.adding or self.image_id != self._old_image.id
 
-    def save(self, batch=None, upgrade=True, upgrade_options=None, *args, **kwargs):
+    def save(
+        self,
+        batch=None,
+        upgrade=True,
+        upgrade_options=None,
+        is_persistent=False,
+        *args,
+        **kwargs,
+    ):
         # if firwmare image has changed launch upgrade
         # upgrade won't be launched the first time
         if upgrade and (self.image_has_changed or not self.installed):
             self.installed = False
             super().save(*args, **kwargs)
-            self.create_upgrade_operation(batch, upgrade_options=upgrade_options or {})
+            self.create_upgrade_operation(
+                batch,
+                upgrade_options=upgrade_options or {},
+                is_persistent=is_persistent,
+            )
         else:
             super().save(*args, **kwargs)
         self._update_old_image()
@@ -433,18 +511,26 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         if hasattr(self, "image"):
             self._old_image = self.image
 
-    def create_upgrade_operation(self, batch, upgrade_options=None):
+    def create_upgrade_operation(
+        self, batch, upgrade_options=None, is_persistent=False
+    ):
         uo_model = load_model("UpgradeOperation")
         operation = uo_model(
-            device=self.device, image=self.image, upgrade_options=upgrade_options
+            device=self.device,
+            image=self.image,
+            upgrade_options=upgrade_options,
+            is_persistent=is_persistent,
         )
         if batch:
             operation.batch = batch
+            operation.is_persistent = batch.is_persistent
+        if operation.is_persistent:
+            operation.claimed_at = timezone.now()
         operation.full_clean()
         operation.save()
         # launch ``upgrade_firmware`` in the background (celery)
         # once changes are committed to the database
-        transaction.on_commit(partial(upgrade_firmware.delay, operation.pk))
+        transaction.on_commit(operation.dispatch)
         return operation
 
     @classmethod
@@ -523,7 +609,9 @@ class AbstractDeviceFirmware(TimeStampedEditableModel):
         return qs
 
 
-class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
+class AbstractBatchUpgradeOperation(
+    StatusTrackingMixin, UpgradeOptionsMixin, TimeStampedEditableModel
+):
     build = models.ForeignKey(get_model_name("Build"), on_delete=models.CASCADE)
     group = models.ForeignKey(
         swapper.get_model_name("config", "DeviceGroup"),
@@ -541,6 +629,7 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     )
     STATUS_CHOICES = (
         ("idle", _("idle")),
+        ("scheduled", _("scheduled")),
         ("in-progress", _("in progress")),
         ("success", _("completed successfully")),
         ("failed", _("completed with some failures")),
@@ -549,11 +638,60 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0]
     )
+    is_persistent = models.BooleanField(
+        default=True,
+        verbose_name=_("persistent"),
+        help_text=_(
+            "if enabled, the system will keep retrying upgrades "
+            "for offline devices until they succeed or are cancelled"
+        ),
+    )
+    last_reminder_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("last reminder at"),
+        help_text=_(
+            "timestamp of the last pending-upgrade reminder fired for "
+            "this batch, null if no reminder has been sent yet"
+        ),
+    )
+    scheduled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("scheduled at"),
+        help_text=_(
+            "future date and time at which this mass upgrade is "
+            "launched, null for an immediate upgrade"
+        ),
+    )
+    firmwareless = models.BooleanField(
+        default=False,
+        verbose_name=_("firmwareless"),
+        help_text=_(
+            "whether to include devices that have no existing firmware "
+            "record when this mass upgrade launches"
+        ),
+    )
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+        verbose_name=_("initiated by"),
+        help_text=_(
+            "user who requested this mass upgrade; their access is re-checked "
+            "when a scheduled upgrade launches"
+        ),
+    )
 
     class Meta:
         abstract = True
         verbose_name = _("Mass upgrade operation")
         verbose_name_plural = _("Mass upgrade operations")
+        indexes = [
+            models.Index(fields=["status", "scheduled_at"]),
+        ]
 
     def __str__(self):
         return f"{self.build} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
@@ -586,13 +724,341 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                     )
                 }
             )
+        stored = None if self._state.adding else self._fetch_stored_row()
+        self._validate_schedule(stored)
+        self._validate_is_persistent_immutable(stored)
+        self._validate_scheduled_editability(stored)
+        self._validate_no_conflict()
 
-    def upgrade(self, firmwareless):
-        self.status = "in-progress"
-        self.save()
-        self.upgrade_related_devices()
-        if firmwareless:
-            self.upgrade_firmwareless_devices()
+    def _fetch_stored_row(self):
+        return (
+            load_model("BatchUpgradeOperation")
+            .objects.values(
+                "status",
+                "is_persistent",
+                "build_id",
+                "upgrade_options",
+                "scheduled_at",
+                "firmwareless",
+            )
+            .get(pk=self.pk)
+        )
+
+    def _validate_schedule(self, stored):
+        """
+        Enforce the min-delay/max-horizon bounds only when the schedule is set
+        or changed; an unchanged stored time is left alone so a now-due batch
+        is not rejected at launch.
+        """
+        if self.scheduled_at is None:
+            if self.status == "scheduled":
+                raise ValidationError(
+                    {
+                        "scheduled_at": _(
+                            "A scheduled mass upgrade must have a scheduled time; "
+                            "cancel it instead of clearing the time."
+                        )
+                    }
+                )
+            return
+        if stored is not None:
+            stored_at = stored["scheduled_at"]
+            # The admin submits only hours and minutes. Keeping the same minute
+            # must preserve stored seconds, not count as a new schedule.
+            if stored_at is not None and self.scheduled_at.replace(
+                second=0, microsecond=0
+            ) == stored_at.replace(second=0, microsecond=0):
+                self.scheduled_at = stored_at
+                return
+        now = timezone.now()
+        min_delay = app_settings.SCHEDULE_MIN_DELAY
+        max_horizon = app_settings.SCHEDULE_MAX_HORIZON
+        if self.scheduled_at < now + timedelta(seconds=min_delay):
+            minutes = max(1, -(-min_delay // 60))
+            raise ValidationError(
+                {
+                    "scheduled_at": ngettext(
+                        "The scheduled time must be at least %(minutes)d "
+                        "minute in the future.",
+                        "The scheduled time must be at least %(minutes)d "
+                        "minutes in the future.",
+                        minutes,
+                    )
+                    % {"minutes": minutes}
+                }
+            )
+        if self.scheduled_at > now + timedelta(seconds=max_horizon):
+            days = max(1, -(-max_horizon // 86400))
+            raise ValidationError(
+                {
+                    "scheduled_at": ngettext(
+                        "The scheduled time cannot be more than %(days)d "
+                        "day in the future.",
+                        "The scheduled time cannot be more than %(days)d "
+                        "days in the future.",
+                        days,
+                    )
+                    % {"days": days}
+                }
+            )
+
+    def _validate_is_persistent_immutable(self, stored):
+        """
+        Reject changes to ``is_persistent`` once the batch has left the
+        pre-launch states. ``idle`` and ``scheduled`` batches haven't
+        dispatched anything yet, so the flag can still flip; after that
+        the retry pipeline relies on it staying stable.
+        """
+        if stored is None or stored["status"] in ("idle", "scheduled"):
+            return
+        if self.is_persistent != stored["is_persistent"]:
+            raise ValidationError(
+                {
+                    "is_persistent": _(
+                        "Persistent cannot be changed after the mass "
+                        "upgrade has started"
+                    )
+                }
+            )
+
+    def _validate_scheduled_editability(self, stored):
+        """
+        Keep the chosen firmware and upgrade options fixed after scheduling.
+        Operators can still change when and which devices to upgrade while
+        waiting, but once launch starts those choices must stay consistent
+        with the device operations that have already been created.
+        """
+        if stored is None or stored["status"] == "idle":
+            return
+        if self.build_id != stored["build_id"]:
+            raise ValidationError(
+                {
+                    "build": _(
+                        "The build cannot be changed once the mass upgrade "
+                        "has been scheduled or started"
+                    )
+                }
+            )
+        if self.upgrade_options != stored["upgrade_options"]:
+            raise ValidationError(
+                {
+                    "upgrade_options": _(
+                        "The upgrade options cannot be changed once the mass "
+                        "upgrade has been scheduled or started"
+                    )
+                }
+            )
+        if stored["status"] == "scheduled" and self.status == "scheduled":
+            return
+        if self.scheduled_at != stored["scheduled_at"]:
+            raise ValidationError(
+                {
+                    "scheduled_at": _(
+                        "The scheduled time cannot be changed after the mass "
+                        "upgrade has started"
+                    )
+                }
+            )
+        if self.firmwareless != stored["firmwareless"]:
+            raise ValidationError(
+                {
+                    "firmwareless": _(
+                        "The firmwareless option cannot be changed after the "
+                        "mass upgrade has started"
+                    )
+                }
+            )
+
+    def _filters_overlap_with(self, batch):
+        if self.build.category_id != batch.build.category_id:
+            return False
+        group_overlaps = (
+            self.group_id is None
+            or batch.group_id is None
+            or self.group_id == batch.group_id
+        )
+        location_overlaps = (
+            self.location_id is None
+            or batch.location_id is None
+            or self.location_id == batch.location_id
+        )
+        return group_overlaps and location_overlaps
+
+    def _validate_no_conflict(self):
+        """
+        Reject creation or update (including reschedules and status edits)
+        when an active batch or an active per-device operation already covers
+        this batch's device population: launching a second upgrade over the
+        same devices would flash them twice and make progress reporting
+        meaningless.
+        """
+        conflict = self._find_conflict()
+        if conflict:
+            raise ValidationError(conflict)
+
+    def _find_conflict(self):
+        """
+        Check whether another active upgrade could target the same devices.
+
+        - Check other waiting or running batches for the same firmware category.
+          Their group and location filters may select the same devices. A missing
+          filter means all groups or locations are included.
+        - Check whether any selected device already has a running upgrade or a
+          pending retry, including upgrades started outside a batch.
+
+        Return a message identifying the conflict, or None if there is none.
+        Check both when saving the schedule and when launching it, because
+        another upgrade may have started while this batch was waiting.
+        """
+        # Unset group/location filters cover every value, so compare populations
+        # rather than requiring two batches to have identical filters.
+        Batch = load_model("BatchUpgradeOperation")
+        active = (
+            Batch.objects.filter(
+                status__in=("idle", "scheduled", "in-progress"),
+                build__category_id=self.build.category_id,
+            )
+            .exclude(pk=self.pk)
+            .select_related("build")
+        )
+        for existing in active.iterator():
+            if self._filters_overlap_with(existing):
+                if existing.scheduled_at:
+                    local = timezone.localtime(existing.scheduled_at)
+                    when = "%s (%s)" % (local.strftime("%Y-%m-%d %H:%M"), local.tzinfo)
+                else:
+                    when = _("immediate execution")
+                return _(
+                    "A conflicting mass upgrade already exists: operation "
+                    "%(pk)s (status: %(status)s, scheduled for %(when)s)."
+                ) % {
+                    "pk": existing.pk,
+                    "status": existing.get_status_display(),
+                    "when": when,
+                }
+        # Standalone upgrades have no batch filters. Check their device IDs
+        # against both recorded-firmware and optional firmwareless targets.
+        UpgradeOperation = load_model("UpgradeOperation")
+        device_filter = models.Q(
+            device_id__in=self.build._find_related_device_firmwares(
+                group=self.group, location=self.location
+            ).values_list("device_id", flat=True)
+        )
+        if self.firmwareless:
+            device_filter |= models.Q(
+                device_id__in=self.build._find_firmwareless_devices(
+                    group=self.group, location=self.location
+                ).values_list("pk", flat=True)
+            )
+        clashing = UpgradeOperation.objects.filter(
+            device_filter, status__in=UpgradeOperation.CANCELLABLE_STATUS
+        )
+        if self.pk is not None:
+            # Device upgrades created by this batch belong to this run.
+            # Only upgrades started by a different run should block it.
+            clashing = clashing.exclude(batch_id=self.pk)
+        clash = clashing.first()
+        if clash:
+            return _(
+                "A device in this upgrade already has an active operation "
+                "(device %(device)s, status: %(status)s)."
+            ) % {"device": clash.device_id, "status": clash.get_status_display()}
+        return None
+
+    def upgrade(self, firmwareless=None):
+        """Start an upgrade for each device selected by this mass upgrade.
+
+        Stop if the batch was cancelled or its device upgrades already exist.
+        Read the saved batch while holding its database lock, so two workers
+        cannot start the same batch at the same time.
+        """
+        with transaction.atomic():
+            # Cancelled or completed batches must not be restarted by a queued task.
+            locked = (
+                self._meta.model.objects.select_for_update()
+                .filter(pk=self.pk, status__in=("idle", "in-progress"))
+                .first()
+            )
+            if locked is None or locked.upgradeoperation_set.exists():
+                return
+            self.refresh_from_db()
+            # Recovered scheduled launches may replay tasks with old options.
+            # Use the saved selection for both authorization and child creation.
+            if self.scheduled_at is not None or firmwareless is None:
+                firmwareless = self.firmwareless
+            # Authorization may change while a scheduled launch waits in the queue.
+            if self.scheduled_at is not None and not self._initiator_can_launch():
+                self.status = "failed"
+                self.save(update_fields=["status", "modified"])
+                self._scheduled_validation_failed(
+                    reason=_(
+                        "the user who scheduled it no longer has permission to run it"
+                    )
+                )
+                return
+            self.status = "in-progress"
+            self.save(update_fields=["status", "modified"])
+            # Queue children only after the whole batch transaction commits,
+            # so early child completion cannot prematurely finish the batch.
+            created = self.upgrade_related_devices()
+            if firmwareless:
+                created += self.upgrade_firmwareless_devices()
+            if not created:
+                # Devices may have been removed or upgraded while this batch
+                # waited to start. Report failure if none can be upgraded now.
+                self.status = "failed"
+                self.save(update_fields=["status", "modified"])
+                self._launch_without_eligible_devices()
+
+    @classmethod
+    def send_pending_reminders(cls):
+        """
+        Notifies organization admins about persistent batches that still have
+        pending children after the configured reminder period has elapsed.
+        """
+        period = app_settings.PERSISTENT_REMINDER_PERIOD
+        threshold = timezone.now() - timedelta(seconds=period)
+        due_condition = Q(last_reminder_at__lte=threshold) | Q(
+            last_reminder_at__isnull=True, created__lte=threshold
+        )
+        qs = (
+            cls.objects.filter(
+                status="in-progress",
+                is_persistent=True,
+                upgradeoperation__status="pending",
+            )
+            .filter(due_condition)
+            .distinct()
+        )
+        for batch in qs.iterator():
+            pending_count = batch.upgradeoperation_set.filter(status="pending").count()
+            if not pending_count:
+                continue
+            with transaction.atomic():
+                claimed = (
+                    cls.objects.filter(
+                        pk=batch.pk, status="in-progress", is_persistent=True
+                    )
+                    .filter(due_condition, upgradeoperation__status="pending")
+                    .update(last_reminder_at=timezone.now())
+                )
+                if not claimed:
+                    continue
+                description = ngettext(
+                    "%(count)d device is still pending in mass upgrade %(batch)s.",
+                    "%(count)d devices are still pending in mass upgrade %(batch)s.",
+                    pending_count,
+                ) % {"count": pending_count, "batch": batch}
+                transaction.on_commit(
+                    partial(
+                        notify.send,
+                        sender=batch,
+                        type="generic_message",
+                        target=batch,
+                        message=escape_notification_message(description),
+                        target_url_suffix="?status=pending",
+                    )
+                )
 
     @staticmethod
     def dry_run(build, group=None, location=None):
@@ -615,14 +1081,17 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         device_firmwares = self.build._find_related_device_firmwares(
             group=self.group, location=self.location
         )
+        created = 0
         for device_fw in device_firmwares:
             image = self.build.firmwareimage_set.filter(
                 type=device_fw.image.type
             ).first()
-            if image:
-                device_fw.image = image
-                device_fw.full_clean()
-                device_fw.save(self, upgrade_options=self.upgrade_options)
+            if not image:
+                continue
+            device_fw.image = image
+            if self._launch_device_firmware(device_fw):
+                created += 1
+        return created
 
     def upgrade_firmwareless_devices(self):
         """
@@ -632,15 +1101,74 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         """
         # for each image, find related "firmwareless"
         # devices and perform upgrade one by one
+        DeviceFirmware = load_model("DeviceFirmware")
+        created = 0
         for image in self.build.firmwareimage_set.all():
             devices = self.build._find_firmwareless_devices(
                 image.boards, group=self.group, location=self.location
             )
             for device in devices:
-                DeviceFirmware = load_model("DeviceFirmware")
                 device_fw = DeviceFirmware(device=device, image=image)
+                if self._launch_device_firmware(device_fw):
+                    created += 1
+        return created
+
+    def _launch_device_firmware(self, device_fw):
+        try:
+            with transaction.atomic():
+                if self.scheduled_at is not None:
+                    # Targets can appear after preflight authorization. Lock and
+                    # reload each device so its organization cannot change
+                    # between this check and committing the child operation.
+                    Device = swapper.load_model("config", "Device")
+                    try:
+                        device = Device.objects.select_for_update().get(
+                            pk=device_fw.device_id
+                        )
+                    except Device.DoesNotExist:
+                        logger.warning(
+                            "Skipped device %s in mass upgrade %s: device was deleted",
+                            device_fw.device_id,
+                            self,
+                        )
+                        return False
+                    user = self.initiated_by
+                    if user is None or not user.is_active:
+                        return False
+                    if not user.is_superuser and str(device.organization_id) not in {
+                        str(org_id) for org_id in user.organizations_managed
+                    }:
+                        return False
+                    device_fw.device = device
                 device_fw.full_clean()
                 device_fw.save(self, upgrade_options=self.upgrade_options)
+        except ValidationError as error:
+            # Batch results cover only upgrades that were queued. If a device
+            # loses its connection before launch, log the skip without creating
+            # a failed operation for an upgrade that never started.
+            logger.warning(
+                "Skipped device %s in mass upgrade %s: %s",
+                device_fw.device,
+                self,
+                error.messages,
+            )
+            return False
+        return True
+
+    def _launch_without_eligible_devices(self):
+        description = _(
+            "Mass upgrade %(batch)s failed to start: no selected device could "
+            "be upgraded with the target build."
+        ) % {"batch": self}
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=self,
+                type="generic_message",
+                target=self,
+                message=escape_notification_message(description),
+            )
+        )
 
     @cached_property
     def upgrade_operations(self):
@@ -651,9 +1179,30 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         return self.upgrade_operations.count()
 
     @property
+    def organization_id(self):
+        return self.build.category.organization_id
+
+    @property
+    def pending_count(self):
+        return self.upgrade_operations.filter(status="pending").count()
+
+    @property
     def progress_report(self):
-        completed = self.upgrade_operations.exclude(status="in-progress").count()
-        return _(f"{completed} out of {self.total_operations}")
+        stats = self.upgrade_operations.aggregate(
+            completed=models.Count(
+                "id", filter=~models.Q(status__in=("in-progress", "pending"))
+            ),
+            pending=models.Count("id", filter=models.Q(status="pending")),
+        )
+        if stats["pending"]:
+            return _("%(completed)s complete, %(pending)s pending") % {
+                "completed": stats["completed"],
+                "pending": stats["pending"],
+            }
+        return _("%(completed)s out of %(total)s") % {
+            "completed": stats["completed"],
+            "total": self.total_operations,
+        }
 
     @property
     def success_rate(self):
@@ -723,14 +1272,42 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
         Returns tuple of (status, stats_dict) for WebSocket publishing.
 
         Status determination rules:
-        - 'in-progress': If any operation is still in progress
+        - 'in-progress': If any operation is still in progress or pending
         - 'cancelled': If completed and any operation was cancelled
         - 'failed': If completed and any operation failed or aborted
         - 'success': If all operations completed successfully
         - Otherwise: Maintain current status
         """
-        operations = self.upgradeoperation_set
-        stats = operations.aggregate(
+        stats = self.get_status_stats()
+        # Determine overall batch status based on individual operation statuses
+        if stats["in_progress"] > 0 or stats["pending"] > 0:
+            new_status = "in-progress"
+        elif stats["failed"] > 0 or stats["aborted"] > 0:
+            new_status = "failed"
+        elif stats["cancelled"] > 0:
+            new_status = "cancelled"
+        elif (
+            stats["successful"] > 0
+            and stats["completed"] == stats["total_operations"]
+            and stats["total_operations"] > 0
+        ):
+            new_status = "success"
+        else:
+            new_status = self.status
+        if self.status != new_status:
+            with transaction.atomic():
+                claimed = self._meta.model.objects.filter(
+                    pk=self.pk, status=self.status
+                ).update(status=new_status)
+                if claimed:
+                    self.status = new_status
+                    self.save(update_fields=["status"])
+                else:
+                    self.refresh_from_db(fields=["status"])
+        return self.status, stats
+
+    def get_status_stats(self):
+        return self.upgradeoperation_set.aggregate(
             total_operations=models.Count("id"),
             in_progress=models.Count(
                 models.Case(
@@ -738,9 +1315,17 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                     output_field=models.IntegerField(),
                 )
             ),
+            pending=models.Count(
+                models.Case(
+                    models.When(status="pending", then=1),
+                    output_field=models.IntegerField(),
+                )
+            ),
             completed=models.Count(
                 models.Case(
-                    models.When(~models.Q(status="in-progress"), then=1),
+                    models.When(
+                        ~models.Q(status__in=("in-progress", "pending")), then=1
+                    ),
                     output_field=models.IntegerField(),
                 )
             ),
@@ -769,37 +1354,333 @@ class AbstractBatchUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableMode
                 )
             ),
         )
-        # Determine overall batch status based on individual operation statuses
-        if stats["in_progress"] > 0:
-            new_status = "in-progress"
-        elif stats["failed"] > 0 or stats["aborted"] > 0:
-            new_status = "failed"
-        elif stats["cancelled"] > 0:
-            new_status = "cancelled"
-        elif (
-            stats["successful"] > 0
-            and stats["completed"] == stats["total_operations"]
-            and stats["total_operations"] > 0
+
+    @classmethod
+    def notify_on_completion(cls, sender, instance, created, **kwargs):
+        """
+        Fires a notification when a mass upgrade reaches a terminal state.
+        """
+        if (
+            created
+            or instance.status not in ("success", "failed")
+            or not instance.upgradeoperation_set.exists()
         ):
-            new_status = "success"
+            return
+        if getattr(instance, "_previous_status", None) == instance.status:
+            return
+        description = _("Mass upgrade %(batch)s %(status)s.") % {
+            "batch": instance,
+            "status": instance.get_status_display(),
+        }
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=instance,
+                type="generic_message",
+                target=instance,
+                message=escape_notification_message(description),
+            )
+        )
+        instance._previous_status = instance.status
+
+    def cancel(self):
+        """Stop this mass upgrade where cancellation is still safe.
+
+        - If the batch is scheduled, cancel it so it will not start.
+        - If the batch has started but has no device upgrades yet, cancel it
+          before those upgrades are created.
+        - If device upgrades exist, cancel pending retries and upgrades that
+          have not started flashing. Leave devices already flashing alone.
+        - If nothing can be cancelled, report an error.
+        """
+        if self.status == "scheduled":
+            # Cancel only if it is still scheduled, not if a worker started it.
+            updated = self._meta.model.objects.filter(
+                pk=self.pk, status="scheduled"
+            ).update(status="cancelled", modified=timezone.now())
+            if not updated:
+                self.refresh_from_db(fields=["status"])
+                raise ValueError(
+                    _("Cannot cancel mass upgrade with status: %(status)s")
+                    % {"status": self.status}
+                )
+            self.status = "cancelled"
+            # update() does not emit the save signals used by the live display.
+            self.save(update_fields=["status", "modified"])
+            return
+        if self.status == "in-progress":
+            UpgradeOperation = load_model("UpgradeOperation")
+            with transaction.atomic():
+                locked = self._meta.model.objects.select_for_update().get(pk=self.pk)
+                if locked.status != "in-progress":
+                    self.refresh_from_db(fields=["status"])
+                    return
+                if not locked.upgradeoperation_set.exists():
+                    # The launch task has not created any device upgrades yet.
+                    self.status = "cancelled"
+                    self.save(update_fields=["status", "modified"])
+                    return
+            cancelled = 0
+            operations = self.upgradeoperation_set.filter(
+                status__in=UpgradeOperation.CANCELLABLE_STATUS,
+                progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
+            )
+            # Each device rechecks its flashing progress before cancelling,
+            # because it may have advanced since the query above.
+            for operation in operations.iterator():
+                try:
+                    operation.cancel()
+                except UpgradeOperation.DoesNotExist:
+                    continue
+                except ValueError as error:
+                    logger.warning(
+                        "Could not cancel upgrade operation %s of batch %s: %s",
+                        operation.pk,
+                        self.pk,
+                        error,
+                    )
+                    continue
+                cancelled += 1
+            if not cancelled:
+                # All remaining devices may already be flashing or finished.
+                raise ValueError(
+                    _("No upgrade operation of this mass upgrade could be cancelled.")
+                )
+            self.refresh_from_db()
+            return cancelled
+        raise ValueError(
+            _("Cannot cancel mass upgrade with status: %(status)s")
+            % {"status": self.status}
+        )
+
+    def reschedule(self, **fields):
+        """Applies validated schedule changes under a row lock while scheduled."""
+        with transaction.atomic():
+            obj = self._meta.model.objects.select_for_update().get(pk=self.pk)
+            if obj.status != "scheduled":
+                raise ValueError(
+                    _("Cannot reschedule mass upgrade with status: %(status)s")
+                    % {"status": obj.status}
+                )
+            lock_category(obj.build.category_id)
+            for field, value in fields.items():
+                setattr(obj, field, value)
+            obj.full_clean()
+            obj.save()
+
+    @classmethod
+    def execute_due_scheduled(cls):
+        """
+        Claims every scheduled mass upgrade whose ``scheduled_at`` has elapsed
+        and dispatches it, failing those no longer eligible or in conflict.
+        """
+        now = timezone.now()
+        cls._recover_orphaned_launches(now)
+        due_ids = cls.objects.filter(
+            status="scheduled", scheduled_at__lte=now
+        ).values_list("pk", flat=True)
+        for batch_id in due_ids.iterator():
+            with transaction.atomic():
+                try:
+                    batch = (
+                        cls.objects.select_for_update(of=("self",))
+                        .select_related("build")
+                        .get(pk=batch_id)
+                    )
+                except ObjectDoesNotExist:
+                    continue
+                if batch.status != "scheduled" or batch.scheduled_at > now:
+                    continue
+                lock_category(batch.build.category_id)
+                result = cls.dry_run(
+                    build=batch.build, group=batch.group, location=batch.location
+                )
+                eligible = result["device_firmwares"].exists() or (
+                    batch.firmwareless and result["devices"].exists()
+                )
+                conflict = batch._find_conflict()
+                authorized = batch._initiator_can_launch()
+                if not eligible or conflict or not authorized:
+                    failed = cls.objects.filter(
+                        pk=batch_id, status="scheduled", scheduled_at__lte=now
+                    ).update(status="failed", modified=timezone.now())
+                    if failed:
+                        if conflict:
+                            reason = conflict
+                        elif not authorized:
+                            reason = _(
+                                "the user who scheduled it no longer has "
+                                "permission to run it"
+                            )
+                        else:
+                            reason = None
+                        batch.status = "failed"
+                        batch.save(update_fields=["status", "modified"])
+                        batch._scheduled_validation_failed(reason=reason)
+                    continue
+                claimed = cls.objects.filter(
+                    pk=batch_id, status="scheduled", scheduled_at__lte=now
+                ).update(status="in-progress", modified=timezone.now())
+                if not claimed:
+                    continue
+                batch.status = "in-progress"
+                firmwareless = batch.firmwareless
+            try:
+                batch_upgrade_operation.delay(batch_id, firmwareless)
+            except Exception:
+                cls.objects.filter(pk=batch_id, status="in-progress").update(
+                    status="scheduled"
+                )
+                logger.warning(
+                    "Failed to dispatch scheduled mass upgrade %s, reverted to "
+                    "scheduled",
+                    batch_id,
+                )
+                continue
+            batch._scheduled_started()
+
+    @classmethod
+    def _recover_orphaned_launches(cls, now):
+        """
+        Reverts scheduled batches stuck ``in-progress`` with no children past
+        the launch timeout back to ``scheduled`` for a later scan to redispatch.
+        """
+        stale = now - timedelta(seconds=app_settings.SCHEDULE_LAUNCH_TIMEOUT)
+        cls.objects.filter(
+            status="in-progress",
+            scheduled_at__isnull=False,
+            modified__lte=stale,
+            upgradeoperation__isnull=True,
+        ).update(status="scheduled")
+
+    def _scheduled_started(self):
+        description = _("Scheduled mass upgrade %(batch)s has started.") % {
+            "batch": self
+        }
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=self,
+                type="generic_message",
+                target=self,
+                message=escape_notification_message(description),
+            )
+        )
+
+    def _scheduled_validation_failed(self, reason=None):
+        if reason:
+            description = _(
+                "Scheduled mass upgrade %(batch)s was not started: %(reason)s"
+            ) % {"batch": self, "reason": reason}
         else:
-            new_status = self.status
-        # Update status only if it has changed
-        if self.status != new_status:
-            self.status = new_status
-            self.save(update_fields=["status"])
-        return new_status, stats
+            description = _(
+                "Scheduled mass upgrade %(batch)s was not started: no eligible "
+                "devices remained at the scheduled time."
+            ) % {"batch": self}
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=self,
+                type="generic_message",
+                target=self,
+                message=escape_notification_message(description),
+            )
+        )
+
+    def _initiator_can_launch(self):
+        """Check whether the scheduling user can still start this mass upgrade.
+
+        A user may lose permissions after scheduling an upgrade. The scheduler
+        and worker check the user's current permissions before creating any
+        device upgrades. If the user no longer has access, the batch cannot start.
+        Shared builds require access to every organization targeted by the batch.
+        """
+        # A deleted or inactive account cannot authorize an upgrade, even if
+        # it had sufficient permissions when the batch was scheduled.
+        user = self.initiated_by
+        if user is None or not user.is_active:
+            return False
+        # Active superusers can launch upgrades across all organizations.
+        if user.is_superuser:
+            return True
+        # Organization membership alone does not grant permission to start
+        # mass upgrades; the user must also have the model permission.
+        if not user.has_perm(f"{self._meta.app_label}.add_{self._meta.model_name}"):
+            return False
+        # Organization-owned builds require continued access to their organization.
+        managed_org_ids = [str(org_id) for org_id in user.organizations_managed]
+        build_org_id = self.build.category.organization_id
+        if build_org_id is not None:
+            return str(build_org_id) in managed_org_ids
+        # Shared builds can target several organizations. Recheck the actual
+        # targets because the user's access may change while the batch is queued.
+        targets = self.dry_run(
+            build=self.build, group=self.group, location=self.location
+        )
+        # Reject the whole batch if any device with recorded firmware belongs
+        # to an organization the user no longer manages.
+        unmanaged_firmwares = targets["device_firmwares"].exclude(
+            device__organization_id__in=managed_org_ids
+        )
+        if unmanaged_firmwares.exists():
+            return False
+        # Devices without recorded firmware are additional targets only when
+        # the batch explicitly enables firmwareless upgrades.
+        if self.firmwareless:
+            unmanaged_devices = targets["devices"].exclude(
+                organization_id__in=managed_org_ids
+            )
+            if unmanaged_devices.exists():
+                return False
+        return True
+
+    @classmethod
+    def fail_scheduled_on_target_delete(cls, sender, instance, **kwargs):
+        """Stop unstarted scheduled batches before deletion removes their filter."""
+        field = (
+            "group"
+            if sender is swapper.load_model("config", "DeviceGroup")
+            else "location"
+        )
+        # The worker holds this lock until all device upgrades are created.
+        # Deletion must either stop the launch or leave those upgrades unchanged.
+        with transaction.atomic():
+            batches = (
+                cls.objects.select_for_update(of=("self",))
+                .filter(
+                    status__in=("scheduled", "in-progress"),
+                    scheduled_at__isnull=False,
+                    **{field: instance},
+                )
+                .select_related("build__category")
+                .order_by("pk")
+            )
+            for batch in batches.iterator():
+                if batch.upgradeoperation_set.exists():
+                    continue
+                batch.status = "failed"
+                batch.save(update_fields=["status", "modified"])
+                batch._scheduled_validation_failed(
+                    reason=_(
+                        "a device group or location it targeted was deleted, which "
+                        "would otherwise have widened the upgrade to unintended "
+                        "devices"
+                    )
+                )
 
 
-class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
+class AbstractUpgradeOperation(
+    StatusTrackingMixin, UpgradeOptionsMixin, TimeStampedEditableModel
+):
 
-    _CANCELLABLE_STATUS = "in-progress"
+    CANCELLABLE_STATUS = ("in-progress", "pending")
     STATUS_CHOICES = (
         ("in-progress", _("in progress")),
         ("success", _("success")),
         ("failed", _("failed")),  # failed at late stage or can't reconnect
         ("cancelled", _("cancelled")),  # cancelled by the user
         ("aborted", _("aborted")),  # aborted due to prerequisites not met
+        ("pending", _("pending")),  # offline device; waiting for periodic retry
     )
     device = models.ForeignKey(
         swapper.get_model_name("config", "Device"), on_delete=models.CASCADE
@@ -823,6 +1704,61 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         blank=True,
         null=True,
     )
+    is_persistent = models.BooleanField(
+        default=False,
+        verbose_name=_("persistent"),
+        help_text=_(
+            "if enabled, the system will retry offline or recoverable pre-flash "
+            "failures until this upgrade succeeds or is cancelled"
+        ),
+    )
+    retry_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_("retry count"),
+        help_text=_("number of retry attempts made for this upgrade"),
+    )
+    next_retry_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name=_("next retry at"),
+        help_text=_("date and time of the next retry attempt"),
+    )
+    claimed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("claimed at"),
+        help_text=_("time the persistent upgrade was claimed for dispatch"),
+    )
+
+    def clean(self):
+        super().clean()
+        if hasattr(self, "device") and self.device and self.device.is_deactivated():
+            raise ValidationError(DEACTIVATED_DEVICE_UPGRADE_OPERATION_ERROR)
+        self._validate_is_persistent_immutable()
+
+    def _validate_is_persistent_immutable(self):
+        """
+        Reject changes to ``is_persistent`` after the operation is saved.
+        Flipping it on an existing row would orphan a pending retry chain
+        or silently re-arm a finished operation.
+        """
+        if self._state.adding:
+            return
+        stored_is_persistent = (
+            load_model("UpgradeOperation")
+            .objects.values_list("is_persistent", flat=True)
+            .get(pk=self.pk)
+        )
+        if self.is_persistent != stored_is_persistent:
+            raise ValidationError(
+                {
+                    "is_persistent": _(
+                        "Persistent cannot be changed after the "
+                        "upgrade operation has been saved"
+                    )
+                }
+            )
 
     def __str__(self):
         return f"{self.device} ({timezone.localtime(self.created).strftime('%Y-%m-%d %H:%M:%S')})"
@@ -830,17 +1766,23 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     class Meta:
         abstract = True
 
-    def log_line(self, line, save=True):
+    def log_line(self, line, save=True, update_fields=None):
         if self.log:
             self.log += f"\n{line}"
         else:
             self.log = line
         logger.info(f"# {line}")
         if save:
-            self.save()
-            firmware_upgrader_log_updated.send(
-                sender=self.__class__, instance=self, line=line
-            )
+            if update_fields is None:
+                self.save()
+            else:
+                self.save(update_fields=update_fields)
+            self._emit_log_updated(line)
+
+    def _emit_log_updated(self, line):
+        firmware_upgrader_log_updated.send(
+            sender=self.__class__, instance=self, line=line
+        )
 
     def update_progress(self, progress, save=True):
         """Update progress with validation."""
@@ -861,19 +1803,27 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     def cancel(self):
         """Cancels the upgrade operation if conditions are met, atomically."""
         with transaction.atomic():
+            # Always lock the batch before its child.
+            # Reversing this order can deadlock cancellation against completion.
+            if self.batch_id:
+                self.batch = (
+                    load_model("BatchUpgradeOperation")
+                    .objects.select_for_update()
+                    .get(pk=self.batch_id)
+                )
             # A concurrent upgrade worker can change status/progress
             # between fetch and save(), so cancellation can succeed
             # or fail incorrectly.
             # By using an UPDATE query, we avoid such situation.
             updated = self._meta.model.objects.filter(
                 pk=self.pk,
-                status=self._CANCELLABLE_STATUS,
+                status__in=self.CANCELLABLE_STATUS,
                 progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
-            ).update(status="cancelled")
+            ).update(status="cancelled", next_retry_at=None)
             if not updated:
                 # The cancellation did not succeed, check why
                 self.refresh_from_db(fields=["status", "progress"])
-                if self.status != self._CANCELLABLE_STATUS:
+                if self.status not in self.CANCELLABLE_STATUS:
                     raise ValueError(
                         _("Cannot cancel operation with status: %(status)s")
                         % {"status": self.status}
@@ -893,25 +1843,262 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             self.refresh_from_db()
             self.log_line(_("Upgrade operation has been cancelled by user"))
 
+    def _calculate_next_retry(self):
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        exponent = max(self.retry_count - 1, 0)
+        delay = min(
+            options["base_delay"] * (options["multiplier"] ** exponent),
+            options["max_delay"],
+        )
+        jitter = options["jitter"]
+        jittered = delay * random.uniform(1 - jitter, 1 + jitter)
+        return timezone.now() + timedelta(seconds=jittered)
+
+    @classmethod
+    def handle_health_status_changed(cls, sender, instance, status, **kwargs):
+        """
+        Dispatches retries for pending upgrades when device health recovers.
+        """
+        if status != "ok":
+            return
+        pending_ops = cls.objects.filter(
+            device=instance.device, status="pending"
+        ).values_list("pk", "retry_count")
+        jitter = app_settings.PERSISTENT_RETRY_OPTIONS["signal_jitter"]
+        for pk, retry_count in pending_ops.iterator():
+            retry_pending_upgrade.apply_async(
+                args=[pk],
+                kwargs={"expected_retry_count": retry_count},
+                countdown=random.uniform(0, jitter),
+            )
+
+    @classmethod
+    def retry_pending(cls, operation_id, expected_retry_count=None):
+        """
+        Claims a pending operation and dispatches its upgrade, unless a
+        concurrent cancellation or a device deactivation intervened.
+        """
+        claim = dict(pk=operation_id, status="pending")
+        if expected_retry_count is not None:
+            claim["retry_count"] = expected_retry_count
+        updated = cls.objects.filter(**claim).update(
+            status="in-progress", next_retry_at=None, claimed_at=timezone.now()
+        )
+        if not updated:
+            return
+        try:
+            operation = cls.objects.select_related("device").get(pk=operation_id)
+        except ObjectDoesNotExist:
+            logger.warning(
+                f"The UpgradeOperation object with id {operation_id} has been deleted"
+            )
+            return
+        try:
+            if operation.device.is_deactivated():
+                aborted = cls.objects.filter(
+                    pk=operation_id, status="in-progress"
+                ).update(status="aborted")
+                if aborted:
+                    operation.status = "aborted"
+                    operation.log_line(
+                        _("Device has been deactivated; persistent retry aborted."),
+                        update_fields=["status", "log"],
+                    )
+                return
+            if not cls.objects.filter(pk=operation_id, status="in-progress").exists():
+                return
+            operation.log_line(
+                _("Persistent retry #%(count)s starting.\n")
+                % {"count": operation.retry_count},
+                update_fields=["log"],
+            )
+            upgrade_firmware.apply_async(
+                (operation.pk,),
+                expires=app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"],
+            )
+        except BaseException:
+            cls.objects.filter(pk=operation_id, status="in-progress").update(
+                status="pending", next_retry_at=timezone.now(), claimed_at=None
+            )
+            raise
+
+    @classmethod
+    def dispatch_due_pending_retries(cls):
+        """
+        Claims every pending operation whose ``next_retry_at`` has elapsed and
+        dispatches it, spreading the dispatches over the configured jitter.
+        """
+        options = app_settings.PERSISTENT_RETRY_OPTIONS
+        jitter = options["dispatch_jitter"]
+        now = timezone.now()
+        stale_claim = now - timedelta(seconds=options["claim_timeout"])
+        cls.objects.filter(
+            status="in-progress",
+            is_persistent=True,
+            claimed_at__lte=stale_claim,
+            progress__lt=UpgradeProgress.CANCELLATION_THRESHOLD,
+        ).update(
+            status="pending",
+            next_retry_at=now + timedelta(seconds=options["base_delay"]),
+            claimed_at=None,
+        )
+        due_ops = (
+            cls.objects.filter(status="pending", next_retry_at__lte=now)
+            .values_list("pk", "retry_count")
+            .iterator()
+        )
+        for op_id, retry_count in due_ops:
+            claimed = cls.objects.filter(
+                pk=op_id,
+                status="pending",
+                retry_count=retry_count,
+                next_retry_at__lte=now,
+            ).update(next_retry_at=now + timedelta(seconds=jitter))
+            if claimed:
+                retry_pending_upgrade.apply_async(
+                    args=[op_id],
+                    kwargs={"expected_retry_count": retry_count},
+                    countdown=random.uniform(0, jitter),
+                )
+
+    @classmethod
+    def notify_on_failed_persistent_upgrade(cls, sender, instance, created, **kwargs):
+        """
+        Fires a notification when a persistent upgrade transitions to failed.
+        """
+        if created or not instance.is_persistent:
+            return
+        if instance.status != "failed":
+            return
+        if getattr(instance, "_previous_status", None) == "failed":
+            return
+        description = _("Persistent upgrade for device %(device)s failed.") % {
+            "device": instance.device
+        }
+        transaction.on_commit(
+            partial(
+                notify.send,
+                sender=instance,
+                type="generic_message",
+                target=instance.device,
+                target_url_suffix="#upgradeoperation_set-group",
+                message=escape_notification_message(description),
+            )
+        )
+        instance._previous_status = instance.status
+
     def _recoverable_failure_handler(self, recoverable, error):
         cause = str(error)
         if recoverable:
-            self.log_line(f"Detected a recoverable failure: {cause}.\n", save=False)
-            self.log_line("The upgrade operation will be retried soon.")
+            self.log_line(
+                _("Detected a recoverable failure: %(cause)s.\n") % {"cause": cause},
+                save=False,
+            )
+            self.log_line(
+                _("The upgrade operation will be retried soon."),
+                update_fields=["log"],
+            )
             raise error
+        if self.is_persistent and isinstance(error, RecoverableFailure):
+            self.status = "pending"
+            self.retry_count += 1
+            self.next_retry_at = self._calculate_next_retry()
+            self.log_line(
+                _("All immediate retries exhausted: %(cause)s.\n") % {"cause": cause},
+                save=False,
+            )
+            retry_time = timezone.localtime(self.next_retry_at).strftime(
+                "%Y-%m-%d %H:%M:%S %Z"
+            )
+            self.log_line(
+                _("Scheduled persistent retry #%(count)s at %(time)s.\n")
+                % {"count": self.retry_count, "time": retry_time},
+                save=False,
+            )
+            return
         self.status = "failed"
-        self.log_line(f"Max retries exceeded. Upgrade failed: {cause}.", save=False)
+        self.log_line(
+            _("Max retries exceeded. Upgrade failed: %(cause)s.") % {"cause": cause},
+            save=False,
+        )
+
+    def _commit_result(self, installed=False):
+        with transaction.atomic():
+            # Serialize child results before either write or aggregation, so
+            # the last completion sees the other children's committed results.
+            if self.batch_id:
+                self.batch = (
+                    load_model("BatchUpgradeOperation")
+                    .objects.select_for_update()
+                    .get(pk=self.batch_id)
+                )
+            claimed = self._meta.model.objects.filter(
+                pk=self.pk, status="in-progress"
+            ).update(
+                status=self.status,
+                retry_count=self.retry_count,
+                next_retry_at=self.next_retry_at,
+                progress=self.progress,
+                log=self.log,
+                claimed_at=None,
+                modified=timezone.now(),
+            )
+            if not claimed:
+                self.refresh_from_db()
+                return False
+            if installed:
+                # Commit installation metadata with the result, before a failing
+                # completion notification can interrupt the caller after commit.
+                self.device.devicefirmware.installed = True
+                self.device.devicefirmware.save(upgrade=False)
+            self.claimed_at = None
+            self.save(
+                update_fields=[
+                    "status",
+                    "retry_count",
+                    "next_retry_at",
+                    "progress",
+                    "log",
+                    "claimed_at",
+                    "modified",
+                ]
+            )
+            self._emit_log_updated((self.log or "").rstrip("\n").rsplit("\n", 1)[-1])
+            return True
 
     def upgrade(self, recoverable=True):
         # Do not run if operation is not in-progress (eg: cancelled, aborted, success, failed)
         if self.status != "in-progress":
+            return
+        if self.claimed_at is not None:
+            now = timezone.now()
+            self._meta.model.objects.filter(pk=self.pk, status="in-progress").update(
+                claimed_at=now
+            )
+            self.claimed_at = now
+        if self.device.is_deactivated():
+            self.status = "aborted"
+            self.log_line(
+                _("Upgrade aborted because the device has been deactivated."),
+                save=False,
+            )
+            self._commit_result()
             return
         DeviceConnection = swapper.load_model("connection", "DeviceConnection")
         try:
             conn = DeviceConnection.get_working_connection(self.device)
         except NoWorkingDeviceConnectionError as error:
             if error.connection is None:
-                self.log_line("No device connection available")
+                # a device with no usable connection can never be upgraded here
+                self.log_line(_("No device connection available"), save=False)
+                if self.is_persistent:
+                    self._recoverable_failure_handler(
+                        recoverable,
+                        RecoverableFailure("No device connection available"),
+                    )
+                else:
+                    self.status = "aborted"
+                self._commit_result()
                 return
 
             log_template = (
@@ -936,14 +2123,14 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
                     )
                 ),
             )
-            self.save()
+            self._commit_result()
             return
         installed = False
         # prevent multiple upgrade operations for
         # the same device running at the same time
         qs = (
             load_model("UpgradeOperation")
-            .objects.filter(device=self.device, status="in-progress")
+            .objects.filter(device=self.device, status__in=("in-progress", "pending"))
             .exclude(pk=self.pk)
         )
         if qs.exists():
@@ -951,7 +2138,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             logger.warning(message)
             self.log_line(message, save=False)
             self.status = "aborted"
-            self.save()
+            self._commit_result()
             return
         upgrader_class = get_upgrader_class_from_device_connection(conn)
         if not upgrader_class:
@@ -981,7 +2168,7 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
         # other unexpected exception will flag the upgrade as failed
         except (Exception, ReconnectionFailed) as e:
             cause = str(e)
-            self.log_line(cause)
+            self.log_line(cause, save=False)
             self.status = "failed"
             # if the reconnection failed we'll add some more info
             if isinstance(e, ReconnectionFailed):
@@ -998,13 +2185,20 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
             installed = True
             self.status = "success"
             self.update_progress(100, save=False)
-        self.save()
-        # if the firmware has been successfully installed,
-        # or if it was already installed
-        # set `instaleld` to `True` on the devicefirmware instance
-        if installed:
-            self.device.devicefirmware.installed = True
-            self.device.devicefirmware.save(upgrade=False)
+        self._commit_result(installed=installed)
+
+    def validate_upgrade_options(self):
+        """Validate options only for new upgrade operations.
+
+        Pre-existing upgrade operations are readonly, but validation of relationship
+        can become complex and generate a lot of edge cases, in order to keep things
+        simple this validation step is skipped for pre-existing objects.
+        """
+        try:
+            super().validate_upgrade_options()
+        except ValidationError:
+            if self._state.adding:
+                raise
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -1020,3 +2214,18 @@ class AbstractUpgradeOperation(UpgradeOptionsMixin, TimeStampedEditableModel):
     @property
     def upgrader_class(self):
         return get_upgrader_class_for_device(self.device)
+
+    def dispatch(self):
+        """Publish this operation without blocking later batch publications."""
+        kwargs = {}
+        if self.is_persistent:
+            kwargs["expires"] = app_settings.PERSISTENT_RETRY_OPTIONS["claim_timeout"]
+        try:
+            upgrade_firmware.apply_async((self.pk,), **kwargs)
+        except OperationalError:
+            if not self.batch_id:
+                raise
+            # The operation has already committed. Log the publication failure
+            # without skipping the remaining children's on-commit callbacks.
+            # This does not recover the failed publication or replay the batch.
+            logger.exception("Could not dispatch upgrade operation %s", self.pk)
