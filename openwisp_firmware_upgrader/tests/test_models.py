@@ -12,6 +12,7 @@ from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
+from openwisp_controller.connection import settings as conn_settings
 from openwisp_controller.connection.exceptions import NoWorkingDeviceConnectionError
 from openwisp_utils.tests import capture_any_output
 
@@ -1641,6 +1642,108 @@ class TestModelsTransaction(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(batch.upgradeoperation_set.count(), 2)
             self.assertEqual(batch.build, env["build2"])
             self.assertEqual(batch.status, "success")
+
+    def test_batch_upgrader_class_prefers_related_devices(self):
+        env = self._create_upgrade_env()
+        credentials = DeviceConnection.objects.first().credentials
+        DeviceFirmware.objects.filter(device=env["d2"]).delete()
+        # the pk order of connections is random, repeat to make failures certain
+        for i in range(8):
+            with self.subTest(i=i):
+                DeviceConnection.objects.all().delete()
+                self._create_device_connection(
+                    device=env["d2"],
+                    credentials=credentials,
+                    update_strategy=conn_settings.DEFAULT_UPDATE_STRATEGIES[1][0],
+                )
+                self._create_device_connection(
+                    device=env["d1"], credentials=credentials
+                )
+                batch = BatchUpgradeOperation.objects.create(
+                    build=env["build2"], status="idle"
+                )
+                self.assertEqual(batch.upgrader_class.__name__, "OpenWrt")
+
+    def test_batch_upgrader_class_credentialless(self):
+        env = self._create_upgrade_env()
+        credentials = DeviceConnection.objects.first().credentials
+        openwrt = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt"
+
+        def get_batch():
+            return BatchUpgradeOperation.objects.create(
+                build=env["build2"], status="success"
+            )
+
+        def restore_connections():
+            DeviceConnection.objects.all().delete()
+            for device in (env["d1"], env["d2"]):
+                self._create_device_connection(device=device, credentials=credentials)
+
+        for firmwareless in (False, True):
+            if firmwareless:
+                DeviceFirmware.objects.all().delete()
+            for missing in ("d1", "d2"):
+                with self.subTest(firmwareless=firmwareless, missing=missing):
+                    restore_connections()
+                    env[missing].deviceconnection_set.all().delete()
+                    batch = get_batch()
+                    self.assertEqual(batch.upgrader_class.__name__, "OpenWrt")
+                    self.assertIsNotNone(batch.upgrader_schema)
+            with self.subTest(firmwareless=firmwareless, missing="all"):
+                DeviceConnection.objects.all().delete()
+                batch = get_batch()
+                self.assertIsNone(batch.upgrader_class)
+                self.assertIsNone(batch.upgrader_schema)
+            with self.subTest(firmwareless=firmwareless, strategy="custom"):
+                restore_connections()
+                DeviceConnection.objects.update(update_strategy="custom.Connector")
+                self.assertIsNone(get_batch().upgrader_class)
+                with mock.patch.dict(
+                    app_settings.UPGRADERS_MAP, {"custom.Connector": openwrt}
+                ):
+                    self.assertEqual(get_batch().upgrader_class.__name__, "OpenWrt")
+        with self.subTest("existing operations, connections deleted afterwards"):
+            restore_connections()
+            with mock.patch(self._mock_connect, return_value=True):
+                with mock.patch(self._mock_updrade, return_value=True):
+                    env["build2"].batch_upgrade(firmwareless=True)
+            batch = BatchUpgradeOperation.objects.filter(
+                upgradeoperation__isnull=False
+            ).first()
+            DeviceConnection.objects.all().delete()
+            batch = BatchUpgradeOperation.objects.get(pk=batch.pk)
+            self.assertIsNone(batch.upgrader_schema)
+        with self.subTest("upgrade options without upgradable connections"):
+            # firmwareless devices must exist, otherwise the "no devices" error hides this path
+            DeviceFirmware.objects.all().delete()
+            with self.assertRaisesMessage(
+                ValidationError,
+                "No related connection or credentials found for this device.",
+            ):
+                env["build2"].batch_upgrade(
+                    firmwareless=True, upgrade_options={"c": True}
+                )
+
+    @mock.patch(_mock_updrade, return_value=True)
+    def test_upgrade_skips_disabled_connections(self, *args):
+        with mock.patch(self._mock_connect, return_value=True):
+            env = self._create_upgrade_env()
+            env["d1"].deviceconnection_set.update(enabled=False)
+            with self.subTest("related devices"):
+                env["build2"].batch_upgrade(firmwareless=False)
+                self.assertEqual(
+                    list(UpgradeOperation.objects.values_list("device", flat=True)),
+                    [env["d2"].pk],
+                )
+            UpgradeOperation.objects.all().delete()
+            BatchUpgradeOperation.objects.all().delete()
+            DeviceFirmware.objects.all().delete()
+            with self.subTest("firmwareless devices"):
+                env["build2"].batch_upgrade(firmwareless=True)
+                self.assertEqual(
+                    list(UpgradeOperation.objects.values_list("device", flat=True)),
+                    [env["d2"].pk],
+                )
 
     @mock.patch("openwisp_notifications.signals.notify.send")
     @mock.patch("openwisp_firmware_upgrader.base.models.upgrade_firmware.apply_async")

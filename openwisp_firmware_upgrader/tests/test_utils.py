@@ -1,12 +1,20 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+import swapper
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from .. import settings as app_settings
-from ..utils import get_upgrader_class_from_device_connection, reinterpret_in_timezone
+from ..utils import (
+    get_upgrade_connections,
+    get_upgrader_class_for_device,
+    get_upgrader_class_from_device_connection,
+    reinterpret_in_timezone,
+)
 from .base import TestUpgraderMixin
+
+DeviceConnection = swapper.load_model("connection", "DeviceConnection")
 
 
 class TestUtils(TestUpgraderMixin, TestCase):
@@ -55,3 +63,27 @@ class TestUtils(TestUpgraderMixin, TestCase):
                 upgrader_class = get_upgrader_class_from_device_connection(device_conn)
                 self.assertEqual(upgrader_class, None)
                 mocked_logger.assert_called()
+
+    def test_get_upgrader_class_for_device(self):
+        device_conn = self._create_device_connection()
+        device = device_conn.device
+        openwrt = "openwisp_firmware_upgrader.upgraders.openwrt.OpenWrt"
+        with self.subTest("mapped strategy"):
+            self.assertEqual(get_upgrade_connections().get(), device_conn)
+            self.assertEqual(get_upgrader_class_for_device(device).__name__, "OpenWrt")
+        with self.subTest("unmapped strategy"):
+            DeviceConnection.objects.update(update_strategy="custom.Connector")
+            self.assertFalse(get_upgrade_connections().exists())
+            with self.assertRaises(DeviceConnection.DoesNotExist):
+                get_upgrader_class_for_device(device)
+        with self.subTest("custom strategy added to UPGRADERS_MAP"):
+            with patch.dict(app_settings.UPGRADERS_MAP, {"custom.Connector": openwrt}):
+                self.assertEqual(
+                    get_upgrader_class_for_device(device).__name__, "OpenWrt"
+                )
+        with self.subTest("disabled connection"):
+            DeviceConnection.objects.update(
+                update_strategy=device_conn.update_strategy, enabled=False
+            )
+            with self.assertRaises(DeviceConnection.DoesNotExist):
+                get_upgrader_class_for_device(device)

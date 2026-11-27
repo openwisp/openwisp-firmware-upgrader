@@ -20,6 +20,7 @@ from django.utils.timezone import localtime
 from openwisp_controller.config.tests.test_admin import TestAdmin as TestConfigAdmin
 from openwisp_controller.connection import settings as conn_settings
 from openwisp_firmware_upgrader.admin import (
+    MAX_CREDENTIALLESS_DEVICES,
     BatchUpgradeConfirmationForm,
     BuildAdmin,
     DeviceAdmin,
@@ -171,7 +172,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_related(self):
         self._login()
         env = self._create_upgrade_env()
-        with self.assertNumQueries(15):
+        with self.assertNumQueries(16):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -185,7 +186,7 @@ class TestAdmin(BaseTestAdmin, TestCase):
     def test_upgrade_intermediate_page_firmwareless(self):
         self._login()
         env = self._create_upgrade_env(device_firmware=False)
-        with self.assertNumQueries(14):
+        with self.assertNumQueries(15):
             r = self.client.post(
                 self.build_list_url,
                 {
@@ -199,6 +200,88 @@ class TestAdmin(BaseTestAdmin, TestCase):
             'name="upgrade_related"',
         )
         self.assertContains(r, 'name="upgrade_all"')
+
+    def _post_confirmation(self, build, **data):
+        data.update({"action": "upgrade_selected", ACTION_CHECKBOX_NAME: (build.pk,)})
+        return self.client.post(self.build_list_url, data, follow=True)
+
+    def _device_url(self, device):
+        return reverse(f"admin:{self.config_app_label}_device_change", args=[device.pk])
+
+    def test_upgrade_intermediate_page_credentialless(self):
+        self._login()
+        for device_firmware in (True, False):
+            for target in ("d1", "d2"):
+                with self.subTest(device_firmware=device_firmware, target=target):
+                    env = self._create_upgrade_env(
+                        device_firmware=device_firmware,
+                        organization=self._create_org(
+                            name=f"org-{device_firmware}-{target}"
+                        ),
+                    )
+                    bad = env[target]
+                    other = env["d2" if target == "d1" else "d1"]
+                    bad.deviceconnection_set.all().delete()
+                    r = self._post_confirmation(env["build2"])
+                    self.assertEqual(r.status_code, 200)
+                    self.assertContains(
+                        r, "no enabled credentials with a supported update strategy"
+                    )
+                    self.assertContains(r, f'<a href="{self._device_url(bad)}">')
+                    self.assertContains(r, bad.name)
+                    self.assertNotContains(r, self._device_url(other))
+                    self.assertNotContains(r, "not shown")
+
+    def test_upgrade_intermediate_page_credentialless_cap(self):
+        self._login()
+        org = self._get_org()
+        image = self._create_firmware_image(organization=org)
+        devices = [
+            self._create_device(
+                name=f"nocred{i:02}",
+                organization=org,
+                mac_address=f"00:11:22:33:44:{i:02x}",
+                model=image.boards[0],
+            )
+            for i in range(MAX_CREDENTIALLESS_DEVICES)
+        ]
+        self.assertEqual(len(devices), MAX_CREDENTIALLESS_DEVICES)
+        with self.subTest("exactly the maximum"):
+            with self.assertNumQueries(15):
+                r = self._post_confirmation(image.build)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(
+                len(r.context["credentialless_devices"]), MAX_CREDENTIALLESS_DEVICES
+            )
+            self.assertNotContains(r, "not shown")
+        with self.subTest("above the maximum"):
+            extra = self._create_device(
+                name="nocred99",
+                organization=org,
+                mac_address="00:11:22:33:44:ff",
+                model=image.boards[0],
+            )
+            r = self._post_confirmation(image.build)
+            self.assertEqual(
+                len(r.context["credentialless_devices"]), MAX_CREDENTIALLESS_DEVICES
+            )
+            self.assertContains(r, "not shown")
+            self.assertNotContains(r, self._device_url(extra))
+
+    def test_upgrade_credentialless_only_confirmation(self):
+        self._login()
+        env = self._create_upgrade_env()
+        DeviceConnection.objects.all().delete()
+        for button in ("upgrade_all", "upgrade_related"):
+            with self.subTest(button):
+                r = self._post_confirmation(
+                    env["build2"], upgrade_options='{"c": true}', **{button: button}
+                )
+                self.assertEqual(r.status_code, 200)
+                self.assertContains(
+                    r, "No related connection or credentials found for this device."
+                )
+                self.assertEqual(BatchUpgradeOperation.objects.count(), 0)
 
     def test_view_device_administrator(self):
         device_fw = self._create_device_firmware()
@@ -2149,6 +2232,38 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
             self.assertEqual(fw.count(), 2)
 
     @mock.patch(_mock_upgrade, return_value=True)
+    def test_batch_page_without_connections(self, *args):
+        self.test_upgrade_all()
+        batch = BatchUpgradeOperation.objects.first()
+        DeviceConnection.objects.all().delete()
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+    @mock.patch(_mock_upgrade, return_value=True)
+    def test_upgrade_operation_page_without_upgradable_connection(self, *args):
+        self.test_upgrade_all()
+        url = reverse(
+            f"admin:{self.app_label}_upgradeoperation_change",
+            args=[UpgradeOperation.objects.first().pk],
+        )
+
+        with self.subTest("update strategy not in UPGRADERS_MAP"):
+            DeviceConnection.objects.update(update_strategy="custom.Connector")
+            self.assertContains(
+                self.client.get(url),
+                "Upgrade options are not supported for this upgrader.",
+            )
+
+        with self.subTest("connections deleted"):
+            DeviceConnection.objects.all().delete()
+            self.assertContains(
+                self.client.get(url),
+                "Upgrade options are not supported for this upgrader.",
+            )
+
+    @mock.patch(_mock_upgrade, return_value=True)
     def test_massive_upgrade_operation_page(self, *args):
         with mock.patch(self._mock_connect, return_value=True):
             self.test_upgrade_all()
@@ -2662,7 +2777,7 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(22):
+                with self.assertNumQueries(21):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")

@@ -2,6 +2,7 @@ import logging
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import swapper
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.module_loading import import_string
@@ -47,22 +48,33 @@ def get_upgrader_schema_for_device(device):
     return getattr(upgrader_class, "SCHEMA", None)
 
 
+def get_upgrade_connections():
+    """
+    Returns the enabled DeviceConnection objects whose update strategy
+    has an upgrader configured in "UPGRADERS_MAP".
+    """
+    DeviceConnection = swapper.load_model("connection", "DeviceConnection")
+    return DeviceConnection.objects.filter(
+        enabled=True, update_strategy__in=list(app_settings.UPGRADERS_MAP)
+    )
+
+
 def get_upgrader_class_for_device(device):
     """
     Returns firmware upgrader class for a device depending
     on update_strategy of device's DeviceConnection.
 
-    It only takes the first DeviceConnection object into consideration.
+    It only takes the first upgradable DeviceConnection object
+    into consideration (see ``get_upgrade_connections``).
     This function makes the following assumptions:
         - a device cannot have DeviceConnection objects of
           two different update_strategy.
         - an upgrade cannot be performed on a device without a
           device connection
+
+    Raises ``DeviceConnection.DoesNotExist`` if there is none.
     """
-    device_conn = device.deviceconnection_set.filter(
-        update_strategy__icontains="ssh",
-        enabled=True,
-    ).first()
+    device_conn = get_upgrade_connections().filter(device=device).first()
     if not device_conn:
         raise device.deviceconnection_set.model.DoesNotExist
     return get_upgrader_class_from_device_connection(device_conn)
