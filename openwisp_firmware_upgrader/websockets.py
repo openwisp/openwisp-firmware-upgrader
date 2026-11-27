@@ -256,21 +256,12 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                     return data
 
                 operations_data = await sync_to_async(_serialize)()
-                stats = await sync_to_async(batch_operation.get_status_stats)()
+                batch_status = await sync_to_async(batch_operation.get_progress_data)()
                 # Send everything in ONE message
                 await self.send_json(
                     {
                         "type": "batch_state",
-                        "batch_status": {
-                            "status": batch_operation.status,
-                            "completed": stats["completed"],
-                            "pending": stats["pending"],
-                            "total": stats["total_operations"],
-                            "successful": stats["successful"],
-                            "failed": stats["failed"],
-                            "aborted": stats["aborted"],
-                            "cancelled": stats["cancelled"],
-                        },
+                        "batch_status": batch_status,
                         "operations": operations_data,
                     }
                 )

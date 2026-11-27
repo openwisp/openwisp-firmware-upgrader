@@ -1568,6 +1568,34 @@ class TestModels(TestUpgraderMixin, TestCase):
             },
         )
 
+    def test_get_progress_data(self):
+        device_fw = self._create_device_firmware()
+        batch = BatchUpgradeOperation.objects.create(
+            build=device_fw.image.build, status="in-progress"
+        )
+        statuses = ["in-progress", "pending"]
+        statuses += ["success"] + ["failed"] * 2 + ["aborted"] * 3 + ["cancelled"] * 4
+        for status in statuses:
+            UpgradeOperation.objects.create(
+                device=device_fw.device,
+                image=device_fw.image,
+                batch=batch,
+                status=status,
+            )
+        self.assertEqual(
+            batch.get_progress_data(),
+            {
+                "status": "in-progress",
+                "completed": 10,
+                "pending": 1,
+                "total": 12,
+                "successful": 1,
+                "failed": 2,
+                "aborted": 3,
+                "cancelled": 4,
+            },
+        )
+
     def test_cancel_below_threshold(self):
         device_fw = self._create_device_firmware()
         op = UpgradeOperation.objects.create(

@@ -140,7 +140,11 @@ exactly one message:
             "status": "<string>",           // Overall batch status
             "completed": <integer>,         // Number of completed operations
             "pending": <integer>,           // Number of operations awaiting a persistent retry
-            "total": <integer>              // Total operations in the batch
+            "total": <integer>,             // Total operations in the batch
+            "successful": <integer>,        // Number of successful operations
+            "failed": <integer>,            // Number of failed operations
+            "aborted": <integer>,           // Number of aborted operations
+            "cancelled": <integer>          // Number of cancelled operations
         },
         "operations": [
             {
@@ -190,7 +194,11 @@ The endpoint may push:
         "status": "<string>",               // Overall batch status
         "completed": <integer>,             // Number of completed operations
         "pending": <integer>,               // Number of operations awaiting a persistent retry
-        "total": <integer>                  // Total operations in the batch
+        "total": <integer>,                 // Total operations in the batch
+        "successful": <integer>,            // Number of successful operations
+        "failed": <integer>,                // Number of failed operations
+        "aborted": <integer>,               // Number of aborted operations
+        "cancelled": <integer>              // Number of cancelled operations
     }
 
 3. Device Upgrade

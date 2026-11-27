@@ -304,26 +304,30 @@ function getBatchStatusSegments(data) {
   if (!(data.total > 0)) {
     return [];
   }
+  let successful = data.successful || 0;
+  let failed = data.failed || 0;
+  let aborted = data.aborted || 0;
+  let cancelled = data.cancelled || 0;
   let segments = [
     {
-      count: data.successful || 0,
+      count: successful,
       cssClass: FW_UPGRADE_CSS_CLASSES.SUCCESS,
-      label: FW_UPGRADE_DISPLAY_STATUS.SUCCESS,
+      label: ngettext("%s successful", "%s successful", successful),
     },
     {
-      count: data.failed || 0,
+      count: failed,
       cssClass: FW_UPGRADE_CSS_CLASSES.FAILED,
-      label: FW_UPGRADE_DISPLAY_STATUS.FAILED,
+      label: ngettext("%s failed", "%s failed", failed),
     },
     {
-      count: data.aborted || 0,
+      count: aborted,
       cssClass: FW_UPGRADE_CSS_CLASSES.ABORTED,
-      label: FW_UPGRADE_DISPLAY_STATUS.ABORTED,
+      label: ngettext("%s aborted", "%s aborted", aborted),
     },
     {
-      count: data.cancelled || 0,
+      count: cancelled,
       cssClass: FW_UPGRADE_CSS_CLASSES.CANCELLED,
-      label: FW_UPGRADE_DISPLAY_STATUS.CANCELLED,
+      label: ngettext("%s cancelled", "%s cancelled", cancelled),
     },
   ];
   return segments.filter(function (segment) {
@@ -335,23 +339,24 @@ function renderSegmentedProgressBar(segments, progressPercentage) {
   let finishedCount = segments.reduce(function (sum, segment) {
     return sum + segment.count;
   }, 0);
-  // Widths are derived from rounded cumulative positions, so the segments
-  // always add up to exactly progressPercentage without gaps or overflow.
+  // Widths are computed from cumulative positions in hundredths of a
+  // percent, so the segments always add up to exactly progressPercentage.
+  // Very small segments keep a minimum width in CSS so they stay visible.
   let cumulativeCount = 0;
   let usedWidth = 0;
   let segmentsHtml = segments
     .map(function (segment) {
       cumulativeCount += segment.count;
       let cumulativeWidth = Math.round(
-        (cumulativeCount / finishedCount) * progressPercentage,
+        (cumulativeCount / finishedCount) * progressPercentage * 100,
       );
-      let width = cumulativeWidth - usedWidth;
+      let width = (cumulativeWidth - usedWidth) / 100;
       usedWidth = cumulativeWidth;
       return `<div class="upgrade-progress-fill ${escapeHtml(segment.cssClass)}"
                    style="width: ${escapeHtml(String(width))}%"></div>`;
     })
     .join("");
-  return `<div class="upgrade-progress-bar">${segmentsHtml}</div>`;
+  return `<div class="upgrade-progress-bar segmented">${segmentsHtml}</div>`;
 }
 
 function renderProgressLegend(segments) {
@@ -359,7 +364,7 @@ function renderProgressLegend(segments) {
     .map(function (segment) {
       return `<span class="legend-item">
           <span class="legend-dot ${escapeHtml(segment.cssClass)}"></span>
-          ${escapeHtml(String(segment.count))} ${escapeHtml(segment.label)}
+          ${escapeHtml(interpolate(segment.label, [segment.count]))}
         </span>`;
     })
     .join("");
@@ -509,60 +514,11 @@ function initializeMainProgressBar($) {
     if (!statusField.find(".batch-main-progress").length) {
       statusField.append('<div class="batch-main-progress"></div>');
     }
-    let currentStatusText = statusField
-      .contents()
-      .filter(function () {
-        return this.nodeType === 3 && this.textContent.trim();
-      })
-      .first()
-      .text()
-      .trim();
-    let mainProgressElement = $(".batch-main-progress");
-    if (mainProgressElement.length > 0 && currentStatusText) {
-      let progressPercentage = 100;
-      let statusClass = "";
-      let showPercentageText;
-
-      switch (currentStatusText) {
-        case FW_UPGRADE_DISPLAY_STATUS.SCHEDULED:
-          statusClass = FW_UPGRADE_CSS_CLASSES.SCHEDULED;
-          showPercentageText = false;
-          progressPercentage = 0;
-          break;
-        case FW_UPGRADE_DISPLAY_STATUS.COMPLETED_SUCCESSFULLY:
-          statusClass = FW_UPGRADE_CSS_CLASSES.COMPLETED_SUCCESSFULLY;
-          showPercentageText = true;
-          break;
-        case FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_CANCELLATIONS:
-          statusClass = FW_UPGRADE_CSS_CLASSES.CANCELLED;
-          showPercentageText = false;
-          break;
-        case FW_UPGRADE_DISPLAY_STATUS.COMPLETED_WITH_FAILURES:
-          statusClass = FW_UPGRADE_CSS_CLASSES.PARTIAL_SUCCESS;
-          showPercentageText = false;
-          break;
-        case FW_UPGRADE_DISPLAY_STATUS.IN_PROGRESS:
-          statusClass = FW_UPGRADE_CSS_CLASSES.IN_PROGRESS;
-          showPercentageText = true;
-          progressPercentage = 0;
-          break;
-        default:
-          statusClass = FW_UPGRADE_CSS_CLASSES.FAILED;
-          showPercentageText = false;
-      }
-      let progressHtml = `
-        <div class="upgrade-progress-bar">
-          <div class="upgrade-progress-fill ${escapeHtml(statusClass)}"
-               style="width: ${escapeHtml(progressPercentage)}%">
-          </div>
-        </div>
-      `;
-      if (showPercentageText) {
-        progressHtml += `<span class="upgrade-progress-text">
-          ${escapeHtml(progressPercentage)}%
-        </span>`;
-      }
-      mainProgressElement.html(progressHtml);
+    // Apply the batch state included in the page by the server, the same
+    // snapshot the websocket sends, so both render an identical bar.
+    let progressData = document.getElementById("batch-progress-data");
+    if (progressData) {
+      updateBatchProgress(JSON.parse(progressData.textContent));
     }
   }
 }

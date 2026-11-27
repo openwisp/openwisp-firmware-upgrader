@@ -2077,18 +2077,73 @@ class TestRealTimeProgress(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
-        publisher.publish_batch_status(status="failed", total=2, completed=2)
+        publisher.publish_batch_status(
+            status="failed", total=2, completed=2, successful=1, failed=1
+        )
         self._wait_for_realtime_update(
             EC.visibility_of_element_located(
                 (
                     By.CSS_SELECTOR,
-                    ".batch-main-progress .upgrade-progress-fill.partial-success[style*='width: 100%']",
+                    ".batch-main-progress .upgrade-progress-fill.failed[style*='width: 50%']",
                 )
             ),
+        )
+        fills = self.find_elements(
+            By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-fill"
+        )
+        self.assertEqual(
+            [fill.get_attribute("class") for fill in fills],
+            ["upgrade-progress-fill success", "upgrade-progress-fill failed"],
+        )
+        self.assertIn("width: 50%", fills[0].get_attribute("style"))
+        legend_items = self.find_elements(
+            By.CSS_SELECTOR, ".batch-main-progress .batch-progress-legend .legend-item"
+        )
+        self.assertEqual(
+            [item.text for item in legend_items], ["1 successful", "1 failed"]
         )
         status_field = self.find_element(By.CSS_SELECTOR, ".field-status .readonly")
         status_text = status_field.get_attribute("textContent").strip()
         self.assertIn("completed with some failures", status_text)
+        self._assert_no_js_errors()
+
+    def test_batch_main_progress_bar_from_database(self):
+        """Test batch progress bar segments rendered from stored operations"""
+        batch_operation = BatchUpgradeOperation.objects.create(
+            build=self.build2, status="in-progress"
+        )
+        for device, status in (
+            (self.device1, "success"),
+            (self.device2, "failed"),
+            (self.device3, "aborted"),
+            (self.device1, "cancelled"),
+            (self.device2, "in-progress"),
+        ):
+            UpgradeOperation.objects.create(
+                device=device,
+                image=self.image2,
+                batch=batch_operation,
+                status=status,
+                progress=100 if status != "in-progress" else 30,
+            )
+        self._prepare_batch(batch_operation)
+        self._check_progress_text("80%")
+        fills = self.find_elements(
+            By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-fill"
+        )
+        self.assertEqual(
+            [fill.get_attribute("class").split()[-1] for fill in fills],
+            ["success", "failed", "aborted", "cancelled"],
+        )
+        for fill in fills:
+            self.assertIn("width: 20%", fill.get_attribute("style"))
+        legend_items = self.find_elements(
+            By.CSS_SELECTOR, ".batch-main-progress .batch-progress-legend .legend-item"
+        )
+        self.assertEqual(
+            [item.text for item in legend_items],
+            ["1 successful", "1 failed", "1 aborted", "1 cancelled"],
+        )
         self._assert_no_js_errors()
 
     def test_batch_completion_all_successful(self):
@@ -2115,14 +2170,24 @@ class TestRealTimeProgress(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".batch-main-progress"))
         )
         publisher = BatchUpgradeProgressPublisher(batch_operation.pk)
-        publisher.publish_batch_status(status="success", total=2, completed=2)
+        publisher.publish_batch_status(
+            status="success", total=2, completed=2, successful=2
+        )
         self._wait_for_realtime_update(
             EC.visibility_of_element_located(
                 (
                     By.CSS_SELECTOR,
-                    ".batch-main-progress .upgrade-progress-fill.completed-successfully",
+                    ".batch-main-progress .upgrade-progress-fill.success[style*='width: 100%']",
                 )
             ),
+        )
+        self.assertEqual(
+            len(
+                self.find_elements(
+                    By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-fill"
+                )
+            ),
+            1,
         )
         progress_text = self.find_element(
             By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-text"

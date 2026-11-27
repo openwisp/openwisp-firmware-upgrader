@@ -11,6 +11,7 @@
 
 {% block content %}
 {{ block.super }}
+{% if batch_progress %}{{ batch_progress|json_script:"batch-progress-data" }}{% endif %}
 
 {% if show_batch_actions %}
 <section class="batch-actions module aligned" aria-labelledby="batch-actions-title">

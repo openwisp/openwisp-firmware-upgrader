@@ -222,7 +222,11 @@ these updates.
 about what occurred during the upgrade process.
 
 **Batch Operations**: When performing mass upgrades, you can monitor the
-status of individual device upgrades within the batch operation.
+status of individual device upgrades within the batch operation. The
+progress bar of a mass upgrade is split into one colored segment for each
+outcome (successful, failed, aborted and cancelled), with a legend showing
+how many operations ended in each state. Operations which are still in
+progress or pending are shown as the unfilled part of the bar.
 
 .. _deleting_upgrade_operations:
 

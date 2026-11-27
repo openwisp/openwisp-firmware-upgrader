@@ -183,10 +183,6 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
                         "status": "in-progress",
                         "completed": 0,
                         "total": 2,
-                        "successful": 0,
-                        "failed": 0,
-                        "aborted": 0,
-                        "cancelled": 0,
                     },
                 },
             )
@@ -195,32 +191,37 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
             self.assertEqual(response["status"], "in-progress")
             self.assertEqual(response["completed"], 0)
             self.assertEqual(response["total"], 2)
-            self.assertEqual(response["successful"], 0)
-            self.assertEqual(response["failed"], 0)
-            self.assertEqual(response["aborted"], 0)
-            self.assertEqual(response["cancelled"], 0)
 
             with patch.object(
                 BatchUpgradeOperation,
                 "get_status_stats",
                 return_value={
-                    "total_operations": 5,
+                    "total_operations": 13,
                     "in_progress": 2,
                     "pending": 1,
-                    "completed": 2,
+                    "completed": 10,
                     "successful": 1,
-                    "failed": 1,
-                    "aborted": 0,
-                    "cancelled": 0,
+                    "failed": 2,
+                    "aborted": 3,
+                    "cancelled": 4,
                 },
             ):
                 await communicator.send_json_to({"type": "request_current_state"})
                 response = await communicator.receive_json_from()
                 self.assertEqual(response["type"], "batch_state")
-                self.assertEqual(response["batch_status"]["successful"], 1)
-                self.assertEqual(response["batch_status"]["failed"], 1)
-                self.assertEqual(response["batch_status"]["aborted"], 0)
-                self.assertEqual(response["batch_status"]["cancelled"], 0)
+                self.assertEqual(
+                    response["batch_status"],
+                    {
+                        "status": "idle",
+                        "completed": 10,
+                        "pending": 1,
+                        "total": 13,
+                        "successful": 1,
+                        "failed": 2,
+                        "aborted": 3,
+                        "cancelled": 4,
+                    },
+                )
 
             # Send operation progress message
             await channel_layer.group_send(
@@ -434,24 +435,24 @@ class TestFirmwareUpgradeSockets(TestUpgraderMixin, TransactionTestCase):
         ) as mock_group_send:
             publisher.publish_batch_status(
                 "in-progress",
-                5,
                 10,
+                12,
                 2,
-                successful=3,
-                failed=1,
-                aborted=1,
-                cancelled=0,
+                successful=1,
+                failed=2,
+                aborted=3,
+                cancelled=4,
             )
             call_args = mock_group_send.call_args[0]
             self.assertEqual(call_args[1]["data"]["type"], "batch_status")
             self.assertEqual(call_args[1]["data"]["status"], "in-progress")
-            self.assertEqual(call_args[1]["data"]["completed"], 5)
+            self.assertEqual(call_args[1]["data"]["completed"], 10)
             self.assertEqual(call_args[1]["data"]["pending"], 2)
-            self.assertEqual(call_args[1]["data"]["total"], 10)
-            self.assertEqual(call_args[1]["data"]["successful"], 3)
-            self.assertEqual(call_args[1]["data"]["failed"], 1)
-            self.assertEqual(call_args[1]["data"]["aborted"], 1)
-            self.assertEqual(call_args[1]["data"]["cancelled"], 0)
+            self.assertEqual(call_args[1]["data"]["total"], 12)
+            self.assertEqual(call_args[1]["data"]["successful"], 1)
+            self.assertEqual(call_args[1]["data"]["failed"], 2)
+            self.assertEqual(call_args[1]["data"]["aborted"], 3)
+            self.assertEqual(call_args[1]["data"]["cancelled"], 4)
 
     async def test_websocket_connection_errors(self):
         """Test WebSocket connection error handling."""

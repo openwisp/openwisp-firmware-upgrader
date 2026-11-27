@@ -210,6 +210,7 @@
 .batch-main-progress {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   gap: 6px 20px;
   margin-left: 20px;
@@ -218,8 +219,8 @@
 
 .batch-main-progress .upgrade-progress-bar {
   display: flex;
-  width: 100%;
-  max-width: 300px;
+  width: 300px;
+  max-width: 100%;
   height: 12px;
   background-color: var(--ow-color-fg-medium);
   border-radius: 4px;
@@ -230,6 +231,10 @@
 .batch-main-progress .upgrade-progress-fill {
   height: 100%;
   transition: width 0.5s ease;
+}
+
+.batch-main-progress .upgrade-progress-bar.segmented .upgrade-progress-fill {
+  min-width: 3px;
 }
 
 .batch-main-progress .upgrade-progress-fill:first-child {
@@ -280,7 +285,6 @@
 
 .batch-progress-legend {
   display: flex;
-  flex-basis: 100%;
   flex-wrap: wrap;
   gap: 4px 12px;
   font-size: 12px;
