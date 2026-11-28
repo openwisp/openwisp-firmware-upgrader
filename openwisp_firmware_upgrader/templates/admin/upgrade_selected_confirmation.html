@@ -106,15 +106,27 @@
         </fieldset>
         {% if credentialless_devices %}
           <p class="errornote">
-            {% blocktrans %}The following devices have no enabled credentials with a supported update strategy and will be skipped. Assign or enable credentials with a supported update strategy to include them in future upgrades.{% endblocktrans %}
+            {% blocktrans trimmed %}
+              The following devices have no enabled credentials with a
+              supported update strategy and will be skipped. Assign or enable
+              credentials with a supported update strategy to include them in
+              future upgrades.
+            {% endblocktrans %}
           </p>
           <ul>
             {% for device in credentialless_devices %}
-              <li><a href="{% url device_change_url device.pk %}">{{ device.name }}</a></li>
+              <li>
+                <a href="{% url device_change_url device.pk %}">{{ device.name }}</a>
+              </li>
             {% endfor %}
           </ul>
           {% if credentialless_more %}
-            <p class="help">{% trans "More devices without credentials exist but are not shown because the list is too long." %}</p>
+            <p class="help">
+              {% blocktrans trimmed %}
+                More devices without credentials exist but are not shown
+                because the list is too long.
+              {% endblocktrans %}
+            </p>
           {% endif %}
         {% endif %}
         <input
