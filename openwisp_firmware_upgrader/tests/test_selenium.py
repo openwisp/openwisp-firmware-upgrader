@@ -1637,7 +1637,9 @@ class TestRealTimeProgress(
             "window.batchUpgradeProgressWebSocket.readyState === 1;",
         )
         self.assertFalse(
-            self.find_element(By.ID, "upgrade-operations-section").is_displayed(),
+            self.find_element(
+                By.ID, "upgrade-operations-section", wait_for="presence"
+            ).is_displayed(),
             "The operations table should be hidden while the batch is scheduled",
         )
         batch_operation.status = "in-progress"
