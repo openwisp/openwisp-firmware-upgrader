@@ -887,6 +887,8 @@ class TestScheduledExecution(TestUpgraderMixin, TransactionTestCase):
             model=environment["image2a"].boards[0],
             organization=environment["d1"].organization,
         )
+        self._create_config(device=deleted_device)
+        self._create_device_connection(device=deleted_device)
         batch = self._create_scheduled_batch(
             build=environment["build2"],
             initiated_by=self._create_admin(),

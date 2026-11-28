@@ -54,6 +54,7 @@ from ..tasks import (
 from ..utils import (
     UpgradeProgress,
     escape_notification_message,
+    get_upgrade_connections,
     get_upgrader_class_for_device,
     get_upgrader_class_from_device_connection,
     get_upgrader_schema_for_device,
@@ -80,6 +81,8 @@ class UpgradeOptionsMixin(models.Model):
         try:
             upgrader_class = self.upgrader_class
         except ObjectDoesNotExist:
+            upgrader_class = None
+        if upgrader_class is None:
             raise ValidationError(
                 _("No related connection or credentials found for this device.")
             )
@@ -1080,7 +1083,7 @@ class AbstractBatchUpgradeOperation(
         """
         device_firmwares = self.build._find_related_device_firmwares(
             group=self.group, location=self.location
-        )
+        ).filter(device_id__in=get_upgrade_connections().values("device_id"))
         created = 0
         for device_fw in device_firmwares:
             image = self.build.firmwareimage_set.filter(
@@ -1106,7 +1109,7 @@ class AbstractBatchUpgradeOperation(
         for image in self.build.firmwareimage_set.all():
             devices = self.build._find_firmwareless_devices(
                 image.boards, group=self.group, location=self.location
-            )
+            ).filter(pk__in=get_upgrade_connections().values("device_id"))
             for device in devices:
                 device_fw = DeviceFirmware(device=device, image=image)
                 if self._launch_device_firmware(device_fw):
@@ -1242,18 +1245,27 @@ class AbstractBatchUpgradeOperation(
 
     def _get_upgrader_class(self, related_device_fw=None, firmwareless_devices=None):
         if self.upgrade_operations:
-            return get_upgrader_class_for_device(self.upgrade_operations[0].device)
-        related_device_fw = (
-            related_device_fw
-            or self.build._find_related_device_firmwares(select_devices=True)
-        )
-        if related_device_fw:
-            return get_upgrader_class_for_device(related_device_fw.first().device)
-        firmwareless_devices = (
-            firmwareless_devices or self.build._find_firmwareless_devices()
-        )
-        if firmwareless_devices:
-            return get_upgrader_class_for_device(firmwareless_devices.first())
+            candidates = [self.upgrade_operations.values("device_id")]
+        else:
+            if related_device_fw is None:
+                related_device_fw = self.build._find_related_device_firmwares(
+                    group=self.group, location=self.location
+                )
+            if firmwareless_devices is None:
+                firmwareless_devices = self.build._find_firmwareless_devices(
+                    group=self.group, location=self.location
+                )
+            # related devices take priority over firmwareless ones
+            candidates = [
+                related_device_fw.values("device_id"),
+                firmwareless_devices.values("pk"),
+            ]
+        for device_ids in candidates:
+            device_conn = (
+                get_upgrade_connections().filter(device_id__in=device_ids).first()
+            )
+            if device_conn:
+                return get_upgrader_class_from_device_connection(device_conn)
 
     def _get_upgrader_schema(self, related_device_fw=None, firmwareless_devices=None):
         upgrader_class = self._get_upgrader_class(
@@ -2209,7 +2221,10 @@ class AbstractUpgradeOperation(
 
     @property
     def upgrader_schema(self):
-        return get_upgrader_schema_for_device(self.device)
+        try:
+            return get_upgrader_schema_for_device(self.device)
+        except ObjectDoesNotExist:
+            return None
 
     @property
     def upgrader_class(self):

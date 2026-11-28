@@ -174,6 +174,11 @@ These filters allow for more granular control over which devices are
 upgraded, making it easier to perform staged rollouts or target specific
 subsets of your device fleet.
 
+Devices without enabled credentials with a supported update strategy are
+listed at the end of this page and are skipped by the mass upgrade: assign
+or enable credentials with a supported update strategy to include them in
+future upgrades.
+
 After reviewing the selection and setting any desired filters, you can
 either confirm the operation or cancel.
 
