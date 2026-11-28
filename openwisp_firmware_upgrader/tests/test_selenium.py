@@ -2127,23 +2127,37 @@ class TestRealTimeProgress(
                 progress=100 if status != "in-progress" else 30,
             )
         self._prepare_batch(batch_operation)
-        self._check_progress_text("80%")
-        fills = self.find_elements(
-            By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-fill"
-        )
-        self.assertEqual(
-            [fill.get_attribute("class").split()[-1] for fill in fills],
-            ["success", "failed", "aborted", "cancelled"],
-        )
-        for fill in fills:
-            self.assertIn("width: 20%", fill.get_attribute("style"))
-        legend_items = self.find_elements(
-            By.CSS_SELECTOR, ".batch-main-progress .batch-progress-legend .legend-item"
-        )
-        self.assertEqual(
-            [item.text for item in legend_items],
-            ["1 successful", "1 failed", "1 aborted", "1 cancelled"],
-        )
+
+        def assert_progress_bar():
+            self._check_progress_text("80%")
+            fills = self.find_elements(
+                By.CSS_SELECTOR, ".batch-main-progress .upgrade-progress-fill"
+            )
+            self.assertEqual(
+                [fill.get_attribute("class").split()[-1] for fill in fills],
+                ["success", "failed", "aborted", "cancelled"],
+            )
+            for fill in fills:
+                self.assertIn("width: 20%", fill.get_attribute("style"))
+            legend_items = self.find_elements(
+                By.CSS_SELECTOR,
+                ".batch-main-progress .batch-progress-legend .legend-item",
+            )
+            self.assertEqual(
+                [item.text for item in legend_items],
+                ["1 successful", "1 failed", "1 aborted", "1 cancelled"],
+            )
+
+        assert_progress_bar()
+        with self.subTest("Render from page data without websocket"):
+            # The websocket snapshot above renders the same counts, so close
+            # it and render again only from the data embedded in the page.
+            self.web_driver.execute_script(
+                "window.batchUpgradeProgressWebSocket.close();"
+                "django.jQuery('.batch-main-progress').empty();"
+                "initializeMainProgressBar(django.jQuery);"
+            )
+            assert_progress_bar()
         self._assert_no_js_errors()
 
     def test_batch_completion_all_successful(self):

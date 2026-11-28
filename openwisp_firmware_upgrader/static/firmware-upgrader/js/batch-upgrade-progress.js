@@ -222,7 +222,7 @@ function updateBatchProgress(data) {
     let progressHtml;
     let legendHtml = "";
     if (segments.length > 0) {
-      progressHtml = renderSegmentedProgressBar(segments, progressPercentage);
+      progressHtml = renderSegmentedProgressBar(segments, data.total);
       legendHtml = renderProgressLegend(segments);
     } else {
       // Fall back to a single color when per-status counts are not available
@@ -335,21 +335,18 @@ function getBatchStatusSegments(data) {
   });
 }
 
-function renderSegmentedProgressBar(segments, progressPercentage) {
-  let finishedCount = segments.reduce(function (sum, segment) {
-    return sum + segment.count;
-  }, 0);
-  // Widths are computed from cumulative positions in hundredths of a
-  // percent, so the segments always add up to exactly progressPercentage.
+function renderSegmentedProgressBar(segments, total) {
+  // Widths are computed from the counts rather than the rounded percentage
+  // shown as text, otherwise a nearly finished batch (e.g. 199 of 200) would
+  // render a full bar. Cumulative positions are rounded to hundredths of a
+  // percent, so the segments add up exactly to the finished share.
   // Very small segments keep a minimum width in CSS so they stay visible.
   let cumulativeCount = 0;
   let usedWidth = 0;
   let segmentsHtml = segments
     .map(function (segment) {
       cumulativeCount += segment.count;
-      let cumulativeWidth = Math.round(
-        (cumulativeCount / finishedCount) * progressPercentage * 100,
-      );
+      let cumulativeWidth = Math.round((cumulativeCount / total) * 10000);
       let width = (cumulativeWidth - usedWidth) / 100;
       usedWidth = cumulativeWidth;
       return `<div class="upgrade-progress-fill ${escapeHtml(segment.cssClass)}"
