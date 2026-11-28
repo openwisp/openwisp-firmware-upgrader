@@ -256,17 +256,12 @@ class BatchUpgradeProgressConsumer(AuthenticatedWebSocketConsumer):
                     return data
 
                 operations_data = await sync_to_async(_serialize)()
-                stats = await sync_to_async(batch_operation.get_status_stats)()
+                batch_status = await sync_to_async(batch_operation.get_progress_data)()
                 # Send everything in ONE message
                 await self.send_json(
                     {
                         "type": "batch_state",
-                        "batch_status": {
-                            "status": batch_operation.status,
-                            "completed": stats["completed"],
-                            "pending": stats["pending"],
-                            "total": stats["total_operations"],
-                        },
+                        "batch_status": batch_status,
                         "operations": operations_data,
                     }
                 )
@@ -513,7 +508,17 @@ class BatchUpgradeProgressPublisher:
             )
         self.publish_progress(progress_data)
 
-    def publish_batch_status(self, status, completed, total, pending=0):
+    def publish_batch_status(
+        self,
+        status,
+        completed,
+        total,
+        pending=0,
+        successful=0,
+        failed=0,
+        aborted=0,
+        cancelled=0,
+    ):
         self.publish_progress(
             {
                 "type": "batch_status",
@@ -521,6 +526,10 @@ class BatchUpgradeProgressPublisher:
                 "completed": completed,
                 "pending": pending,
                 "total": total,
+                "successful": successful,
+                "failed": failed,
+                "aborted": aborted,
+                "cancelled": cancelled,
             }
         )
 
@@ -533,6 +542,10 @@ class BatchUpgradeProgressPublisher:
             stats["completed"],
             stats["total_operations"],
             stats["pending"],
+            successful=stats["successful"],
+            failed=stats["failed"],
+            aborted=stats["aborted"],
+            cancelled=stats["cancelled"],
         )
 
     @classmethod

@@ -432,6 +432,24 @@ class TestAdmin(BaseTestAdmin, TestCase):
         r = self.client.get(url)
         self.assertContains(r, localize(localtime(due)))
 
+    def test_batch_detail_progress_data(self):
+        self._login()
+        env = self._create_upgrade_env()
+        batch = BatchUpgradeOperation.objects.create(
+            build=env["build2"], status="failed"
+        )
+        for device, status in ((env["d1"], "success"), (env["d2"], "failed")):
+            UpgradeOperation.objects.create(
+                device=device, image=env["image2a"], batch=batch, status=status
+            )
+        url = reverse(
+            f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
+        )
+        r = self.client.get(url)
+        self.assertEqual(r.context["batch_progress"], batch.get_progress_data())
+        self.assertContains(r, '<script id="batch-progress-data"')
+        self.assertContains(r, '"successful": 1, "failed": 1')
+
     def test_batch_action_buttons(self):
         self._login()
         build = self._create_build()
@@ -2662,7 +2680,7 @@ class TestAdminTransaction(BaseTestAdmin, TransactionTestCase):
                 f"admin:{self.app_label}_batchupgradeoperation_change", args=[batch.pk]
             )
             with self.subTest("Test search + status filter"):
-                with self.assertNumQueries(22):
+                with self.assertNumQueries(23):
                     response = self.client.get(url + "?q=unique-test&status=success")
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "unique-test-device")

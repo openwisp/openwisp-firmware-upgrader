@@ -1355,6 +1355,23 @@ class AbstractBatchUpgradeOperation(
             ),
         )
 
+    def get_progress_data(self):
+        """
+        Returns the progress of the batch as sent to the admin UI,
+        including the number of operations in each final status.
+        """
+        stats = self.get_status_stats()
+        return {
+            "status": self.status,
+            "completed": stats["completed"],
+            "pending": stats["pending"],
+            "total": stats["total_operations"],
+            "successful": stats["successful"],
+            "failed": stats["failed"],
+            "aborted": stats["aborted"],
+            "cancelled": stats["cancelled"],
+        }
+
     @classmethod
     def notify_on_completion(cls, sender, instance, created, **kwargs):
         """

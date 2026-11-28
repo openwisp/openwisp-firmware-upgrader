@@ -966,6 +966,7 @@ class BatchUpgradeOperationAdmin(BaseUpgradeAdmin):
                     "is_persistent": obj.is_persistent,
                     "show_next_retry": show_next_retry,
                     "batch": obj,
+                    "batch_progress": obj.get_progress_data(),
                     "server_timezone": settings.TIME_ZONE,
                 }
             )
