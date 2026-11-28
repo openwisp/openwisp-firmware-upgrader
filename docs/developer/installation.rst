@@ -143,6 +143,10 @@ SAMPLE_APP tests:
 
     SAMPLE_APP=1 ./runtests.py --keepdb --failfast
 
+To run a focused Django test, pass its dotted module, class, or method
+path to ``./runtests``. Run sample app tests separately because they use
+different models.
+
 .. important::
 
     If you want to add ``openwisp-firmware-upgrader`` to an existing
