@@ -282,6 +282,7 @@ if os.environ.get("SAMPLE_APP", False):
     CONNECTION_CREDENTIALS_MODEL = "sample_connection.Credentials"
     CONNECTION_DEVICECONNECTION_MODEL = "sample_connection.DeviceConnection"
     CONNECTION_COMMAND_MODEL = "sample_connection.Command"
+    CONNECTION_BATCHCOMMAND_MODEL = "sample_connection.BatchCommand"
 
 
 TEST_RUNNER = "openwisp_utils.tests.TimeLoggingTestRunner"
